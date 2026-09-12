@@ -1,8 +1,6 @@
 <script setup lang="ts">
-import DangerButton from '@/Components/DangerButton.vue';
-import Modal from '@/Components/Modal.vue';
-import SecondaryButton from '@/Components/SecondaryButton.vue';
-import { useForm } from '@inertiajs/vue3';
+import Modal from '@/components/Modal.vue';
+import SecondaryButton from '@/components/SecondaryButton.vue';
 
 const props = defineProps({
     show: Boolean,
@@ -19,10 +17,11 @@ const emit = defineEmits(["close"]);
         <Modal :show="props.show" @close="emit('close')" :maxWidth="'2xl'">
             <div class="p-6 text-gray-900 dark:text-gray-100">
                 <h2 class="text-lg font-medium">
-                    {{ lang().label.permission }}
+                    {{ lang().t('app.label.permission') }}
                 </h2>
                 <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                    {{ lang().label.all_permission }} {{ lang().label.role }} <b>{{ props.role?.name }}</b>
+                    {{ lang().t('app.label.all_permission') }} {{ lang().t('app.label.role') }} <b>{{
+                        props.role?.name }}</b>
                 </p>
                 <div class="my-6 grid grid-cols-2 sm:grid-cols-3">
                     <div v-for="(permission, index) in props.role?.permissions" :key="index"
@@ -31,7 +30,8 @@ const emit = defineEmits(["close"]);
                     </div>
                 </div>
                 <div class="mt-6 flex justify-end">
-                    <SecondaryButton @click="emit('close')"> {{ lang().button.close }} </SecondaryButton>
+                    <SecondaryButton @click="emit('close')"> {{ lang().t('app.button.close') }}
+                    </SecondaryButton>
                 </div>
             </div>
         </Modal>

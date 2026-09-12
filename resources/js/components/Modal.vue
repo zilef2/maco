@@ -55,6 +55,7 @@ const maxWidthClass = computed(() => {
         md: 'sm:max-w-md',
         lg: 'max-w-lg',
         xl: 'max-w-xl',
+        '2xl': 'max-w-2xl',
         xl2: 'max-w-2xl',
         xl3: 'max-w-3xl',
         xl4: 'sm:max-w-4xl 2xl:max-w-[1200px]',
@@ -94,7 +95,7 @@ const maxWidthClass = computed(() => {
                 >
                     <div
                         v-show="show"
-                        class="mb-6 bg-white dark:bg-gray-800 rounded-lg overflow-hidden shadow-xl transform transition-all sm:w-full sm:mx-auto"
+                        class="relative z-10 mb-6 bg-white dark:bg-gray-800 rounded-lg overflow-hidden shadow-xl transform transition-all sm:w-full sm:mx-auto"
                         :class="maxWidthClass"
                     >
                         <slot v-if="show" />

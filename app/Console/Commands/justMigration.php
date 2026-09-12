@@ -9,7 +9,7 @@ use Illuminate\Support\Str;
 class justMigration extends Command
 {
     use Constants;
-     public function generateAttributes(): array
+     protected function generateAttributes(): array
      {
          return [
              'numero_cot' => 'integer',        // Número COT

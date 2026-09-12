@@ -1,18 +1,18 @@
 /*
+    *** MENU of global.ts ***
 -- this Project
 
---FROM others projects
-
- // --DATE functions
- formatearFecha
+ --DATE functions
+ DiferenciaMinutos
+ IsDate_GOES_formatDate
  formatToVue
  formatDate
  monthName
  TransformTdate
 
- --MATHfunctionsome
+ --MATH  functions
 
- number_format
+ zilef_nuber_format
  CalcularEdad
  CalcularSexo
  CalcularAvg
@@ -31,23 +31,23 @@
  vectorSelect
 */
 
+import {toInteger} from "lodash";
 
-//FROM others projects
-
-
-//fin FROM others prjects
+//<editor-fold desc="This Project">
 // this Project
-export function LookForValueInArray(arrayOfObjects: object[], searchValue : any): string {
+export function LookForValueInArray(arrayOfObjects: Object[], searchValue): String {
+    if (arrayOfObjects === null) return null
     //ex: { title: '123', value: 1 },
-    let foundObject:string = '';
-    for (const obj of arrayOfObjects as any) {
-
-        if (typeof searchValue == 'string') {
-            // if (obj['title'] === searchValue) {
-            //     foundObject = obj['value'];
-            // }
-            return '';
-        } else {
+    let foundObject = '';
+    if (typeof searchValue == 'string') {
+        for (const obj of arrayOfObjects) {
+            if (obj['title'] === searchValue) {
+                foundObject = obj['value'];
+                break;
+            }
+        }
+    } else {
+        for (const obj of arrayOfObjects) {
             if (obj['title'] === searchValue['title']) {
                 foundObject = obj['value'];
                 break;
@@ -59,70 +59,43 @@ export function LookForValueInArray(arrayOfObjects: object[], searchValue : any)
 }
 
 // end this Project
+//</editor-fold>
 
 
-// --DATE functions
-export function formatearFecha(fecha: string): string {
-    if(!fecha) return '';
-    return new Date(fecha).toLocaleDateString('es-CO', {
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric',
-    });
+// DATE functions
+
+//maded by gpt 3.5
+export function DiferenciaMinutos(hora1: string, hora2: string): number {
+    // Convertir las horas a objetos Date
+    const date1: Date = new Date(`2000-01-01T${hora1}`);
+    const date2: Date = new Date(`2000-01-01T${hora2}`);
+
+    // Obtener la representación numérica de las horas (en milisegundos)
+    const time1: number = date1.getTime();
+
+    const time2: number = date2.getTime();
+
+    // Obtener la diferencia en milisegundos y convertirla a minutos
+    const diferenciaMs: number = (time1 - time2);
+    // const diferenciaMs:number = Math.abs(time1 - time2);
+    return Math.floor(diferenciaMs / (1000 * 60));
 }
-export function weekNumber(date: Date): number {
-    if (!(date instanceof Date) || isNaN(date.getTime())) {
-        return 0;
+
+export function IsDate_GOES_formatDate(text: string): String {
+    const [day, month, year] = text.split('/').map(Number);
+    let date = new Date(year, month - 1, day);
+    let Ndate = toInteger(date)
+    const ANumber = !isNaN(Ndate);
+
+    if (!(ANumber)) {
+        return "No es una fecha";
+        // throw new Error("El texto no es una fecha válida");
     }
 
-    // Clonar la fecha para no modificar el objeto original
-    const clonedDate = new Date(date.getTime());
-    clonedDate.setHours(0, 0, 0, 0); // Configurar al inicio del día
-
-    // Obtener la fecha del 1 de enero del mismo año
-    const startOfYear = new Date(clonedDate.getFullYear(), 0, 1);
-    startOfYear.setHours(0, 0, 0, 0); // Configurar al inicio del día
-
-    // Calcular el día de la semana del 1 de enero (0 = domingo, 6 = sábado)
-    const startDayOfWeek = startOfYear.getDay();
-
-    // Ajustar para que la semana comience en lunes (ISO 8601)
-    const dayOfYear = Math.floor((clonedDate.getTime() - startOfYear.getTime()) / (24 * 60 * 60 * 1000)) + 1;
-    const adjustedDayOfWeek = (startDayOfWeek === 0 ? 7 : startDayOfWeek); // Convertir domingo (0) en 7
-    const weekNumber = Math.ceil((dayOfYear + adjustedDayOfWeek - 1) / 7);
-
-    return weekNumber;
+    return formatToVue(date);
 }
 
-
-export function weekNumberv2(date : any) {//todo: quiero saber porque el 14 enero de 2025 era la semana 2 !absurdo¡
-    if (!(date instanceof Date) || isNaN(date.getTime())) {
-        return 0
-    }
-    // Clonar la fecha para no modificar el objeto original
-    const clonedDate: Date = new Date(date.getTime());
-
-    // Configurar el tiempo al inicio del día para evitar problemas con las zonas horarias
-    clonedDate.setHours(0, 0, 0, 0);
-
-    // Obtener la fecha de inicio del año
-    const startOfYear: Date = new Date(clonedDate.getFullYear(), 0, 1);
-
-    // Calcular la diferencia en milisegundos entre la fecha dada y el inicio del año
-    let timeDiff: any;
-    // @ts-ignore
-    timeDiff = clonedDate - startOfYear;
-
-    // Calcular el número de semanas completas y redondear hacia abajo
-    let weekNumber = Math.floor(timeDiff / (7 * 24 * 60 * 60 * 1000));
-
-    // Agregar 1 para contar la primera semana del año
-    weekNumber += 1;
-
-    return weekNumber;
-}
-
-export function formatToVue(date): string {
+export function formatToVue(date): String {
     const day = date.getDate();
     const month = date.getMonth() + 1;
     const year = date.getFullYear();
@@ -130,55 +103,38 @@ export function formatToVue(date): string {
     return `${day}/${month}/${year}`;
 }
 
-export function Date_to_html(date: Date): string {
-    if (!(date instanceof Date) || isNaN(date.getTime())) {
-        return ''
-    }
-    const day = date.getDate();
-    const month = date.getMonth() + 1;
-    const year = date.getFullYear();
-    const day2: string = day < 10 ? '0' + day : day + '';
+export function formatDate(date: string | Date, mode: "fecha" | "conLaHora" = "fecha"): string {
+  const validDate = date instanceof Date ? new Date(date.getTime()) : new Date(date as string);
+  const offsetDate = new Date(validDate.getTime() + 5 * 60 * 60 * 1000); // corrección GMT-5
 
-    const month2: string = month < 10 ? '0' + month : month + '';
 
-    return `${year}-${month2}-${day2}`;
-}
-export function DateTime_to_html(StringDate : any): string {
-    if (!StringDate) {
-        return '';
-    }
-    const date : Date = new Date(StringDate)
-    const day : number = date.getDate();
-    const month : number = date.getMonth() + 1;
-    const year : number = date.getFullYear();
-    const hours : number = date.getHours();
-    const minutes : number = date.getMinutes();
-    
-    // Formatear con ceros a la izquierda cuando sea necesario
-    const day2 = day < 10 ? '0' + day : day.toString();
-    const month2 = month < 10 ? '0' + month : month.toString();
-    const hours2 = hours < 10 ? '0' + hours : hours.toString();
-    const minutes2 = minutes < 10 ? '0' + minutes : minutes.toString();
-    
-    // Formato YYYY-MM-DDThh:mm para input datetime-local
-    return `${year}-${month2}-${day2}T${hours2}:${minutes2}`;
-}
+  // función auxiliar para rellenar con ceros sin usar padStart
+  const twoDigits = (num: number) => (num < 10 ? "0" + num : "" + num);
 
-export function Now_Date_to_html(): string {
-    const hoy:Date = new Date();
-    const day:number = hoy.getDate();
-    const day2: string = day < 10 ? '0' + day : day + '';
-    const month: number = hoy.getMonth() + 1;
-    const month2: string = month < 10 ? '0' + month : month + '';
-    const year = hoy.getFullYear();
+  const day = twoDigits(offsetDate.getDate());
+  const month = monthName(twoDigits(offsetDate.getMonth() + 1));
+  const year = offsetDate.getFullYear();
+  const currentYear = new Date().getFullYear();
 
-    return `${year}-${month2}-${day2}`;
+  const shortYear = year.toString().slice(-2);
+  const showYear = year !== currentYear ? `-${shortYear}` : "";
+
+  if (mode === "conLaHora") {
+    let hours = offsetDate.getHours();
+    const minutes = twoDigits(offsetDate.getMinutes());
+    const ampm = hours >= 12 ? "PM" : "AM";
+    hours = hours % 12 || 12;
+    const time = `${hours}:${minutes} ${ampm}`;
+    return `${day}-${month}${showYear} | ${time}`;
+  }
+
+  return `${day}-${month}${showYear}`;
 }
 
 
 export function TimeTo12Format(timeString) {
     if (timeString === null) return '';
-    const [hours, minutes, seconds] = timeString.split(':');
+    const [hours, minutes] = timeString.split(':');
 
     // Convert the time to 12-hour format and add 'am' or 'pm'
     return new Date(2023, 7, 5, parseInt(hours), parseInt(minutes)).toLocaleString('es-CO', {
@@ -197,35 +153,16 @@ export function formatTime(date): string {
     }
     // validDate = new Date(validDate.getTime() + (5 * 60 * 60 * 1000))
 
-    const hora = validDate.getHours();
-    const hourAndtime = hora + ':' + (validDate.getMinutes() < 10 ? '0' : '') + validDate.getMinutes() + ':00';
+    let hora = validDate.getHours();
+    let hourAndtime = (hora < 10 ? '0' : '') + hora + ':'
+        + (validDate.getMinutes() < 10 ? '0' : '')
+        + validDate.getMinutes() + ':00';
 
     return `${hourAndtime}`;
 }
 
-export function TransformTdate(number: any = null, dateString = new Date()) {
-    let date
-    if (dateString) {
-        date = new Date(dateString);
-    } else {
-        date = new Date();
-    }
-    const year = date.getFullYear();
-    const month = ('0' + (date.getMonth() + 1)).slice(-2);
-    const day = ('0' + date.getDate()).slice(-2);
 
-    let hours
-    if (number) {
-        hours = number >= 10 ? number : '0' + number;
-    } else {
-        hours = ('0' + date.getHours() + number).slice(-2);
-    }
-    const minutes = number ? '00' : ('0' + date.getMinutes()).slice(-2);
-    return `${year}-${month}-${day}T${hours}:${minutes}`;
-}
-
-
-export function monthName(monthNumber)   {
+export function monthName(monthNumber) {
     if (monthNumber == 1) return 'Enero';
     if (monthNumber == 2) return 'Febrero';
     if (monthNumber == 3) return 'Marzo';
@@ -240,123 +177,90 @@ export function monthName(monthNumber)   {
     if (monthNumber == 12) return 'Diciembre';
 }
 
-export function allMonthName(): { id: number, name: string }[] {
-    return [
-        {
-            'id': 1,
-            'name': 'Enero'
-        },
-        {
-            'id': 1,
-            'name': 'Febrero'
-        },
-        {
-            'id': 1,
-            'name': 'Marzo'
-        },
-        {
-            'id': 1,
-            'name': 'Abril'
-        },
-        {
-            'id': 1,
-            'name': 'Mayo'
-        },
-        {
-            'id': 1,
-            'name': 'Junio'
-        },
-        {
-            'id': 1,
-            'name': 'Julio'
-        },
-        {
-            'id': 1,
-            'name': 'Agosto'
-        },
-        {
-            'id': 1,
-            'name': 'Septiembre'
-        },
-        {
-            'id': 1,
-            'name': 'Octubre'
-        },
-        {
-            'id': 1,
-            'name': 'Noviembre'
-        },
-        {
-            'id': 1,
-            'name': 'Diciembre'
-        },
-    ]
+export function TransformTdate(dateString) {
+    const date = new Date(dateString);
+    const year = date.getFullYear();
+    const month = ('0' + (date.getMonth() + 1)).slice(-2);
+    const day = ('0' + date.getDate()).slice(-2);
+    const hours = ('0' + date.getHours()).slice(-2);
+    const minutes = ('0' + date.getMinutes()).slice(-2);
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
-
+export function NumToHour(HourWithDecimals : number) {
+    const hours = Math.floor(HourWithDecimals)
+    console.log("🚀🚀NumToHour ~ hours: ", hours);
+    console.log("🚀🚀NumToHour ~ HourWithDecimals: ", HourWithDecimals);
+    const minutes = Math.floor((HourWithDecimals - hours) * 60)
+    return `${hours} h ${minutes} mins`;
+}
 
 // fin DATE functions
 
 
-// MATHfunctionsome
-
-export function formatPesosCol(number): string {
-    number = Math.round(number);
-    const formattedNumber = number.toLocaleString('en-US', {
-        minimumFractionDigits: 0, // Mínimo de dígitos decimales (en este caso, 0)
-        maximumFractionDigits: 0 // Máximo de dígitos decimales (en este caso, 0)
-    });
-
-    // Reemplazar la coma por un punto como separador decimal
-    console.log("🚀 ~ formatPesosCol ~ formattedNumber: ", formattedNumber);
-    return '$ ' + formattedNumber;
-    // return '$ ' + number.toString().replace(/\B(?=(\d{3})+(?!\d))/g, "'");
-}
-
+// MATH  functions
 export function CalcularAvg(TheArray, NameValue = '', isTime = false) {
-    let sum = 0
+    if(!TheArray) return 0
+    let sum: number
+    sum = 0
     if (NameValue === '') {
         TheArray.forEach((value, index, array) => {
-            sum += value;
+            sum += parseFloat(value);
         })
     } else {
         if (isTime) { //time like: 14:18
-
             TheArray.forEach((value, index, array) => {
-                let justHour = value[NameValue].split(':')[0];
-                justHour = parseInt(justHour);
+                console.log("🚀🚀CalcularAvg ~ value[NameValue]: ", value[NameValue]);
+                let justHour:number = 0
+                if(value[NameValue]){
+                    justHour = parseInt(value[NameValue].split(':')[0])
+                }
                 sum += justHour;
+                console.log("🚀🚀CalcularAvg ~ sum: ", sum);
             })
         } else {
             TheArray.forEach((value, index, array) => {
-                sum += value[NameValue];
+                if(value[NameValue]){
+                    console.log("🚀🚀CalcularAvg ~ value[NameValue]: ", value[NameValue]);
+                    // let val = value[NameValue].replace(',', '.')
+                    console.log("🚀🚀CalcularAvg ~ value: ", value);
+                    // sum += parseFloat(val);
+                }
             })
         }
     }
-    return number_format(sum / TheArray.length, 1, false);
+    let NewSum : number = sum / TheArray.length
+    let result : string
+    if(isTime){
+        if( NewSum > 12){
+            NewSum -= 12
+        }
+        result = zilef_nuber_format(NewSum, 0, false);
+    }else{
+        
+        result = zilef_nuber_format(NewSum, 1, false);
+    }
+    return result;
 }
 
-export function number_format(amount: any, decimals: number = 0, isPesos = false) {
-    if (typeof amount !== 'string' && typeof amount !== 'number') return '0';
+export function zilef_nuber_format(amount: any, decimals = 0, isPesos: boolean = false) {
+    amount += '';
+    amount = parseFloat(amount.replace(/[^0-9\.]/g, ''));
+    decimals = decimals || 0;
 
-    // Convertir a string y asegurarse de que el signo negativo no se elimine
-    amount = amount.toString().replace(/[^0-9\.-]/g, '');
+    if (isNaN(amount) || amount === 0)
+        return parseFloat("0").toFixed(decimals);
+    amount = '' + amount.toFixed(decimals);
 
-    const num: number = parseFloat(amount);
-    if (isNaN(num)) return (0).toFixed(decimals);
+    var amount_parts = amount.split(' '),
+        regexp = /(\d+)(\d{3})/;
 
-    // Formatear el número con la cantidad de decimales deseada
-    const num2 = num.toFixed(decimals);
+    while (regexp.test(amount_parts[0]))
+        amount_parts[0] = amount_parts[0].replace(regexp, '$1' + '.' + '$2');
 
-    let [integerPart, decimalPart] = num2.split('.');
-
-    // Agregar separadores de miles con un regex
-    integerPart = integerPart.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
-
-    // Construir el resultado final
-    const formattedNumber = decimalPart ? `${integerPart},${decimalPart}` : integerPart;
-    return isPesos ? `$${formattedNumber}` : formattedNumber;
+    if (isPesos)
+        return '$' + amount_parts.join(' ');
+    return amount_parts.join(' ');
 }
-
 
 export function CalcularEdad(nacimiento) {
     const anioHoy = new Date().getFullYear();
@@ -369,11 +273,13 @@ export function CalcularSexo(value) {
 }
 
 
+
+
 //STRING FUNCTIONS
 export function sinTildes(value) {
-    const pattern = /[^a-zA-Z0-9\s]/g;
-    const replacement = '';
-    const result = value.replace(pattern, replacement);
+    let pattern = /[^a-zA-Z0-9\s]/g;
+    let replacement = '';
+    let result = value.replace(pattern, replacement);
     return result
 }
 

@@ -272,12 +272,11 @@ class Myhelp {
 	}
 	
 	public static function EscribirEnLog($thiis, $clase = '', $mensaje = '', $returnPermission = true, $critico = false) {
-		$permissions = $returnPermission ? auth()->user()->roles->pluck('name') : null;
+		$permissions = $returnPermission ? (auth()->user()->roles->pluck('name')[0] ?? null) : null;
 		
-		if($permissions === null) 
+		if($returnPermission && $permissions === null) 
 			abort(403, 'Unauthorized, user has no roles');
 			
-		$premissions = $permissions[0];
 		$ListaControladoresYnombreClase = (explode('\\', get_class($thiis)));
 		$nombreC = end($ListaControladoresYnombreClase);
 		if (!$critico) {

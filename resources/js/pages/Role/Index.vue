@@ -1,23 +1,23 @@
 <script setup lang="ts">
-// import AppLayout from '@/layouts/AppLayout.vue';
-import { Head } from '@inertiajs/vue3';
-import Breadcrumb from '@/Components/Breadcrumb.vue';
-import TextInput from '@/Components/TextInput.vue';
-import PrimaryButton from '@/Components/PrimaryButton.vue';
-import InfoButton from '@/Components/InfoButton.vue';
+import AppLayout from '@/layouts/AppLayout.vue';
+import { Head, usePage } from '@inertiajs/vue3';
+import Breadcrumb from '@/components/Breadcrumb.vue';
+import TextInput from '@/components/TextInput.vue';
+import PrimaryButton from '@/components/PrimaryButton.vue';
+import InfoButton from '@/components/InfoButton.vue';
 import { reactive, watch } from 'vue';
-import DangerButton from '@/Components/DangerButton.vue';
+import DangerButton from '@/components/DangerButton.vue';
 import pkg from 'lodash';
 import { router } from '@inertiajs/vue3';
-import Pagination from '@/Components/Pagination.vue';
+import Pagination from '@/components/Pagination.vue';
 import { ChevronUpDownIcon, PencilIcon, TrashIcon } from '@heroicons/vue/24/solid';
 import Create from '@/pages/Role/Create.vue';
 import Edit from '@/pages/Role/Edit.vue';
 import Delete from '@/pages/Role/Delete.vue';
 import DeleteBulk from '@/pages/Role/DeleteBulk.vue';
-// import Checkbox from '@/Components/Checkbox.vue';
+import Checkbox from '@/components/Checkbox.vue';
+import SelectInput from '@/components/SelectInput.vue';
 import Permission from '@/pages/Role/Permission.vue';
-import { usePage } from '@inertiajs/vue3';
 
 const { _, debounce, pickBy } = pkg
 const props = defineProps({
@@ -27,26 +27,35 @@ const props = defineProps({
     permissions: Object,
     breadcrumbs: Object,
     perPage: Number,
+    numberPermissions: Number,
 })
+const defaultPerPage = [
+    { label: '5', value: 5 },
+    { label: '10', value: 10 },
+    { label: '25', value: 25 },
+    { label: '50', value: 50 },
+    { label: '100', value: 100 },
+];
+
 const data = reactive({
     params: {
-        search: props.filters.search,
-        field: props.filters.field,
-        order: props.filters.order,
+        search: props.filters?.search,
+        field: props.filters?.field,
+        order: props.filters?.order,
         perPage: props.perPage,
     },
-    selectedId: [],
+    selectedId: [] as number[],
     multipleSelect: false,
     createOpen: false,
     editOpen: false,
     deleteOpen: false,
     deleteBulkOpen: false,
     permissionOpen: false,
-    role: null,
-    dataSet: usePage().props.app.perpage
+    role: null as any,
+    dataSet: (usePage().props as any)?.app?.perpage ?? defaultPerPage,
 })
 
-const order = (field) => {
+const order = (field: string) => {
     data.params.field = field
     data.params.order = data.params.order === "asc" ? "desc" : "asc"
 }
@@ -60,11 +69,11 @@ watch(() => _.cloneDeep(data.params), debounce(() => {
     })
 }, 150))
 
-const selectAll = (event:any) => {
+const selectAll = (event: any) => {
     if (event.target.checked === false) {
         data.selectedId = []
     } else {
-        props.roles?.data.forEach((role:object) => {
+        props.roles?.data.forEach((role: any) => {
             data.selectedId.push(role.id)
         })
     }
@@ -80,15 +89,16 @@ const select = () => {
 </script>
 
 <template>
+
     <Head :title="props.title" />
 
-<!--    <AppLayout>-->
+    <AppLayout>
         <Breadcrumb :title="title" :breadcrumbs="breadcrumbs" />
         <div class="space-y-4">
             <div class="px-4 sm:px-0">
                 <div class="rounded-lg overflow-hidden w-fit">
-                    <PrimaryButton v-show="can(['create role'])" class="rounded-none" @click="data.createOpen = true">
-                        {{ lang().button.add }}
+                    <PrimaryButton v-show="can(['create role'])" @click="data.createOpen = true" class="m-1">
+                        {{ lang().t('app.button.add') }}
                     </PrimaryButton>
                     <Create :show="data.createOpen" @close="data.createOpen = false" :permissions="props.permissions"
                         :title="props.title" />
@@ -109,12 +119,13 @@ const select = () => {
                         <SelectInput v-model="data.params.perPage" :dataSet="data.dataSet" />
                         <DangerButton @click="data.deleteBulkOpen = true"
                             v-show="data.selectedId.length != 0 && can(['delete role'])" class="px-3 py-1.5"
-                            v-tooltip="lang().tooltip.delete_selected">
+                            v-tooltip="lang().t('app.tooltip.delete_selected')">
                             <TrashIcon class="w-5 h-5" />
                         </DangerButton>
                     </div>
-                    <TextInput v-if="props.numberPermissions > 1" v-model="data.params.search" type="text"
-                        class="block w-3/6 md:w-2/6 lg:w-1/6 rounded-lg" :placeholder="lang().placeholder.search" />
+                    <TextInput v-if="props.numberPermissions && props.numberPermissions > 1"
+                        v-model="data.params.search" type="text" class="block w-3/6 md:w-2/6 lg:w-1/6 rounded-lg"
+                        :placeholder="lang().t('app.placeholder.search')" />
                 </div>
                 <div class="overflow-x-auto scrollbar-table">
                     <table class="w-full">
@@ -126,7 +137,7 @@ const select = () => {
                                 <th class="px-2 py-4 text-center">#</th>
                                 <th class="px-2 py-4 cursor-pointer" v-on:click="order('name')">
                                     <div class="flex justify-between items-center">
-                                        <span>{{ lang().label.name }}</span>
+                                        <span>{{ lang().t('app.label.name') }}</span>
                                         <ChevronUpDownIcon class="w-4 h-4" />
                                     </div>
                                 </th>
@@ -136,16 +147,10 @@ const select = () => {
                                         <ChevronUpDownIcon class="w-4 h-4" />
                                     </div>
                                 </th>
-                                <th class="px-2 py-4">{{ lang().label.permission }}</th>
-                                <!-- <th class="px-2 py-4 cursor-pointer" v-on:click="order('created_at')">
-                                    <div class="flex justify-between items-center">
-                                        <span>{{ lang().label.created }}</span>
-                                        <ChevronUpDownIcon class="w-4 h-4" />
-                                    </div>
-                                </th> -->
+                                <th class="px-2 py-4">{{ lang().t('app.label.permission') }}</th>
                                 <th class="px-2 py-4 cursor-pointer" v-on:click="order('updated_at')">
                                     <div class="flex justify-between items-center">
-                                        <span>{{ lang().label.updated }}</span>
+                                        <span>{{ lang().t('app.label.updated') }}</span>
                                         <ChevronUpDownIcon class="w-4 h-4" />
                                     </div>
                                 </th>
@@ -153,42 +158,44 @@ const select = () => {
                             </tr>
                         </thead>
                         <tbody>
-                            <tr v-for="(role, index) in roles.data" :key="index"
+                            <tr v-for="(role, index) in roles?.data" :key="index"
                                 class="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-200/30 hover:dark:bg-gray-900/20">
                                 <td class="whitespace-nowrap py-4 px-2 sm:py-3 text-center">
                                     <input
                                         class="rounded dark:bg-gray-900 border-gray-300 dark:border-gray-700 text-primary dark:text-primary shadow-sm focus:ring-primary/80 dark:focus:ring-primary dark:focus:ring-offset-gray-800 dark:checked:bg-primary dark:checked:border-primary"
                                         type="checkbox" @change="select" :value="role.id" v-model="data.selectedId" />
                                 </td>
-                                <td class="whitespace-nowrap py-4 px-2 sm:py-3 text-center">{{ ++index }}</td>
+                                <td class="whitespace-nowrap py-4 px-2 sm:py-3 text-center">{{ index + 1 }}</td>
                                 <td class="whitespace-nowrap py-4 px-2 sm:py-3">{{ role.name.replace(/_/g, " ") }}</td>
                                 <td class="whitespace-nowrap py-4 px-2 sm:py-3">{{ role.guard_name }}</td>
-                                <td v-tooltip="lang().tooltip.detail"
-                                    v-if="role.permissions.length == props.permissions.length"
+                                <td v-tooltip="lang().t('app.tooltip.detail')"
+                                    v-if="role.permissions.length == props.permissions?.length"
                                     @click="(data.permissionOpen = true), (data.role = role)"
                                     class="whitespace-nowrap py-4 px-2 sm:py-3 cursor-pointer text-blue-600 dark:text-blue-400 font-bold underline">
-                                    {{ lang().label.all_permission }}
+                                    {{ lang().t('app.label.all_permission') }}
                                 </td>
 
-                                <td v-tooltip="lang().tooltip.detail" v-else-if="role.permissions.length != 0"
+                                <td v-tooltip="lang().t('app.tooltip.detail')" v-else-if="role.permissions.length != 0"
                                     @click="(data.permissionOpen = true), (data.role = role)"
                                     class="whitespace-nowrap py-4 px-2 sm:py-3 cursor-pointer text-blue-600 dark:text-blue-400 font-bold underline">
-                                    {{ role.permissions.length }} {{ lang().label.permission }}</td>
-                                <td v-else class="whitespace-nowrap py-4 px-2 sm:py-3">{{ lang().label.no_permission }}
+                                    {{ role.permissions.length }} {{ lang().t('app.label.permission') }}</td>
+                                <td v-else class="whitespace-nowrap py-4 px-2 sm:py-3">{{
+                                    lang().t('app.label.no_permission') }}
                                 </td>
-                                <!-- <td class="whitespace-nowrap py-4 px-2 sm:py-3">{{ role.created_at }}</td> -->
                                 <td class="whitespace-nowrap py-4 px-2 sm:py-3">{{ role.updated_at }}</td>
                                 <td class="whitespace-nowrap py-4 px-2 sm:py-3">
                                     <div class="flex justify-center items-center">
                                         <div class="rounded-md overflow-hidden">
                                             <InfoButton v-show="can(['update role'])" type="button"
                                                 @click="(data.editOpen = true), (data.role = role)"
-                                                class="px-2 py-1.5 rounded-none" v-tooltip="lang().tooltip.edit">
+                                                class="px-2 py-1.5 rounded-none"
+                                                v-tooltip="lang().t('app.tooltip.edit')">
                                                 <PencilIcon class="w-4 h-4" />
                                             </InfoButton>
                                             <DangerButton v-show="can(['delete role'])" type="button"
                                                 @click="(data.deleteOpen = true), (data.role = role)"
-                                                class="px-2 py-1.5 rounded-none" v-tooltip="lang().tooltip.delete">
+                                                class="px-2 py-1.5 rounded-none"
+                                                v-tooltip="lang().t('app.tooltip.delete')">
                                                 <TrashIcon class="w-4 h-4" />
                                             </DangerButton>
                                         </div>
@@ -203,5 +210,5 @@ const select = () => {
                 </div>
             </div>
         </div>
-<!--    </AppLayout>-->
+    </AppLayout>
 </template>

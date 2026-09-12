@@ -1,22 +1,19 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, usePage } from '@inertiajs/vue3';
-import Breadcrumb from '@/Components/Breadcrumb.vue';
-import TextInput from '@/Components/TextInput.vue';
-import PrimaryButton from '@/Components/PrimaryButton.vue';
-import SelectInput from '@/Components/SelectInput.vue';
 import { reactive, watch } from 'vue';
-import DangerButton from '@/Components/DangerButton.vue';
 import { debounce, pickBy, cloneDeep } from 'lodash';
 import { router } from '@inertiajs/vue3';
-import Pagination from '@/Components/Pagination.vue';
 import { ChevronUpDownIcon, PencilIcon, TrashIcon } from '@heroicons/vue/24/solid';
 import Create from '@/pages/Permission/Create.vue';
 import Edit from '@/pages/Permission/Edit.vue';
 import Delete from '@/pages/Permission/Delete.vue';
 import DeleteBulk from '@/pages/Permission/DeleteBulk.vue';
-import Checkbox from '@/Components/Checkbox.vue';
-import InfoButton from '@/Components/InfoButton.vue';
+import PrimaryButton from '@/components/PrimaryButton.vue';
+import DangerButton from '@/components/DangerButton.vue';
+import InfoButton from '@/components/InfoButton.vue';
+import TextInput from '@/components/TextInput.vue';
+import Checkbox from '@/components/Checkbox.vue';
 
 interface Permission {
     id: number;
@@ -67,7 +64,6 @@ const data = reactive({
     deleteOpen: false,
     deleteBulkOpen: false,
     permission: null as Permission | null,
-    dataSet: page.props.app.perpage as number[],
 });
 
 const order = (field: string) => {
@@ -111,104 +107,106 @@ const select = () => {
     <AppLayout>
         <Breadcrumb :title="title" :breadcrumbs="breadcrumbs" />
         <div class="space-y-4">
-            <div class="px-4 sm:px-0">
-                <div class="rounded-lg overflow-hidden w-fit">
-                    <PrimaryButton v-show="can(['create permission'])" class="rounded-none" @click="data.createOpen = true">
-                        {{ lang().button.add }}
+            <div class="px-4 sm:px-0 flex items-center justify-between">
+                <div>
+                    <PrimaryButton v-show="can(['create permission'])" @click="data.createOpen = true">
+                        {{ lang().t('app.button.add') }}
                     </PrimaryButton>
-                    <Create :show="data.createOpen" @close="data.createOpen = false" :title="props.title" />
-                    <Edit :show="data.editOpen" @close="data.editOpen = false" :permission="data.permission"
-                        :title="props.title" />
-                    <Delete :show="data.deleteOpen" @close="data.deleteOpen = false" :permission="data.permission"
-                        :title="props.title" />
-                    <DeleteBulk :show="data.deleteBulkOpen"
-                        @close="data.deleteBulkOpen = false, data.multipleSelect = false, data.selectedId = []"
-                        :selectedId="data.selectedId" :title="props.title" />
                 </div>
+                <Create :show="data.createOpen" @close="data.createOpen = false" :title="props.title" />
+                <Edit :show="data.editOpen" @close="data.editOpen = false" :permission="data.permission"
+                    :title="props.title" />
+                <Delete :show="data.deleteOpen" @close="data.deleteOpen = false" :permission="data.permission"
+                    :title="props.title" />
+                <DeleteBulk :show="data.deleteBulkOpen"
+                    @close="data.deleteBulkOpen = false, data.multipleSelect = false, data.selectedId = []"
+                    :selectedId="data.selectedId" :title="props.title" />
             </div>
-            <div class="relative bg-white dark:bg-gray-800 shadow sm:rounded-lg">
-                <div class="flex justify-between p-2">
-                    <div class="flex space-x-2">
-                        <SelectInput v-model="data.params.perPage" :dataSet="data.dataSet" />
+
+            <div class="bg-white dark:bg-gray-900 border border-gray-200/80 dark:border-gray-800 rounded-xl shadow-xs overflow-hidden">
+                <div class="flex justify-between items-center p-3 border-b border-gray-200/80 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/40">
+                    <div class="flex items-center space-x-2">
                         <DangerButton @click="data.deleteBulkOpen = true"
-                            v-show="data.selectedId.length != 0 && can(['delete permission'])" class="px-3 py-1.5"
-                            v-tooltip="lang().tooltip.delete_selected">
-                            <TrashIcon class="w-5 h-5" />
+                            v-show="data.selectedId.length != 0 && can(['delete permission'])" class="px-2.5 py-1 text-xs">
+                            <TrashIcon class="w-3.5 h-3.5 mr-1 inline" /> {{ lang().t('app.tooltip.delete_selected') }} ({{ data.selectedId.length }})
                         </DangerButton>
                     </div>
                     <TextInput v-if="props.numberPermissions > 1" v-model="data.params.search" type="text"
-                        class="block w-3/6 md:w-2/6 lg:w-1/6 rounded-lg" :placeholder="lang().placeholder.search" />
+                        class="block w-48 md:w-64 rounded-lg text-xs"
+                        :placeholder="lang().t('app.placeholder.search')" />
                 </div>
                 <div class="overflow-x-auto scrollbar-table">
-                    <table class="w-full">
-                        <thead class="uppercase text-sm border-t border-gray-200 dark:border-gray-700">
-                            <tr class="dark:bg-gray-900/50 text-left">
-                                <th class="px-2 py-4 text-center">
+                    <table class="w-full text-left border-collapse text-xs">
+                        <thead class="bg-gray-50/80 dark:bg-gray-800/60 border-b border-gray-200/80 dark:border-gray-700/80 text-gray-500 dark:text-gray-400 font-semibold uppercase tracking-wider">
+                            <tr>
+                                <th class="py-2.5 px-3 text-center w-10">
                                     <Checkbox v-model:checked="data.multipleSelect" @change="selectAll" />
                                 </th>
-                                <th class="px-2 py-4 text-center">#</th>
-                                <th class="px-2 py-4 cursor-pointer" v-on:click="order('name')">
-                                    <div class="flex justify-between items-center">
-                                        <span>{{ lang().label.name }}</span>
-                                        <ChevronUpDownIcon class="w-4 h-4" />
+                                <th class="py-2.5 px-3 text-center w-12">#</th>
+                                <th class="py-2.5 px-3 cursor-pointer hover:text-gray-700 dark:hover:text-gray-200 transition-colors" v-on:click="order('name')">
+                                    <div class="flex items-center justify-between">
+                                        <span>{{ lang().t('app.label.name') }}</span>
+                                        <ChevronUpDownIcon class="w-3.5 h-3.5 opacity-60" />
                                     </div>
                                 </th>
-                                <th class="px-2 py-4 cursor-pointer" v-on:click="order('guard')">
-                                    <div class="flex justify-between items-center">
+                                <th class="py-2.5 px-3 cursor-pointer hover:text-gray-700 dark:hover:text-gray-200 transition-colors" v-on:click="order('guard')">
+                                    <div class="flex items-center justify-between">
                                         <span>Guard</span>
-                                        <ChevronUpDownIcon class="w-4 h-4" />
+                                        <ChevronUpDownIcon class="w-3.5 h-3.5 opacity-60" />
                                     </div>
                                 </th>
-                                <th class="px-2 py-4 cursor-pointer" v-on:click="order('created_at')">
-                                    <div class="flex justify-between items-center">
-                                        <span>{{ lang().label.created }}</span>
-                                        <ChevronUpDownIcon class="w-4 h-4" />
+                                <th class="py-2.5 px-3 cursor-pointer hover:text-gray-700 dark:hover:text-gray-200 transition-colors" v-on:click="order('created_at')">
+                                    <div class="flex items-center justify-between">
+                                        <span>{{ lang().t('app.label.date') }}</span>
+                                        <ChevronUpDownIcon class="w-3.5 h-3.5 opacity-60" />
                                     </div>
                                 </th>
-                                <th class="px-2 py-4 cursor-pointer" v-on:click="order('updated_at')">
-                                    <div class="flex justify-between items-center">
-                                        <span>{{ lang().label.updated }}</span>
-                                        <ChevronUpDownIcon class="w-4 h-4" />
+                                <th class="py-2.5 px-3 cursor-pointer hover:text-gray-700 dark:hover:text-gray-200 transition-colors" v-on:click="order('updated_at')">
+                                    <div class="flex items-center justify-between">
+                                        <span>{{ lang().t('app.label.updated') }}</span>
+                                        <ChevronUpDownIcon class="w-3.5 h-3.5 opacity-60" />
                                     </div>
                                 </th>
-                                <th class="px-2 py-4 sr-only">Action</th>
+                                <th class="py-2.5 px-3 text-right">Acciones</th>
                             </tr>
                         </thead>
-                        <tbody>
-                            <tr v-for="(permission, index) in permissions.data" :key="index"
-                                class="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-200/30 hover:dark:bg-gray-900/20">
-                                <td class="whitespace-nowrap py-4 px-2 sm:py-3 text-center">
+                        <tbody class="divide-y divide-gray-100 dark:divide-gray-800/60">
+                            <tr v-for="(permission, index) in permissions.data" :key="permission.id"
+                                class="hover:bg-indigo-50/40 dark:hover:bg-indigo-950/20 transition-colors duration-150">
+                                <td class="py-2 px-3 text-center">
                                     <input
-                                        class="rounded dark:bg-gray-900 border-gray-300 dark:border-gray-700 text-primary dark:text-primary shadow-sm focus:ring-primary/80 dark:focus:ring-primary dark:focus:ring-offset-gray-800 dark:checked:bg-primary dark:checked:border-primary"
-                                        type="checkbox" @change="select" :value="permission.id" v-model="data.selectedId" />
+                                        class="rounded dark:bg-gray-900 border-gray-300 dark:border-gray-700 text-primary dark:text-primary shadow-xs focus:ring-primary/80 dark:focus:ring-primary"
+                                        type="checkbox" @change="select" :value="permission.id"
+                                        v-model="data.selectedId" />
                                 </td>
-                                <td class="whitespace-nowrap py-4 px-2 sm:py-3 text-center">{{ ++index }}</td>
-                                <td class="whitespace-nowrap py-4 px-2 sm:py-3">{{ permission.name }}</td>
-                                <td class="whitespace-nowrap py-4 px-2 sm:py-3">{{ permission.guard_name }}</td>
-                                <td class="whitespace-nowrap py-4 px-2 sm:py-3">{{ permission.created_at }}</td>
-                                <td class="whitespace-nowrap py-4 px-2 sm:py-3">{{ permission.updated_at }}</td>
-                                <td class="whitespace-nowrap py-4 px-2 sm:py-3">
-                                    <div class="flex justify-center items-center">
-                                        <div class="rounded-md overflow-hidden">
-                                            <InfoButton v-show="can(['update permission'])" type="button"
-                                                @click="(data.editOpen = true), (data.permission = permission)"
-                                                class="px-2 py-1.5 rounded-none" v-tooltip="lang().tooltip.edit">
-                                                <PencilIcon class="w-4 h-4" />
-                                            </InfoButton>
-                                            <DangerButton v-show="can(['delete permission'])" type="button"
-                                                @click="(data.deleteOpen = true), (data.permission = permission)"
-                                                class="px-2 py-1.5 rounded-none" v-tooltip="lang().tooltip.delete">
-                                                <TrashIcon class="w-4 h-4" />
-                                            </DangerButton>
-                                        </div>
+                                <td class="py-2 px-3 text-center font-mono text-xs text-gray-500 dark:text-gray-400">{{ index + 1 }}</td>
+                                <td class="py-2 px-3 font-medium text-gray-900 dark:text-gray-100">{{ permission.name }}</td>
+                                <td class="py-2 px-3">
+                                    <span class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800/40">
+                                        {{ permission.guard_name }}
+                                    </span>
+                                </td>
+                                <td class="py-2 px-3 text-gray-600 dark:text-gray-400 text-xs">{{ permission.created_at }}</td>
+                                <td class="py-2 px-3 text-gray-600 dark:text-gray-400 text-xs">{{ permission.updated_at }}</td>
+                                <td class="py-2 px-3 text-right">
+                                    <div class="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden shadow-xs">
+                                        <InfoButton v-show="can(['update permission'])" type="button"
+                                            @click="(data.editOpen = true), (data.permission = permission)"
+                                            class="px-2 py-1 rounded-none hover:bg-blue-50 dark:hover:bg-blue-900/30"
+                                            v-tooltip="lang().t('app.tooltip.edit')">
+                                            <PencilIcon class="w-3.5 h-3.5" />
+                                        </InfoButton>
+                                        <DangerButton v-show="can(['delete permission'])" type="button"
+                                            @click="(data.deleteOpen = true), (data.permission = permission)"
+                                            class="px-2 py-1 rounded-none hover:bg-red-50 dark:hover:bg-red-900/30"
+                                            v-tooltip="lang().t('app.tooltip.delete')">
+                                            <TrashIcon class="w-3.5 h-3.5" />
+                                        </DangerButton>
                                     </div>
                                 </td>
                             </tr>
                         </tbody>
                     </table>
-                </div>
-                <div class="flex justify-between items-center p-2 border-t border-gray-200 dark:border-gray-700">
-                    <Pagination :links="props.permissions" :filters="data.params" />
                 </div>
             </div>
         </div>

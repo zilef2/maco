@@ -3,7 +3,7 @@
 namespace Database\Seeders;
 
 use App\Models\User;
-use Carbon\Carbon;
+use App\helpers\MyModels;
 use Illuminate\Database\Seeder;
 
 class UserSeederReal extends Seeder {
@@ -15,38 +15,29 @@ class UserSeederReal extends Seeder {
 	 */
 	public function run() {
 		$sexos = ['Masculino', 'Femenino'];
-		$rolesUser = [
-			'Administrativo',
-			'Supervisor',
-			'Ingeniero',
-			'Empleado',
+		$arrayRoles = MyModels::CargosYModelos('soloNombresRoles');
+
+		$datareal = [
+			[
+				'Jessica Maria Perez pruebas',
+				'alejofg2@gmail.com',
+				1193231624,//2
+				'3012124273',
+				1600000,//4
+				'01/08/2023',
+			],
 		];
 		
-		$unUsuario = User::create(['name'              => 'Jessica Maria Perez Meza',
-		                           'email'             => 'perezmezajessica@gmail.com',
-		                           'password'          => \bcrypt('1193231624+-'),
+		$unUsuario = User::create(['name'              => $datareal[0][0],
+		                           'email'             => $datareal[0][1],
+		                           'password'          => \bcrypt($datareal[0][2].'+'),
 		                           'email_verified_at' => date('Y-m-d H:i'),
-		                           'fecha_de_ingreso'  => date('Y-m-d', strtotime('01/08/2023')),
-		                           'cedula'            => '1193231624',
+		                           'fecha_de_ingreso'  => date('Y-m-d', strtotime($datareal[0][5])),
+		                           'cedula'            => $datareal[0][2],
 		                           'sexo'              => $sexos[1],
-		                           'celular'           => '3012124273',
-		                           'salario'           => 1600000,
-		                           'cargo_id'          => 14, //Coordinadora de gestion humana
-			                          // 'centro_costo_id' => 1,
+		                           'celular'           => $datareal[0][3],
+		                           'salario'           => $datareal[0][4],
 		                          ]);
-		$unUsuario->assignRole($rolesUser[0]);
-		$unUsuario = User::create(['name'              => 'Michael Edison Cruz Herrera',
-		                           'email'             => 'MichaelHerrera@example.com',
-		                           'password'          => \bcrypt('123456777+-'),
-		                           'email_verified_at' => date('Y-m-d H:i'),
-		                           'fecha_de_ingreso'  => date('Y-m-d', strtotime('09/04/2025')),
-		                           'cedula'            => '123456777',
-		                           'sexo'              => $sexos[1],
-		                           'celular'           => '3123123123',
-		                           'salario'           => 16000000,
-		                           'cargo_id'          => 1, //Coordinadora de gestion humana
-		                           'centro_costo_id' => 1,
-		                          ]);
-		$unUsuario->assignRole($rolesUser[1]);
+		$unUsuario->assignRole($arrayRoles[0]);
 	}
 }

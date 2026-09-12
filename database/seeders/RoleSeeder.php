@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\helpers\MyModels;
 use App\Models\Role;
+use App\Models\User;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 
@@ -20,20 +21,6 @@ class RoleSeeder extends Seeder {
 			$elRol = Role::create(['name' => $all_rol]);
 			$elRol->givePermissionTo(['is' . $all_rol,]);
 		}
-		
-		$vectorCRUD = ['create', 'update', 'read', 'delete'];
-        $vectorModelo = MyModels::CargosYModelos('soloModels');
-		
-		foreach ($AllRols as $theRol) {
-			$Rol = Role::findByName($theRol);
-			foreach ($vectorCRUD as $value) {
-				foreach ($vectorModelo as $model) {
-					$Rol->givePermissionTo([$value . ' ' . $model]);
-				}
-			}
-		}
-		
-		
 		//unicos para superadmin
 		$this->UniquesForAdmins($AllRols);
 		

@@ -56,7 +56,7 @@ class desarrollo extends Model {
 	
 	function formatPesosCol($number): string {
 		$number = round($number);
-		$formattedNumber = number_format($number, 0, '.', ',');
+		$formattedNumber = zilef_nuber_format($number, 0, '.', ',');
 		
 		
 		return '$ ' . $formattedNumber;

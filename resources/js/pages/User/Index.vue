@@ -1,24 +1,24 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head } from '@inertiajs/vue3';
-import Breadcrumb from '@/Components/Breadcrumb.vue';
-import TextInput from '@/Components/TextInput.vue';
-import PrimaryButton from '@/Components/PrimaryButton.vue';
-import InfoButton from '@/Components/InfoButton.vue';
-import SelectInput from '@/Components/SelectInput.vue';
+import Breadcrumb from '@/components/Breadcrumb.vue';
+import TextInput from '@/components/TextInput.vue';
+import PrimaryButton from '@/components/PrimaryButton.vue';
+import InfoButton from '@/components/InfoButton.vue';
+import SelectInput from '@/components/SelectInput.vue';
 import { reactive, watch, watchEffect } from 'vue';
-import DangerButton from '@/Components/DangerButton.vue';
+import DangerButton from '@/components/DangerButton.vue';
 import pkg from 'lodash';
-import Pagination from '@/Components/Pagination.vue';
+import Pagination from '@/components/Pagination.vue';
 import { CheckBadgeIcon, ChevronUpDownIcon, PencilIcon, TrashIcon, UserCircleIcon } from '@heroicons/vue/24/solid';
 import Create from '@/pages/User/Create.vue';
 import Edit from '@/pages/User/Edit.vue';
 import Delete from '@/pages/User/Delete.vue';
 import DeleteBulk from '@/pages/User/DeleteBulk.vue';
-import Checkbox from '@/Components/Checkbox.vue';
+import Checkbox from '@/components/Checkbox.vue';
 import { router, usePage, useForm, Link } from '@inertiajs/vue3';
 
-import { number_format, formatDate, CalcularEdad, CalcularSexo } from '@/global.ts';
+import { zilef_nuber_format, formatDate, CalcularEdad, CalcularSexo } from '@/global.ts';
 
 const { _, debounce, pickBy } = pkg
 const props = defineProps({
@@ -30,6 +30,14 @@ const props = defineProps({
     perPage: Number,
     numberPermissions: Number,
 })
+const defaultPerPage = [
+    { label: '5', value: 5 },
+    { label: '10', value: 10 },
+    { label: '25', value: 25 },
+    { label: '50', value: 50 },
+    { label: '100', value: 100 },
+];
+
 const data = reactive({
     params: {
         search: props.filters.search,
@@ -45,7 +53,7 @@ const data = reactive({
     deleteBulkOpen: false,
     user: null,
     ArchivoNombre: '',
-    dataSet: usePage().props.app.perpage
+    dataSet: (usePage().props as any)?.app?.perpage ?? defaultPerPage
 })
 
 const order = (field) => {
@@ -92,20 +100,21 @@ watchEffect(() => {
 
 // text // number // dinero // date // datetime // foreign
 const titulos = [
-    { order: 'name', label: 'Nombre', type: 'text',required: true },
-    { order: 'email', label: 'Email', type: 'text' ,required: true},
-    { order: 'identificacion', label: 'Identificacion', type: 'text' ,required: true},
+    { order: 'name', label: 'Nombre', type: 'text', required: true },
+    { order: 'email', label: 'Email', type: 'text', required: true },
+    { order: 'identificacion', label: 'Identificacion', type: 'text', required: true },
     // { order: 'sexo', label: 'Sexo', type: 'foreign' },
-    { order: 'area', label: 'area', type: 'text',required: true},
-    { order: 'cargo', label: 'cargo', type: 'text',required: true},
-    { order: 'sexo', label: 'sexo', type: 'foreign', nameid: 'sexo_S' ,required: false},
-    { order: 'celular', label: 'celular', type: 'text',required: false},
-    { order: 'fecha_nacimiento', label: 'Fecha nacimiento', type: 'date' ,required: false},
+    { order: 'area', label: 'area', type: 'text', required: true },
+    { order: 'cargo', label: 'cargo', type: 'text', required: true },
+    { order: 'sexo', label: 'sexo', type: 'foreign', nameid: 'sexo_S', required: false },
+    { order: 'celular', label: 'celular', type: 'text', required: false },
+    { order: 'fecha_nacimiento', label: 'Fecha nacimiento', type: 'date', required: false },
 
 ];
 </script>
 
 <template>
+
     <Head :title="props.title" />
 
     <AppLayout>
@@ -114,10 +123,10 @@ const titulos = [
             <div class="px-4 sm:px-0">
                 <div class="rounded-lg overflow-hidden w-fit">
                     <PrimaryButton v-show="can(['create user'])" class="rounded-none" @click="data.createOpen = true">
-                        {{ lang().button.add }}
+                        {{ lang().t('app.button.add') }}
                     </PrimaryButton>
                     <Create :show="data.createOpen" @close="data.createOpen = false" :roles="props.roles"
-                        v-if="can(['create user'])" :title="props.title" :titulos="titulos"/>
+                        v-if="can(['create user'])" :title="props.title" :titulos="titulos" />
                     <Edit :show="data.editOpen" @close="data.editOpen = false" :user="data.user" :roles="props.roles"
                         v-if="can(['update user'])" :title="props.title" :titulos="titulos" />
                     <Delete :show="data.deleteOpen" @close="data.deleteOpen = false" :user="data.user"
@@ -133,12 +142,13 @@ const titulos = [
                         <SelectInput v-model="data.params.perPage" :dataSet="data.dataSet" />
                         <DangerButton @click="data.deleteBulkOpen = true"
                             v-show="data.selectedId.length != 0 && can(['delete user'])" class="px-3 py-1.5"
-                            v-tooltip="lang().tooltip.delete_selected">
+                            v-tooltip="lang().t('app.tooltip.delete_selected')">
                             <TrashIcon class="w-5 h-5" />
                         </DangerButton>
                     </div>
                     <TextInput v-if="props.numberPermissions > 1" v-model="data.params.search" type="text"
-                        class="block w-4/6 md:w-3/6 lg:w-2/6 rounded-lg" placeholder="Nombre, correo o identificación" />
+                        class="block w-4/6 md:w-3/6 lg:w-2/6 rounded-lg"
+                        placeholder="Nombre, correo o identificación" />
                 </div>
                 <div class="overflow-x-auto scrollbar-table">
                     <table class="w-full">
@@ -150,43 +160,50 @@ const titulos = [
                                 <th class="px-2 py-4 text-center">#</th>
                                 <th class="px-2 py-4 cursor-pointer" v-on:click="order('name')">
                                     <div class="flex justify-between items-center">
-                                        <span>{{ lang().label.name }}</span>
+                                        <span>{{ lang().t('app.label.name') }}</span>
                                         <ChevronUpDownIcon class="w-4 h-4" />
                                     </div>
                                 </th>
                                 <!-- <th class="px-2 py-4 cursor-pointer" v-on:click="order('email')">
-                                    <div class="flex justify-between items-center"> <span>{{ lang().label.email }}</span> <ChevronUpDownIcon class="w-4 h-4" /> </div>
+                                    <div class="flex justify-between items-center"> <span>{{ lang().t('app.label.email') }}</span> <ChevronUpDownIcon class="w-4 h-4" /> </div>
                                 </th> -->
-                                <th class="px-2 py-4">{{ lang().label.role }}</th>
+                                <th class="px-2 py-4">{{ lang().t('app.label.role') }}</th>
 
                                 <th class="px-2 py-4 cursor-pointer" v-on:click="order('identificacion')">
-                                    <div class="flex justify-between items-center"> <span>{{ lang().label.identificacion
-                                                                                }}</span>
+                                    <div class="flex justify-between items-center"> <span>{{
+                                        lang().t('app.label.identificacion')
+                                            }}</span>
                                         <ChevronUpDownIcon class="w-4 h-4" />
                                     </div>
                                 </th>
                                 <th class="px-2 py-4 cursor-pointer" v-on:click="order('sexo')">
-                                    <div class="flex justify-between items-center"> <span>{{ lang().label.sexo }}</span>
+                                    <div class="flex justify-between items-center"> <span>{{ lang().t('app.label.sexo')
+                                            }}</span>
                                         <ChevronUpDownIcon class="w-4 h-4" />
                                     </div>
                                 </th>
                                 <th class="px-2 py-4 cursor-pointer" v-on:click="order('fecha_nacimiento')">
-                                    <div class="flex justify-between items-center"> <span>{{ lang().label.edad }}</span>
+                                    <div class="flex justify-between items-center"> <span>{{ lang().t('app.label.edad')
+                                            }}</span>
                                         <ChevronUpDownIcon class="w-4 h-4" />
                                     </div>
                                 </th>
                                 <th class="px-2 py-4 cursor-pointer" v-on:click="order('celular')">
-                                    <div class="flex justify-between items-center"> <span>{{ lang().label.celular }}</span>
+                                    <div class="flex justify-between items-center"> <span>{{
+                                        lang().t('app.label.celular')
+                                            }}</span>
                                         <ChevronUpDownIcon class="w-4 h-4" />
                                     </div>
                                 </th>
                                 <th class="px-2 py-4 cursor-pointer" v-on:click="order('area')">
-                                    <div class="flex justify-between items-center"> <span>{{ lang().label.area }}</span>
+                                    <div class="flex justify-between items-center"> <span>{{ lang().t('app.label.area')
+                                            }}</span>
                                         <ChevronUpDownIcon class="w-4 h-4" />
                                     </div>
                                 </th>
                                 <th class="px-2 py-4 cursor-pointer" v-on:click="order('cargo')">
-                                    <div class="flex justify-between items-center"> <span>{{ lang().label.cargo }}</span>
+                                    <div class="flex justify-between items-center"> <span>{{ lang().t('app.label.cargo')
+                                            }}</span>
                                         <ChevronUpDownIcon class="w-4 h-4" />
                                     </div>
                                 </th>
@@ -207,9 +224,9 @@ const titulos = [
                                     <span class="flex justify-start items-center">
                                         {{ user.name }} --
                                         <small v-if="props.numberPermissions > 9">
-                                            {{ user.id}}
+                                            {{ user.id }}
                                         </small>
-                                        
+
                                         <CheckBadgeIcon class="ml-[2px] w-4 h-4 text-primary dark:text-white"
                                             v-show="user.email_verified_at" />
                                     </span>
@@ -225,7 +242,8 @@ const titulos = [
                                 <td class="whitespace-nowrap py-4 px-2 sm:py-3">{{ user.updated_at }}</td> -->
                                 <td class="whitespace-nowrap py-4 px-2 sm:py-3">{{ user.identificacion }}</td>
                                 <td class="whitespace-nowrap py-4 px-2 sm:py-3">{{ user.sexo }}</td>
-                                <td class="whitespace-nowrap text-center py-4 px-2 sm:py-3">{{ CalcularEdad(user.fecha_nacimiento) }}</td>
+                                <td class="whitespace-nowrap text-center py-4 px-2 sm:py-3">{{
+                                    CalcularEdad(user.fecha_nacimiento) }}</td>
                                 <td class="whitespace-nowrap py-4 px-2 sm:py-3">{{ user.celular }}</td>
                                 <td class="whitespace-nowrap py-4 px-2 sm:py-3">{{ user.area }}</td>
                                 <td class="whitespace-nowrap py-4 px-2 sm:py-3">{{ user.cargo }}</td>
@@ -234,12 +252,14 @@ const titulos = [
                                         <div class="rounded-md overflow-hidden">
                                             <InfoButton v-show="can(['update user'])" type="button"
                                                 @click="(data.editOpen = true), (data.user = user)"
-                                                class="px-2 py-1.5 rounded-none" v-tooltip="lang().tooltip.edit">
+                                                class="px-2 py-1.5 rounded-none"
+                                                v-tooltip="lang().t('app.tooltip.edit')">
                                                 <PencilIcon class="w-4 h-4" />
                                             </InfoButton>
                                             <DangerButton v-show="can(['delete user'])" type="button"
                                                 @click="(data.deleteOpen = true), (data.user = user)"
-                                                class="px-2 py-1.5 rounded-none" v-tooltip="lang().tooltip.delete">
+                                                class="px-2 py-1.5 rounded-none"
+                                                v-tooltip="lang().t('app.tooltip.delete')">
                                                 <TrashIcon class="w-4 h-4" />
                                             </DangerButton>
                                         </div>

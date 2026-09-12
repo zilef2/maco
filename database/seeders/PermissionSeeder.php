@@ -16,8 +16,15 @@ class PermissionSeeder extends Seeder
     public function run()
     {
 		$AllRols = MyModels::CargosYModelos('soloNombresRoles');
-		foreach ($AllRols as $index => $all_rol) {
-            Permission::create(['name' => 'is' . $all_rol]);
+        /*
+        ejemplo:
+            array:3 [
+                0 => "trabajador"
+                1 => "admin"
+            ]
+        */
+		foreach ($AllRols as $all_rol) {
+            Permission::create(['name' => 'is' . $all_rol]); //ejemplo: isadmin,, istrabajador
 		}
         
         //reporte

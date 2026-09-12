@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import NavFooter from '@/Components/NavFooter.vue';
-import NavMain from '@/Components/NavMain.vue';
-import NavUser from '@/Components/NavUser.vue';
-import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/Components/ui/sidebar';
+import NavFooter from '@/components/NavFooter.vue';
+import NavMain from '@/components/NavMain.vue';
+import NavUser from '@/components/NavUser.vue';
+import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { type NavItem } from '@/types';
 import { Link } from '@inertiajs/vue3';
 import { BookOpen, Folder, LayoutGrid } from 'lucide-vue-next';
@@ -15,15 +15,21 @@ const mainNavItems: NavItem[] = [
         icon: LayoutGrid,
     },
     {
-        title: 'Procesos Rama Judicial',
-        href: '/rama',
+        title: 'Presupuesto',
+        href: '/Presupuesto',
         icon: LayoutGrid,
     },
+    //aquipuesSide
 ];
 
 const footerSuperNavItems: NavItem[] = [
     {
-        title: 'Roles & Permissions',
+        title: 'Roles',
+        href: '/role',
+        icon: Folder,
+    },
+    {
+        title: 'Permissions',
         href: '/permission',
         icon: Folder,
     },
@@ -64,7 +70,8 @@ const footerNavItems: NavItem[] = [
             <NavFooter :items="footerSuperNavItems" />
         </SidebarFooter>
         <SidebarFooter>
-            <NavFooter :items="footerNavItems" /><NavUser />
+            <NavFooter :items="footerNavItems" />
+            <NavUser />
         </SidebarFooter>
     </Sidebar>
     <slot />

@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import DangerButton from '@/Components/DangerButton.vue';
-import InputError from '@/Components/InputError.vue';
-import InputLabel from '@/Components/InputLabel.vue';
-import Modal from '@/Components/Modal.vue';
-import SecondaryButton from '@/Components/SecondaryButton.vue';
-import TextInput from '@/Components/TextInput.vue';
+import DangerButton from '@/components/DangerButton.vue';
+import InputError from '@/components/InputError.vue';
+import InputLabel from '@/components/InputLabel.vue';
+import Modal from '@/components/Modal.vue';
+import SecondaryButton from '@/components/SecondaryButton.vue';
+import TextInput from '@/components/TextInput.vue';
 import { useForm, usePage } from '@inertiajs/vue3';
 import { nextTick, ref } from 'vue';
 
@@ -40,39 +40,42 @@ const closeModal = () => {
 <template>
     <section class="space-y-6">
         <header>
-            <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100">{{ lang().profile.delete_account }}</h2>
+            <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100">{{ lang().t('app.profile.delete_account')
+                }}</h2>
 
             <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                {{ lang().profile.delete_account_caption }}
+                {{ lang().t('app.profile.delete_account_caption') }}
             </p>
         </header>
 
-        <DangerButton @click="confirmUserDeletion">{{ lang().button.delete_account }}</DangerButton>
+        <DangerButton @click="confirmUserDeletion">{{ lang().t('app.button.delete_account') }}</DangerButton>
 
         <Modal :show="confirmingUserDeletion" @close="closeModal">
             <div class="p-6">
                 <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100">
-                    {{ lang().profile.delete_account_modal_title }}
+                    {{ lang().t('app.profile.delete_account_modal_title') }}
                 </h2>
 
                 <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                    {{ lang().profile.delete_account_modal_caption }}
+                    {{ lang().t('app.profile.delete_account_modal_caption') }}
                 </p>
 
                 <div class="mt-6">
-                    <InputLabel for="password" :value="lang().label.password" class="sr-only" />
+                    <InputLabel for="password" :value="lang().t('app.label.password')" class="sr-only" />
                     <TextInput id="password" ref="passwordInput" v-model="form.password" type="password"
-                        class="mt-1 block w-full" @keyup.enter="deleteUser" :placeholder="lang().placeholder.password" :error="form.errors.password" />
+                        class="mt-1 block w-full" @keyup.enter="deleteUser"
+                        :placeholder="lang().t('app.placeholder.password')" :error="form.errors.password" />
 
                     <InputError :message="form.errors.password" class="mt-2" />
                 </div>
 
                 <div class="mt-6 flex justify-end">
-                    <SecondaryButton @click="closeModal"> {{ lang().button.close }} </SecondaryButton>
+                    <SecondaryButton @click="closeModal"> {{ lang().t('app.button.close') }} </SecondaryButton>
 
                     <DangerButton class="ml-3" :class="{ 'opacity-25': form.processing }" :disabled="form.processing"
                         @click="deleteUser">
-                        {{ form.processing ? lang().button.delete_account+'...':lang().button.delete_account }}
+                        {{ form.processing ? lang().t('app.button.delete_account') + '...' :
+                            lang().t('app.button.delete_account') }}
                     </DangerButton>
                 </div>
             </div>

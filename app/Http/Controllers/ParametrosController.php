@@ -4,6 +4,9 @@ namespace App\Http\Controllers;
 
 use App\helpers\Myhelp;
 use App\Http\Controllers\Controller;
+use App\Http\Requests\StoreListaDesplegableRequest;
+use App\Models\ListaDesplegable;
+use App\Services\ListaDesplegableService;
 use Inertia\Inertia;
 
 use App\Models\Parametro;
@@ -11,23 +14,34 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\Request;
+use Illuminate\Http\RedirectResponse;
 
 class ParametrosController extends Controller
 {
-
     public $respuestaLimite = 'Limite de tokens';
     public $respuestaLarga = 'La respuesta es demasiado extensa';
     public $MAX_USAGE_RESPUESTA = 550;
     public $MAX_USAGE_TOTAL = 600;
 
+    public function __construct(
+        protected ListaDesplegableService $listaDesplegableService
+    ) {}
+
     public function fNombresTabla()
     {
         $nombresTabla = [ //0: como se ven //1 como es la BD //2 ordenables
-            ["Acciones"],
+            ["Acciones",
+            "nombre",
+            "valor",
+            "valor2",
+            "valor_date",
+            "valor_int",
+            "valor_double",
+            "valor_string1m",
+        ],
             [],
             ["Acciones"]
         ];
-        array_push($nombresTabla[0], "Fecha", "descripcion");
         $nombresTabla[2][] = ["Fecha_creacion_parametro", "nombre"];
         return $nombresTabla;
     }
@@ -44,23 +58,43 @@ class ParametrosController extends Controller
     {
         $permissions = Myhelp::EscribirEnLog($this, ' parametro');
 
-
         $titulo = __('app.label.parametros');
         if ($permissions == 'admin' || $permissions == 'superadmin') {
             $nombresTabla = $this->fNombresTabla();
 
-            return Inertia::render('parametro/Index', [ //carpeta
-                'title'          =>  $titulo,
-                'filters'        =>  $request->all(['search', 'field', 'order']),
-                'perPage'        =>  1,
-                'fromController' =>  Parametro::first(),
-                'breadcrumbs'    =>  [['label' => __('app.label.parametros'), 'href' => route('parametro.index')]],
-                'nombresTabla'   =>  $nombresTabla,
+            $listasAgrupadas = ListaDesplegable::all()
+                ->groupBy('categoria')
+                ->map(fn($porCategoria) => $porCategoria->groupBy('subcategoria'));
+
+            return Inertia::render('parametro/Index', [
+                'title'          => $titulo,
+                'filters'        => $request->all(['search', 'field', 'order']),
+                'perPage'        => 1,
+                'fromController' => Parametro::first(),
+                'nombresTabla'   => $nombresTabla,
+                'listasAgrupadas' => $listasAgrupadas,
+                'isSuperadmin'   => $permissions === 'superadmin',
             ]);
         } else {
-            Myhelp::EscribirEnLog($this, ' parametro', 'en el index nos hackearon ', false, true); //!usefull
+            Myhelp::EscribirEnLog($this, ' parametro', 'en el index nos hackearon ', false, true);
         }
     } //fin index
+
+    public function storeLista(Request $request): RedirectResponse
+    {
+        $permissions = Myhelp::EscribirEnLog($this, 'storeLista');
+        abort_unless($permissions === 'superadmin', 403, 'Solo superadmin puede crear listas desplegables.');
+
+        $validated = $request->validate([
+            'nombre'       => 'required|string|max:255',
+            'categoria'    => 'required|string|max:100',
+            'subcategoria' => 'required|string|max:100',
+        ]);
+
+        ListaDesplegable::create($validated);
+
+        return back()->with('success', 'Opción creada correctamente.');
+    }
 
     public function create()
     {

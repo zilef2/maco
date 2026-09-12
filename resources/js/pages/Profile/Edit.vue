@@ -3,7 +3,7 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import UpdatePasswordForm from './Partials/UpdatePasswordForm.vue';
 // import UpdateProfileInformationForm from './Partials/UpdateProfileInformationForm.vue';
 import { Head } from '@inertiajs/vue3';
-import Breadcrumb from '@/Components/Breadcrumb.vue';
+import Breadcrumb from '@/components/Breadcrumb.vue';
 
 defineProps({
     mustVerifyEmail: Boolean,
@@ -13,7 +13,7 @@ defineProps({
 
 <template>
 
-    <Head :title="lang().label.profile" />
+    <Head :title="lang().t('app.label.profile')" />
 
     <AppLayout>
         <Breadcrumb :title="'Profile'" :breadcrumbs="[]" />
@@ -27,9 +27,9 @@ defineProps({
                 <UpdatePasswordForm class="max-w-xl" />
             </div>
 
-<!--            <div class="p-4 sm:p-8 bg-white dark:bg-gray-800 shadow sm:rounded-lg">-->
-<!--                <DeleteUserForm class="max-w-xl" />-->
-<!--            </div> -->
+            <!--            <div class="p-4 sm:p-8 bg-white dark:bg-gray-800 shadow sm:rounded-lg">-->
+            <!--                <DeleteUserForm class="max-w-xl" />-->
+            <!--            </div> -->
         </div>
     </AppLayout>
 </template>

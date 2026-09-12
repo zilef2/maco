@@ -15,7 +15,13 @@ const appName = import.meta.env.VITE_APP_NAME || 'Zilef';
 
 createInertiaApp({
     title: (title: string): string => `${title} - ${appName}`,
-    resolve: (name: string) => resolvePageComponent(`./pages/${name}.vue`, import.meta.glob<DefineComponent>('./pages/**/*.vue')),
+    resolve: (name: string) => resolvePageComponent(
+        `./pages/${name}.vue`,
+        import.meta.glob<DefineComponent>([
+            './pages/**/*.vue',
+            '!./pages/generic/**',
+        ])
+    ),
     setup: function ({ el, App, props, plugin }): void {
         createApp({ render: () => h(App, props) })
             .use(plugin,FloatingVue)

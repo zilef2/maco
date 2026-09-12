@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import DangerButton from '@/Components/DangerButton.vue';
-import Modal from '@/Components/Modal.vue';
-import SecondaryButton from '@/Components/SecondaryButton.vue';
+import DangerButton from '@/components/DangerButton.vue';
+import Modal from '@/components/Modal.vue';
+import SecondaryButton from '@/components/SecondaryButton.vue';
 import { useForm } from '@inertiajs/vue3';
 
 const props = defineProps({
@@ -33,17 +33,18 @@ const destory = () => {
         <Modal :show="props.show" @close="emit('close')" :maxWidth="'lg'">
             <form class="p-6" @submit.prevent="destory">
                 <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100">
-                    {{ lang().label.delete }} {{ props.title }}
+                    {{ lang().t('app.label.delete') }} {{ props.title }}
                 </h2>
                 <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                    {{ lang().label.delete_confirm }} <b>{{ props.user?.name }}</b>?
+                    {{ lang().t('app.label.delete_confirm') }} <b>{{ props.user?.name }}</b>?
                 </p>
                 <div class="mt-6 flex justify-end">
-                    <SecondaryButton :disabled="form.processing" @click="emit('close')"> {{ lang().button.close }}
+                    <SecondaryButton :disabled="form.processing" @click="emit('close')"> {{ lang().t('app.button.close')
+                        }}
                     </SecondaryButton>
                     <DangerButton class="ml-3" :class="{ 'opacity-25': form.processing }" :disabled="form.processing"
                         @click="destory">
-                        {{ form.processing ? lang().button.delete + '...' : lang().button.delete }}
+                        {{ form.processing ? lang().t('app.button.delete') + '...' : lang().t('app.button.delete') }}
                     </DangerButton>
                 </div>
             </form>

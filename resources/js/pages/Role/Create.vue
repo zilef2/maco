@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import InputError from '@/Components/InputError.vue';
-import InputLabel from '@/Components/InputLabel.vue';
-import Modal from '@/Components/Modal.vue';
-import PrimaryButton from '@/Components/PrimaryButton.vue';
-import SecondaryButton from '@/Components/SecondaryButton.vue';
-import TextInput from '@/Components/TextInput.vue';
+import InputError from '@/components/InputError.vue';
+import InputLabel from '@/components/InputLabel.vue';
+import Modal from '@/components/Modal.vue';
+import PrimaryButton from '@/components/PrimaryButton.vue';
+import SecondaryButton from '@/components/SecondaryButton.vue';
+import TextInput from '@/components/TextInput.vue';
 import { useForm } from '@inertiajs/vue3';
-import Checkbox from '@/Components/Checkbox.vue';
+import Checkbox from '@/components/Checkbox.vue';
 import { reactive, watchEffect } from 'vue';
 
 const props = defineProps({
@@ -71,21 +71,21 @@ const select = () => {
         <Modal :show="props.show" @close="emit('close')">
             <form class="p-6" @submit.prevent="create">
                 <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100">
-                    {{ lang().label.add }} {{ props.title }}
+                    {{ lang().t('app.label.add') }} {{ props.title }}
                 </h2>
                 <div class="my-6 space-y-4">
                     <div>
-                        <InputLabel for="name" :value="lang().label.role" />
+                        <InputLabel for="name" :value="lang().t('app.label.role')" />
                         <TextInput id="name" type="text" class="mt-1 block w-full" v-model="form.name" required
-                            :placeholder="lang().placeholder.name" :error="form.errors.name" />
+                            :placeholder="lang().t('app.placeholder.name')" :error="form.errors.name" />
                         <InputError class="mt-2" :message="form.errors.name" />
                     </div>
                     <div>
-                        <InputLabel :value="lang().label.permission" />
+                        <InputLabel :value="lang().t('app.label.permission')" />
                         <InputError class="mt-2" :message="form.errors.permissions" />
                         <div class="flex justify-start items-center space-x-2 mt-2">
                             <Checkbox id="permission-all" v-model:checked="data.multipleSelect" @change="selectAll" />
-                            <InputLabel for="permission-all" :value="lang().label.check_all" />
+                            <InputLabel for="permission-all" :value="lang().t('app.label.check_all')" />
                         </div>
                         <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 mt-2">
                             <div class="flex items-center justify-start space-x-2"
@@ -100,11 +100,12 @@ const select = () => {
                     </div>
                 </div>
                 <div class="flex justify-end">
-                    <SecondaryButton :disabled="form.processing" @click="emit('close')"> {{ lang().button.close }}
+                    <SecondaryButton :disabled="form.processing" @click="emit('close')"> {{ lang().t('app.button.close')
+                        }}
                     </SecondaryButton>
                     <PrimaryButton class="ml-3" :class="{ 'opacity-25': form.processing }" :disabled="form.processing"
                         @click="create">
-                        {{ form.processing ? lang().button.add + '...' : lang().button.add }}
+                        {{ form.processing ? lang().t('app.button.add') + '...' : lang().t('app.button.add') }}
                     </PrimaryButton>
                 </div>
             </form>

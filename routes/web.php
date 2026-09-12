@@ -3,7 +3,7 @@
 require __DIR__ . '/settings.php';
 require __DIR__ . '/auth.php';
 
-use App\Http\Controllers\{ProcesoController, PruebasController, RoleController, ParametrosController, PermissionController};
+use App\Http\Controllers\{ ProveedorController, RoleController, ParametrosController, PermissionController};
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Route;
@@ -15,22 +15,10 @@ Route::get('/', function () {
 })->name('home');
 
 
-Route::get('/rama', [PruebasController::class, 'index'])->name('rama');
 
 Route::get('dashboard', function () {
 	return Inertia::render('Dashboard');
 })->middleware(['auth', 'verified'])->name('dashboard');
-
-Route::get('/actuaciones', function () {
-	$contro = new PruebasController();
-	
-	$urlactuaciones = "https://consultaprocesos.ramajudicial.gov.co:448/api/v2/Proceso/Actuaciones/110010203000202500668000";
-	$llamada = $contro->obtenerAPIProceso($urlactuaciones);
-	dd(
-	    $llamada
-	);
-
-});
 
 Route::middleware('auth', 'verified')->group(function () {
 	//<editor-fold desc="profile - role - permission">
@@ -43,14 +31,13 @@ Route::middleware('auth', 'verified')->group(function () {
 	Route::post('/permission/destroy-bulk', [PermissionController::class, 'destroyBulk'])->name('permission.destroy-bulk');
 	//</editor-fold>
 	Route::resource('/Parametros', ParametrosController::class);
+	Route::post('/Parametros/lista', [ParametrosController::class, 'storeLista'])->name('parametros.lista.store');
 	
 	//<editor-fold desc="User">
 	Route::resource('/user', UserController::class)->except('create', 'show', 'edit');
 //	Route::get('/IndexTrashed', [UserController::class, 'IndexTrashed'])->name('IndexTrashed');
-	Route::resource("/Proceso", ProcesoController::class);
 	
-	//verificando si las actuaciones han cambiado
-	Route::get('/ProcesosConsultados', [ProcesoController::class, 'ProcesosConsultados'])->name('ProcesosConsultados');
+	Route::resource("/Presupuesto", \App\Http\Controllers\PresupuestoController::class);
 	//aquipues
 }); //fin verified
 

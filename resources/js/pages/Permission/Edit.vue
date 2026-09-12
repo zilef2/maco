@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import InputError from '@/Components/InputError.vue';
-import InputLabel from '@/Components/InputLabel.vue';
-import Modal from '@/Components/Modal.vue';
-import PrimaryButton from '@/Components/PrimaryButton.vue';
-import SecondaryButton from '@/Components/SecondaryButton.vue';
-import TextInput from '@/Components/TextInput.vue';
+import InputError from '@/components/InputError.vue';
+import InputLabel from '@/components/InputLabel.vue';
+import Modal from '@/components/Modal.vue';
+import PrimaryButton from '@/components/PrimaryButton.vue';
+import SecondaryButton from '@/components/SecondaryButton.vue';
+import TextInput from '@/components/TextInput.vue';
 import { useForm } from '@inertiajs/vue3';
 import { watchEffect } from 'vue';
 
@@ -46,22 +46,23 @@ watchEffect(() => {
         <Modal :show="props.show" @close="emit('close')">
             <form class="p-6" @submit.prevent="update">
                 <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100">
-                    {{ lang().label.edit }} {{ props.title }}
+                    {{ lang().t('app.label.edit') }} {{ props.title }}
                 </h2>
                 <div class="my-6 space-y-4">
                     <div>
-                        <InputLabel for="name" :value="lang().label.role" />
+                        <InputLabel for="name" :value="lang().t('app.label.role')" />
                         <TextInput id="name" type="text" class="mt-1 block w-full" v-model="form.name" required
-                            :placeholder="lang().placeholder.name" :error="form.errors.name" />
+                            :placeholder="lang().t('app.placeholder.name')" :error="form.errors.name" />
                         <InputError class="mt-2" :message="form.errors.name" />
                     </div>
                 </div>
                 <div class="flex justify-end">
-                    <SecondaryButton :disabled="form.processing" @click="emit('close')"> {{ lang().button.close }}
+                    <SecondaryButton :disabled="form.processing" @click="emit('close')"> {{ lang().t('app.button.close')
+                        }}
                     </SecondaryButton>
                     <PrimaryButton class="ml-3" :class="{ 'opacity-25': form.processing }" :disabled="form.processing"
                         @click="update">
-                        {{ form.processing ? lang().button.save + '...' : lang().button.save }}
+                        {{ form.processing ? lang().t('app.button.save') + '...' : lang().t('app.button.save') }}
                     </PrimaryButton>
                 </div>
             </form>

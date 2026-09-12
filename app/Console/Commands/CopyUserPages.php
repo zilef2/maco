@@ -45,7 +45,6 @@ class CopyUserPages extends Command
         // string text number dinero date datetime boolean foreign json
         return [
             // Core
-            'centro_costo_id' => 'foreign',
             'nombre' => 'string',
             'descripcion' => 'text',
             'fecha_inicio' => 'datetime',
@@ -64,16 +63,16 @@ class CopyUserPages extends Command
             // Estado
             'estado' => 'string',   // borrador | aprobado | cerrado | suspendido
             'user_id_aprobado' => 'foreign',   // FK a users implícita, sin foreign key duro
-            'aprobado_por' => 'string',  
+            'aprobado_por' => 'string',
             'fecha_aprobacion' => 'datetime',
 
             // Opcionales
             'codigo_interno' => 'string',
             'observaciones' => 'text',
-            'porcentaje_ejecutado' => 'float3',   // calculable pero útil persistirlo para reportes
+            'porcentaje_ejecutado' => 'float',   // calculable pero útil persistirlo para reportes
 
             // 💡 Novedad 1: alerta de sobreejecution
-            'umbral_alerta' => 'float3',   // ej: 0.85 → alerta cuando ejecutado >= 85% del total
+            'umbral_alerta' => 'float',   // ej: 0.85 → alerta cuando ejecutado >= 85% del total
 
             // 💡 Novedad 2: vigencia de reajuste
             'fecha_ultimo_reajuste' => 'datetime', // cuándo se modificó el monto_total por última vez
@@ -97,16 +96,22 @@ class CopyUserPages extends Command
             // }
             $modelName = $this->thename;
 
+            if (! $this->ValidacionesPrevias($modelName, 'generic')) {
+                $this->error('Las validaciones previas fallaron. Ejecución cancelada.');
+
+                return 0;
+            }
+
             $progressBar = $this->output->createProgressBar(2);
             $progressBar->start();
 
             $this->MetodologiaInicial($modelName, 'generic', '');
-            $this->AddAttributesVue($modelName);
+            $this->AddAttributesVue($modelName);3
             $this->Paso2($modelName, $submetodo);
 
-            $this->info('generando permisos');
-            $this->info(Artisan::call('make:permission-seeder '.$modelName));
-            $progressBar->advance();
+            // $this->info('generando permisos');
+            // $this->info(Artisan::call('make:permission-seeder '.$modelName));
+            // $progressBar->advance();
 
             $this->info(Artisan::call('optimize'));
             $this->info(Artisan::call('optimize:clear'));
@@ -133,9 +138,6 @@ class CopyUserPages extends Command
         $this->warn('Ahora Lang');
         Artisan::call('lang:u '.$modelName); // LanguageCopyU.php
 
-        $EsValidoSeguir = $this->ValidatePages($plantillaActual, $modelName);
-		if(!$EsValidoSeguir) return 0;
-
         $RealizoVueConExito = $this->MakeVuePages($plantillaActual, $modelName);
         $mensaje = $RealizoVueConExito ? self::getMessage('generando').' Vuejs'.self::MSJ_EXITO : self::getMessage('generando').' Vuejs'.self::getMessage('fallo');
         $this->info($mensaje);
@@ -154,42 +156,78 @@ class CopyUserPages extends Command
         return 1;
     }
 
-    private function ValidatePages($plantillaActual, $modelName): bool
+    private function ValidacionesPrevias(string $modelName, string $plantillaActual): bool
     {
-        $folderMayus = ucfirst($modelName);
+        $valido = true;
 
-        // validaciones del controlador
-        $ObjetoEnMira = 'Controller.php';
-        $RutaDelArchivo = 'app/Http/Controllers/';
-        $controllerExiste = $this->ExisteOno($RutaDelArchivo, $plantillaActual, $ObjetoEnMira);
-        if (! $controllerExiste) {
-            return false;
+        // 1. Plantilla del controlador origen
+        $controllerOrigen = base_path('app/Console/Commands/'.$plantillaActual.'Controller.stub');
+        if (! File::exists($controllerOrigen)) {
+            $this->error("[1] No existe el controlador plantilla: $controllerOrigen");
+            $valido = false;
         }
 
-        // vue
-        $ObjetoEnMira = '';
-        $RutaDelArchivo = 'resources/js/Pages/';
-        $vueExiste = $this->ExisteOno($RutaDelArchivo, $plantillaActual, $ObjetoEnMira);
-        if (! $vueExiste) {
-            return false;
+        // 2. Carpeta Vue origen
+        $vueOrigen = base_path('resources/js/Pages/'.$plantillaActual);
+        if (! File::exists($vueOrigen)) {
+            $this->error("[2] No existe la carpeta Vue origen: $vueOrigen");
+            $valido = false;
         }
 
-        // todo: falta los app.es y demas
-
-        return true;
-    }
-
-    private function ExisteOno($primeraParte, $plantillaActual, $ObjetoEnMira): bool
-    {
-        $sourcePath = base_path($primeraParte.$plantillaActual.$ObjetoEnMira);
-
-        if (! File::exists($sourcePath)) {
-            $this->error("El $ObjetoEnMira de origen '$sourcePath' no existe.");
-
-            return false;
+        // 3. Index.vue de la plantilla (requerido por AddAttributesVue)
+        $indexVue = resource_path("js/Pages/$plantillaActual/Index.vue");
+        if (! File::exists($indexVue)) {
+            $this->error("[3] No existe el Index.vue de la plantilla: $indexVue");
+            $valido = false;
         }
 
-        return true;
+        // 4. Destino Vue no debe existir
+        $vueDestino = base_path("resources/js/Pages/$modelName");
+        if (File::exists($vueDestino)) {
+            $this->error("[4] La carpeta Vue destino ya existe: $vueDestino");
+            $valido = false;
+        }
+
+        // 5. Controlador destino no debe existir
+        $controllerDestino = base_path('app/Http/Controllers/'.ucfirst($modelName).'sController.php');
+        if (File::exists($controllerDestino)) {
+            $this->error("[5] El controlador destino ya existe: $controllerDestino");
+            $valido = false;
+        }
+
+        // 6. El modelo no debe existir previamente
+        $modeloPath = app_path("Models/$modelName.php");
+        if (File::exists($modeloPath)) {
+            $this->error("[6] El modelo ya existe: $modeloPath");
+            $valido = false;
+        }
+
+        // 7. routes/web.php con marcador //aquipues
+        $webPhp = base_path('routes/web.php');
+        if (! File::exists($webPhp) || ! str_contains(file_get_contents($webPhp), '//aquipues')) {
+            $this->error('[7] routes/web.php no existe o no contiene el marcador //aquipues');
+            $valido = false;
+        }
+
+        // 8. lang/es/app.php con marcador //aquipues
+        $langFile = base_path('lang/es/app.php');
+        if (! File::exists($langFile) || ! str_contains(file_get_contents($langFile), '//aquipues')) {
+            $this->error('[8] lang/es/app.php no existe o no contiene el marcador //aquipues');
+            $valido = false;
+        }
+
+        // 9. AppSidebar.vue con marcador //aquipuesSide
+        $sidebar = base_path('resources/js/components/AppSidebar.vue');
+        if (! File::exists($sidebar) || ! str_contains(file_get_contents($sidebar), '//aquipuesSide')) {
+            $this->error('[9] AppSidebar.vue no existe o no contiene el marcador //aquipuesSide');
+            $valido = false;
+        }
+
+        if ($valido) {
+            $this->info('Todas las validaciones previas pasaron correctamente.');
+        }
+
+        return $valido;
     }
 
     private function MakeVuePages($plantillaActual, $modelName): bool
@@ -216,7 +254,7 @@ class CopyUserPages extends Command
     private function MakeControllerPages($plantillaActual, $modelName): bool
     {
         $folderMayus = ucfirst($modelName);
-        $sourcePath = base_path('app/Http/Controllers/'.$plantillaActual.'Controller.php');
+        $sourcePath = base_path('app/Console/Commands/'.$plantillaActual.'Controller.stub');
         if (! File::exists($sourcePath)) {
             $this->error("El controlador de origen '$sourcePath' no existe.");
 
@@ -337,7 +375,38 @@ class CopyUserPages extends Command
         $this->contadorMetodos++;
         $this->updateMigration($modelName);
         $this->contadorMetodos++;
+        $this->DoPermissions($modelName);
+        $this->contadorMetodos++;
 
+        return 1;
+    }
+
+    protected function DoPermissions($modelName): int
+    {
+        $cruds = ['create', 'read', 'update', 'delete'];
+        $permissionsCreated = [];
+
+        foreach ($cruds as $crud) {
+            $permName = "$crud $modelName";
+            \App\Models\Permission::firstOrCreate([
+                'name' => $permName,
+                'guard_name' => 'web',
+            ]);
+            $permissionsCreated[] = $permName;
+        }
+
+        try {
+            $roles = \Spatie\Permission\Models\Role::whereIn('name', ['superadmin', 'admin'])->get();
+            foreach ($roles as $role) {
+                foreach ($permissionsCreated as $permName) {
+                    $role->givePermissionTo($permName);
+                }
+            }
+        } catch (\Throwable $e) {
+            // Ignorar silenciosamente si no existen los roles aún
+        }
+
+        $this->info("Permisos generados exitosamente para $modelName (" . implode(', ', $permissionsCreated) . ")");
         return 1;
     }
 
@@ -452,10 +521,10 @@ class CopyUserPages extends Command
 
     private function DoSideBar($resource): int
     {
-        $directory = 'resources/js/Components/SideBarMenu.vue';
+        $directory = 'resources/js/components/AppSidebar.vue';
         $files = glob($directory);
 
-        $insertable = "'".$resource."',\n\t//aquipuesSide";
+        $insertable = "{\n\t\ttitle: '$resource',\n\t\thref: '/$resource',\n\t\ticon: LayoutGrid,\n\t},\n\t//aquipuesSide";
         $pattern = '/\/\/aquipuesSide/';
 
         $contadorVerificador = 0;
@@ -465,7 +534,6 @@ class CopyUserPages extends Command
             if (! str_contains($content, $pattern)) {
                 $contadorVerificador++;
                 $content2 = preg_replace($pattern, $insertable, $content);
-                // $content2 = preg_replace($pattern, "$0$insertable", $content);
                 file_put_contents($file, $content2);
                 if ($content != $content2) {
                     $this->info("SideBarMenu.vue Actualizado: $file\n");

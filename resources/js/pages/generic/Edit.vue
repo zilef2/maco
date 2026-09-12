@@ -1,12 +1,12 @@
 <script setup lang="ts">
-import InputError from '@/Components/InputError.vue';
-import InputLabel from '@/Components/InputLabel.vue';
-import Modal from '@/Components/Modal.vue';
-import PrimaryButton from '@/Components/PrimaryButton.vue';
-import SecondaryButton from '@/Components/SecondaryButton.vue';
-import TextInput from '@/Components/TextInput.vue';
-import {useForm} from '@inertiajs/vue3';
-import {onMounted, reactive, watchEffect} from 'vue';
+import InputError from '@/components/InputError.vue';
+import InputLabel from '@/components/InputLabel.vue';
+import Modal from '@/components/Modal.vue';
+import PrimaryButton from '@/components/PrimaryButton.vue';
+import SecondaryButton from '@/components/SecondaryButton.vue';
+import TextInput from '@/components/TextInput.vue';
+import { useForm } from '@inertiajs/vue3';
+import { onMounted, reactive, watchEffect } from 'vue';
 import "vue-select/dist/vue-select.css";
 
 
@@ -26,7 +26,7 @@ const data = reactive({
 
 //very usefull
 const justNames = props.titulos.map(names => names['order'])
-const form = useForm({...Object.fromEntries(justNames.map(field => [field, '']))});
+const form = useForm({ ...Object.fromEntries(justNames.map(field => [field, ''])) });
 onMounted(() => {
     if (props.numberPermissions > 9) {
         const valueRAn = Math.floor(Math.random() * 9 + 1)
@@ -79,54 +79,55 @@ const update = () => {
         <Modal :show="props.show" @close="emit('close')" :maxWidth="'xl4'">
             <form class="p-6" @submit.prevent="create">
                 <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100">
-                    {{ lang().label.edit }} {{ props.title }}
+                    {{ lang().t('app.label.edit') }} {{ props.title }}
                 </h2>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
 
-                    
-<!--                    <div id="SelectVue" class="">-->
-<!--                        <label name="labelSelectVue2"> Centro de costo </label>-->
-<!--                        <v-select :options="props.losSelect[0]"-->
-<!--                                  v-model="form.centro_costo_id"-->
-<!--                                  label="name"-->
-<!--                        ></v-select>-->
-<!--                    </div>-->
-                    
-                    
-                    
+
+                    <!--                    <div id="SelectVue" class="">-->
+                    <!--                        <label name="labelSelectVue2"> Centro de costo </label>-->
+                    <!--                        <v-select :options="props.losSelect[0]"-->
+                    <!--                                  v-model="form.centro_costo_id"-->
+                    <!--                                  label="name"-->
+                    <!--                        ></v-select>-->
+                    <!--                    </div>-->
+
+
+
                     <div v-for="(atributosform, indice) in data.printForm" :key="indice">
                         <div v-if="atributosform.type === 'foreign'" id="SelectVue" class="">
                             <label name="labelSelectVue"> {{ atributosform.label }} </label>
-                            <v-select :options="props.losSelect"
-                                      v-model="form[atributosform.idd]"
-                                      :reduce="element => element.value" label="label"
-                            ></v-select>
-                            <InputError class="mt-2" :message="form.errors[atributosform.idd]"/>
+                            <v-select :options="props.losSelect" v-model="form[atributosform.idd]"
+                                :reduce="element => element.value" label="label"></v-select>
+                            <InputError class="mt-2" :message="form.errors[atributosform.idd]" />
                         </div>
 
                         <div v-else-if="atributosform.type === 'time'" id="SelectVue">
-                            <InputLabel :for="atributosform.label" :value="lang().label[atributosform.label]"/>
+                            <InputLabel :for="atributosform.label"
+                                :value="lang().t('app.label')[atributosform.label]" />
                             <TextInput :id="atributosform.idd" :type="atributosform.type" class="mt-1 block w-full"
-                                       v-model="form[atributosform.idd]" required :placeholder="atributosform.label"
-                                       :error="form.errors[atributosform.idd]" step="3600"/>
-                            <InputError class="mt-2" :message="form.errors[atributosform.idd]"/>
+                                v-model="form[atributosform.idd]" required :placeholder="atributosform.label"
+                                :error="form.errors[atributosform.idd]" step="3600" />
+                            <InputError class="mt-2" :message="form.errors[atributosform.idd]" />
                         </div>
                         <div v-else class="">
-                            <InputLabel :for="atributosform.label" :value="lang().label[atributosform.label]"/>
+                            <InputLabel :for="atributosform.label"
+                                :value="lang().t('app.label')[atributosform.label]" />
                             <TextInput :id="atributosform.idd" :type="atributosform.type" class="mt-1 block w-full"
-                                       v-model="form[atributosform.idd]" required :placeholder="atributosform.label"
-                                       :error="form.errors[atributosform.idd]"/>
-                            <InputError class="mt-2" :message="form.errors[atributosform.idd]"/>
+                                v-model="form[atributosform.idd]" required :placeholder="atributosform.label"
+                                :error="form.errors[atributosform.idd]" />
+                            <InputError class="mt-2" :message="form.errors[atributosform.idd]" />
                         </div>
                     </div>
 
                 </div>
                 <div class=" my-8 flex justify-end">
-                    <SecondaryButton :disabled="form.processing" @click="emit('close')"> {{ lang().button.close }}
+                    <SecondaryButton :disabled="form.processing" @click="emit('close')"> {{ lang().t('app.button.close')
+                        }}
                     </SecondaryButton>
                     <PrimaryButton class="ml-3" :class="{ 'opacity-25': form.processing }" :disabled="form.processing"
-                                   @click="update">
-                        {{ form.processing ? lang().button.save + '...' : lang().button.save }}
+                        @click="update">
+                        {{ form.processing ? lang().t('app.button.save') + '...' : lang().t('app.button.save') }}
                     </PrimaryButton>
                 </div>
             </form>
@@ -135,10 +136,6 @@ const update = () => {
 </template>
 
 <style>
-textarea {
-    @apply px-3 py-2 border border-gray-300 rounded-md;
-}
-
 [name="labelSelectVue"],
 [name="labelSelectVue"] {
     /* font-size: 22px; */

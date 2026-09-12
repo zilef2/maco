@@ -26,7 +26,6 @@ class PermissionController extends Controller
     /**
      * Display a listing of the resource.
      *
-     * @return \Illuminate\Http\Response
      */
     public function index(PermissionIndexRequest $request)
     {
@@ -38,7 +37,7 @@ class PermissionController extends Controller
         if ($request->has(['field', 'order'])) {
             $permissions->orderBy($request->field, $request->order);
         }
-        $perPage = $request->has('perPage') ? $request->perPage : 10;
+        $perPage = $request->has('perPage') ? $request->perPage : 100;
         return Inertia::render('Permission/Index', [
             'title'         => __('app.label.permission'),
             'filters'       => $request->all(['search', 'field', 'order']),
@@ -49,20 +48,9 @@ class PermissionController extends Controller
     }
 
     /**
-     * Show the form for creating a new resource.
-     *
-     * @return \Illuminate\Http\Response
-     */
-    public function create()
-    {
-        //
-    }
-
-    /**
      * Store a newly created resource in storage.
      *
-     * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\Response
+     * @param  PermissionStoreRequest $request
      */
     public function store(PermissionStoreRequest $request)
     {

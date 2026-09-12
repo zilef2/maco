@@ -7,27 +7,13 @@ class MyModels {
 	public static function getPermissionToNumber($permissions): int {
 		
 		$arrayRoles = MyModels::CargosYModelos('soloNombresRoles');
-		if(is_array($permissions)) $permissions = $permissions[0];//por alguna razon, cambio a ser un vector
+		if(is_array($permissions)) $permissions = $permissions[0];
 		
 		if (in_array($permissions, $arrayRoles)) {
 			return array_search($permissions, $arrayRoles);
 		}
 		
-		
 		return 0;
-		//		if ($permissions === 'trabajador') {
-		//			return 1;
-		//		}
-		//		if ($permissions === 'supervisor') {
-		//			return 2;
-		//		}
-		//		if ($permissions === 'admin') {
-		//			return 9;
-		//		}
-		//		if ($permissions === 'superadmin') {
-		//			return 10;
-		//		}
-		//		return 0;
 	}
 	
 	public static function CargosYModelos($returning = '') {
@@ -48,9 +34,8 @@ class MyModels {
 			'permission',
 			'user',
 			'parametros',
-			
-			'elcore',//core
-		
+			'elcore', // core
+			'Presupuesto',
 		];
 		if ($returning === 'soloModels') {
 			

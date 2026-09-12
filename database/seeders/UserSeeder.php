@@ -21,16 +21,24 @@ class UserSeeder extends Seeder {
 		$superadmin = User::create([
                'name'              => 'Superadmin',
                'email'             => 'superadminmodnom@superadmin.com',
-               'password'          => bcrypt($genPa . 'superadmin00.+-*' . $genPa),
+               'password'          => bcrypt($genPa . 'superadmin00.+-*' . $genPa),//123_demcosuperadmin00.+-*123_demco
                //1423superadmin00.+-*1423
                'email_verified_at' => date('Y-m-d H:i'),
                //		                            'cedula'            => '11232454',
                //		                            'cargo_id'          => 2
            ]);
 		$superadmin->assignRole('superadmin');
+
+		$vectorCRUD = ['create', 'update', 'read', 'delete'];
+        $vectorModelo = MyModels::CargosYModelos('soloModels');
+		foreach ($vectorCRUD as $value) {
+			foreach ($vectorModelo as $model) {
+				$superadmin->givePermissionTo([$value . ' ' . $model]);
+			}
+		}
 		
 		$nombresGenericos = [
-			'maria'        => '777117711',
+			'alicia'        => '777117711',
 			'Alejandro222' => '1234567890',
 			'Dispercion'   => '1052566569',
 		];
@@ -52,7 +60,6 @@ class UserSeeder extends Seeder {
 					                          //				                           'celular'           => $value * 2,
 					                          //				                           'salario'           => 1432000,
 					                          //				                           'cargo_id'          => 3,
-					                          //				                           'centro_costo_id'   => 1,
 				                          ]);
 				$unUsuario->assignRole($rol);
 			}
@@ -61,7 +68,7 @@ class UserSeeder extends Seeder {
 	}
 	
 	public function validarEnv() {
-		$genPa = env('sap_gen');
+		$genPa = config('sap.gen');
 		if (is_null($genPa)) {
 			dd('enviroment is null', $genPa);
 			//			abort(403, 'No env');
