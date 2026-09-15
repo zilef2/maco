@@ -1,9 +1,10 @@
 <script setup>
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, useForm } from '@inertiajs/vue3';
-import { reactive, ref } from 'vue';
-import { PlusIcon, XMarkIcon } from '@heroicons/vue/24/solid';
-import Create from './Create.vue';
+import { reactive } from 'vue';
+import { PlusIcon } from '@heroicons/vue/24/solid';
+import vSelect from 'vue-select';
+import 'vue-select/dist/vue-select.css';
 import Edit from './Edit.vue';
 import Delete from './Delete.vue';
 
@@ -15,6 +16,7 @@ const props = defineProps({
     nombresTabla: Array,
     listasAgrupadas: Object,
     isSuperadmin: Boolean,
+    modelNames: Array,
 })
 
 const data = reactive({
@@ -106,14 +108,15 @@ const submitLista = () => {
                 <!-- Formulario para agregar (solo superadmin) -->
                 <div v-if="data.showAddLista && isSuperadmin" class="px-5 py-4 bg-emerald-50 dark:bg-emerald-900/20 border-b border-emerald-200 dark:border-emerald-800">
                     <form @submit.prevent="submitLista" class="flex flex-wrap gap-3 items-end">
-                        <div class="flex flex-col gap-1">
-                            <label class="text-xs font-medium text-gray-600 dark:text-gray-300">Categoría</label>
-                            <input
+                        <div class="flex flex-col gap-1 min-w-[180px]">
+                            <label class="text-xs font-medium text-gray-600 dark:text-gray-300">Categoría (modelo)</label>
+                            <vSelect
                                 v-model="addForm.categoria"
-                                type="text"
-                                required
-                                placeholder="ej: presupuesto"
-                                class="text-sm border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 bg-white dark:bg-gray-700 dark:text-white focus:ring-2 focus:ring-emerald-500 outline-none"
+                                :options="props.modelNames"
+                                :clearable="false"
+                                placeholder="Selecciona modelo..."
+                                class="vs--sm"
+                                dropdown-max-height="300px"
                             />
                         </div>
                         <div class="flex flex-col gap-1">

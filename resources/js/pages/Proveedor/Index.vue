@@ -13,7 +13,7 @@ import pkg from 'lodash';
 import Pagination from '@/components/Pagination.vue';
 import { ChevronUpDownIcon, PencilIcon, TrashIcon } from '@heroicons/vue/24/solid';
 // import { CursorArrowRippleIcon, ChevronUpDownIcon,QuestionMarkCircleIcon, EyeIcon, PencilIcon, TrashIcon, UserGroupIcon } from '@heroicons/vue/24/solid';
-import Create from '@/pages/Create.vue';
+import Create from '@/pages/Proveedor/Create.vue';
 import Edit from '@/pages/Proveedor/Edit.vue';
 import Delete from '@/pages/Proveedor/Delete.vue';
 

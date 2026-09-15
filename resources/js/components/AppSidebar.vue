@@ -5,7 +5,7 @@ import NavUser from '@/components/NavUser.vue';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { type NavItem } from '@/types';
 import { Link } from '@inertiajs/vue3';
-import { BookOpen, Folder, LayoutGrid } from 'lucide-vue-next';
+import { Building2, BookOpen, Folder, LayoutGrid } from 'lucide-vue-next';
 import AppLogo from './AppLogo.vue';
 
 const mainNavItems: NavItem[] = [
@@ -19,9 +19,17 @@ const mainNavItems: NavItem[] = [
         href: '/Presupuesto',
         icon: LayoutGrid,
     },
+    {
+        title: 'Desarrollo',
+        href: '/desarrollo',
+        icon: Folder,
+    },
     //aquipuesSide
 ];
 
+const SoloSuperNavItems: NavItem[] = [
+
+]
 const footerSuperNavItems: NavItem[] = [
     {
         title: 'Roles',
@@ -40,11 +48,11 @@ const footerSuperNavItems: NavItem[] = [
     },
 ];
 const footerNavItems: NavItem[] = [
-    // {
-    //     title: 'Documentation',
-    //     href: 'https://laravel.com/docs/starter-kits',
-    //     icon: BookOpen,
-    // },
+    {
+        title: 'Empresa',
+        href: 'https://macondas.com/',
+        icon: Building2,
+    },
 ];
 </script>
 
@@ -66,6 +74,9 @@ const footerNavItems: NavItem[] = [
             <NavMain :items="mainNavItems" />
         </SidebarContent>
 
+        <SidebarFooter v-if="can(['issuperadmin'])">
+            <NavFooter :items="SoloSuperNavItems" />
+        </SidebarFooter>
         <SidebarFooter>
             <NavFooter :items="footerSuperNavItems" />
         </SidebarFooter>

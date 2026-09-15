@@ -9,9 +9,9 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
+// Route::get('/', function () { return Inertia::render('Welcome'); })->name('home');
 Route::get('/', function () {
-	
-	return Inertia::render('Welcome');
+    return redirect()->route('login');
 })->name('home');
 
 
@@ -21,15 +21,10 @@ Route::get('dashboard', function () {
 })->middleware(['auth', 'verified'])->name('dashboard');
 
 Route::middleware('auth', 'verified')->group(function () {
-	//<editor-fold desc="profile - role - permission">
-//	Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
-//	Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
-//	Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 	Route::resource('/role', RoleController::class)->except('create', 'show', 'edit');
 	Route::post('/role/destroy-bulk', [RoleController::class, 'destroyBulk'])->name('role.destroy-bulk');
 	Route::resource('/permission', PermissionController::class)->except('create', 'show', 'edit');
 	Route::post('/permission/destroy-bulk', [PermissionController::class, 'destroyBulk'])->name('permission.destroy-bulk');
-	//</editor-fold>
 	Route::resource('/Parametros', ParametrosController::class);
 	Route::post('/Parametros/lista', [ParametrosController::class, 'storeLista'])->name('parametros.lista.store');
 	
@@ -37,7 +32,11 @@ Route::middleware('auth', 'verified')->group(function () {
 	Route::resource('/user', UserController::class)->except('create', 'show', 'edit');
 //	Route::get('/IndexTrashed', [UserController::class, 'IndexTrashed'])->name('IndexTrashed');
 	
+    
+
 	Route::resource("/Presupuesto", \App\Http\Controllers\PresupuestoController::class);
+    require __DIR__.'/pagoszilef.php';
+
 	//aquipues
 }); //fin verified
 

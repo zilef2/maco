@@ -14,9 +14,11 @@ use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
+use App\Traits\DesarrolloHelpers;
 
 class DesarrolloController extends Controller {
 	
+	use DesarrolloHelpers;
 	public array $thisAtributos;
 	public string $FromController = 'desarrollo';
 	public array $estados = [
@@ -32,10 +34,6 @@ class DesarrolloController extends Controller {
 	
 	//<editor-fold desc="Construc | mapea | filtro and dependencia">
 	public function __construct() {
-		//        $this->middleware('permission:create desarrollo', ['only' => ['create', 'store']]);
-		//        $this->middleware('permission:read desarrollo', ['only' => ['index', 'show']]);
-		//        $this->middleware('permission:update desarrollo', ['only' => ['edit', 'update']]);
-		//        $this->middleware('permission:delete desarrollo', ['only' => ['destroy', 'destroyBulk']]);
 		$this->thisAtributos = (new desarrollo())->getFillable(); //not using
 		$this->breadcrumbs = [
 			[
@@ -90,29 +88,6 @@ class DesarrolloController extends Controller {
 	
 	public function create() {}//fin store functions public function show($id) { } public function edit($id) { }
 	
-	public function updatePago(Request $request, $id): RedirectResponse {
-		$permissions = Myhelp::EscribirEnLog($this, ' Begin UPDATE:desarrollos');
-		DB::beginTransaction();
-		$desarrollo = desarrollo::findOrFail($id);
-		if ($request->estado && gettype($request->estado) !== 'string' && $request->estado['value']) {
-			$desarrollo->update(['estado' => $request->estado['value']]);
-		}
-		
-		$numCuotas = pagodesarrollo::Where('desarrollo_id', $desarrollo->id)->count();
-		
-		pagodesarrollo::create([
-			                       'valor'         => $request->valor,
-			                       'fecha'         => $request->fecha,
-			                       'cuota'         => $numCuotas + 1,
-			                       'final'         => 0,
-			                       'desarrollo_id' => $desarrollo->id,
-		                       ]);
-		DB::commit();
-		Myhelp::EscribirEnLog($this, 'UPDATE2:desarrollos EXITOSO', 'desarrollo id:' . $desarrollo->id . ' | ' . $desarrollo->nombre, false);
-		
-		
-		return back()->with('success', __('app.label.updated_successfully2', ['nombre' => $desarrollo->nombre]));
-	}
 	
 	//paso 2
 	

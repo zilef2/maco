@@ -37,12 +37,6 @@ interface Props {
     titulos?: any[]
 }
 
-// const props = withDefaults(defineProps<Props>(), {
-//     filters: () => ({}),
-//     perPage: 10,
-//     // ...
-// })
-
 
 const props = withDefaults(defineProps<Props>(), {
     // const props = defineProps({

@@ -14,8 +14,8 @@ class ProveedorSeeder extends Seeder
         $superadmin = User::role('superadmin')->first();
         $admin = User::role('admin')->first();
 
-        $vectorCRUD = ['create', 'update', 'read', 'update2', 'delete'];
-        $adminCRUD = ['create', 'update', 'read', 'update2'];
+        $vectorCRUD = ['create', 'update', 'read', 'update2', 'delete']; //superadmin puede hacer todo
+        $adminCRUD = ['create', 'update', 'read', 'update2']; //permisos que se le dan al admin
         $vectorModelo = ['Proveedor'];
 
         foreach ($vectorCRUD as $crud) {

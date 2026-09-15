@@ -17,6 +17,7 @@ php artisan make:command copy:u
 class CopyUserPages extends Command
 {
     use Constants;
+    protected $signature = 'copy:u';
 
     const MSJ_EXITO = ' fue realizada con exito ';
 
@@ -24,7 +25,6 @@ class CopyUserPages extends Command
 
     public $generando;
 
-    protected $signature = 'copy:u';
 
     protected $description = 'Copia de la entidad generica';
 
@@ -84,47 +84,106 @@ class CopyUserPages extends Command
     {
         try {
             $this->generando = self::getMessage('generando');
-
             $this->contadorMetodos = 0;
             $submetodo['Lenguaje'] = 0;
 
-            // $modelName = $this->ask('¿Cuál es el nombre del modelo? Recuerde revisar los atributos.');
-            // if (! $modelName || $modelName == '') {
-            //     $this->info('Sin modelo');
-
-            //     return 0;
-            // }
             $modelName = $this->thename;
 
             if (! $this->ValidacionesPrevias($modelName, 'generic')) {
                 $this->error('Las validaciones previas fallaron. Ejecución cancelada.');
-
                 return 0;
             }
 
-            $progressBar = $this->output->createProgressBar(2);
+            $pasos = [
+                'modelo'      => '1. make:model + copy:f + lang:u',
+                'vue'         => '2. Páginas Vue (MakeVuePages)',
+                'controller'  => '3. Controlador (MakeControllerPages)',
+                'replace'     => '4. Reemplazar palabras en archivos',
+                'atributos'   => '5. AddAttributesVue',
+                'paso2'       => '6. Paso2 (routes, seeder permisos…)',
+                'optimize'    => '7. optimize + optimize:clear',
+            ];
+
+            $seleccionados = $this->choice(
+                '¿Qué pasos deseas ejecutar? (separados por coma, ej: 0,2,4)',
+                array_values($pasos),
+                implode(',', array_keys(array_values($pasos))), // todos por defecto
+                null,
+                true // multiselect
+            );
+
+            $activos = array_keys(array_filter(
+                $pasos,
+                fn($label) => in_array($label, $seleccionados)
+            ));
+
+            $this->info('Pasos seleccionados: ' . implode(', ', $activos));
+
+            $progressBar = $this->output->createProgressBar(count($activos));
             $progressBar->start();
 
-            $this->MetodologiaInicial($modelName, 'generic', '');
-            $this->AddAttributesVue($modelName);3
-            $this->Paso2($modelName, $submetodo);
+            // --- Paso 1: modelo base ---
+            if (in_array('modelo', $activos)) {
+                $this->warn('Empezando make:model');
+                Artisan::call('make:model', ['name' => $modelName, '--all' => true]);
+                Artisan::call('copy:f');
+                Artisan::call('lang:u ' . $modelName);
+                $progressBar->advance();
+            }
 
-            // $this->info('generando permisos');
-            // $this->info(Artisan::call('make:permission-seeder '.$modelName));
-            // $progressBar->advance();
+            // --- Paso 2: Vue pages ---
+            $vueOk = false;
+            if (in_array('vue', $activos)) {
+                $vueOk = $this->MakeVuePages('generic', $modelName);
+                $this->info($vueOk ? 'Vue OK' : 'Vue FALLO');
+                $progressBar->advance();
+            }
 
-            $this->info(Artisan::call('optimize'));
-            $this->info(Artisan::call('optimize:clear'));
-            $progressBar->advance();
+            // --- Paso 3: Controller ---
+            $ctrlOk = false;
+            if (in_array('controller', $activos)) {
+                $ctrlOk = $this->MakeControllerPages('generic', $modelName);
+                $this->info($ctrlOk ? 'Controller OK' : 'Controller FALLO');
+                $progressBar->advance();
+            }
+
+            // --- Paso 4: Reemplazar palabras ---
+            if (in_array('replace', $activos) && ($vueOk || $ctrlOk)) {
+                $this->replaceWordInFiles('generic', [
+                    'vue'        => $vueOk,
+                    'controller' => $ctrlOk,
+                ], $modelName, '');
+                $progressBar->advance();
+            }
+
+            // --- Paso 5: Atributos Vue ---
+            if (in_array('atributos', $activos)) {
+                $this->AddAttributesVue($modelName);
+                $progressBar->advance();
+            }
+
+            // --- Paso 6: Paso2 (routes, seeder permisos…) ---
+            if (in_array('paso2', $activos)) {
+                $this->Paso2($modelName, $submetodo);
+                $progressBar->advance();
+            }
+
+            // --- Paso 7: Optimize ---
+            if (in_array('optimize', $activos)) {
+                $this->info(Artisan::call('optimize'));
+                $this->info(Artisan::call('optimize:clear'));
+                $progressBar->advance();
+            }
+
             $progressBar->finish();
+            $this->newLine();
+            $this->info('Finalizado.');
 
             return 1;
         } catch (Exception $e) {
-            $this->error('FALLO CONTADOR: '.$this->contadorMetodos.'FALLO Lenguaje: '.$submetodo['Lenguaje'].' excepcion: '.$e->getMessage());
-
+            $this->error('FALLO en contador: ' . $this->contadorMetodos . ' | ' . $e->getMessage());
             return 0;
         }
-
     }
 
     public function MetodologiaInicial(mixed $modelName, string $plantillaActual, mixed $depende): int

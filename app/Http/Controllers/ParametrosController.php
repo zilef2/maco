@@ -66,6 +66,11 @@ class ParametrosController extends Controller
                 ->groupBy('categoria')
                 ->map(fn($porCategoria) => $porCategoria->groupBy('subcategoria'));
 
+            $modelNames = collect(glob(app_path('Models/*.php')))
+                ->map(fn($path) => strtolower(pathinfo($path, PATHINFO_FILENAME)))
+                ->values()
+                ->toArray();
+
             return Inertia::render('parametro/Index', [
                 'title'          => $titulo,
                 'filters'        => $request->all(['search', 'field', 'order']),
@@ -74,6 +79,7 @@ class ParametrosController extends Controller
                 'nombresTabla'   => $nombresTabla,
                 'listasAgrupadas' => $listasAgrupadas,
                 'isSuperadmin'   => $permissions === 'superadmin',
+                'modelNames'     => $modelNames,
             ]);
         } else {
             Myhelp::EscribirEnLog($this, ' parametro', 'en el index nos hackearon ', false, true);

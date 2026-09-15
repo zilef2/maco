@@ -9,10 +9,10 @@
  formatDate
  monthName
  TransformTdate
-
+    Date_to_html
  --MATH  functions
-
- zilef_nuber_format
+    formatdinero
+    zilef_nuber_format
  CalcularEdad
  CalcularSexo
  CalcularAvg
@@ -31,6 +31,17 @@
  vectorSelect
 */
 
+export function formatPesosCol(number:number): string {
+    number = Math.round(number);
+    const formattedNumber = number.toLocaleString('en-US', {
+        minimumFractionDigits: 0, // Mínimo de dígitos decimales (en este caso, 0)
+        maximumFractionDigits: 0 // Máximo de dígitos decimales (en este caso, 0)
+    });
+
+    // Reemplazar la coma por un punto como separador decimal
+    return '$ ' + formattedNumber;
+    // return '$ ' + number.toString().replace(/\B(?=(\d{3})+(?!\d))/g, "'");
+} 
 import {toInteger} from "lodash";
 
 //<editor-fold desc="This Project">
@@ -194,10 +205,54 @@ export function NumToHour(HourWithDecimals : number) {
     return `${hours} h ${minutes} mins`;
 }
 
+export function Date_to_html(date: Date): String {
+    if (!(date instanceof Date) || isNaN(date.getTime())) {
+        return ''
+    }
+    const day = date.getDate();
+    const month = date.getMonth() + 1;
+    const year = date.getFullYear();
+    let day2: string = day < 10 ? '0' + day : day + '';
+
+    let month2: string = month < 10 ? '0' + month : month + '';
+
+    return `${year}-${month2}-${day2}`;
+}
+
 // fin DATE functions
 
 
 // MATH  functions
+export function formatdinero(amount: any): string {
+    if (typeof amount === 'undefined' || amount === null || amount === '') return '$0';
+    
+    // Extraer solo números y signo negativo
+    let strAmount = amount.toString().replace(/[^0-9\.-]/g, '');
+    let num = parseFloat(strAmount);
+    
+    if (isNaN(num)) return '$0';
+
+    let integerPart = Math.round(num).toString();
+    let isNegative = integerPart.startsWith('-');
+    if (isNegative) integerPart = integerPart.substring(1);
+    
+    let reversed = integerPart.split('').reverse().join('');
+    let formatted = '';
+    
+    for (let i = 0; i < reversed.length; i++) {
+        if (i > 0 && i % 3 === 0) {
+            if (i % 6 === 0) {
+                formatted += "'"; // Comilla para millones
+            } else {
+                formatted += "."; // Punto para miles
+            }
+        }
+        formatted += reversed[i];
+    }
+    
+    let result = '$' + formatted.split('').reverse().join('');
+    return isNegative ? '-' + result : result;
+}
 export function CalcularAvg(TheArray, NameValue = '', isTime = false) {
     if(!TheArray) return 0
     let sum: number

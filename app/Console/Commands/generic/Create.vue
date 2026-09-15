@@ -154,14 +154,3 @@ const sexos = [{ label: 'Masculino', value: 0 }, { label: 'Femenino', value: 1 }
     </section>
 </template>
 
-<style>
-[name="labelSelectVue"],
-.muted {
-    color: #1b416699;
-}
-
-[name="labelSelectVue"] {
-    /* font-size: 22px; */
-    font-weight: 600;
-}
-</style>

@@ -1,6 +1,6 @@
 @echo off
 setlocal enabledelayedexpansion
-
+@REM EJECUTAR PARA TOMAR LOS ARCHIVOS DE ARCHIVOSCOPY
 :: Configuración de rutas
 set "ORIGEN=C:\laragon\www\archivoscopy"
 set "DESTINO=%~dp0"
