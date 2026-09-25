@@ -178,7 +178,9 @@ class UserController extends Controller
         Myhelp::EscribirEnLog($this, 'UPDATE:users', '', false);
         DB::beginTransaction();
         try {
-            $sexo = is_string($request->sexo) ? $request->sexo : $request->sexo['value'];
+            if($request->sexo)
+                $sexo = is_string($request->sexo) ? $request->sexo : $request->sexo['value'];
+            
             $user = User::findOrFail($id);
             $user->update([
                 'name' => $request->name,
@@ -196,6 +198,8 @@ class UserController extends Controller
             Myhelp::EscribirEnLog($this, 'UPDATE:users', 'usuario id:' . $user->id . ' | ' . $user->name . ' actualizado', false);
             return back()->with('success', __('app.label.updated_successfully', ['name' => $user->name]));
         } catch (\Throwable $th) {
+            $user = User::findOrFail($id);
+
             DB::rollback();
             Myhelp::EscribirEnLog($this, 'UPDATE:users', 'usuario id:' . $user->id . ' | ' . $user->name . '  fallo en el actualizado', false);
             return back()->with('error', __('app.label.updated_error', ['name' => $user->name]) . $th->getMessage() . ' L:' . $th->getLine() . ' Ubi: ' . $th->getFile());
@@ -227,9 +231,13 @@ class UserController extends Controller
     public function destroyBulk(Request $request)
     {
         try {
-            $user = User::whereIn('id', $request->id);
-            $user->delete();
-            return back()->with('success', __('app.label.deleted_successfully', ['name' => count($request->id) . ' ' . __('app.label.user')]));
+            $users = User::whereIn('id', $request->id);
+            $count = count($request->id);
+            if ($count > 9) {
+                return back()->with('error', 'Son demasiados usuarios para eliminarlos, intente de nuevo');
+            }
+            $users->delete();
+            return back()->with('success', 'Se han eliminado ' . $count . ' usuarios');
         } catch (\Throwable $th) {
             return back()->with('error', __('app.label.deleted_error', ['name' => count($request->id) . ' ' . __('app.label.user')]) . $th->getMessage() . ' L:' . $th->getLine() . ' Ubi: ' . $th->getFile());
         }

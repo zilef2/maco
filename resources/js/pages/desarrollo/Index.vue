@@ -12,7 +12,6 @@ import Delete from '@/pages/desarrollo/Delete.vue';
 import Pagodllo from '@/pages/desarrollo/Pagodllo.vue';
 
 
-// import {formatDate, formatPesosCol} from '@/global.ts';
 import { formatPesosCol, formatDate } from '@zilef/global'
 
 const {_, debounce, pickBy} = pkg
@@ -49,11 +48,6 @@ const data = reactive({
 })
 
 // <!--<editor-fold desc="order, watchclone, select">-->
-const order = (field) => {
-    data.params.field = field
-    data.params.order = data.params.order === "asc" ? "desc" : "asc"
-}
-
 watch(() => _.cloneDeep(data.params), debounce(() => {
     let params = pickBy(data.params)
     router.get(route("desarrollo.index"), params, {
@@ -63,19 +57,8 @@ watch(() => _.cloneDeep(data.params), debounce(() => {
     })
 }, 150))
 
-const selectAll = (event) => {
-    if (event.target.checked === false) {
-        data.selectedId = []
-    } else {
-        props.fromController?.data.forEach((desarrollo) => {
-            data.selectedId.push(desarrollo.id)
-        })
-    }
-}
-const select = () => data.multipleSelect = props.fromController?.data.length === data.selectedId.length;
 
 // <!--</editor-fold>-->
-
 const notificarRetraso = () => {
     router.post(route('desarrollo.notifyDelay'), {}, {
         preserveScroll: true,
@@ -357,7 +340,41 @@ const soloFinalizadas = computed(() => {
                     </div>
                     <hr class="mt-16 mb-5">
                      <div class="p-6 border-b border-gray-200 dark:border-gray-700">
-                        <h2 class="text-xl font-semibold text-gray-900 dark:text-white">Finalizados</h2>
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                            <h2 class="text-xl font-semibold text-gray-900 dark:text-white">Finalizados</h2>
+                            <div class="flex flex-wrap gap-2">
+                                <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 ring-1 ring-slate-200 dark:ring-slate-600">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                                    Total
+                                    <span class="ml-1 bg-slate-200 dark:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-full px-1.5 py-0.5 text-xs font-bold">{{ props.fromController.data.length }}</span>
+                                </span>
+                                <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400 ring-1 ring-yellow-200 dark:ring-yellow-800">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-yellow-400"></span>
+                                    Cotizando
+                                    <span class="ml-1 bg-yellow-200 dark:bg-yellow-800/60 text-yellow-800 dark:text-yellow-300 rounded-full px-1.5 py-0.5 text-xs font-bold">{{ props.fromController.data.filter(i => i.estado === 'Cotizando').length }}</span>
+                                </span>
+                                <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 ring-1 ring-blue-200 dark:ring-blue-800">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
+                                    Desarrollando
+                                    <span class="ml-1 bg-blue-200 dark:bg-blue-800/60 text-blue-800 dark:text-blue-300 rounded-full px-1.5 py-0.5 text-xs font-bold">{{ props.fromController.data.filter(i => i.estado === 'Desarrollando').length }}</span>
+                                </span>
+                                <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-400 ring-1 ring-orange-200 dark:ring-orange-800">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-orange-400"></span>
+                                    Esp. pago parcial
+                                    <span class="ml-1 bg-orange-200 dark:bg-orange-800/60 text-orange-800 dark:text-orange-300 rounded-full px-1.5 py-0.5 text-xs font-bold">{{ props.fromController.data.filter(i => i.estado === 'Esperando pago parcial').length }}</span>
+                                </span>
+                                <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 ring-1 ring-green-200 dark:ring-green-800">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-green-400"></span>
+                                    Pagada totalmente
+                                    <span class="ml-1 bg-green-200 dark:bg-green-800/60 text-green-800 dark:text-green-300 rounded-full px-1.5 py-0.5 text-xs font-bold">{{ props.fromController.data.filter(i => i.estado === 'Pagada totalmente').length }}</span>
+                                </span>
+                                <span class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold bg-gray-50 dark:bg-gray-900/30 text-gray-600 dark:text-gray-400 ring-1 ring-gray-200 dark:ring-gray-700">
+                                    <span class="w-1.5 h-1.5 rounded-full bg-gray-400"></span>
+                                    Finalizada
+                                    <span class="ml-1 bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded-full px-1.5 py-0.5 text-xs font-bold">{{ props.fromController.data.filter(i => i.estado === 'Finalizada').length }}</span>
+                                </span>
+                            </div>
+                        </div>
                     </div>
                     <div class="divide-y divide-gray-200 dark:divide-gray-700">
                         <div v-for="(item, index) in soloFinalizadas" :key="index"

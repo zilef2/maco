@@ -5,12 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\desarrollo;
 use App\helpers\Myhelp;
 use App\helpers\MyModels;
-use App\Models\pagodesarrollo;
-use Carbon\Carbon;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -29,10 +25,9 @@ class DesarrolloController extends Controller {
 		'Finalizada'
 	];
 	
-	public $Array_search = ['search', 'field', 'order'];
-	public $breadcrumbs;
+	public array $Array_search = ['search', 'field', 'order'];
+	public array $breadcrumbs;
 	
-	//<editor-fold desc="Construc | mapea | filtro and dependencia">
 	public function __construct() {
 		$this->thisAtributos = (new desarrollo())->getFillable(); //not using
 		$this->breadcrumbs = [

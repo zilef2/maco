@@ -4,8 +4,50 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "08b6d911d4c0394abc5a6dd61559276f",
+    "content-hash": "a0ac8ae322fe9ce83907478ef4cdb2f6",
     "packages": [
+        {
+            "name": "alejo/laravel-notificaciones",
+            "version": "dev-main",
+            "dist": {
+                "type": "path",
+                "url": "packages/notificacion",
+                "reference": "3a900c4fab50bc88cfaf24575c9e6b5c81bdcf8f"
+            },
+            "require": {
+                "laravel/framework": "^12.0",
+                "php": "^8.3"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "providers": [
+                        "Alejo\\Notificaciones\\NotificacionesServiceProvider"
+                    ],
+                    "aliases": {
+                        "Notificaciones": "Alejo\\Notificaciones\\Facades\\NotificacionesFacade"
+                    }
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Alejo\\Notificaciones\\": "src/"
+                }
+            },
+            "scripts": {
+                "post-autoload-dump": [
+                    "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
+                    "@php artisan vendor:publish --tag=notificaciones-migrations --ansi --force"
+                ]
+            },
+            "license": [
+                "MIT"
+            ],
+            "description": "Persistent notifications with priorities for Laravel",
+            "transport-options": {
+                "relative": true
+            }
+        },
         {
             "name": "brick/math",
             "version": "0.14.8",
@@ -10412,14 +10454,14 @@
         }
     ],
     "aliases": [],
-    "minimum-stability": "stable",
+    "minimum-stability": "dev",
     "stability-flags": {},
     "prefer-stable": true,
     "prefer-lowest": false,
     "platform": {
         "php": "^8.3",
-        "ext-zip": "*",
-        "ext-curl": "*"
+        "ext-curl": "*",
+        "ext-zip": "*"
     },
     "platform-dev": {},
     "plugin-api-version": "2.6.0"

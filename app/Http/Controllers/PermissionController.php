@@ -4,9 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\Permission\PermissionIndexRequest;
 use App\Http\Requests\Permission\PermissionStoreRequest;
+use App\Http\Requests\Permission\PermissionStoreModuloRequest;
 use App\Http\Requests\Permission\PermissionUpdateRequest;
 use App\Models\Permission;
 use App\Models\Role;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -66,6 +68,43 @@ class PermissionController extends Controller
         } catch (\Throwable $th) {
             DB::rollback();
             return back()->with('error', __('app.label.created_error', ['name' => __('app.label.permission')]) . $th->getMessage() . ' L:' . $th->getLine() . ' Ubi: ' . $th->getFile());
+        }
+    }
+
+    public function storeModulo(PermissionStoreModuloRequest $request): RedirectResponse
+    {
+        $data = $request->validated();
+        $modulo = trim($data['modulo'] ?? '');
+        $permissions = $data['permissions'] ?? [];
+
+        if (empty($permissions) && !empty($modulo)) {
+            $cruds = ['create', 'read', 'update', 'delete'];
+            foreach ($cruds as $crud) {
+                $permissions[] = "{$crud} {$modulo}";
+            }
+        }
+
+        DB::beginTransaction();
+        try {
+            $superadmin = Role::whereName('superadmin')->first();
+            $creados = [];
+            foreach ($permissions as $permName) {
+                $perm = Permission::firstOrCreate([
+                    'name' => trim($permName),
+                    'guard_name' => 'web',
+                ]);
+                $creados[] = $perm->name;
+            }
+
+            if ($superadmin && !empty($creados)) {
+                $superadmin->givePermissionTo($creados);
+            }
+
+            DB::commit();
+            return back()->with('success', count($creados) . ' permisos procesados exitosamente.');
+        } catch (\Throwable $th) {
+            DB::rollback();
+            return back()->with('error', 'Error al procesar permisos: ' . $th->getMessage());
         }
     }
 

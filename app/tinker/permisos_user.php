@@ -1,7 +1,8 @@
 <?php
 
-//php artisan tinker --execute="require 'app/tinker/permisos_user.tinker';"
-//php artisan tinker --execute="require 'app/tinker/permisos_user.php';"
+/*
+php artisan tinker --execute="include 'app/tinker/añadir_parametros.php';"
+*/
 
 $id = 1; // <-- cambia este ID o pásalo por variable de entorno
 

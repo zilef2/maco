@@ -4,9 +4,13 @@ namespace App\Traits;
 
 use App\Models\desarrollo;
 use App\helpers\Myhelp;
+use App\Jobs\EnviarViaticoJob;
 use App\Models\pagodesarrollo;
+use App\Models\Parametro;
+use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\DB;
 
 
@@ -24,8 +28,6 @@ trait DesarrolloHelpers
         'Finalizada',
     ];
 
-    public $breadcrumbs;
-
     public function __construct()
     {
         $this->thisAtributos = (new desarrollo)->getFillable(); // not using
@@ -38,9 +40,9 @@ trait DesarrolloHelpers
     }
 
 
-    public function updatePago(Request $request, $id): RedirectResponse
+    public function updatePago(Request $request, int $id): RedirectResponse
     {
-        $permissions = Myhelp::EscribirEnLog($this, ' Begin UPDATE:desarrollos');
+        Myhelp::EscribirEnLog($this, ' Begin UPDATE:desarrollos');
         DB::beginTransaction();
         $desarrollo = desarrollo::findOrFail($id);
         if ($request->estado && gettype($request->estado) !== 'string' && $request->estado['value']) {
@@ -62,23 +64,38 @@ trait DesarrolloHelpers
         return back()->with('success', __('app.label.updated_successfully2', ['nombre' => $desarrollo->nombre]));
     }
 
-    public function notifyDelay(Request $request): RedirectResponse
+    public function notifyDelay(): RedirectResponse
     {
         
         $detalle = [ 'mensaje' => 'El pago se ha retrasado mucho, por favor comuníquese a la brevedad.' ];
+        $mensaje = 'Correo de retraso en los pagos enviado. Se bloqueó el acceso a usuarios. ';
+
         $esProduccion = App::environment('production');
         $yomismo = User::find(1)->email;
+        $ExisteJefe = '';
+        $ambiente= '';
+
+        
+        // 2 - es produccion o no
         if ($esProduccion) {
-            $jefe = \App\Models\User::Where('name', 'Carlos Daniel Anaya Barrios')->first();
-            if ($jefe) {
-                EnviarViaticoJob::dispatch($jefe->email, $detalle);
-                EnviarViaticoJob::dispatch($yomismo, $detalle)->delay(now()->addSeconds(3));
-                $mensaje = 'Correo de retraso enviado y acceso a usuarios denegado.';
-            }
+            $ambiente= 'Produccion';
         } else {
-            EnviarViaticoJob::dispatch($yomismo, $detalle)->delay(now()->addSeconds(2));
-            $mensaje = 'Correo de retraso enviado y acceso a usuarios denegado.';
+            $ambiente= 'Local o no prod';
+            $mensaje .= "\tAmbiente: " . $ambiente . "\t" . $ExisteJefe;
         }
+        // 1 - encontrar al jefe
+        $jefe = Parametro::Where('nombre', 'jefe')->first();//valor = nombre,valor2 = email
+        
+        if ($jefe) {
+            $ExisteJefe = ' Se encontro al jefe ';
+            if ($esProduccion) {
+                EnviarViaticoJob::dispatch($jefe->valor2, $detalle);
+            }
+        }else{
+            $ExisteJefe = ' No se encontro al jefe ';
+        }
+
+        EnviarViaticoJob::dispatch($yomismo, $detalle)->delay(now()->addSeconds(2));
 
         \Illuminate\Support\Facades\Cache::put('block_user_access', true);
 

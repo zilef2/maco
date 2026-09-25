@@ -20,6 +20,8 @@ class DatabaseSeeder extends Seeder
             UserSeeder::class,
             ParametrosSeeder::class,
             ListaDesplegableSeeder::class,
+                    ProductoSeeder::class,
+
         ]);
 
     }

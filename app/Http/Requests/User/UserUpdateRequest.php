@@ -27,14 +27,14 @@ class UserUpdateRequest extends FormRequest
         return [
             'name'                  => ['required', 'string', 'max:255'],
             'email'                 => 'required|unique:users,email,' . $this->user,
-            'cedula'                => 'required',
             'password'              => ['nullable', 'confirmed', Password::defaults()],
             'password_confirmation' => 'sometimes|required_with:password|same:password',
             'role'                  => ['required'],
-            'salario'               => ['required'],
-            'telefono'              => ['nullable'],
-            'celular'               => ['required'],
-            'fecha_de_ingreso'      => ['required'],
+            
+            'identificacion'        => 'required',
+            'salario'               => ['nullable'],
+            'celular'               => ['nullable'],
+            'fecha_de_ingreso'      => ['nullable'],
             'sexo'                  => ['required'],
         ];
     }

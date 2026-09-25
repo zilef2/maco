@@ -19,7 +19,7 @@ class UserSeederReal extends Seeder {
 
 		$datareal = [
 			[
-				'Jessica Maria Perez pruebas',
+				'José pruebas',
 				'alejofg2@gmail.com',
 				1193231624,//2
 				'3012124273',

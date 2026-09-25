@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
+
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 /**
@@ -54,9 +55,9 @@ class desarrollo extends Model {
 		])->toArray());
 	}
 	
-	function formatPesosCol($number): string {
+	function formatPesosCol(float $number): string {
 		$number = round($number);
-		$formattedNumber = zilef_nuber_format($number, 0, '.', ',');
+		$formattedNumber = number_format($number, 0, '.', ',');
 		
 		
 		return '$ ' . $formattedNumber;

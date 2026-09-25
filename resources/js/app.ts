@@ -11,7 +11,7 @@ import { initializeTheme } from './composables/useAppearance';
 import FloatingVue from 'floating-vue'; // Importa el plugin
 import 'floating-vue/dist/style.css';
 
-const appName = import.meta.env.VITE_APP_NAME || 'Zilef';
+const appName = import.meta.env.VITE_APP_NAME || 'Macondas';
 
 createInertiaApp({
     title: (title: string): string => `${title} - ${appName}`,
@@ -38,20 +38,28 @@ createInertiaApp({
                         return hasPermission;
                     },
                     lang: function () {
+                        const translations = this.$page.props.translations ?? {};
+                        const translate = (key: string, defaultValue: string = '') => {
+                            if (!key) return defaultValue;
+                            const keys = key.split('.');
+                            let value: any = translations;
+
+                            for (const k of keys) {
+                                if (!value || typeof value !== 'object' || !value[k]) return defaultValue;
+                                value = value[k];
+                            }
+
+                            return value || defaultValue;
+                        };
+
                         return {
                             locale: this.$page.props.locale ?? 'es',
-                            translations: this.$page.props.translations ?? {},
-                            // Método para acceder a las traducciones fácilmente
+                            translations,
                             t: function (key: string, defaultValue: string = '') {
-                                const keys = key.split('.');
-                                let value = this.translations;
-
-                                for (const k of keys) {
-                                    if (!value[k]) return defaultValue;
-                                    value = value[k];
+                                if (key === 'app.t') {
+                                    return translate;
                                 }
-
-                                return value || defaultValue;
+                                return translate(key, defaultValue);
                             },
                         };
                     },

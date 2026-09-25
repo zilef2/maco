@@ -75,7 +75,7 @@ class ParametrosController extends Controller
                 'title'          => $titulo,
                 'filters'        => $request->all(['search', 'field', 'order']),
                 'perPage'        => 1,
-                'fromController' => Parametro::first(),
+                'fromController' => Parametro::all(),
                 'nombresTabla'   => $nombresTabla,
                 'listasAgrupadas' => $listasAgrupadas,
                 'isSuperadmin'   => $permissions === 'superadmin',

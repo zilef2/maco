@@ -2,6 +2,7 @@
 import AppLayout from '@/layouts/AppLayout.vue';
 import { type BreadcrumbItem } from '@/types';
 import { Head } from '@inertiajs/vue3';
+import NotificacionSidebar from '@/components/NotificacionSidebar.vue';
 
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -10,6 +11,7 @@ const breadcrumbs: BreadcrumbItem[] = [
         href: '/dashboard',
     },
 ];
+
 
 </script>
 
@@ -32,6 +34,7 @@ const breadcrumbs: BreadcrumbItem[] = [
             <div class="relative min-h-[100vh] flex-1 rounded-xl border border-sidebar-border/70 dark:border-sidebar-border md:min-h-min">
                 <PlaceholderPattern />
             </div>
+            <NotificacionSidebar :usuario-id="1" />
         </div>
     </AppLayout>
 </template>

@@ -27,15 +27,20 @@ class MyModels {
 		];
 		if ($returning === 'soloNombresRoles') {
 			
-			return array_merge($nombresDeCargos, $nombresDeCargosSuper);
+			return $nombresDeCargos + $nombresDeCargosSuper;
+			// return array_merge($nombresDeCargos, $nombresDeCargosSuper);
 		}
 		$Models = [
 			'role',
 			'permission',
 			'user',
 			'parametros',
-			'elcore', // core
+			
 			'Presupuesto',
+			'materias_primas',
+			'Producto',
+			//aquipues
+
 		];
 		if ($returning === 'soloModels') {
 			

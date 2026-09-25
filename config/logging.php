@@ -57,6 +57,26 @@ return [
             'channels' => explode(',', env('LOG_STACK', 'single')),
             'ignore_exceptions' => false,
         ],
+         'solosuper' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/Super.log'),
+            'level' => env('LOG_LEVEL', 'debug'),
+        ],
+        'soloadmin' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/Adminlaravel.log'),
+            'level' => env('LOG_LEVEL', 'debug'),
+        ],
+        'soloadministrativo' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/Administrativo.log'),
+            'level' => env('LOG_LEVEL', 'debug'),
+        ],
+        'issupervisor' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/supervisor.log'),
+            'level' => env('LOG_LEVEL', 'debug'),
+        ],
 
         'single' => [
             'driver' => 'single',

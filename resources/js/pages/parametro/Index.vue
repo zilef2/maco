@@ -75,15 +75,15 @@ const submitLista = () => {
                         </tr>
                     </thead>
                     <tbody>
-                        <tr class="border-t border-gray-100 dark:border-gray-700">
+                        <tr v-for="item in fromController" class="border-t border-gray-100 dark:border-gray-700">
                             <td class="px-4 py-2">—</td>
-                            <td class="px-4 py-2">{{ fromController?.nombre }}</td>
-                            <td class="px-4 py-2">{{ fromController?.valor }}</td>
-                            <td class="px-4 py-2">{{ fromController?.valor2 }}</td>
-                            <td class="px-4 py-2">{{ fromController?.valor_date }}</td>
-                            <td class="px-4 py-2">{{ fromController?.valor_int }}</td>
-                            <td class="px-4 py-2">{{ fromController?.valor_double }}</td>
-                            <td class="px-4 py-2">{{ fromController?.valor_string1m }}</td>
+                            <td class="px-4 py-2">{{ item?.nombre }}</td>
+                            <td class="px-4 py-2">{{ item?.valor }}</td>
+                            <td class="px-4 py-2">{{ item?.valor2 }}</td>
+                            <td class="px-4 py-2">{{ item?.valor_date }}</td>
+                            <td class="px-4 py-2">{{ item?.valor_int }}</td>
+                            <td class="px-4 py-2">{{ item?.valor_double }}</td>
+                            <td class="px-4 py-2">{{ item?.valor_string1m }}</td>
                         </tr>
                     </tbody>
                 </table>

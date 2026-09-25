@@ -1,0 +1,33 @@
+{
+    "name": "alejo/laravel-notificaciones",
+    "description": "Persistent notifications with priorities for Laravel",
+    "type": "library",
+    "license": "MIT",
+    "require": {
+        "php": "^8.3",
+        "laravel/framework": "^12.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Alejo\\Notificaciones\\": "src/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Alejo\\Notificaciones\\NotificacionesServiceProvider"
+            ],
+            "aliases": {
+                "Notificaciones": "Alejo\\Notificaciones\\Facades\\NotificacionesFacade"
+            }
+        }
+    },
+    "scripts": {
+        "post-autoload-dump": [
+            "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
+            "@php artisan vendor:publish --tag=notificaciones-migrations --ansi --force"
+        ]
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true
+}

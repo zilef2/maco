@@ -7,6 +7,7 @@ import { type NavItem } from '@/types';
 import { Link } from '@inertiajs/vue3';
 import { Building2, BookOpen, Folder, LayoutGrid } from 'lucide-vue-next';
 import AppLogo from './AppLogo.vue';
+import AppLogoMini from './AppLogoMini.vue';
 
 const mainNavItems: NavItem[] = [
     {
@@ -20,36 +21,33 @@ const mainNavItems: NavItem[] = [
         icon: LayoutGrid,
     },
     {
+        title: 'Usuarios',
+        href: '/user',
+        icon: LayoutGrid,
+    },
+    {
+		title: 'Materias primas',
+		href: '/materias_primas',
+		icon: LayoutGrid,
+	},
+	{
+		title: 'Producto',
+		href: '/Producto',
+		icon: LayoutGrid,
+	},
+	//aquipuesSide
+];
+
+const footerAdminItems: NavItem[] = [
+    {
         title: 'Desarrollo',
         href: '/desarrollo',
         icon: Folder,
     },
-    //aquipuesSide
-];
-
-const SoloSuperNavItems: NavItem[] = [
-
-]
-const footerSuperNavItems: NavItem[] = [
-    {
-        title: 'Roles',
-        href: '/role',
-        icon: Folder,
-    },
-    {
-        title: 'Permissions',
-        href: '/permission',
-        icon: Folder,
-    },
-    {
-        title: 'Parametros',
-        href: '/Parametros',
-        icon: BookOpen,
-    },
 ];
 const footerNavItems: NavItem[] = [
     {
-        title: 'Empresa',
+        title: 'Página de la empresa',
         href: 'https://macondas.com/',
         icon: Building2,
     },
@@ -63,7 +61,7 @@ const footerNavItems: NavItem[] = [
                 <SidebarMenuItem>
                     <SidebarMenuButton size="lg" as-child>
                         <Link :href="route('dashboard')">
-                            <AppLogo />
+                            <AppLogoMini />
                         </Link>
                     </SidebarMenuButton>
                 </SidebarMenuItem>
@@ -74,11 +72,8 @@ const footerNavItems: NavItem[] = [
             <NavMain :items="mainNavItems" />
         </SidebarContent>
 
-        <SidebarFooter v-if="can(['issuperadmin'])">
-            <NavFooter :items="SoloSuperNavItems" />
-        </SidebarFooter>
-        <SidebarFooter>
-            <NavFooter :items="footerSuperNavItems" />
+        <SidebarFooter  class="hidden md:flex" v-if="can(['isadmin'])">
+            <NavFooter :items="footerAdminItems" />
         </SidebarFooter>
         <SidebarFooter>
             <NavFooter :items="footerNavItems" />

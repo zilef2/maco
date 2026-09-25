@@ -14,6 +14,8 @@ export default defineConfig({
             input: ['resources/js/app.ts'],
             ssr: 'resources/js/ssr.ts',
             refresh: true,
+            transformOnServe: (code, devServerUrl) => code.replaceAll(devServerUrl, devServerUrl.replace('http://', 'https://')),
+
         }),
         tailwindcss(),
         vue({

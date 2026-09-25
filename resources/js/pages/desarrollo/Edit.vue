@@ -21,8 +21,7 @@ const props = defineProps({
 })
 
 const emit = defineEmits(["close"]);
-const data = reactive({
-})
+const data = reactive({ })
 
 //very usefull
 let justNames = props.titulos.map(names => {
@@ -89,7 +88,7 @@ const update = () => {
         <Modal :show="props.show" @close="emit('close')" :maxWidth="'xl4'" class="pb-20">
             <form class="px-6 pt-6 pb-20" @submit.prevent="create">
                 <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100">
-                    {{ lang().t('app.label.edit') }} {{ props.title }}
+                    {{ lang().t('app.label.updating') }} {{ props.title }}
                 </h2>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
 

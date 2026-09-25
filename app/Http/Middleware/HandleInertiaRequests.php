@@ -39,10 +39,10 @@ class HandleInertiaRequests extends Middleware {
 	public function share(Request $request): array {
 		[$message, $author] = str(Inspiring::quotes()->random())->explode('-');
 		
-//		$locale = App::getLocale();
-		$locale = 'es';
-		$translationPath = base_path("lang/{$locale}");
-		$files = File::files($translationPath);
+		$locale = session('locale', config('app.locale', 'es'));
+		App::setLocale($locale);
+		$translationPath = lang_path($locale);
+		$files = File::exists($translationPath) ? File::files($translationPath) : [];
 		
 		$translations = [];
 		foreach ($files as $file) {

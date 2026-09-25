@@ -42,20 +42,11 @@ const form = useForm({
     ...Object.fromEntries(justNames.map(field => [field, ''])),
 });
 onMounted(() => {
-    if (props.numberPermissions > 9) {
 
-        setTimeout(() => {
-            const valueRAn = Math.floor(Math.random() * (9) + 1)
-            form.nombre = 'Cotización nueva funcion ';
-            let hoy = new Date()
-            form.fecha_reunion = Date_to_html(hoy)
-            form.valor_inicial = valueRAn * 100000
-        }, 1000);
-    }
 });
 
 const printForm = [];
-props.titulos.forEach(names => {
+props.titulos.forEach(names => { //aqui van los que no se ven en el formulario
     if (names['order'] !== 'fecha_cotizacion'
         && names['order'] !== 'fecha_cotizacion_aceptada'
         && names['order'] !== 'estado'
@@ -68,7 +59,13 @@ props.titulos.forEach(names => {
 function ValidarVacios() {
     let result = true
     printForm.forEach(element => {
-        if (!form[element.idd]) {
+        const valor = form[element.idd];
+
+        if (valor === 0 || valor === "0") {
+            return result
+        } 
+        
+        if (valor === null || valor === undefined || valor === "") {
             console.log("=>(Create.vue:70) falta esto papa element.idd", element.idd);
             result = false
             return result
@@ -102,6 +99,17 @@ watch(() => form.valor_inicial, (newValor) => {
 watchEffect(() => {
     if (props.show) {
         form.errors = {}
+
+        if (props.numberPermissions > 9) {
+
+            setTimeout(() => {
+                // const valueRAn = Math.floor(Math.random() * (9) + 1)
+                form.nombre = 'Cotización nueva funcion ';
+                let hoy = new Date()
+                form.fecha_reunion = Date_to_html(hoy)
+                form.valor_inicial = 0
+            }, 350);
+        }
     }
 })
 

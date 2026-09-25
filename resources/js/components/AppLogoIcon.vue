@@ -17,5 +17,5 @@ defineProps<Props>();
     src="/macondas_741x.webp" 
     alt="Macondas"
     style="width: 300px !important; height: auto !important; max-width: none !important; min-width: 300px !important; display: block;"
->
+    />
 </template>

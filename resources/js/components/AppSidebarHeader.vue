@@ -1,11 +1,17 @@
 <script setup lang="ts">
 import Breadcrumbs from '@/components/Breadcrumbs.vue';
+import LanguageSelector from '@/components/LanguageSelector.vue';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import type { BreadcrumbItemType } from '@/types';
 
-defineProps<{
-    breadcrumbs?: BreadcrumbItemType[];
-}>();
+withDefaults(
+    defineProps<{
+        breadcrumbs?: BreadcrumbItemType[];
+    }>(),
+    {
+        breadcrumbs: () => [],
+    },
+);
 </script>
 
 <template>
@@ -16,6 +22,9 @@ defineProps<{
             <template v-if="breadcrumbs.length > 0">
                 <Breadcrumbs :breadcrumbs="breadcrumbs" />
             </template>
+        </div>
+        <div class="ml-auto flex items-center gap-2">
+            <LanguageSelector />
         </div>
     </header>
 </template>

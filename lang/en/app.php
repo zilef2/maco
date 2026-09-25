@@ -2,8 +2,8 @@
 
 return [
 	 'initial' => [
-		'title' => 'Title',
-		'Log_in_to_your_account' => 'Log in to your account',
+		'title' => 'Macondas dev',
+		'Log_in_to_your_account' => 'Ingrese a su cuenta',
 		'Enter_your_email_and_password_below_to_log_in' => 'Enter your email and password below to log in',
 	],
     'label' => [

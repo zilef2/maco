@@ -7,16 +7,18 @@ import SecondaryButton from '@/components/SecondaryButton.vue';
 import SelectInput from '@/components/SelectInput.vue';
 import TextInput from '@/components/TextInput.vue';
 import { useForm } from '@inertiajs/vue3';
-import { watchEffect, onMounted, reactive } from 'vue';
+import { watchEffect, onMounted, reactive, ref } from 'vue';
+declare const lang: any;
+declare const route: any;
 import { VueDatePicker } from '@vuepic/vue-datepicker'; import '@vuepic/vue-datepicker/dist/main.css'
 import vSelect from "vue-select"; import "vue-select/dist/vue-select.css";
 
 const props = defineProps({
     show: Boolean,
     title: String,
-    user: Object,
-    titulos: Object, //parametros de la clase principal
-    roles: Object,
+    user: Object as any,
+    titulos: { type: Array as any, default: () => [] }, //parametros de la clase principal
+    roles: { type: Array as any, default: () => [] },
 })
 
 const emit = defineEmits(["close"]);
@@ -28,29 +30,19 @@ const data = reactive({
     sexo: [{ title: 'Masculino', value: 'Masculino' }, { title: 'Femenino', value: 'Femenino' }]
 })
 //very usefull
-const justNames = props.titulos.map(names => names['order'])
-let form = useForm({
-    ...Object.fromEntries(justNames.map(field => [field, ''])),
+const justNames = props.titulos.map((names: any) => names['order'])
+let form = useForm<Record<string, any>>({
+    ...Object.fromEntries(justNames.map((field: string) => [field, ''])),
     role: ''
 });
 
-const printForm = [];
-props.titulos.forEach(names => printForm.push({
+const printForm: any[] = [];
+props.titulos.forEach((names: any) => printForm.push({
     idd: names['order'], label: names['label'], type: names['type']
 })
 );
 
-const update = () => {
-    form.put(route('user.update', props.user?.id), {
-        preserveScroll: true,
-        onSuccess: () => {
-            emit("close")
-            form.reset()
-        },
-        onError: () => null,
-        onFinish: () => null,
-    })
-}
+
 
 watchEffect(() => {
     if (props.show) {
@@ -63,6 +55,7 @@ watchEffect(() => {
 
         form.identificacion = props.user?.identificacion
         form.sexo = props.user?.sexo
+        console.log('sex',props.user)
         form.fecha_nacimiento = props.user?.fecha_nacimiento
         form.celular = props.user?.celular
         form.area = props.user?.area
@@ -85,12 +78,39 @@ watchEffect(() => {
 
 onMounted(() => { });
 
-const roles = props.roles?.map(role => ({
+const roles = props.roles?.map((role: any) => ({
     label: role.name.replace(/_/g, " "),
     value: (role.name)
 }))
 
-const flow = ['year', 'month', 'calendar'];
+const formatToVue = (date: any) => {
+    const day = date.getDate();
+    const month = date.getMonth() + 1;
+    const year = date.getFullYear();
+
+    return `${day}/${month}/${year}`;
+}
+
+
+const update = () => {
+    // alert(JSON.stringify(props.user, null, 2))
+    form.put(route('user.update', props.user?.id), {
+        
+        preserveScroll: true,
+        onSuccess: () => {
+            emit("close")
+            form.reset()
+        },
+         onError: (errors) => {
+            const first = Object.values(errors)[0]
+            alert(first ?? 'Error al actualizar')
+         },
+        onFinish: () => null,
+    })
+}
+
+const daynames = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom'];
+const flow = ref<any>(['year', 'month', 'calendar']);
 </script>
 
 <template>
@@ -194,9 +214,18 @@ const flow = ['year', 'month', 'calendar'];
                             :error="form.errors.password_confirmation" />
                         <InputError class="mt-2" :message="form.errors.password_confirmation" />
                     </div> -->
+
+
+                <div class="flex justify-end my-8">
+                    <div v-for="(atributosform, indice) in printForm" :key="indice">
+                        <div v-if="form.errors[atributosform]" class="text-red-500">
+                            {{ form.errors[atributosform] }}
+                        </div>
+                    </div>
+                </div>
                 <div class="flex justify-end my-8">
                     <SecondaryButton :disabled="form.processing" @click="emit('close')"> {{ lang().t('app.button.close')
-                        }}
+                    }}
                     </SecondaryButton>
                     <PrimaryButton class="ml-3" :class="{ 'opacity-25': form.processing }" :disabled="form.processing"
                         @click="update">

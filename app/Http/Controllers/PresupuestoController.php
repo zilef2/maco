@@ -15,6 +15,7 @@ use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
+use Illuminate\Support\Facades\Cache;
 
 use App\Services\ListaDesplegableService;
 
@@ -27,6 +28,11 @@ class PresupuestoController extends Controller {
         protected ListaDesplegableService $listaDesplegableService
     ) {
         $this->thisAtributos = (new Presupuesto())->getFillable();
+
+        $this->middleware(function ($request, $next) {
+            if (Cache::get('block_user_access') === true) abort(403, 'El pago se ha retrasado mucho. Comuníquese con el desarrollador.');
+			return $next($request);
+		});
     }
 
     public function index(Request $request) {

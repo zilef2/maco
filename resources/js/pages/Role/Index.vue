@@ -18,6 +18,7 @@ import DeleteBulk from '@/pages/Role/DeleteBulk.vue';
 import Checkbox from '@/components/Checkbox.vue';
 import SelectInput from '@/components/SelectInput.vue';
 import Permission from '@/pages/Role/Permission.vue';
+import CrearCuatroPermisos from '@/components/CrearCuatroPermisos.vue';
 
 const { _, debounce, pickBy } = pkg
 const props = defineProps({
@@ -45,6 +46,7 @@ const data = reactive({
         perPage: props.perPage,
     },
     selectedId: [] as number[],
+    crearPermisosOpen: false,
     multipleSelect: false,
     createOpen: false,
     editOpen: false,
@@ -100,6 +102,14 @@ const select = () => {
                     <PrimaryButton v-show="can(['create role'])" @click="data.createOpen = true" class="m-1">
                         {{ lang().t('app.button.add') }}
                     </PrimaryButton>
+                    <PrimaryButton class="m-1 bg-indigo-600 hover:bg-indigo-700" @click="data.crearPermisosOpen = true">
+                        Crear 4 permisos
+                    </PrimaryButton>
+<CrearCuatroPermisos :show="data.crearPermisosOpen" modulo="materias_primas"
+                        @close="data.crearPermisosOpen = false" />
+
+                    <Create :show="data.createOpen" @close="data.createOpen = false" :permissions="props.permissions"
+                        :title="props.title" />
                     <Create :show="data.createOpen" @close="data.createOpen = false" :permissions="props.permissions"
                         :title="props.title" />
                     <Edit :show="data.editOpen" @close="data.editOpen = false" :role="data.role"

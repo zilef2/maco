@@ -116,23 +116,20 @@ export function formatToVue(date): String {
 
 export function formatDate(date: string | Date, mode: "fecha" | "conLaHora" = "fecha"): string {
   const validDate = date instanceof Date ? new Date(date.getTime()) : new Date(date as string);
-  const offsetDate = new Date(validDate.getTime() + 5 * 60 * 60 * 1000); // corrección GMT-5
 
-
-  // función auxiliar para rellenar con ceros sin usar padStart
   const twoDigits = (num: number) => (num < 10 ? "0" + num : "" + num);
 
-  const day = twoDigits(offsetDate.getDate());
-  const month = monthName(twoDigits(offsetDate.getMonth() + 1));
-  const year = offsetDate.getFullYear();
+  const day = twoDigits(validDate.getDate());
+  const month = monthName(twoDigits(validDate.getMonth() + 1));
+  const year = validDate.getFullYear();
   const currentYear = new Date().getFullYear();
 
   const shortYear = year.toString().slice(-2);
   const showYear = year !== currentYear ? `-${shortYear}` : "";
 
   if (mode === "conLaHora") {
-    let hours = offsetDate.getHours();
-    const minutes = twoDigits(offsetDate.getMinutes());
+    let hours = validDate.getHours();
+    const minutes = twoDigits(validDate.getMinutes());
     const ampm = hours >= 12 ? "PM" : "AM";
     hours = hours % 12 || 12;
     const time = `${hours}:${minutes} ${ampm}`;

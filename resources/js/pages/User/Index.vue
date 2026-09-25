@@ -103,10 +103,9 @@ const titulos = [
     { order: 'name', label: 'Nombre', type: 'text', required: true },
     { order: 'email', label: 'Email', type: 'text', required: true },
     { order: 'identificacion', label: 'Identificacion', type: 'text', required: true },
-    // { order: 'sexo', label: 'Sexo', type: 'foreign' },
-    { order: 'area', label: 'area', type: 'text', required: true },
-    { order: 'cargo', label: 'cargo', type: 'text', required: true },
-    { order: 'sexo', label: 'sexo', type: 'foreign', nameid: 'sexo_S', required: false },
+    { order: 'sexo', label: 'Sexo', type: 'foreign',required:true },
+    { order: 'area', label: 'area', type: 'text', required: false },
+    { order: 'cargo', label: 'cargo', type: 'text', required: false },
     { order: 'celular', label: 'celular', type: 'text', required: false },
     { order: 'fecha_nacimiento', label: 'Fecha nacimiento', type: 'date', required: false },
 
@@ -155,7 +154,7 @@ const titulos = [
                         <thead class="uppercase text-sm border-t border-gray-200 dark:border-gray-700">
                             <tr class="dark:bg-gray-900/50 text-left">
                                 <th class="px-2 py-4 text-center">
-                                    <Checkbox v-model:checked="data.multipleSelect" @change="selectAll" />
+                                    <Checkbox v-model:checked="data.multipleSelect" @change="selectAll"  class=""/>
                                 </th>
                                 <th class="px-2 py-4 text-center">#</th>
                                 <th class="px-2 py-4 cursor-pointer" v-on:click="order('name')">

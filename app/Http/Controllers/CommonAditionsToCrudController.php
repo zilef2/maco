@@ -22,7 +22,7 @@ class CommonAditionsToCrudController extends Controller
     }
 	
 	
-	public function FiltrosDesarrollo($request,$estados) {
+	public function FiltrosDesarrollo(Request $request,array $estados) {
 		$desarrollos = \App\Models\desarrollo::query();
 		
 		if ($request->has('search')) {
@@ -39,6 +39,7 @@ class CommonAditionsToCrudController extends Controller
 		}
 		
 		
-		return $desarrollos->WhereNot('estado', end($estados))->get();
+		return $desarrollos->get();
+		// return $desarrollos->WhereNot('estado', end($estados))->get();
 	}
 }

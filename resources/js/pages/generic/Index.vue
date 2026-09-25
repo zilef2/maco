@@ -140,7 +140,7 @@ const titulos = [
                                 <th v-for="titulo in titulos" :key="titulo.order" class="px-2 py-4 cursor-pointer"
                                     v-on:click="order(titulo['order'])">
                                     <div class="flex justify-between items-center">
-                                        <span>{{ lang().t('app.t')('app.label.' + titulo['label']) }}</span>
+                                        <span>{{ lang().t('app.label.' + titulo['label']) }}</span>
                                         <ChevronUpDownIcon class="w-4 h-4" />
                                     </div>
                                 </th>

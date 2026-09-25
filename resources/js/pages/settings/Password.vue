@@ -13,7 +13,7 @@ import { type BreadcrumbItem } from '@/types';
 
 const breadcrumbItems: BreadcrumbItem[] = [
     {
-        title: 'Password settings',
+        title: 'Ajustes de contraseña',
         href: '/settings/password',
     },
 ];
@@ -57,38 +57,38 @@ const updatePassword = () => {
 
         <SettingsLayout>
             <div class="space-y-6">
-                <HeadingSmall title="Update password"
-                    description="Ensure your account is using a long, random password to stay secure" />
+                <HeadingSmall title="Actualiza tu contraseña"
+                    description="Asegúrate de que tu cuenta esté utilizando una contraseña larga y aleatoria para mantener la seguridad" />
 
                 <form @submit.prevent="updatePassword" class="space-y-6">
                     <div class="grid gap-2">
-                        <Label for="current_password">Current password</Label>
+                        <Label for="current_password">Contraseña actual</Label>
                         <Input id="current_password" ref="currentPasswordInput" v-model="form.current_password"
                             type="password" class="mt-1 block w-full" autocomplete="current-password"
-                            placeholder="Current password" />
+                            placeholder="Contraseña actual" />
                         <InputError :message="form.errors.current_password" />
                     </div>
 
                     <div class="grid gap-2">
-                        <Label for="password">New password</Label>
+                        <Label for="password">Contraseña nueva</Label>
                         <Input id="password" ref="passwordInput" v-model="form.password" type="password"
-                            class="mt-1 block w-full" autocomplete="new-password" placeholder="New password" />
+                            class="mt-1 block w-full" autocomplete="new-password" placeholder="Contraseña nueva" />
                         <InputError :message="form.errors.password" />
                     </div>
 
                     <div class="grid gap-2">
-                        <Label for="password_confirmation">Confirm password</Label>
+                        <Label for="password_confirmation">Confirmar contraseña</Label>
                         <Input id="password_confirmation" v-model="form.password_confirmation" type="password"
-                            class="mt-1 block w-full" autocomplete="new-password" placeholder="Confirm password" />
+                            class="mt-1 block w-full" autocomplete="new-password" placeholder="Confirmar contraseña" />
                         <InputError :message="form.errors.password_confirmation" />
                     </div>
 
                     <div class="flex items-center gap-4">
-                        <Button :disabled="form.processing">Save password</Button>
+                        <Button :disabled="form.processing">Guardar contraseña</Button>
 
                         <Transition enter-active-class="transition ease-in-out" enter-from-class="opacity-0"
                             leave-active-class="transition ease-in-out" leave-to-class="opacity-0">
-                            <p v-show="form.recentlySuccessful" class="text-sm text-neutral-600">Saved.</p>
+                            <p v-show="form.recentlySuccessful" class="text-sm text-neutral-600">Guardado.</p>
                         </Transition>
                     </div>
                 </form>

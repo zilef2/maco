@@ -16,7 +16,11 @@ class ListaDesplegableRepository
 
     public function getByCategoria(string $categoria): Collection
     {
-        return ListaDesplegable::where('categoria', $categoria)->get();
+        return ListaDesplegable::where(function ($query) use ($categoria) {
+            $query->where('categoria', $categoria)
+                ->orWhere('categoria', strtolower($categoria))
+                ->orWhere('categoria', ucfirst($categoria));
+        })->get();
     }
 
     public function create(array $data): ListaDesplegable

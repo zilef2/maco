@@ -23,7 +23,25 @@ defineProps<Props>();
         <DropdownMenuItem :as-child="true">
             <Link class="block w-full" :href="route('profile.edit')" as="button">
                 <Settings class="mr-2 h-4 w-4" />
-                Settings
+                Ajustes
+            </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem :as-child="true" v-if="can(['issuperadmin'])">
+            <Link class="block w-full" method="get" :href="route('Parametros.index')" as="button">
+                <Settings class="mr-2 h-4 w-4" />
+                Parametros
+            </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem :as-child="true" v-if="can(['issuperadmin'])">
+            <Link class="block w-full" method="get" href="/role" as="button">
+                <Settings class="mr-2 h-4 w-4" />
+                Roles
+            </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem :as-child="true" v-if="can(['issuperadmin'])">
+            <Link class="block w-full" method="get" href="/permission" as="button">
+                <Settings class="mr-2 h-4 w-4" />
+                Permisos
             </Link>
         </DropdownMenuItem>
     </DropdownMenuGroup>
@@ -31,7 +49,7 @@ defineProps<Props>();
     <DropdownMenuItem :as-child="true">
         <Link class="block w-full" method="post" :href="route('logout')" as="button">
             <LogOut class="mr-2 h-4 w-4" />
-            Log out
+            Cerrar sesión
         </Link>
     </DropdownMenuItem>
 </template>
