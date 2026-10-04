@@ -2,33 +2,34 @@
 
 namespace Alejo\Notificaciones;
 
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Capsule\Manager as Capsule;
+use Illuminate\Support\Facades\DB;
 
 class NotificacionesManager
 {
-    protected $table;
+    protected string $table;
 
-    public function __construct($table)
+    public function __construct(string $table = 'notificaciones')
     {
         $this->table = $table;
     }
 
-    public function crear(string $mensaje, string $prioridad = 'baja'): Model
+    public function crear(string $mensaje, string $prioridad = 'baja'): object
     {
-        $notificacion = new Model();
-        $notificacion->setTable($this->table);
-        $notificacion->mensaje = $mensaje;
-        $notificacion->prioridad = $prioridad;
-        $notificacion->leida = false;
-        $notificacion->save();
+        $id = DB::table($this->table)->insertGetId([
+            'mensaje'    => $mensaje,
+            'prioridad'  => $prioridad,
+            'leida'      => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
 
-        return $notificacion;
+        return DB::table($this->table)->find($id);
     }
 
-    public function noLeidas(): \Illuminate\Database\Eloquent\Collection
+    public function noLeidas(): \Illuminate\Support\Collection
     {
-        return Capsule::table($this->table)
+        return DB::table($this->table)
             ->where('leida', false)
             ->orderBy('prioridad', 'desc')
             ->get();
@@ -36,14 +37,14 @@ class NotificacionesManager
 
     public function marcarComoLeida(int $id): bool
     {
-        return Capsule::table($this->table)
+        return (bool) DB::table($this->table)
             ->where('id', $id)
             ->update(['leida' => true]);
     }
 
     public function todasLeidas(): bool
     {
-        return Capsule::table($this->table)
+        return DB::table($this->table)
             ->where('leida', false)
             ->doesNotExist();
     }

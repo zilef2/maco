@@ -2,7 +2,7 @@
 import AppLayout from '@/layouts/AppLayout.vue';
 import { type BreadcrumbItem } from '@/types';
 import { Head } from '@inertiajs/vue3';
-import NotificacionSidebar from '@/components/NotificacionSidebar.vue';
+import NotificacionSidebar from '@notificaciones/notification-sidebar.vue';
 
 
 const breadcrumbs: BreadcrumbItem[] = [

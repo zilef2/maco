@@ -4,27 +4,30 @@ namespace Alejo\Notificaciones;
 
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\Route;
 
 class NotificacionesServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        $this->app->bind('notificaciones', function () {
-            return new NotificacionesManager($this->app['db']->connection('default')->table('notificaciones'));
+        $this->app->singleton(NotificacionesManager::class, function () {
+            return new NotificacionesManager('notificaciones');
         });
+
+        $this->app->alias(NotificacionesManager::class, 'notificaciones');
     }
 
-    public function boot(): void
+public function boot(): void
     {
-        if (! $this->app->routesAreCached()) {
+        // 1. Cargar las rutas del paquete automáticamente
+        $this->loadRoutesFrom(__DIR__ . '/../routes/web.php');
+        // 2. Permitir publicar migraciones y componentes
+        if ($this->app->runningInConsole()) {
             $this->publishes([
                 __DIR__ . '/migrations' => database_path('migrations'),
-            ], ['notificaciones-migrations']);
-
-            $this->routes(__DIR__ . '/routes/web.php');
-
-            Schema::defaultStringLength(191);
+            ], 'notificaciones-migrations');
+            $this->publishes([
+                __DIR__ . '/../resources/views/components' => resource_path('js/Components/Notificaciones'),
+            ], 'notificaciones-vue');
         }
     }
 }

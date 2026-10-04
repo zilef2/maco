@@ -40,28 +40,20 @@ class CopyUserPages extends Command
     // todo: sync: añadir a los demas repos
     // justtesting: cuando hay que qutiar cosas que solo deberian aparecer en la version de pruebas
     // thisisnew!!!
-    protected $thename = 'Producto';
+    protected $thename = 'Talla';
 
     protected function aagenerateAttributes(): array
     {
-        // Retorna dos vectores: 'required' y 'optional'
         // Tipos válidos: string text number dinero date datetime boolean foreign json
         return [
             'required' => [
-                'codigo'        => 'string',   // Código interno o SKU (ej: REF-BOTIN-MAC)
-                'nombre'        => 'string',   // Nombre del producto (ej: Botín Macondas Flores)
-                'descripcion'   => 'text',     // Descripción detallada
-                'precio_normal' => 'number',
-                'esta_activo'   => 'boolean',
+                'referencia'        => 'string',
+                'nombre'            => 'string',
+                'descripcion'       => 'text',
+                'tipo'              => 'string',
             ],
-            'optional' => [
-                'foto_principal'      => 'text',
-                'foto_lateral'        => 'text',
-                'foto_trasera'        => 'text',
-                'foto_derecha'        => 'text',
-                'foto_izquierda'      => 'text',
-                'precio_ponderado'    => 'number',
-                'precio_preventa'     => 'number',
+            'optional' => [ 
+                'estado'            => 'boolean',
             ],
         ];
     }

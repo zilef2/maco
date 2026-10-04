@@ -18,9 +18,9 @@ class NotificacionController extends Controller
 
     public function index(Request $request)
     {
-        $usuarioId = $request->user()?->id;
+        // $usuarioId = $request->user()?->id;
 
-        $notificaciones = $this->manager->noLeidas()->take(5)->get();
+        $notificaciones = $this->manager->noLeidas()->take(5);
 
         return response()->json([
             'notificaciones' => $notificaciones->map(function ($n) {
@@ -28,15 +28,15 @@ class NotificacionController extends Controller
                     'id' => $n->id,
                     'mensaje' => $n->mensaje,
                     'prioridad' => $n->prioridad,
-                    'creado_en' => $n->created_at->toDateTimeString(),
+                    'created_at' => $n->created_at,
                 ];
-            }),
+            })->values(),
         ]);
     }
 
     public function marcarComoLeida(Request $request, $id)
     {
-        $this->manager->marcarComoLeida($id);
+        $this->manager->marcarComoLeida((int) $id);
 
         return response()->json(['success' => true]);
     }
