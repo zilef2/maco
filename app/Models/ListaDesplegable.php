@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -16,4 +17,18 @@ class ListaDesplegable extends Model
         'categoria',
         'subcategoria',
     ];
+
+    protected function categoria(): Attribute
+    {
+        return Attribute::make(
+            set: fn(string $value) => strtolower($value),
+        );
+    }
+
+    protected function subcategoria(): Attribute
+    {
+        return Attribute::make(
+            set: fn(string $value) => strtolower($value),
+        );
+    }
 }

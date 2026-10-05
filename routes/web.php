@@ -46,12 +46,13 @@ Route::middleware('auth', 'verified')->group(function () {
 	Route::get('/materias_primas/{id}/movimientos', [\App\Http\Controllers\Materias_primasController::class, 'historicoMovimientos'])->name('materias_primas.movimientos');
 	Route::resource("/Producto", \App\Http\Controllers\ProductoController::class);
 	Route::resource("/Producto", \App\Http\Controllers\ProductoController::class);
-	Route::get('/notificar-prueba', function (){
-            $noti = new NotificacionesManager('notificaciones');
-    		$noti->crear('Nuevo pedido recibido', 'alto');
+	Route::get('/notificar-prueba', function (\Illuminate\Http\Request $request) {
+            $noti = app(\Alejo\Notificaciones\NotificacionesManager::class);
+    		$noti->crear('Nuevo pedido recibido #1001', 'alta', $request->user()?->id);
 
-            return 'Notificacion enviada';
+            return 'Notificación enviada correctamente';
 	})->name('notificar.prueba');
+	Route::resource("/Talla", \App\Http\Controllers\TallaController::class);
 	//aquipues
 }); //fin verified
 

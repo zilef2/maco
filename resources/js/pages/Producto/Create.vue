@@ -23,6 +23,8 @@ const props = defineProps({
 })
 const emit = defineEmits(["close"]);
 
+
+
 const data = reactive({
     params: {
         pregunta: ''
@@ -107,8 +109,26 @@ const sexos = [{ label: 'Masculino', value: 0 }, { label: 'Femenino', value: 1 }
                 <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100">
                     {{ lang().t('app.label.add') }} {{ props.title }}
                 </h2>
+                <p>{{ props.losSelect }}</p>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div v-for="(atributosform, indice) in printForm" :key="indice">
+
+                        <div v-if="atributosform.idd === 'Categoria_original'" class="">
+                            <InputLabel :for="atributosform.label"
+                                :value="lang().t('app.label')[atributosform.label] || atributosform.label" />
+                            <select
+                                :id="atributosform.idd"
+                                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 focus:border-indigo-500 dark:focus:border-indigo-600 focus:ring-indigo-500 dark:focus:ring-indigo-600 shadow-sm"
+                                v-model="form[atributosform.idd]"
+                                required
+                            >
+                                <option value="" disabled>Seleccione una opción</option>
+                                <option v-for="item in ((props.losSelect as any)?.Categoria_original || [])" :key="item.id" :value="item.nombre">
+                                    {{ item.nombre }}
+                                </option>
+                            </select>
+                            <InputError class="mt-2" :message="form.errors[atributosform.idd]" />
+                        </div>
 
                         <div v-if="atributosform.type === 'foreign'" id="SelectVue" class="">
                             <label name="labelSelectVue"> {{ atributosform.label }} </label>

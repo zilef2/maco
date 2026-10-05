@@ -13,7 +13,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 {
     /** @use HasFactory<\Database\Factories\ProductoFactory> */
     use HasFactory;
-    protected $fillable = ['codigo', 'nombre', 'descripcion', 'precio_normal', 'esta_activo', 'foto_principal', 'foto_lateral', 'foto_trasera', 'foto_derecha', 'foto_izquierda', 'precio_ponderado', 'precio_preventa'];
+    protected $fillable = ['Codigo_interno', 'ID_producto_Shopify', 'Categoria_original', 'Familia_normalizada', 'Titulo_Shopify', 'Control_de_variante', 'Opciones', 'Estado', 'Observaciones', 'descripcion', 'precio_predicho', 'precio_preventa'];
 
 
 

@@ -73,16 +73,16 @@ const marcarTodasLeidas = async () => {
 };
 
 async function cargarNotificaciones() {
-    if (!props.usuarioId) return;
-
     try {
         const response = await fetch('/notificaciones', {
             headers: {
-                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
+                Accept: 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
             },
         });
         const data = await response.json();
-        state.notificaciones = data.notificaciones;
+        state.notificaciones = data.notificaciones || [];
     } catch (error) {
         console.error('Error cargando notificaciones:', error);
     }

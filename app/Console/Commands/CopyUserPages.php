@@ -53,7 +53,7 @@ class CopyUserPages extends Command
                 'tipo'              => 'string',
             ],
             'optional' => [ 
-                'estado'            => 'boolean',
+                'estado'            => 'number',
             ],
         ];
     }
@@ -289,13 +289,16 @@ class CopyUserPages extends Command
             }
         }
 
-        if ($todos || in_array('migracion', $activos)) {
+        if (in_array('migracion', $activos)) {
             $migrationFile = collect(glob(database_path('migrations/*.php')))->first(
                 fn ($file) => str_contains($file, 'create_'.Str::snake(Str::plural($modelName)).'_table')
             );
-            if (! $migrationFile) {
-                $this->error("[6b] No existe la migración para $modelName (create_".Str::snake(Str::plural($modelName)).'_table)');
-                $valido = false;
+            if (! $migrationFile && ! in_array('modelo', $activos)) {
+                $this->warn("No existe la migración para $modelName. Creándola automáticamente...");
+                Artisan::call('make:migration', [
+                    'name' => 'create_'.Str::snake(Str::plural($modelName)).'_table',
+                    '--create' => Str::snake(Str::plural($modelName)),
+                ]);
             }
         }
 
@@ -809,9 +812,15 @@ PHP;
         );
 
         if (! $migrationFile) {
-            $this->error("No se encontró la migración para $modelName");
+            $this->warn("No se encontró la migración para $modelName. Creando archivo...");
+            Artisan::call('make:migration', [
+                'name' => 'create_'.Str::snake(Str::plural($modelName)).'_table',
+                '--create' => Str::snake(Str::plural($modelName)),
+            ]);
 
-            return 0;
+            $migrationFile = collect(glob(database_path('migrations/*.php')))->first(
+                fn ($file) => str_contains($file, 'create_'.Str::snake(Str::plural($modelName)).'_table')
+            );
         }
 
         $buildColumn = function (string $name, string $type, bool $nullable): string {

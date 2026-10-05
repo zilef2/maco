@@ -20,18 +20,14 @@ class ProductoController extends Controller {
 
 
     //<editor-fold desc="Construc | filtro and dependencia">
-    public function __construct() {
-//        $this->middleware('permission:create Producto', ['only' => ['create', 'store']]);
-//        $this->middleware('permission:read Producto', ['only' => ['index', 'show']]);
-//        $this->middleware('permission:update Producto', ['only' => ['edit', 'update']]);
-//        $this->middleware('permission:delete Producto', ['only' => ['destroy', 'destroyBulk']]);
+    public function __construct( protected \App\Services\ListaDesplegableService $listaDesplegableService ) {
         $this->thisAtributos = (new Producto())->getFillable(); //not using
     }
 
     public function index(Request $request) {
         $numberPermissions = MyModels::getPermissionToNumber(Myhelp::EscribirEnLog($this, ' Productos '));
         $Productos = $this->Filtros($request)->get();
-//        $losSelect = $this->Dependencias();
+        $listasDesplegables = $this->listaDesplegableService->getOptionsByCategoriaGrouped($this->FromController);
 
 
         $perPage = $request->has('perPage') ? $request->perPage : 10;
@@ -43,7 +39,10 @@ class ProductoController extends Controller {
             'filters' => $request->all(['search', 'field', 'order']),
             'perPage' => (int)$perPage,
             'numberPermissions' => $numberPermissions,
-            'losSelect'         => $this->losSelect(Producto::class, ' Producto','proveeNombre'),
+            // 'losSelect'         => $this->losSelect(Producto::class, ' Producto','proveeNombre'),
+             'losSelect'         => [
+                'Categoria_original' => $listasDesplegables['Categoria_original'] ?? [],
+            ],
 	        'titulos'           => Producto::getFillableWithTypes(),
 
         ]);

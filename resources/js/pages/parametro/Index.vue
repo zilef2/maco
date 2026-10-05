@@ -1,8 +1,9 @@
 <script setup>
 import AppLayout from '@/layouts/AppLayout.vue';
-import { Head, useForm } from '@inertiajs/vue3';
+import { Head, useForm, Link } from '@inertiajs/vue3';
 import { reactive } from 'vue';
 import { PlusIcon } from '@heroicons/vue/24/solid';
+import { ArrowRightIcon } from '@heroicons/vue/24/outline';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
 import Edit from './Edit.vue';
@@ -24,6 +25,10 @@ const data = reactive({
     editOpen: false,
     deleteOpen: false,
     showAddLista: false,
+    enlacesMaestros: [
+        { nombre: 'Talla', href: '/Talla', desc: 'Gestión y configuración de tallas' },
+        { nombre: 'Presupuesto', href: '/Presupuesto', desc: 'Administración de presupuestos' },
+    ],
 })
 
 const addForm = useForm({
@@ -55,7 +60,7 @@ const submitLista = () => {
             <div class="bg-white dark:bg-gray-800 rounded-xl shadow overflow-hidden">
                 <div class="flex justify-between items-center px-5 py-3 border-b border-gray-200 dark:border-gray-700">
                     <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wide">
-                        Parámetro del sistema
+                        Parámetros del sistema
                     </h2>
                     <div class="flex gap-2">
                         <button
@@ -187,6 +192,41 @@ const submitLista = () => {
                     class="px-5 py-6 text-center text-sm text-gray-400"
                 >
                     No hay listas desplegables configuradas.
+                </div>
+            </div>
+
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow overflow-hidden">
+                <div class="px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                    <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wide">
+                        Tablas y Catálogos del Sistema
+                    </h2>
+                    <span class="text-xs text-gray-400 dark:text-gray-500">
+                        Accesos directos
+                    </span>
+                </div>
+
+                <div class="p-5 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                    <Link
+                        v-for="enlace in data.enlacesMaestros"
+                        :key="enlace.href"
+                        :href="enlace.href"
+                        class="group flex flex-col justify-between p-4 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-sky-500 dark:hover:border-sky-500 hover:shadow-md transition-all bg-gray-50 dark:bg-gray-900/50"
+                    >
+                        <div>
+                            <div class="flex items-center justify-between mb-1.5">
+                                <span class="text-sm font-bold text-gray-900 dark:text-white group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors">
+                                    {{ enlace.nombre }}
+                                </span>
+                                <ArrowRightIcon class="w-4 h-4 text-gray-400 group-hover:text-sky-600 group-hover:translate-x-1 transition-all" />
+                            </div>
+                            <p class="text-xs text-gray-500 dark:text-gray-400">
+                                {{ enlace.desc }}
+                            </p>
+                        </div>
+                        <span class="mt-4 text-xs font-semibold text-sky-600 dark:text-sky-400 inline-flex items-center gap-1">
+                            Ir a {{ enlace.nombre }} →
+                        </span>
+                    </Link>
                 </div>
             </div>
 

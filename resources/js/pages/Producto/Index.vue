@@ -86,18 +86,18 @@ const selectAll = (event: any) => {
 const select = () => data.multipleSelect = props.fromController?.data.length === data.selectedId.length;
 
 const titulos = [
-    { order: 'codigo', label: 'codigo', type: 'string' },
-    { order: 'nombre', label: 'nombre', type: 'string' },
+    { order: 'Codigo_interno', label: 'Codigo_interno', type: 'string' ,default:'COD-001'},
+    { order: 'ID_producto_Shopify', label: 'ID_producto_Shopify', type: 'string' },
+    { order: 'Categoria_original', label: 'Categoria_original', type: 'string' },
+    { order: 'Familia_normalizada', label: 'Familia_normalizada', type: 'string' },
+    { order: 'Titulo_Shopify', label: 'Titulo_Shopify', type: 'string' },
+    { order: 'Control_de_variante', label: 'Control_de_variante', type: 'string' },
+    { order: 'Opciones', label: 'Opciones', type: 'string' },
+    { order: 'Estado', label: 'Estado', type: 'string' },
+    { order: 'Observaciones', label: 'Observaciones', type: 'string' },
     { order: 'descripcion', label: 'descripcion', type: 'text' },
-    { order: 'precio_normal', label: 'precio_normal', type: 'number' },
-    { order: 'esta_activo', label: 'esta_activo', type: 'boolean' },
-    { order: 'precio_ponderado', label: 'precio_ponderado', type: 'number' },
+    { order: 'precio_predicho', label: 'precio_predicho', type: 'number' },
     { order: 'precio_preventa', label: 'precio_preventa', type: 'number' },
-    // { order: 'foto_principal', label: 'foto_principal', type: 'text' },
-    // { order: 'foto_lateral', label: 'foto_lateral', type: 'text' },
-    // { order: 'foto_trasera', label: 'foto_trasera', type: 'text' },
-    // { order: 'foto_derecha', label: 'foto_derecha', type: 'text' },
-    // { order: 'foto_izquierda', label: 'foto_izquierda', type: 'text' },
 ];
 
 </script>

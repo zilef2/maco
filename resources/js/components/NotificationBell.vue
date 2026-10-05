@@ -146,10 +146,10 @@ onUnmounted(() => {
                     No tienes notificaciones pendientes
                 </div>
 
-                <div
+                <DropdownMenuItem
                     v-for="notif in state.notificaciones"
                     :key="notif.id"
-                    class="flex items-start gap-3 p-3 hover:bg-muted/50 transition-colors cursor-pointer"
+                    class="flex items-start gap-3 p-3 cursor-pointer focus:bg-muted/50 rounded-none"
                     @click="marcarLeida(notif.id)"
                 >
                     <span
@@ -168,7 +168,7 @@ onUnmounted(() => {
                             {{ formatFecha(notif.created_at) }}
                         </p>
                     </div>
-                </div>
+                </DropdownMenuItem>
             </div>
         </DropdownMenuContent>
     </DropdownMenu>

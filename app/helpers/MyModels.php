@@ -39,6 +39,7 @@ class MyModels {
 			'Presupuesto',
 			'materias_primas',
 			'Producto',
+			'Talla',
 			//aquipues
 
 		];

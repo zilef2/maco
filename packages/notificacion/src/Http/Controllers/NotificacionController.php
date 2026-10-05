@@ -18,14 +18,15 @@ class NotificacionController extends Controller
 
     public function index(Request $request)
     {
-        // $usuarioId = $request->user()?->id;
+        $usuarioId = $request->user()?->id;
 
-        $notificaciones = $this->manager->noLeidas()->take(5);
+        $notificaciones = $this->manager->noLeidas($usuarioId)->take(10);
 
         return response()->json([
             'notificaciones' => $notificaciones->map(function ($n) {
                 return [
                     'id' => $n->id,
+                    'user_id' => $n->user_id,
                     'mensaje' => $n->mensaje,
                     'prioridad' => $n->prioridad,
                     'created_at' => $n->created_at,
@@ -43,10 +44,16 @@ class NotificacionController extends Controller
 
     public function marcarTodas(Request $request)
     {
-        $this->manager->todasLeidas(); // This doesn't do much, let's update directly
+        $usuarioId = $request->user()?->id;
 
         DB::table('notificaciones')
             ->where('leida', false)
+            ->when($usuarioId, function ($query, $usuarioId) {
+                return $query->where(function ($q) use ($usuarioId) {
+                    $q->where('user_id', $usuarioId)
+                      ->orWhereNull('user_id');
+                });
+            })
             ->update(['leida' => true]);
 
         return response()->json(['success' => true]);

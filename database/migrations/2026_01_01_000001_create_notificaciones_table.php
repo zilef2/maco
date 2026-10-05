@@ -9,8 +9,9 @@ return new class extends Migration {
     {
         Schema::create('notificaciones', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('user_id')->nullable()->constrained('users')->nullOnDelete();
             $table->text('mensaje');
-            $table->enum('prioridad', ['baja', 'media', 'alto']);
+            $table->enum('prioridad', ['baja', 'media', 'alta'])->default('baja');
             $table->boolean('leida')->default(false);
             $table->timestamps();
         });

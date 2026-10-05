@@ -30,7 +30,7 @@ class Materias_primasController extends Controller {
     public function index(Request $request) {
         $numberPermissions = MyModels::getPermissionToNumber(Myhelp::EscribirEnLog($this, ' materias_primass '));
         $materias_primass = $this->Filtros($request)->get();
-        $listasDesplegables = $this->listaDesplegableService->getOptionsByCategoriaGrouped('materias_primas');
+        $listasDesplegables = $this->listaDesplegableService->getOptionsByCategoriaGrouped($this->FromController);
 
         $perPage = $request->has('perPage') ? $request->perPage : 10;
         return Inertia::render($this->FromController . '/Index', [

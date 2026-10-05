@@ -15,11 +15,11 @@ const mainNavItems: NavItem[] = [
         href: '/dashboard',
         icon: LayoutGrid,
     },
-    {
-        title: 'Presupuesto',
-        href: '/Presupuesto',
-        icon: LayoutGrid,
-    },
+    // {
+    //     title: 'Presupuesto',
+    //     href: '/Presupuesto',
+    //     icon: LayoutGrid,
+    // },
     {
         title: 'Usuarios',
         href: '/user',
@@ -35,6 +35,11 @@ const mainNavItems: NavItem[] = [
 		href: '/Producto',
 		icon: LayoutGrid,
 	},
+	// {
+	// 	title: 'Talla',
+	// 	href: '/Talla',
+	// 	icon: LayoutGrid,
+	// },
 	//aquipuesSide
 ];
 

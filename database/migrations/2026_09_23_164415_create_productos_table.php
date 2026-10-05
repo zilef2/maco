@@ -13,18 +13,17 @@ return new class extends Migration
     {
         Schema::create('productos', function (Blueprint $table) {
             $table->id();
-            $table->string('codigo');
-            $table->string('nombre');
-            $table->text('descripcion');
-            $table->integer('precio_normal');
-            $table->boolean('esta_activo')->default(false);
-            // opcionales
-            $table->text('foto_principal')->nullable();
-            $table->text('foto_lateral')->nullable();
-            $table->text('foto_trasera')->nullable();
-            $table->text('foto_derecha')->nullable();
-            $table->text('foto_izquierda')->nullable();
-            $table->integer('precio_ponderado')->nullable();
+            $table->string('Codigo_interno');
+            $table->string('ID_producto_Shopify');
+            $table->string('Categoria_original');
+            $table->string('Familia_normalizada');
+            $table->string('Titulo_Shopify');
+            $table->string('Control_de_variante');
+            $table->string('Opciones');
+            $table->string('Estado');
+            $table->string('Observaciones')->nullable();
+            $table->text('descripcion')->nullable();
+            $table->integer('precio_predicho')->nullable();
             $table->integer('precio_preventa')->nullable();
             $table->timestamps();
         });
