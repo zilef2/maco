@@ -53,6 +53,15 @@ Route::middleware('auth', 'verified')->group(function () {
             return 'Notificación enviada correctamente';
 	})->name('notificar.prueba');
 	Route::resource("/Talla", \App\Http\Controllers\TallaController::class);
+	Route::resource("/OrdenProduccion", \App\Http\Controllers\OrdenProduccionController::class);
+	Route::resource("/ProcesoExterno", \App\Http\Controllers\ProcesoExternoController::class);
+	Route::resource("/KitTaller", \App\Http\Controllers\KitTallerController::class);
+	Route::resource("/RecepcionCalidad", \App\Http\Controllers\RecepcionCalidadController::class);
+	Route::resource("/CierreOrdenProduccion", \App\Http\Controllers\CierreOrdenProduccionController::class);
+	Route::resource("/EstadoOperacion", \App\Http\Controllers\EstadoOperacionController::class);
+	Route::resource("/FichaTecnicaMateriales", \App\Http\Controllers\FichaTecnicaMaterialesController::class);
+	Route::resource("/PendientesProduccion", \App\Http\Controllers\PendientesProduccionController::class);
+	Route::resource("/Taller", \App\Http\Controllers\TallerController::class);
 	//aquipues
 }); //fin verified
 

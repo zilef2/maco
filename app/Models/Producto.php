@@ -2,20 +2,38 @@
 
 namespace App\Models;
 
-use Illuminate\Support\Facades\DB;
-
+use Database\Factories\ProductoFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 
-use Illuminate\Database\Eloquent\SoftDeletes;
-
-    class Producto extends Model
+class Producto extends Model
 {
-    /** @use HasFactory<\Database\Factories\ProductoFactory> */
+    /** @use HasFactory<ProductoFactory> */
     use HasFactory;
-    protected $fillable = ['Codigo_interno', 'ID_producto_Shopify', 'Categoria_original', 'Familia_normalizada', 'Titulo_Shopify', 'Control_de_variante', 'Opciones', 'Estado', 'Observaciones', 'descripcion', 'precio_predicho', 'precio_preventa'];
 
+    protected $fillable = [
+        'Codigo_interno',
+         'ID_producto_Shopify',
+         'Categoria_original',
+         'Familia_normalizada',
+         'Titulo_Shopify',
+         'Control_de_variante',
+         'Opciones',
+         'Estado',
+         'Observaciones',
+         'descripcion',
+         'precio_predicho',
+         'precio_preventa'
+        ];
 
+//     05 ficha ensamble
+// OP
+// Producto / referencia
+// Cantidad total
+// Colección
+// Taller
+// Fecha entrega
 
     public static function getFillableWithTypes(): array
     {

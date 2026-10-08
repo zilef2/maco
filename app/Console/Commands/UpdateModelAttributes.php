@@ -15,35 +15,25 @@ class UpdateModelAttributes extends Command
 
     protected array $modelos = [
 
-        // Código_interno	ID_producto_Shopify	Categoría_original	Familia_normalizada	Título_Shopify	Control_de_variante	Rango_/_opciones	Estado	Observaciones
-        // Codigo_interno
-        // ID_producto_Shopify
-        // Categoria_original
-        // Familia_normalizada
-        // Titulo_Shopify
-        // Control_de_variante
-        // Opciones
-        // Estado
-        // Observaciones
-        
-        'Producto' => [
-            'required' => [
-                'Codigo_interno' => 'string',
-                'ID_producto_Shopify' => 'string',
-                'Categoria_original' => 'string',
-                'Familia_normalizada' => 'string',
-                'Titulo_Shopify' => 'string',
-                'Control_de_variante' => 'string',
-                'Opciones' => 'string',
-                'Estado' => 'string',
+        'OrdenProduccion' => [
+                'required' => [
+                    'numero_op' => 'string',
+                    'producto_referencia_id' => 'foreign',
+                    'cantidad_planificada' => 'number',
+                    'taller' => 'string',
+                    'estado_op_id' => 'foreign',
+                    'responsable_id' => 'foreign',
+                    'fecha_creacion' => 'datetime',
+                    'fecha_inicio_programada' => 'date',
+                    'fecha_prevista_envio_taller' => 'date',
+                    'fecha_entrega_estimada' => 'date',
+                ],
+                'optional' => [
+                    'shopify_product_id' => 'string',
+                    'observaciones' => 'text',
+                    'fecha_fin_real' => 'datetime',
+                ],
             ],
-            'optional' => [
-                'Observaciones' => 'string',
-                'descripcion'   => 'text',
-                'precio_predicho' => 'number',
-                'precio_preventa'  => 'number',
-            ],
-        ],
     ];
 
     public function handle(): int

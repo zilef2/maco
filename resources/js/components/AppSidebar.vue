@@ -5,7 +5,22 @@ import NavUser from '@/components/NavUser.vue';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { type NavItem } from '@/types';
 import { Link } from '@inertiajs/vue3';
-import { Building2, BookOpen, Folder, LayoutGrid } from 'lucide-vue-next';
+import {
+    Building2,
+    Folder,
+    LayoutDashboard,
+    Users,
+    LayoutGrid,
+    ShoppingBag,
+    ClipboardList,
+    ArrowLeftRight,
+    PackageOpen,
+    BadgeCheck,
+    CheckCircle2,
+    Activity,
+    BookText,
+    AlertCircle,
+} from 'lucide-vue-next';
 import AppLogo from './AppLogo.vue';
 import AppLogoMini from './AppLogoMini.vue';
 
@@ -13,33 +28,78 @@ const mainNavItems: NavItem[] = [
     {
         title: 'Dashboard',
         href: '/dashboard',
-        icon: LayoutGrid,
+        icon: LayoutDashboard,
     },
     // {
     //     title: 'Presupuesto',
     //     href: '/Presupuesto',
-    //     icon: LayoutGrid,
+    //     icon: LayoutDashboard,
     // },
     {
         title: 'Usuarios',
         href: '/user',
-        icon: LayoutGrid,
+        icon: Users,
+    },
+    // {
+    //     title: 'Materias primas',
+    //     href: '/materias_primas',
+    //     icon: Boxes,
+    // },
+    {
+        title: 'Producto',
+        href: '/Producto',
+        icon: ShoppingBag,
+    },
+    // {
+    // 	title: 'Talla',
+    // 	href: '/Talla',
+    // 	icon: Ruler,
+    // },
+    {
+        title: 'OrdenProduccion',
+        href: '/OrdenProduccion',
+        icon: ClipboardList,
     },
     {
-		title: 'Materias primas',
-		href: '/materias_primas',
+        title: 'ProcesoExterno',
+        href: '/ProcesoExterno',
+        icon: ArrowLeftRight,
+    },
+    {
+        title: 'KitTaller',
+        href: '/KitTaller',
+        icon: PackageOpen,
+    },
+    {
+        title: 'RecepcionCalidad',
+        href: '/RecepcionCalidad',
+        icon: BadgeCheck,
+    },
+    {
+        title: 'CierreOrdenProduccion',
+        href: '/CierreOrdenProduccion',
+        icon: CheckCircle2,
+    },
+    {
+        title: 'EstadoOperacion',
+        href: '/EstadoOperacion',
+        icon: Activity,
+    },
+    {
+        title: 'FichaTecnicaMateriales',
+        href: '/FichaTecnicaMateriales',
+        icon: BookText,
+    },
+    {
+        title: 'PendientesProduccion',
+        href: '/PendientesProduccion',
+        icon: AlertCircle,
+    },
+    {
+		title: 'Taller',
+		href: '/Taller',
 		icon: LayoutGrid,
 	},
-	{
-		title: 'Producto',
-		href: '/Producto',
-		icon: LayoutGrid,
-	},
-	// {
-	// 	title: 'Talla',
-	// 	href: '/Talla',
-	// 	icon: LayoutGrid,
-	// },
 	//aquipuesSide
 ];
 

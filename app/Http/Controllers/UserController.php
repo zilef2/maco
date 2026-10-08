@@ -14,10 +14,11 @@ use App\Models\Reporte;
 use App\Models\Role;
 use App\Models\User;
 use App\Exports\MultipleExport;
-
+use App\Models\Producto;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Hash;
@@ -40,16 +41,13 @@ class UserController extends Controller
     //esto es de comercio
     public function Dashboard()
     {
-        $readGoogle = new ReadGoogleSheets();
-        $readGoogle->GetValuesFromSheets();
         $numberPermissions = MyModels::getPermissionToNumber(Myhelp::EscribirEnLog($this, ' Dashboard'));
         if ($numberPermissions > 1) {
 
             return Inertia::render('Dashboard', [
                 'users' => (int)User::count(),
                 'roles' => (int)Role::count(),
-                'reportes' => (int)Reporte::count(),
-                'permissions' => (int)Permission::count(),
+                'productos' => (int)Producto::count(),
             ]);
         } else {
             return redirect()->route('reporte.index');
@@ -59,35 +57,48 @@ class UserController extends Controller
 
     public function index(UserIndexRequest $request)
     {
-        $permissions = Myhelp::EscribirEnLog($this, ' users');
-        $numberPermissions = MyModels::getPermissionToNumber($permissions);
+        $userId = auth()->id();
+        $role   = auth()->user()->roles->pluck('name')[0];
+
+        $numberPermissions = Cache::remember(
+            "user_permissions_{$userId}",
+            now()->addMinutes(10),
+            fn () => MyModels::getPermissionToNumber(Myhelp::EscribirEnLog($this, ' users'))
+        );
+
+        $roles = Cache::remember(
+            "roles_list_{$role}",
+            now()->addMinutes(10),
+            function () use ($role) {
+                if ($role === 'superadmin') {
+                    return Role::get();
+                }
+                return Role::where('name', '<>', 'superadmin')->where('name', '<>', 'admin')->get();
+            }
+        );
 
         $users = User::query();
+
         if ($request->has('search')) {
             $users->where(function ($query) use ($request) {
                 $query->where('name', 'LIKE', "%" . $request->search . "%")
                     ->orWhere('email', 'LIKE', "%" . $request->search . "%")
                     ->orWhere('identificacion', 'LIKE', "%" . $request->search . "%");
             })->where('name', '!=', 'admin')->where('name', '!=', 'Superadmin');
-            // $users->where('name', 'LIKE', "%" . $request->search . "%");
         }
 
         if ($request->has(['field', 'order'])) {
             $users = $users->orderBy($request->field, $request->order);
         } else {
             $users = $users->orderBy('updated_at', 'desc');
-
         }
 
         $perPage = $request->has('perPage') ? $request->perPage : 10;
-        $role = auth()->user()->roles->pluck('name')[0];
-        $roles = Role::where('name', '<>', 'superadmin')->where('name', '<>', 'admin')->get();
+
         if ($role !== 'superadmin') {
             $users->whereHas('roles', function ($query) {
                 return $query->whereNotIn('name', ['superadmin', 'admin']);
             });
-        } else {
-            $roles = Role::get();
         }
 
         if ($role === 'admin') {
@@ -97,13 +108,13 @@ class UserController extends Controller
         }
 
         return Inertia::render('User/Index', [
-            'breadcrumbs' => [['label' => __('app.label.user'), 'href' => route('user.index')]],
-            'title' => __('app.label.user'),
-            'filters' => $request->all(['search', 'field', 'order']),
-            'perPage' => (int)$perPage,
-            'users' => $users->with('roles')->paginate($perPage),
-            'roles' => $roles,
-            'numberPermissions' => $numberPermissions,
+            'breadcrumbs'      => [['label' => __('app.label.user'), 'href' => route('user.index')]],
+            'title'            => __('app.label.user'),
+            'filters'          => $request->all(['search', 'field', 'order']),
+            'perPage'          => (int) $perPage,
+            'users'            => $users->with('roles')->paginate($perPage),
+            'roles'            => $roles,
+            'numberPermissions'=> $numberPermissions,
         ]);
     }
 
@@ -154,6 +165,9 @@ class UserController extends Controller
             ]);
             $user->assignRole($request->role);
             DB::commit();
+            Cache::forget('roles_list_superadmin');
+            Cache::forget('roles_list_admin');
+            Cache::forget('roles_list_user');
             Myhelp::EscribirEnLog($this, 'STORE:users', 'usuario id:' . $user->id . ' | ' . $user->name . ' guardado', false);
 
             return back()->with('success', __('app.label.created_successfully', ['name' => $user->name]));
@@ -195,6 +209,7 @@ class UserController extends Controller
 
             $user->syncRoles($request->role);
             DB::commit();
+            Cache::forget("user_permissions_{$id}");
             Myhelp::EscribirEnLog($this, 'UPDATE:users', 'usuario id:' . $user->id . ' | ' . $user->name . ' actualizado', false);
             return back()->with('success', __('app.label.updated_successfully', ['name' => $user->name]));
         } catch (\Throwable $th) {

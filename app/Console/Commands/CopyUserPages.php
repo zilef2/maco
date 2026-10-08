@@ -40,47 +40,50 @@ class CopyUserPages extends Command
     // todo: sync: añadir a los demas repos
     // justtesting: cuando hay que qutiar cosas que solo deberian aparecer en la version de pruebas
     // thisisnew!!!
-    protected $thename = 'Talla';
+    protected array $modelConfig = [];
 
     protected function aagenerateAttributes(): array
     {
         // Tipos válidos: string text number dinero date datetime boolean foreign json
+        // Cada entrada: [ 'NombreModelo', 'required' => [...], 'optional' => [...] ]
         return [
-            'required' => [
-                'referencia'        => 'string',
-                'nombre'            => 'string',
-                'descripcion'       => 'text',
-                'tipo'              => 'string',
-            ],
-            'optional' => [ 
-                'estado'            => 'number',
+
+             [
+                'Taller',
+                'required' => [
+                    'nombre' => 'string',
+                    'direccion' => 'string',
+                ],
             ],
         ];
     }
 
     private function allAttributes(): array
     {
-        $attrs = $this->aagenerateAttributes();
-        return array_merge($attrs['required'], $attrs['optional']);
+        return array_merge(
+            $this->modelConfig['required'] ?? [],
+            $this->modelConfig['optional'] ?? []
+        );
     }
 
     protected function addToMyModels(): void
     {
+        $modelName = $this->modelConfig['name'];
         $path = app_path('helpers/MyModels.php');
-        if (!file_exists($path)) {
+        if (! file_exists($path)) {
             return;
         }
 
         $content = file_get_contents($path);
-        
+
         if (strpos($content, '//aquipues') !== false) {
-            if (strpos($content, "'{$this->thename}'") === false) {
-                $replacement = "'" . $this->thename . "',\n\t\t\t//aquipues";
+            if (strpos($content, "'$modelName'") === false) {
+                $replacement = "'$modelName',\n\t\t\t//aquipues";
                 $content = str_replace('//aquipues', $replacement, $content);
                 file_put_contents($path, $content);
-                $this->info("Modelo {$this->thename} agregado a MyModels.php exitosamente.");
+                $this->info("Modelo $modelName agregado a MyModels.php exitosamente.");
             } else {
-                $this->info("El modelo {$this->thename} ya existe en MyModels.php.");
+                $this->info("El modelo $modelName ya existe en MyModels.php.");
             }
         }
     }
@@ -92,17 +95,15 @@ class CopyUserPages extends Command
             $this->contadorMetodos = 0;
             $submetodo['Lenguaje'] = 0;
 
-            $modelName = $this->thename;
-
             $pasos = [
-                'modelo'     => '1. make:model + copy:f + lang:u',
-                'vue'        => '2. Páginas Vue (MakeVuePages)',
+                'modelo' => '1. make:model + copy:f + lang:u',
+                'vue' => '2. Páginas Vue (MakeVuePages)',
                 'controller' => '3. Controlador (MakeControllerPages)',
-                'replace'    => '4. Reemplazar palabras en archivos',
-                'atributos'  => '5. AddAttributesVue',
-                'migracion'  => '6. Actualizar migración',
-                'paso2'      => '7. Paso2 (routes, seeder permisos…)',
-                'optimize'   => '8. optimize + optimize:clear',
+                'replace' => '4. Reemplazar palabras en archivos',
+                'atributos' => '5. AddAttributesVue',
+                'migracion' => '6. Actualizar migración',
+                'paso2' => '7. Paso2 (routes, seeder permisos…)',
+                'optimize' => '8. optimize + optimize:clear',
             ];
 
             $opciones = array_merge(['0. Todos los pasos'], array_values($pasos));
@@ -126,78 +127,89 @@ class CopyUserPages extends Command
 
             $this->info('Pasos seleccionados: '.implode(', ', $activos));
 
-            if (! $this->ValidacionesPrevias($modelName, 'generic', $activos)) {
-                $this->error('Las validaciones previas fallaron. Ejecución cancelada.');
+            foreach ($this->aagenerateAttributes() as $entry) {
+                $this->modelConfig = [
+                    'name' => $entry[0],
+                    'required' => $entry['required'] ?? [],
+                    'optional' => $entry['optional'] ?? [],
+                ];
+                $modelName = $this->modelConfig['name'];
 
-                return 0;
+                $this->info("\n=== Procesando modelo: $modelName ===");
+
+                if (! $this->ValidacionesPrevias($modelName, 'generic', $activos)) {
+                    $this->error("Las validaciones previas fallaron para $modelName. Saltando.");
+
+                    continue;
+                }
+
+                $progressBar = $this->output->createProgressBar(count($activos));
+                $progressBar->start();
+
+                // --- Paso 1: modelo base ---
+                if (in_array('modelo', $activos)) {
+                    $this->warn('Empezando make:model');
+                    Artisan::call('make:model', ['name' => $modelName, '--all' => true]);
+                    Artisan::call('copy:f');
+                    Artisan::call('lang:u '.$modelName);
+                    $this->addToMyModels();
+                    $progressBar->advance();
+                }
+
+                // --- Paso 2: Vue pages ---
+                $vueOk = false;
+                if (in_array('vue', $activos)) {
+                    $vueOk = $this->MakeVuePages('generic', $modelName);
+                    $this->info($vueOk ? 'Vue OK' : 'Vue FALLO');
+                    $progressBar->advance();
+                }
+
+                // --- Paso 3: Controller ---
+                $ctrlOk = false;
+                if (in_array('controller', $activos)) {
+                    $ctrlOk = $this->MakeControllerPages('generic', $modelName);
+                    $this->info($ctrlOk ? 'Controller OK' : 'Controller FALLO');
+                    $progressBar->advance();
+                }
+
+                // --- Paso 4: Reemplazar palabras ---
+                if (in_array('replace', $activos) && ($vueOk || $ctrlOk)) {
+                    $this->replaceWordInFiles('generic', [
+                        'vue' => $vueOk,
+                        'controller' => $ctrlOk,
+                    ], $modelName, '');
+                    $progressBar->advance();
+                }
+
+                // --- Paso 5: Atributos Vue ---
+                if (in_array('atributos', $activos)) {
+                    $this->AddAttributesVue($modelName);
+                    $progressBar->advance();
+                }
+
+                // --- Paso 6: Migración ---
+                if (in_array('migracion', $activos)) {
+                    $this->updateMigration($modelName);
+                    $progressBar->advance();
+                }
+
+                // --- Paso 7: Paso2 (routes, seeder permisos…) ---
+                if (in_array('paso2', $activos)) {
+                    $this->Paso2($modelName, $submetodo);
+                    $progressBar->advance();
+                }
+
+                // --- Paso 8: Optimize ---
+                if (in_array('optimize', $activos)) {
+                    $this->info(Artisan::call('optimize'));
+                    $this->info(Artisan::call('optimize:clear'));
+                    $progressBar->advance();
+                }
+
+                $progressBar->finish();
+                $this->newLine();
+                $this->info("$modelName finalizado.");
             }
-
-            $progressBar = $this->output->createProgressBar(count($activos));
-            $progressBar->start();
-
-            // --- Paso 1: modelo base ---
-            if (in_array('modelo', $activos)) {
-                $this->warn('Empezando make:model');
-                Artisan::call('make:model', ['name' => $modelName, '--all' => true]);
-                Artisan::call('copy:f');
-                Artisan::call('lang:u '.$modelName);
-                $this->addToMyModels();
-                $progressBar->advance();
-            }
-
-            // --- Paso 2: Vue pages ---
-            $vueOk = false;
-            if (in_array('vue', $activos)) {
-                $vueOk = $this->MakeVuePages('generic', $modelName);
-                $this->info($vueOk ? 'Vue OK' : 'Vue FALLO');
-                $progressBar->advance();
-            }
-
-            // --- Paso 3: Controller ---
-            $ctrlOk = false;
-            if (in_array('controller', $activos)) {
-                $ctrlOk = $this->MakeControllerPages('generic', $modelName);
-                $this->info($ctrlOk ? 'Controller OK' : 'Controller FALLO');
-                $progressBar->advance();
-            }
-
-            // --- Paso 4: Reemplazar palabras ---
-            if (in_array('replace', $activos) && ($vueOk || $ctrlOk)) {
-                $this->replaceWordInFiles('generic', [
-                    'vue' => $vueOk,
-                    'controller' => $ctrlOk,
-                ], $modelName, '');
-                $progressBar->advance();
-            }
-
-            // --- Paso 5: Atributos Vue ---
-            if (in_array('atributos', $activos)) {
-                $this->AddAttributesVue($modelName);
-                $progressBar->advance();
-            }
-
-            // --- Paso 6: Migración ---
-            if (in_array('migracion', $activos)) {
-                $this->updateMigration($modelName);
-                $progressBar->advance();
-            }
-
-            // --- Paso 7: Paso2 (routes, seeder permisos…) ---
-            if (in_array('paso2', $activos)) {
-                $this->Paso2($modelName, $submetodo);
-                $progressBar->advance();
-            }
-
-            // --- Paso 8: Optimize ---
-            if (in_array('optimize', $activos)) {
-                $this->info(Artisan::call('optimize'));
-                $this->info(Artisan::call('optimize:clear'));
-                $progressBar->advance();
-            }
-
-            $progressBar->finish();
-            $this->newLine();
-            $this->info('Finalizado.');
 
             return 1;
         } catch (Exception $e) {
@@ -698,94 +710,94 @@ class CopyUserPages extends Command
     protected function DoFillable($modelName): int
     {
         try {
-        $attributes = array_merge($this->allAttributes(), $this->generateForeign());
+            $attributes = array_merge($this->allAttributes(), $this->generateForeign());
 
-        // Generar el fillable
-        $fillable = array_keys($attributes);
-        $fillableString = implode("', '", $fillable);
+            // Generar el fillable
+            $fillable = array_keys($attributes);
+            $fillableString = implode("', '", $fillable);
 
-        // Ruta del modelo
-        $modelPath = app_path("Models/$modelName.php");
+            // Ruta del modelo
+            $modelPath = app_path("Models/$modelName.php");
 
-        // Verificar si el modelo existe
-        if (! File::exists($modelPath)) {
-            $this->error("El modelo $modelName no existe.");
+            // Verificar si el modelo existe
+            if (! File::exists($modelPath)) {
+                $this->error("El modelo $modelName no existe.");
 
-            return 0;
-        }
-
-        // Leer el contenido del modelo
-        $modelContent = File::get($modelPath);
-
-        // Añadir el fillable y SoftDeletes
-        $modelContent = preg_replace('/protected \$fillable = \[.*?\];/s', "protected \$fillable = ['$fillableString'];", $modelContent);
-        if (! str_contains($modelContent, 'use SoftDeletes;')) {
-            $modelContent = preg_replace('/class '.$modelName.' extends/', "use Illuminate\\Database\\Eloquent\\SoftDeletes;\n\n    class $modelName extends", $modelContent);
-        }
-
-        // Generar relaciones belongsTo
-        $foreignKeys = $this->generateForeign();
-        foreach ($foreignKeys as $key => $value) {
-            $functionName = lcfirst(str_replace('_id', '', $key)); // Nombre de la función
-            $relatedModel = ucfirst(str_replace('_id', '', $key)); // Nombre del modelo relacionado
-
-            // Verificar si la relación ya existe
-            if (! str_contains($modelContent, "function $functionName(")) {
-                $relationMethod = "\n    public function $functionName(): BelongsTo\n    {\n        return \$this->belongsTo($relatedModel::class);\n    }\n";
-
-                // Insertar la relación antes del final de la clase
-                $modelContent = preg_replace('/}\s*$/', "$relationMethod\n}", $modelContent);
+                return 0;
             }
-        }
 
-        if (! str_contains($modelContent, 'use Illuminate\Support\Facades\DB;')) {
-            $modelContent = str_replace(
-                "namespace App\\Models;",
-                "namespace App\\Models;\n\nuse Illuminate\\Support\\Facades\\DB;",
-                $modelContent
-            );
-        }
+            // Leer el contenido del modelo
+            $modelContent = File::get($modelPath);
 
-        if (! str_contains($modelContent, 'function getFillableWithTypes')) {
-            $method = <<<PHP
+            // Añadir el fillable y SoftDeletes
+            $modelContent = preg_replace('/protected \$fillable = \[.*?\];/s', "protected \$fillable = ['$fillableString'];", $modelContent);
+            if (! str_contains($modelContent, 'use SoftDeletes;')) {
+                $modelContent = preg_replace('/class '.$modelName.' extends/', "use Illuminate\\Database\\Eloquent\\SoftDeletes;\n\n    class $modelName extends", $modelContent);
+            }
+
+            // Generar relaciones belongsTo
+            $foreignKeys = $this->generateForeign();
+            foreach ($foreignKeys as $key => $value) {
+                $functionName = lcfirst(str_replace('_id', '', $key)); // Nombre de la función
+                $relatedModel = ucfirst(str_replace('_id', '', $key)); // Nombre del modelo relacionado
+
+                // Verificar si la relación ya existe
+                if (! str_contains($modelContent, "function $functionName(")) {
+                    $relationMethod = "\n    public function $functionName(): BelongsTo\n    {\n        return \$this->belongsTo($relatedModel::class);\n    }\n";
+
+                    // Insertar la relación antes del final de la clase
+                    $modelContent = preg_replace('/}\s*$/', "$relationMethod\n}", $modelContent);
+                }
+            }
+
+            if (! str_contains($modelContent, 'use Illuminate\Support\Facades\DB;')) {
+                $modelContent = str_replace(
+                    'namespace App\\Models;',
+                    "namespace App\\Models;\n\nuse Illuminate\\Support\\Facades\\DB;",
+                    $modelContent
+                );
+            }
+
+            if (! str_contains($modelContent, 'function getFillableWithTypes')) {
+                $method = <<<'PHP'
 
 
     public static function getFillableWithTypes(): array
     {
-        \$table = (new static)->getTable();
-        \$columns = DB::select("SHOW COLUMNS FROM {\$table}");
+        $table = (new static)->getTable();
+        $columns = DB::select("SHOW COLUMNS FROM {$table}");
 
-        \$fillable = (new static)->getFillable();
-        \$result = [];
+        $fillable = (new static)->getFillable();
+        $result = [];
 
-        foreach (\$columns as \$column) {
-            if (! in_array(\$column->Field, \$fillable) || \$column->Field === 'id') {
+        foreach ($columns as $column) {
+            if (! in_array($column->Field, $fillable) || $column->Field === 'id') {
                 continue;
             }
 
-            \$type = 'text';
-            if (str_contains(\$column->Type, 'foreign') || str_ends_with(\$column->Field, '_id')) {
-                \$type = 'foreign';
-            } elseif (str_contains(\$column->Type, 'int')) {
-                \$type = 'integer';
-            } elseif (str_contains(\$column->Type, 'decimal') || str_contains(\$column->Type, 'float')) {
-                \$type = 'dinero';
-            } elseif (str_contains(\$column->Type, 'date') || str_contains(\$column->Type, 'datetime')) {
-                \$type = 'date';
+            $type = 'text';
+            if (str_contains($column->Type, 'foreign') || str_ends_with($column->Field, '_id')) {
+                $type = 'foreign';
+            } elseif (str_contains($column->Type, 'int')) {
+                $type = 'integer';
+            } elseif (str_contains($column->Type, 'decimal') || str_contains($column->Type, 'float')) {
+                $type = 'dinero';
+            } elseif (str_contains($column->Type, 'date') || str_contains($column->Type, 'datetime')) {
+                $type = 'date';
             }
 
-            \$result[] = [
-                'order' => \$column->Field,
-                'label' => \$column->Field,
-                'type' => \$type,
+            $result[] = [
+                'order' => $column->Field,
+                'label' => $column->Field,
+                'type' => $type,
             ];
         }
 
-        return \$result;
+        return $result;
     }
 PHP;
-            $modelContent = preg_replace('/}\s*$/', "$method\n}\n", $modelContent);
-        }
+                $modelContent = preg_replace('/}\s*$/', "$method\n}\n", $modelContent);
+            }
 
             // Guardar el contenido modificado
             File::put($modelPath, $modelContent);
@@ -803,64 +815,67 @@ PHP;
     protected function updateMigration($modelName): int
     {
         try {
-        $allAttrs  = $this->aagenerateAttributes();
-        $required  = $allAttrs['required'];
-        $optional  = $allAttrs['optional'];
-
-        $migrationFile = collect(glob(database_path('migrations/*.php')))->first(
-            fn ($file) => str_contains($file, 'create_'.Str::snake(Str::plural($modelName)).'_table')
-        );
-
-        if (! $migrationFile) {
-            $this->warn("No se encontró la migración para $modelName. Creando archivo...");
-            Artisan::call('make:migration', [
-                'name' => 'create_'.Str::snake(Str::plural($modelName)).'_table',
-                '--create' => Str::snake(Str::plural($modelName)),
-            ]);
+            $required = $this->modelConfig['required'] ?? [];
+            $optional = $this->modelConfig['optional'] ?? [];
 
             $migrationFile = collect(glob(database_path('migrations/*.php')))->first(
                 fn ($file) => str_contains($file, 'create_'.Str::snake(Str::plural($modelName)).'_table')
             );
-        }
 
-        $buildColumn = function (string $name, string $type, bool $nullable): string {
-            if ($type === 'dinero') {
-                $col = "\$table->decimal('$name', 62, 2)->default(0)";
+            if (! $migrationFile) {
+                $this->warn("No se encontró la migración para $modelName. Creando archivo...");
+                Artisan::call('make:migration', [
+                    'name' => 'create_'.Str::snake(Str::plural($modelName)).'_table',
+                    '--create' => Str::snake(Str::plural($modelName)),
+                ]);
+
+                $migrationFile = collect(glob(database_path('migrations/*.php')))->first(
+                    fn ($file) => str_contains($file, 'create_'.Str::snake(Str::plural($modelName)).'_table')
+                );
+            }
+
+            $buildColumn = function (string $name, string $type, bool $nullable): string {
+                if ($type === 'dinero') {
+                    $col = "\$table->decimal('$name', 62, 2)->default(0)";
+
+                    return $nullable ? $col.'->nullable();' : $col.';';
+                }
+                if ($type === 'dateTime') {
+                    $col = "\$table->dateTime('$name')->default(now())";
+
+                    return $nullable ? $col.'->nullable();' : $col.';';
+                }
+                if ($type === 'boolean') {
+                    $col = "\$table->boolean('$name')->default(false)";
+
+                    return $nullable ? $col.'->nullable();' : $col.';';
+                }
+                if ($type === 'number') {
+                    $type = 'integer';
+                }
+                $col = "\$table->$type('$name')";
+
                 return $nullable ? $col.'->nullable();' : $col.';';
-            }
-            if ($type === 'dateTime') {
-                $col = "\$table->dateTime('$name')->default(now())";
-                return $nullable ? $col.'->nullable();' : $col.';';
-            }
-            if ($type === 'boolean') {
-                $col = "\$table->boolean('$name')->default(false)";
-                return $nullable ? $col.'->nullable();' : $col.';';
-            }
-            if ($type === 'number') {
-                $type = 'integer';
-            }
-            $col = "\$table->$type('$name')";
-            return $nullable ? $col.'->nullable();' : $col.';';
-        };
+            };
 
-        $requiredColumns = collect($required)
-            ->map(fn ($type, $name) => $buildColumn($name, $type, false))
-            ->implode("\n            ");
+            $requiredColumns = collect($required)
+                ->map(fn ($type, $name) => $buildColumn($name, $type, false))
+                ->implode("\n            ");
 
-        $optionalColumns = collect($optional)
-            ->map(fn ($type, $name) => $buildColumn($name, $type, true))
-            ->implode("\n            ");
+            $optionalColumns = collect($optional)
+                ->map(fn ($type, $name) => $buildColumn($name, $type, true))
+                ->implode("\n            ");
 
-        $columns = $requiredColumns
-            . (($optionalColumns !== '') ? "\n            // opcionales\n            $optionalColumns" : '');
+            $columns = $requiredColumns
+                .(($optionalColumns !== '') ? "\n            // opcionales\n            $optionalColumns" : '');
 
-        $content = file_get_contents($migrationFile);
-        $content = preg_replace('/Schema::create\(.*?\{/', "$0\n            $columns", $content);
-        file_put_contents($migrationFile, $content);
+            $content = file_get_contents($migrationFile);
+            $content = preg_replace('/Schema::create\(.*?\{/', "$0\n            $columns", $content);
+            file_put_contents($migrationFile, $content);
 
-        $this->info("Migración actualizada para $modelName");
+            $this->info("Migración actualizada para $modelName");
 
-        return 1;
+            return 1;
         } catch (\Throwable $e) {
             $this->error('[updateMigration] '.$e->getMessage().' en '.$e->getFile().':'.$e->getLine());
 

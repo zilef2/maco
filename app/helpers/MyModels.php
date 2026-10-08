@@ -40,6 +40,15 @@ class MyModels {
 			'materias_primas',
 			'Producto',
 			'Talla',
+			'OrdenProduccion',
+			'ProcesoExterno',
+			'KitTaller',
+			'RecepcionCalidad',
+			'CierreOrdenProduccion',
+			'EstadoOperacion',
+			'FichaTecnicaMateriales',
+			'PendientesProduccion',
+			'Taller',
 			//aquipues
 
 		];
