@@ -13,19 +13,14 @@ return new class extends Migration
     {
         Schema::create('kit_tallers', function (Blueprint $table) {
             $table->id();
-
             $table->string('estado_requerido');
-            $table->string('unidad_medida');
-            $table->integer('cantidad_requerida');
-            $table->integer('cantidad_disponible');
-            $table->integer('cantidad_preparada');
-            $table->integer('cantidad_faltante');
-            $table->boolean('esta_listo')->default(false);
-            // opcionales
-            
+            $table->string('unidad');
+            $table->decimal('cantidad_requerida');
+            $table->boolean('listo')->default(false);
+            $table->decimal('cantidad_disponible')->nullable();
+            $table->decimal('cantidad_preparada')->nullable();
+            $table->decimal('falta')->nullable();
             $table->text('observaciones')->nullable();
-            $table->datetime('fecha_inicio_alistamiento')->nullable();
-            $table->datetime('fecha_completado')->nullable();
             $table->timestamps();
         });
     }

@@ -13,13 +13,10 @@ return new class extends Migration
     {
         Schema::create('estado_operacions', function (Blueprint $table) {
             $table->id();
-            $table->string('estado_op');
-            $table->text('cuando_aplica');
-            $table->text('regla_clave');
-            // opcionales
-            
-            $table->json('puede_pasar_a')->nullable();
-            $table->datetime('fecha_creacion')->nullable();
+            $table->string('nombre');
+            $table->text('cuando_aplica')->nullable();
+            $table->text('regla_clave')->nullable();
+            $table->string('puede_pasar_a')->nullable();
             $table->timestamps();
         });
     }

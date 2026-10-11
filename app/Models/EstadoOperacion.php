@@ -13,7 +13,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 {
     /** @use HasFactory<\Database\Factories\EstadoOperacionFactory> */
     use HasFactory;
-    protected $fillable = ['estado_op', 'cuando_aplica', 'regla_clave', 'id', 'puede_pasar_a', 'fecha_creacion'];
+    protected $fillable = ['nombre', 'cuando_aplica', 'regla_clave', 'puede_pasar_a'];
 
 
 

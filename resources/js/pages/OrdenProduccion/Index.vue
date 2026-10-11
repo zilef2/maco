@@ -11,10 +11,11 @@ import DangerButton from '@/components/DangerButton.vue';
 import pkg from 'lodash';
 
 import Pagination from '@/components/Pagination.vue';
-import { ChevronUpDownIcon, PencilIcon, TrashIcon } from '@heroicons/vue/24/solid';
+import { ChevronUpDownIcon, EyeIcon, PencilIcon, TrashIcon } from '@heroicons/vue/24/solid';
 import Create from '@/pages/OrdenProduccion/Create.vue';
 import Edit from '@/pages/OrdenProduccion/Edit.vue';
 import Delete from '@/pages/OrdenProduccion/Delete.vue';
+import VerObservacion from '@/pages/OrdenProduccion/VerObservacion.vue';
 
 import Checkbox from '@/components/Checkbox.vue';
 import InfoButton from '@/components/InfoButton.vue';
@@ -57,6 +58,9 @@ const data = reactive({
     createOpen: false,
     editOpen: false,
     deleteOpen: false,
+    observacionOpen: false,
+    observacionTexto: '' as string,
+    observacionOp: '' as string,
     dataSet: (usePage().props as any)?.app?.perpage ?? defaultPerPage,
 })
 
@@ -85,20 +89,23 @@ const selectAll = (event: any) => {
 }
 const select = () => data.multipleSelect = props.fromController?.data.length === data.selectedId.length;
 
+const abrirObservacion = (op: any) => {
+    data.observacionTexto = op?.observaciones ?? ''
+    data.observacionOp = op?.numero_op ?? ''
+    data.observacionOpen = true
+}
+
 const titulos = [
     { order: 'numero_op', label: 'numero_op', type: 'string' },
-    { order: 'producto_referencia_id', label: 'producto_referencia_id', type: 'foreign' },
-    { order: 'cantidad_planificada', label: 'cantidad_planificada', type: 'number' },
-    { order: 'taller', label: 'taller', type: 'string' },
-    { order: 'estado_op_id', label: 'estado_op_id', type: 'foreign' },
-    { order: 'responsable_id', label: 'responsable_id', type: 'foreign' },
-    { order: 'fecha_creacion', label: 'fecha_creacion', type: 'datetime' },
-    { order: 'fecha_inicio_programada', label: 'fecha_inicio_programada', type: 'date' },
+    { order: 'producto_referencia_id', label: 'producto_referencia_id', type: 'foreign', nameid: 'producto_nombre' },
+    { order: 'cantidad_planificada', label: 'cantidad_planificada', type: 'integer' },
+    { order: 'fecha_creacion', label: 'fecha_creacion', type: 'date' },
     { order: 'fecha_prevista_envio_taller', label: 'fecha_prevista_envio_taller', type: 'date' },
-    { order: 'fecha_entrega_estimada', label: 'fecha_entrega_estimada', type: 'date' },
-    { order: 'shopify_product_id', label: 'shopify_product_id', type: 'string' },
+    { order: 'taller_id', label: 'taller_id', type: 'foreign', nameid: 'taller_nombre' },
+    { order: 'estado_op_id', label: 'estado_op_id', type: 'foreign', nameid: 'estado_nombre' },
+    { order: 'user_id', label: 'user_id', type: 'foreign', nameid: 'responsable_nombre' },
+    { order: 'id_shopify_producto', label: 'id_shopify_producto', type: 'string' },
     { order: 'observaciones', label: 'observaciones', type: 'text' },
-    { order: 'fecha_fin_real', label: 'fecha_fin_real', type: 'datetime' },
 ];
 
 </script>
@@ -127,6 +134,9 @@ const titulos = [
                     <Delete v-if="can(['delete OrdenProduccion'])" :numberPermissions="props.numberPermissions"
                         :show="data.deleteOpen" @close="data.deleteOpen = false" :OrdenProducciona="data.OrdenProducciono"
                         :title="props.title" />
+
+                    <VerObservacion :show="data.observacionOpen" @close="data.observacionOpen = false"
+                        :title="props.title" :numeroOp="data.observacionOp" :observacion="data.observacionTexto" />
                 </div>
             </div>
             <div class="relative bg-white dark:bg-gray-800 shadow sm:rounded-lg">
@@ -138,7 +148,7 @@ const titulos = [
                         v-model="data.params.search" type="text" class="block w-4/6 md:w-3/6 lg:w-2/6 rounded-lg"
                         :placeholder="lang().t('app.placeholder.search')" />
                 </div>
-                <div class="overflow-x-auto scrollbar-table">
+                <div class="scrollbar-table">
                     <table v-if="props.total && props.total > 0" class="w-full">
                         <thead class="uppercase text-sm border-t border-gray-200 dark:border-gray-700">
                             <tr class="dark:bg-gray-900/50 text-left">
@@ -190,9 +200,19 @@ const titulos = [
                                 <td class="whitespace-nowrap py-4 px-2 sm:py-3 text-center">{{ ++indexu }}</td>
                                 <td v-for="titulo in titulos" :key="titulo.order"
                                     class="whitespace-nowrap py-4 px-2 sm:py-3">
-                                    <span v-if="titulo['type'] === 'text' || titulo['type'] === 'string'"> {{
+                                    <span v-if="titulo['order'] === 'observaciones'" class="flex items-center gap-2">
+                                        <span class="block max-w-[240px] truncate">{{ claseFromController[titulo['order']]
+                                            || '—' }}</span>
+                                        <InfoButton v-if="claseFromController[titulo['order']]" type="button"
+                                            @click="abrirObservacion(claseFromController)"
+                                            class="px-2 py-1.5 rounded-none"
+                                            v-tooltip="lang().t('app.tooltip.ver')">
+                                            <EyeIcon class="w-4 h-4" />
+                                        </InfoButton>
+                                    </span>
+                                    <span v-else-if="titulo['type'] === 'text' || titulo['type'] === 'string'"> {{
                                         claseFromController[titulo['order']] }} </span>
-                                    <span v-if="titulo['type'] === 'number'"> {{
+                                    <span v-if="titulo['type'] === 'number' || titulo['type'] === 'integer'"> {{
                                         zilef_nuber_format(claseFromController[titulo['order']], 0, false) }} </span>
                                     <span v-if="titulo['type'] === 'dinero'"> {{
                                         zilef_nuber_format(claseFromController[titulo['order']], 0, true) }} </span>

@@ -13,7 +13,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 {
     /** @use HasFactory<\Database\Factories\KitTallerFactory> */
     use HasFactory;
-    protected $fillable = ['orden_produccion_id', 'material_componente_id', 'estado_requerido', 'unidad_medida', 'cantidad_requerida', 'cantidad_disponible', 'cantidad_preparada', 'cantidad_faltante', 'esta_listo', 'id', 'observaciones', 'fecha_inicio_alistamiento', 'fecha_completado'];
+    protected $fillable = ['orden_produccion_id', 'material_id', 'estado_requerido', 'unidad', 'cantidad_requerida', 'listo', 'cantidad_disponible', 'cantidad_preparada', 'falta', 'observaciones'];
 
 
 

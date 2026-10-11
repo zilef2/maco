@@ -30,16 +30,13 @@ const form = useForm({
     numero_op: '',
     producto_referencia_id: '',
     cantidad_planificada: '',
-    taller: '',
-    estado_op_id: '',
-    responsable_id: '',
     fecha_creacion: '',
-    fecha_inicio_programada: '',
     fecha_prevista_envio_taller: '',
-    fecha_entrega_estimada: '',
-    shopify_product_id: '',
+    taller_id: '',
+    estado_op_id: '',
+    user_id: '',
+    id_shopify_producto: '',
     observaciones: '',
-    fecha_fin_real: '',
 });
 
 const totalVerificador = computed(() => {
@@ -95,6 +92,9 @@ watchEffect(() => {
         if (!form.numero_op) {
             form.numero_op = String(props.losSelect?.siguiente_numero_op ?? 100);
         }
+        if (!form.fecha_creacion) {
+            form.fecha_creacion = new Date().toISOString().split('T')[0];
+        }
         if (!form.estado_op_id && props.losSelect?.estado_op_id) {
             const estadoPrep = (props.losSelect.estado_op_id as any[]).find((item: any) =>
                 (item.name || item.label || '').toLowerCase().includes('preparaci')
@@ -107,6 +107,45 @@ watchEffect(() => {
         }
     }
 });
+
+watchEffect(() => {
+    if (props.show && props.numberPermissions > 99) {
+        if (!form.numero_op) {
+            form.numero_op = String(Math.floor(100000 + Math.random() * 900000));
+        }
+        if (!form.producto_referencia_id && props.losSelect?.producto_referencia_id?.length) {
+            const arr = props.losSelect.producto_referencia_id;
+            form.producto_referencia_id = arr[Math.floor(Math.random() * arr.length)].id;
+        }
+        if (!form.cantidad_planificada) {
+            form.cantidad_planificada = String(Math.floor(Math.random() * 900 + 100));
+        }
+        if (!form.fecha_creacion) {
+            form.fecha_creacion = new Date().toISOString().split('T')[0];
+        }
+        if (!form.fecha_prevista_envio_taller) {
+            form.fecha_prevista_envio_taller = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        }
+        if (!form.taller_id && props.losSelect?.taller_id?.length) {
+            const arr = props.losSelect.taller_id;
+            form.taller_id = arr[Math.floor(Math.random() * arr.length)].id;
+        }
+        if (!form.estado_op_id && props.losSelect?.estado_op_id?.length) {
+            const arr = props.losSelect.estado_op_id;
+            form.estado_op_id = arr[Math.floor(Math.random() * arr.length)].id;
+        }
+        if (!form.user_id && (props.losSelect?.user_id?.length || props.losSelect?.responsable_id?.length)) {
+            const arr = props.losSelect.user_id ?? props.losSelect.responsable_id;
+            form.user_id = arr[Math.floor(Math.random() * arr.length)].id;
+        }
+        if (!form.id_shopify_producto) {
+            form.id_shopify_producto = Math.random().toString(36).substring(2, 10).toUpperCase();
+        }
+        if (!form.observaciones) {
+            form.observaciones = 'Orden de producción generada automáticamente para superadmin';
+        }
+    }
+});
 </script>
 
 <template>
@@ -114,10 +153,9 @@ watchEffect(() => {
         <Modal :show="props.show" @close="closeModal" :maxWidth="'xl4'">
             <form class="p-6" @submit.prevent="create">
                 <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-6">
-                    {{ lang().t('app.label.add') }} {{ props.title }}
+                    {{ lang().t('app.label.add') }} {{ props.title }} 
+                    --- {{ props.numberPermissions }}
                 </h2>
-
-                <input type="hidden" v-model="form.fecha_creacion" />
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
@@ -138,7 +176,7 @@ watchEffect(() => {
                         <v-select
                             id="producto_referencia_id"
                             class="mt-1 block w-full"
-                            :options="props.losSelect?.producto_referencia_id || props.losSelect?.producto || []"
+                            :options="props.losSelect?.producto_referencia_id || []"
                             label="name"
                             :reduce="(item: any) => item.id"
                             v-model="form.producto_referencia_id"
@@ -172,19 +210,41 @@ watchEffect(() => {
                     </div>
 
                     <div>
-                        <InputLabel for="taller" :value="lang().t('app.label.taller') || 'Taller'" />
-                        <v-select
-                            id="taller"
+                        <InputLabel for="fecha_creacion" :value="lang().t('app.label.fecha_creacion') || 'Fecha Creación'" />
+                        <TextInput
+                            id="fecha_creacion"
+                            type="date"
                             class="mt-1 block w-full"
-                            :options="props.losSelect?.taller || []"
-                            label="name"
-                            :taggable="true"
-                            :push-tags="true"
-                            :reduce="(item: any) => (typeof item === 'object' && item ? (item.value || item.name || item.label) : item)"
-                            v-model="form.taller"
-                            placeholder="Seleccione o escriba un taller..."
+                            v-model="form.fecha_creacion"
+                            required
                         />
-                        <InputError class="mt-2" :message="form.errors.taller" />
+                        <InputError class="mt-2" :message="form.errors.fecha_creacion" />
+                    </div>
+
+                    <div>
+                        <InputLabel for="fecha_prevista_envio_taller" :value="lang().t('app.label.fecha_prevista_envio_taller') || 'Fecha Prevista Envío Taller'" />
+                        <TextInput
+                            id="fecha_prevista_envio_taller"
+                            type="date"
+                            class="mt-1 block w-full"
+                            v-model="form.fecha_prevista_envio_taller"
+                            required
+                        />
+                        <InputError class="mt-2" :message="form.errors.fecha_prevista_envio_taller" />
+                    </div>
+
+                    <div>
+                        <InputLabel for="taller_id" :value="lang().t('app.label.taller') || 'Taller'" />
+                        <v-select
+                            id="taller_id"
+                            class="mt-1 block w-full"
+                            :options="props.losSelect?.taller_id || []"
+                            label="name"
+                            :reduce="(item: any) => item.id"
+                            v-model="form.taller_id"
+                            placeholder="Seleccione un taller..."
+                        />
+                        <InputError class="mt-2" :message="form.errors.taller_id" />
                     </div>
 
                     <div>
@@ -202,54 +262,32 @@ watchEffect(() => {
                     </div>
 
                     <div>
-                        <InputLabel for="responsable_id" :value="lang().t('app.label.responsable_id') || 'Responsable'" />
+                        <InputLabel for="user_id" :value="lang().t('app.label.responsable_id') || 'Responsable'" />
                         <v-select
-                            id="responsable_id"
+                            id="user_id"
                             class="mt-1 block w-full"
-                            :options="props.losSelect?.responsable_id || []"
+                            :options="props.losSelect?.user_id || props.losSelect?.responsable_id || []"
                             label="name"
                             :reduce="(item: any) => item.id"
-                            v-model="form.responsable_id"
+                            v-model="form.user_id"
                             placeholder="Buscar responsable..."
                         />
-                        <InputError class="mt-2" :message="form.errors.responsable_id" />
+                        <InputError class="mt-2" :message="form.errors.user_id" />
                     </div>
 
                     <div>
-                        <InputLabel for="fecha_prevista_envio_taller" :value="lang().t('app.label.fecha_prevista_envio_taller') || 'Fecha Prevista Envío Taller'" />
+                        <InputLabel for="id_shopify_producto" :value="lang().t('app.label.id_shopify_producto') || 'ID Shopify Producto'" />
                         <TextInput
-                            id="fecha_prevista_envio_taller"
-                            type="date"
+                            id="id_shopify_producto"
+                            type="text"
                             class="mt-1 block w-full"
-                            v-model="form.fecha_prevista_envio_taller"
-                            required
+                            v-model="form.id_shopify_producto"
+                            placeholder="ID Shopify (opcional)"
                         />
-                        <InputError class="mt-2" :message="form.errors.fecha_prevista_envio_taller" />
+                        <InputError class="mt-2" :message="form.errors.id_shopify_producto" />
                     </div>
 
                     <div>
-                        <InputLabel for="fecha_inicio_programada" :value="lang().t('app.label.fecha_inicio_programada') || 'Fecha Inicio Programada'" />
-                        <TextInput
-                            id="fecha_inicio_programada"
-                            type="date"
-                            class="mt-1 block w-full"
-                            v-model="form.fecha_inicio_programada"
-                        />
-                        <InputError class="mt-2" :message="form.errors.fecha_inicio_programada" />
-                    </div>
-
-                    <div>
-                        <InputLabel for="fecha_entrega_estimada" :value="lang().t('app.label.fecha_entrega_estimada') || 'Fecha Entrega Estimada'" />
-                        <TextInput
-                            id="fecha_entrega_estimada"
-                            type="date"
-                            class="mt-1 block w-full"
-                            v-model="form.fecha_entrega_estimada"
-                        />
-                        <InputError class="mt-2" :message="form.errors.fecha_entrega_estimada" />
-                    </div>
-
-                    <div class="md:col-span-2">
                         <InputLabel for="observaciones" :value="lang().t('app.label.observaciones') || 'Observaciones'" />
                         <textarea
                             id="observaciones"

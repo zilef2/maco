@@ -21,6 +21,8 @@ class CopyUserPages extends Command
     use Constants;
 
     protected $signature = 'copy:u';
+    //similar: model:find-usages
+    // similar: copy:attr
 
     const MSJ_EXITO = ' fue realizada con exito ';
 

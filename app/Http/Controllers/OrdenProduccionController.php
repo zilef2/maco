@@ -16,7 +16,6 @@ use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
-use Inertia\Response;
 
 class OrdenProduccionController extends Controller {
     public array $thisAtributos;
@@ -28,7 +27,16 @@ class OrdenProduccionController extends Controller {
 
     public function index(Request $request) {
         $numberPermissions = MyModels::getPermissionToNumber(Myhelp::EscribirEnLog($this, ' OrdenProduccions '));
-        $OrdenProduccions = $this->Filtros($request)->get();
+        $OrdenProduccions = $this->Filtros($request)->get()->map(function ($op) {
+            $producto = $op->productoReferencia;
+            $op->producto_nombre = $producto
+                ? ($producto->Titulo_Shopify ?: ($producto->Codigo_interno ?: 'Producto #' . $producto->id))
+                : ($op->producto_referencia_id ? '#' . $op->producto_referencia_id : '');
+            $op->taller_nombre = $op->taller?->nombre ?? ($op->taller_id ? '#' . $op->taller_id : '');
+            $op->estado_nombre = $op->estadoOp?->nombre ?? ($op->estado_op_id ? '#' . $op->estado_op_id : '');
+            $op->responsable_nombre = $op->responsable?->name ?? ($op->user_id ? '#' . $op->user_id : '');
+            return $op;
+        });
 
         $perPage = $request->has('perPage') ? $request->perPage : 10;
         return Inertia::render($this->FromController . '/Index', [
@@ -62,14 +70,14 @@ class OrdenProduccionController extends Controller {
                 ];
             });
 
-        $estadoOperaciones = EstadoOperacion::all(['id', 'estado_op'])
+        $estadoOperaciones = EstadoOperacion::all(['id', 'nombre'])
             ->map(function ($estado) {
                 return [
                     'id'    => $estado->id,
                     'value' => $estado->id,
-                    'name'  => $estado->estado_op,
-                    'label' => $estado->estado_op,
-                    'title' => $estado->estado_op,
+                    'name'  => $estado->nombre,
+                    'label' => $estado->nombre,
+                    'title' => $estado->nombre,
                 ];
             });
 
@@ -92,7 +100,7 @@ class OrdenProduccionController extends Controller {
             ->map(function ($taller) {
                 return [
                     'id'    => $taller->id,
-                    'value' => $taller->nombre,
+                    'value' => $taller->id,
                     'name'  => $taller->nombre,
                     'label' => $taller->nombre,
                     'title' => $taller->nombre,
@@ -100,14 +108,21 @@ class OrdenProduccionController extends Controller {
             });
 
         return [
+            // 'responsable_id'         => $usuarios,
+            // 'responsable'            => $usuarios,
+            // 'estado_op_id'           => $estadoOperaciones,
+            // 'estado_op'              => $estadoOperaciones,
+            // 'producto_referencia_id' => $productos,
+            // 'producto_referencia'    => $productos,
+            // 'producto'               => $productos,
+            // 'taller'                 => $talleres,
+            // 'siguiente_numero_op'    => $siguienteNumeroOp,
             'responsable_id'         => $usuarios,
-            'responsable'            => $usuarios,
+            'user_id'                => $usuarios,
             'estado_op_id'           => $estadoOperaciones,
-            'estado_op'              => $estadoOperaciones,
             'producto_referencia_id' => $productos,
-            'producto_referencia'    => $productos,
-            'producto'               => $productos,
-            'taller'                 => $talleres,
+            'producto_id'            => $productos,
+            'taller_id'              => $talleres,
             'siguiente_numero_op'    => $siguienteNumeroOp,
         ];
     }
@@ -129,7 +144,7 @@ class OrdenProduccionController extends Controller {
 	}
 
     public function Filtros($request): Builder {
-        $OrdenProduccions = OrdenProduccion::query();
+        $OrdenProduccions = OrdenProduccion::query()->with(['productoReferencia', 'taller', 'estadoOp', 'responsable']);
         if ($request->has('search')) {
             $OrdenProduccions = $OrdenProduccions->where(function ($query) use ($request) {
                 $query->where('numero_op', 'LIKE', "%" . $request->search . "%");
@@ -174,27 +189,18 @@ class OrdenProduccionController extends Controller {
         $permissions = Myhelp::EscribirEnLog($this, ' Begin STORE:OrdenProduccions');
         DB::beginTransaction();
 
-        $data = $request->all();
-        if (isset($data['producto_referencia_id'])) {
-            $data['producto_id'] = $data['producto_referencia_id'];
-            unset($data['producto_referencia_id']);
+        $data = $request->only(['numero_op', 'producto_referencia_id', 'cantidad_planificada', 'fecha_creacion', 'fecha_prevista_envio_taller', 'taller_id', 'estado_op_id', 'user_id', 'id_shopify_producto', 'observaciones']);
+
+        if (empty($data['user_id']) && $request->filled('responsable_id')) {
+            $data['user_id'] = $request->input('responsable_id');
         }
-        if (isset($data['estado_op_id'])) {
-            $data['estado_operacion_id'] = $data['estado_op_id'];
-            unset($data['estado_op_id']);
-        }
+
         if (empty($data['fecha_creacion'])) {
-            $data['fecha_creacion'] = now();
+            $data['fecha_creacion'] = now()->toDateString();
         }
         if (empty($data['numero_op'])) {
             $maxOp = OrdenProduccion::selectRaw('MAX(CAST(numero_op AS UNSIGNED)) as max_op')->value('max_op');
             $data['numero_op'] = ($maxOp && (int)$maxOp >= 100) ? ((int)$maxOp + 1) : 100;
-        }
-        if (empty($data['fecha_inicio_programada'])) {
-            $data['fecha_inicio_programada'] = now()->toDateString();
-        }
-        if (empty($data['fecha_entrega_estimada'])) {
-            $data['fecha_entrega_estimada'] = now()->addDays(7)->toDateString();
         }
 
         $OrdenProduccion = new OrdenProduccion();
@@ -225,14 +231,10 @@ class OrdenProduccionController extends Controller {
         $permissions = Myhelp::EscribirEnLog($this, ' Begin UPDATE:OrdenProduccions');
         DB::beginTransaction();
 
-        $data = $request->all();
-        if (isset($data['producto_referencia_id'])) {
-            $data['producto_id'] = $data['producto_referencia_id'];
-            unset($data['producto_referencia_id']);
-        }
-        if (isset($data['estado_op_id'])) {
-            $data['estado_operacion_id'] = $data['estado_op_id'];
-            unset($data['estado_op_id']);
+        $data = $request->only(['numero_op', 'producto_referencia_id', 'cantidad_planificada', 'fecha_creacion', 'fecha_prevista_envio_taller', 'taller_id', 'estado_op_id', 'user_id', 'id_shopify_producto', 'observaciones']);
+
+        if (empty($data['user_id']) && $request->filled('responsable_id')) {
+            $data['user_id'] = $request->input('responsable_id');
         }
 
         $OrdenProduccion = OrdenProduccion::findOrFail($id);

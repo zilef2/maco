@@ -1,6 +1,6 @@
 return [
 
-    // 1. ORDEN DE PRODUCCIÓN
+    // 1. ORDEN DE PRODUCCIÓN - 2
     [
         'OrdenProduccion',
         'required' => [
@@ -16,14 +16,13 @@ return [
             'fecha_entrega_estimada' => 'date',
         ],
         'optional' => [
-            'id' => 'string',
             'shopify_product_id' => 'string',
             'observaciones' => 'text',
             'fecha_fin_real' => 'datetime',
         ],
     ],
 
-    // 2. PROCESO EXTERNO
+    // 2. PROCESO EXTERNO - 3 
     [
         'ProcesoExterno',
         'required' => [
@@ -45,7 +44,7 @@ return [
         ],
     ],
 
-    // 3. KIT TALLER
+    // 3. KIT TALLER - 4
     [
         'KitTaller',
         'required' => [
@@ -67,7 +66,7 @@ return [
         ],
     ],
 
-    // 4. RECEPCIÓN CALIDAD
+    // 4. RECEPCIÓN CALIDAD - 6 
     [
         'RecepcionCalidad',
         'required' => [
@@ -89,7 +88,7 @@ return [
         ],
     ],
 
-    // 5. CIERRE DE ORDEN DE PRODUCCIÓN
+    // 5. CIERRE DE ORDEN DE PRODUCCIÓN - 7
     [
         'CierreOrdenProduccion',
         'required' => [
@@ -108,7 +107,7 @@ return [
         ],
     ],
 
-    // 6. ESTADO OPERACIÓN
+    // 6. ESTADO OPERACIÓN - 8 estados y reglas
     [
         'EstadoOperacion',
         'required' => [
@@ -123,7 +122,7 @@ return [
         ],
     ],
 
-    // 7. FICHA TÉCNICA MATERIALES (BOM)
+    // 7. FICHA TÉCNICA MATERIALES (BOM) - 9 Materiales
     [
         'FichaTecnicaMateriales',
         'required' => [
@@ -144,7 +143,7 @@ return [
         ],
     ],
 
-    // 8. PENDIENTES PRODUCCIÓN
+    // 8. PENDIENTES PRODUCCIÓN - 10
     [
         'PendientesProduccion',
         'required' => [
@@ -161,5 +160,83 @@ return [
             'fecha_resolucion_real' => 'datetime',
         ],
     ],
-
+    //falto: 1 flujo general - 5 ficha ensamble
 ];
+
+//en la seccion de ordenproduccion, hace falta sincronizar el resources\js\pages\Taller\Index.vue con sus dos semejantes (create.vue y edit.vue) de manera que todos sepan que no existe el producto_referencia_id si no que es simplemente producto, que hace referencia a el modelo con el mismo nombre. El create.vue esta bien, no hay que cambiarle nada, pero el edit no sabe como buscar el nombre del producto seleccionado, y el index ni muestra el 
+
+
+editing - 10 octubre
+'OrdenProduccion' => [
+            'required' => [
+                'numero_op' => 'string',
+                'producto_referencia_id' => 'foreign',
+                'cantidad_planificada' => 'integer',
+                'fecha_creacion' => 'date',
+                'fecha_prevista_envio_taller' => 'date',
+                'taller_id' => 'foreign',
+                'estado_op_id' => 'foreign',
+                'user_id' => 'foreign',
+            ],
+            'optional' => [
+                'id_shopify_producto' => 'string',
+                'observaciones' => 'text',
+            ],
+        ],
+
+        'DistribucionTallas' => [
+            'required' => [
+                'orden_produccion_id' => 'foreign',
+                'talla' => 'string',
+                'cantidad_planificada' => 'integer',
+            ],
+            'optional' => [
+                'cantidad_recibida_buena' => 'integer',
+                'cantidad_pendiente_reparacion' => 'integer',
+            ],
+        ],
+
+        'ProcesosExternos' => [
+            'required' => [
+                'orden_produccion_id' => 'foreign',
+                'etapa_componente' => 'string',
+                'material_origen_id' => 'foreign',
+                'cantidad' => 'decimal',
+                'unidad' => 'string',
+                'sale_de' => 'string',
+                'va_a' => 'foreign',
+                'proceso_servicio' => 'string',
+            ],
+            'optional' => [
+                'fecha_salida' => 'date',
+                'fecha_regreso' => 'date',
+                'resultado_observaciones' => 'text',
+            ],
+        ],
+
+        'KitTaller' => [
+            'required' => [
+                'orden_produccion_id' => 'foreign',
+                'material_id' => 'foreign',
+                'estado_requerido' => 'string',
+                'unidad' => 'string',
+                'cantidad_requerida' => 'decimal',
+                'listo' => 'boolean',
+            ],
+            'optional' => [
+                'cantidad_disponible' => 'decimal',
+                'cantidad_preparada' => 'decimal',
+                'falta' => 'decimal',
+                'observaciones' => 'text',
+            ],
+        ],
+         'EstadoOperacion' => [
+            'required' => [
+                'nombre' => 'string',
+                'cuando_aplica' => 'text',
+                'regla_clave' => 'text',
+            ],
+            'optional' => [
+                'puede_pasar_a' => 'string',
+            ],
+        ],

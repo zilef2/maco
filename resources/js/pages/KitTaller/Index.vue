@@ -87,18 +87,15 @@ const select = () => data.multipleSelect = props.fromController?.data.length ===
 
 const titulos = [
     { order: 'orden_produccion_id', label: 'orden_produccion_id', type: 'foreign' },
-    { order: 'material_componente_id', label: 'material_componente_id', type: 'foreign' },
+    { order: 'material_id', label: 'material_id', type: 'foreign' },
     { order: 'estado_requerido', label: 'estado_requerido', type: 'string' },
-    { order: 'unidad_medida', label: 'unidad_medida', type: 'string' },
-    { order: 'cantidad_requerida', label: 'cantidad_requerida', type: 'number' },
-    { order: 'cantidad_disponible', label: 'cantidad_disponible', type: 'number' },
-    { order: 'cantidad_preparada', label: 'cantidad_preparada', type: 'number' },
-    { order: 'cantidad_faltante', label: 'cantidad_faltante', type: 'number' },
-    { order: 'esta_listo', label: 'esta_listo', type: 'boolean' },
-    { order: 'id', label: 'id', type: 'string' },
+    { order: 'unidad', label: 'unidad', type: 'string' },
+    { order: 'cantidad_requerida', label: 'cantidad_requerida', type: 'decimal' },
+    { order: 'listo', label: 'listo', type: 'boolean' },
+    { order: 'cantidad_disponible', label: 'cantidad_disponible', type: 'decimal' },
+    { order: 'cantidad_preparada', label: 'cantidad_preparada', type: 'decimal' },
+    { order: 'falta', label: 'falta', type: 'decimal' },
     { order: 'observaciones', label: 'observaciones', type: 'text' },
-    { order: 'fecha_inicio_alistamiento', label: 'fecha_inicio_alistamiento', type: 'datetime' },
-    { order: 'fecha_completado', label: 'fecha_completado', type: 'datetime' },
 ];
 
 </script>

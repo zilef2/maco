@@ -13,7 +13,27 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 {
     /** @use HasFactory<\Database\Factories\OrdenProduccionFactory> */
     use HasFactory;
-    protected $fillable = ['numero_op', 'producto_referencia_id', 'cantidad_planificada', 'taller', 'estado_op_id', 'responsable_id', 'fecha_creacion', 'fecha_inicio_programada', 'fecha_prevista_envio_taller', 'fecha_entrega_estimada', 'shopify_product_id', 'observaciones', 'fecha_fin_real'];
+    protected $fillable = ['numero_op', 'producto_referencia_id', 'cantidad_planificada', 'fecha_creacion', 'fecha_prevista_envio_taller', 'taller_id', 'estado_op_id', 'user_id', 'id_shopify_producto', 'observaciones'];
+
+    public function productoReferencia()
+    {
+        return $this->belongsTo(Producto::class, 'producto_referencia_id');
+    }
+
+    public function taller()
+    {
+        return $this->belongsTo(Taller::class, 'taller_id');
+    }
+
+    public function estadoOp()
+    {
+        return $this->belongsTo(EstadoOperacion::class, 'estado_op_id');
+    }
+
+    public function responsable()
+    {
+        return $this->belongsTo(User::class, 'user_id');
+    }
 
 
 

@@ -11,38 +11,49 @@ class UpdateModelAttributes extends Command
 {
     protected $signature = 'copy:attr {model? : Nombre del modelo a actualizar}';
 
+    /*similares:
+    model:find-usages
+    copy:u
+    */
     protected $description = 'Actualiza atributos de un modelo en migración, modelo, Vue y lang';
 
     protected array $modelos = [
 
-        'OrdenProduccion' => [
-                'required' => [
-                    'numero_op' => 'string',
-                    'producto_referencia_id' => 'foreign',
-                    'cantidad_planificada' => 'number',
-                    'taller' => 'string',
-                    'estado_op_id' => 'foreign',
-                    'responsable_id' => 'foreign',
-                    'fecha_creacion' => 'datetime',
-                    'fecha_inicio_programada' => 'date',
-                    'fecha_prevista_envio_taller' => 'date',
-                    'fecha_entrega_estimada' => 'date',
-                ],
-                'optional' => [
-                    'shopify_product_id' => 'string',
-                    'observaciones' => 'text',
-                    'fecha_fin_real' => 'datetime',
-                ],
+        'EstadoOperacion' => [
+            'required' => [
+                'nombre' => 'string',
+                'cuando_aplica' => 'text',
+                'regla_clave' => 'text',
             ],
+            'optional' => [
+                'puede_pasar_a' => 'string',
+            ],
+        ],
     ];
 
     public function handle(): int
     {
         $disponibles = array_keys($this->modelos);
+
+        $existentes = collect($disponibles)->filter(fn ($m) => File::exists(app_path("Models/$m.php")))->values()->all();
+
+        if (empty($existentes)) {
+            $this->error('Ningún modelo configurado en $modelos coincide con un modelo existente en la app.');
+
+            return 1;
+        }
+
         $model = $this->argument('model') ?? $this->choice('¿Cuál modelo deseas actualizar?', $disponibles, 0);
 
         if (! isset($this->modelos[$model])) {
             $this->error("El modelo '$model' no está configurado en el array.");
+
+            return 1;
+        }
+
+        if (! File::exists(app_path("Models/$model.php"))) {
+            $this->error("El modelo '$model' no existe en la app.");
+
             return 1;
         }
 
@@ -51,7 +62,9 @@ class UpdateModelAttributes extends Command
 
         $this->info("Actualizando atributos para el modelo: $model");
 
-        $this->actualizarMigracion($model, $config);
+        if (! $this->actualizarMigracion($model, $config)) {
+            return 1;
+        }
         $this->actualizarModelo($model, $allAttrs);
         $this->actualizarVue($model, $allAttrs);
         $this->actualizarLenguaje($allAttrs);
@@ -62,7 +75,7 @@ class UpdateModelAttributes extends Command
         return 0;
     }
 
-    protected function actualizarMigracion(string $model, array $config): void
+    protected function actualizarMigracion(string $model, array $config): bool
     {
         $tabla = Str::snake(Str::plural($model));
         $migrationFile = collect(glob(database_path('migrations/*.php')))->first(
@@ -70,7 +83,12 @@ class UpdateModelAttributes extends Command
         );
 
         if (! $migrationFile) {
-            $this->warn("No se encontró migración para $model, creándola...");
+            if (! $this->confirm("No se encontró la migración para $model. ¿Deseas crearla?", false)) {
+                $this->warn('Comando cancelado.');
+
+                return false;
+            }
+
             Artisan::call('make:migration', [
                 'name' => "create_{$tabla}_table",
                 '--create' => $tabla,
@@ -82,26 +100,31 @@ class UpdateModelAttributes extends Command
 
         if (! $migrationFile) {
             $this->error("No se pudo obtener el archivo de migración para $model.");
-            return;
+
+            return false;
         }
 
         $buildCol = function (string $name, string $type, bool $nullable): string {
             if ($type === 'dinero') {
                 $col = "\$table->decimal('$name', 62, 2)->default(0)";
+
                 return $nullable ? $col.'->nullable();' : $col.';';
             }
             if ($type === 'dateTime') {
                 $col = "\$table->dateTime('$name')->default(now())";
+
                 return $nullable ? $col.'->nullable();' : $col.';';
             }
             if ($type === 'boolean') {
                 $col = "\$table->boolean('$name')->default(false)";
+
                 return $nullable ? $col.'->nullable();' : $col.';';
             }
             if ($type === 'number') {
                 $type = 'integer';
             }
             $col = "\$table->$type('$name')";
+
             return $nullable ? $col.'->nullable();' : $col.';';
         };
 
@@ -113,15 +136,15 @@ class UpdateModelAttributes extends Command
             ->map(fn ($type, $name) => $buildCol($name, $type, true))
             ->implode("\n            ");
 
-        $columns = $colsReq . ($colsOpt !== '' ? "\n            $colsOpt" : '');
+        $columns = $colsReq.($colsOpt !== '' ? "\n            $colsOpt" : '');
 
         $content = File::get($migrationFile);
         $tieneSoftDeletes = str_contains($content, 'softDeletes');
 
         $body = "            \$table->id();\n"
-            . "            $columns\n"
-            . "            \$table->timestamps();\n"
-            . ($tieneSoftDeletes ? "            \$table->softDeletes();\n" : '');
+            ."            $columns\n"
+            ."            \$table->timestamps();\n"
+            .($tieneSoftDeletes ? "            \$table->softDeletes();\n" : '');
 
         $pattern = '/Schema::create\([^{]+\{\s*[\s\S]*?\}\);/';
         $replacement = "Schema::create('$tabla', function (Blueprint \$table) {\n$body        });";
@@ -131,6 +154,8 @@ class UpdateModelAttributes extends Command
             File::put($migrationFile, $newContent);
             $this->info("Migración actualizada: $migrationFile");
         }
+
+        return true;
     }
 
     protected function actualizarModelo(string $model, array $allAttrs): void
@@ -138,11 +163,12 @@ class UpdateModelAttributes extends Command
         $path = app_path("Models/$model.php");
         if (! File::exists($path)) {
             $this->warn("El modelo $path no existe.");
+
             return;
         }
 
         $content = File::get($path);
-        $fillableString = "'" . implode("', '", array_keys($allAttrs)) . "'";
+        $fillableString = "'".implode("', '", array_keys($allAttrs))."'";
 
         if (preg_match('/protected\s+\$fillable\s*=\s*\[[\s\S]*?\];/', $content)) {
             $content = preg_replace('/protected\s+\$fillable\s*=\s*\[[\s\S]*?\];/', "protected \$fillable = [$fillableString];", $content);
@@ -159,6 +185,7 @@ class UpdateModelAttributes extends Command
         $vueFile = resource_path("js/Pages/$model/Index.vue");
         if (! File::exists($vueFile)) {
             $this->warn("Vista Vue no encontrada: $vueFile");
+
             return;
         }
 
@@ -199,7 +226,7 @@ class UpdateModelAttributes extends Command
 
         if ($modificado) {
             File::put($langFile, $content);
-            $this->info("Traducciones actualizadas en lang/es/app.php");
+            $this->info('Traducciones actualizadas en lang/es/app.php');
         }
     }
 }

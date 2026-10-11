@@ -86,11 +86,10 @@ const selectAll = (event: any) => {
 const select = () => data.multipleSelect = props.fromController?.data.length === data.selectedId.length;
 
 const titulos = [
-    { order: 'estado_op', label: 'estado_op', type: 'string' },
+    { order: 'nombre', label: 'nombre', type: 'string' },
     { order: 'cuando_aplica', label: 'cuando_aplica', type: 'text' },
     { order: 'regla_clave', label: 'regla_clave', type: 'text' },
     { order: 'puede_pasar_a', label: 'puede_pasar_a', type: 'string' },
-    { order: 'fecha_creacion', label: 'fecha_creacion', type: 'date' },
 ];
 
 </script>
