@@ -24,7 +24,8 @@ createInertiaApp({
     ),
     setup: function ({ el, App, props, plugin }): void {
         createApp({ render: () => h(App, props) })
-            .use(plugin,FloatingVue)
+            .use(plugin)
+            .use(FloatingVue)
             .component('vSelect', vSelect)
             .use(ZiggyVue)
             .mixin({

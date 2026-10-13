@@ -45,7 +45,7 @@ Route::middleware('auth', 'verified')->group(function () {
 	Route::resource("/materias_primas", \App\Http\Controllers\Materias_primasController::class);
 	Route::get('/materias_primas/{id}/movimientos', [\App\Http\Controllers\Materias_primasController::class, 'historicoMovimientos'])->name('materias_primas.movimientos');
 	Route::resource("/Producto", \App\Http\Controllers\ProductoController::class);
-	Route::resource("/Producto", \App\Http\Controllers\ProductoController::class);
+	Route::post("/Producto/upload-excel", [\App\Http\Controllers\ProductoController::class, 'uploadExcel'])->name('Producto.upload-excel');
 	Route::get('/notificar-prueba', function (\Illuminate\Http\Request $request) {
             $noti = app(\Alejo\Notificaciones\NotificacionesManager::class);
     		$noti->crear('Nuevo pedido recibido #1001', 'alta', $request->user()?->id);
@@ -55,6 +55,7 @@ Route::middleware('auth', 'verified')->group(function () {
 	Route::resource("/Talla", \App\Http\Controllers\TallaController::class);
 	Route::resource("/OrdenProduccion", \App\Http\Controllers\OrdenProduccionController::class);
 	Route::put("/OrdenProduccion/{id}/distribucion", [\App\Http\Controllers\OrdenProduccionController::class, 'syncDistribucion'])->name('OrdenProduccion.distribucion');
+	Route::put("/OrdenProduccion/{id}/estado", [\App\Http\Controllers\OrdenProduccionController::class, 'cambiarEstado'])->name('OrdenProduccion.cambiarEstado');
 	Route::resource("/ProcesoExterno", \App\Http\Controllers\ProcesoExternoController::class);
 	Route::resource("/KitTaller", \App\Http\Controllers\KitTallerController::class);
 	Route::post("/KitTaller/upload-excel", [\App\Http\Controllers\KitTallerController::class, 'uploadExcel'])->name('KitTaller.upload-excel');
@@ -62,6 +63,7 @@ Route::middleware('auth', 'verified')->group(function () {
 	Route::resource("/RecepcionCalidad", \App\Http\Controllers\RecepcionCalidadController::class);
 	Route::resource("/CierreOrdenProduccion", \App\Http\Controllers\CierreOrdenProduccionController::class);
 	Route::resource("/EstadoOperacion", \App\Http\Controllers\EstadoOperacionController::class);
+	Route::post("/EstadoOperacion/upload-excel", [\App\Http\Controllers\EstadoOperacionController::class, 'uploadExcel'])->name('EstadoOperacion.upload-excel');
 	Route::resource("/FichaTecnicaMateriales", \App\Http\Controllers\FichaTecnicaMaterialesController::class);
 	Route::resource("/PendientesProduccion", \App\Http\Controllers\PendientesProduccionController::class);
 	Route::resource("/Taller", \App\Http\Controllers\TallerController::class);

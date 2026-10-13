@@ -3,7 +3,7 @@ import { SidebarGroup, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, Sideba
 import { type NavGroup, type SharedData } from '@/types';
 import { Link, usePage } from '@inertiajs/vue3';
 
-defineProps<{
+const props = defineProps<{
     groups: NavGroup[];
 }>();
 
@@ -11,14 +11,14 @@ const page = usePage<SharedData>();
 </script>
 
 <template>
-    <SidebarGroup v-for="group in groups" :key="group.label" class="px-2 py-0">
+    <SidebarGroup v-for="group in props.groups" :key="group.label" class="px-2 py-0">
         <SidebarGroupLabel>{{ group.label }}</SidebarGroupLabel>
         <SidebarMenu>
-            <SidebarMenuItem v-for="item in group.items" :key="item.title">
-                <SidebarMenuButton as-child :is-active="item.href === page.url" :tooltip="item.title">
+            <SidebarMenuItem v-for="(item, index) in group.items" :key="item.title">
+                <SidebarMenuButton as-child :class="index % 3 === 0 ? 'bg-sky-100 text-blue-800' : 'bg-white text-gray-800'" :active="item.href === page.url" :tooltip="item.title">
                     <Link :href="item.href">
                         <component :is="item.icon" />
-                        <span>{{ item.title }}</span>
+                        <span>{{ index + 1 }}. {{ item.title }}</span>
                     </Link>
                 </SidebarMenuButton>
             </SidebarMenuItem>

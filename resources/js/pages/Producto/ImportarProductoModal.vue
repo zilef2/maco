@@ -7,30 +7,35 @@ import { ref, watch } from 'vue';
 
 const props = defineProps({
     show: Boolean,
-    ordenProduccion: { type: Object, default: null },
 });
 
 const emit = defineEmits(['close']);
 
 const COLUMNAS_REQUERIDAS = [
-    'Material / componente',
-    'Estado requerido',
-    'Unidad',
-    'Cantidad requerida',
-    'Cantidad disponible',
-    'Cantidad preparada',
-    'Falta',
-    '¿Listo? (SI/NO)',
+    'Codigo interno',
+    'Titulo Shopify',
+];
+
+const COLUMNAS_OPCIONALES = [
+    'ID producto Shopify',
+    'Categoria original',
+    'Familia normalizada',
+    'Control de variante',
+    'Opciones',
+    'Rango',
+    'Estado',
     'Observaciones',
+    'Descripcion',
+    'Precio predicho',
+    'Precio preventa',
 ];
 
 const form = useForm({
     archivo: null as File | null,
-    orden_produccion_id: null as number | null,
 });
 
 const excelError = ref<string | null>(null);
-const inputId = 'excel-input-op';
+const inputId = 'excel-input-producto';
 
 /** Valida el archivo en el cliente ANTES de enviarlo */
 async function validarArchivoExcel(file: File): Promise<string | null> {
@@ -87,9 +92,7 @@ async function subirExcel() {
         return;
     }
 
-    form.orden_produccion_id = props.ordenProduccion?.id ?? null;
-
-    form.post(route('KitTaller.upload-excel'), {
+    form.post(route('Producto.upload-excel'), {
         preserveScroll: true,
         onSuccess: () => {
             closeModal();
@@ -111,15 +114,11 @@ watch(() => props.show, (visible) => {
 <template>
     <Modal :show="props.show" @close="closeModal" :maxWidth="'lg'">
         <div class="p-6">
-            <div class="flex items-center gap-2 mb-1">
+            <div class="flex items-center gap-2 mb-4">
                 <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100">
-                    Importar KitTaller desde Excel
+                    Importar Productos desde Excel
                 </h2>
             </div>
-            <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                Orden de producción:
-                <b>{{ props.ordenProduccion?.numero_op ?? props.ordenProduccion?.id }}</b>
-            </p>
 
             <!-- Error de validación frontend o backend -->
             <div v-if="excelError"
@@ -160,7 +159,7 @@ watch(() => props.show, (visible) => {
                 </div>
             </form>
 
-            <!-- Columnas requeridas -->
+            <!-- Columnas -->
             <details class="mt-4 text-sm" open>
                 <summary
                     class="cursor-pointer text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 select-none">
@@ -169,9 +168,15 @@ watch(() => props.show, (visible) => {
                 <ul class="mt-2 list-decimal ml-5 space-y-0.5 text-gray-600 dark:text-gray-300">
                     <li v-for="col in COLUMNAS_REQUERIDAS" :key="col">{{ col }}</li>
                 </ul>
+                <p class="mt-3 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    Opcionales
+                </p>
+                <ul class="mt-1 list-decimal ml-5 space-y-0.5 text-gray-600 dark:text-gray-300">
+                    <li v-for="col in COLUMNAS_OPCIONALES" :key="col">{{ col }}</li>
+                </ul>
                 <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                    El material se identifica por su código (codigo_material / código). La columna ¿Listo? admite
-                    SI / NO en mayúsculas o minúsculas.
+                    Si el código interno ya existe, se actualiza el registro; si no, se crea.
+                    La columna "Rango" (ej: Única, XS-S-M-L-XL-XXL) se guarda en "Opciones".
                 </p>
             </details>
         </div>

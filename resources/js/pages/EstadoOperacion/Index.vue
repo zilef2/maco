@@ -11,10 +11,11 @@ import DangerButton from '@/components/DangerButton.vue';
 import pkg from 'lodash';
 
 import Pagination from '@/components/Pagination.vue';
-import { ChevronUpDownIcon, PencilIcon, TrashIcon } from '@heroicons/vue/24/solid';
+import { ChevronUpDownIcon, PencilIcon, TrashIcon, ArrowUpTrayIcon } from '@heroicons/vue/24/solid';
 import Create from '@/pages/EstadoOperacion/Create.vue';
 import Edit from '@/pages/EstadoOperacion/Edit.vue';
 import Delete from '@/pages/EstadoOperacion/Delete.vue';
+import ImportarEstadoOperacionModal from '@/pages/EstadoOperacion/ImportarEstadoOperacionModal.vue';
 
 import Checkbox from '@/components/Checkbox.vue';
 import InfoButton from '@/components/InfoButton.vue';
@@ -57,6 +58,7 @@ const data = reactive({
     createOpen: false,
     editOpen: false,
     deleteOpen: false,
+    importOpen: false,
     dataSet: (usePage().props as any)?.app?.perpage ?? defaultPerPage,
 })
 
@@ -106,6 +108,15 @@ const titulos = [
                     <PrimaryButton class="m-1" @click="data.createOpen = true" v-if="can(['create EstadoOperacion'])">
                         {{ lang().t('app.button.add') }}
                     </PrimaryButton>
+
+                    <PrimaryButton v-if="can(['create EstadoOperacion'])"
+                        class="m-1 bg-emerald-600 hover:bg-emerald-700 focus:ring-emerald-500"
+                        @click="data.importOpen = true">
+                        <ArrowUpTrayIcon class="w-4 h-4 mr-1 inline" />
+                        Cargar Excel
+                    </PrimaryButton>
+
+                    <ImportarEstadoOperacionModal :show="data.importOpen" @close="data.importOpen = false" />
 
                     <Create v-if="can(['create EstadoOperacion'])" :numberPermissions="props.numberPermissions"
                         :titulos="titulos" :show="data.createOpen" @close="data.createOpen = false" :title="props.title"

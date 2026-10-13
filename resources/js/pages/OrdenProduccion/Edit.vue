@@ -5,7 +5,7 @@ import Modal from '@/components/Modal.vue';
 import PrimaryButton from '@/components/PrimaryButton.vue';
 import SecondaryButton from '@/components/SecondaryButton.vue';
 import TextInput from '@/components/TextInput.vue';
-import { CalculatorIcon, SquaresPlusIcon, TrashIcon } from '@heroicons/vue/24/solid';
+import { CalculatorIcon, ListBulletIcon, SquaresPlusIcon, TrashIcon, XMarkIcon } from '@heroicons/vue/24/solid';
 import { useForm } from '@inertiajs/vue3';
 import { computed, reactive, ref, watchEffect } from 'vue';
 import vSelect from "vue-select";
@@ -31,6 +31,14 @@ const distribucion = reactive({
     items: [] as Array<{ id?: number; talla: string; cantidad: string }>,
 });
 
+const productos = reactive({
+    show: false,
+    temporal: [] as number[],
+    aplicados: [] as Array<{ id: number; nombre: string }>,
+});
+
+const opcionesProducto = computed(() => props.losSelect?.producto_referencia_id || []);
+
 const grupoTallas = ref<number | null>(null);
 
 const form = useForm({
@@ -40,12 +48,12 @@ const form = useForm({
     fecha_creacion: '',
     fecha_prevista_envio_taller: '',
     taller_id: '',
-    estado_op_id: '',
     user_id: '',
     id_shopify_producto: '',
     observaciones: '',
     distribucion_tallas: [] as Array<{ id?: number; talla: string; cantidad_planificada: number }>,
     grupo_tallas: null as number | null,
+    productos: [] as number[],
 });
 
 const totalVerificador = computed(() => {
@@ -120,6 +128,22 @@ const elegirGrupo = (grupo: any) => {
     });
 };
 
+const abrirProductos = () => {
+    productos.temporal = productos.aplicados.map((p) => p.id);
+    productos.show = true;
+};
+
+const aplicarProductos = () => {
+    productos.aplicados = opcionesProducto.value
+        .filter((p: any) => productos.temporal.includes(p.id))
+        .map((p: any) => ({ id: p.id, nombre: p.name }));
+    productos.show = false;
+};
+
+const quitarProducto = (id: number) => {
+    productos.aplicados = productos.aplicados.filter((p) => p.id !== id);
+};
+
 const closeModal = () => {
     emit("close");
     form.reset();
@@ -127,11 +151,15 @@ const closeModal = () => {
     verificador.show = false;
     distribucion.items = [];
     distribucion.show = false;
+    productos.show = false;
+    productos.aplicados = [];
+    productos.temporal = [];
     grupoTallas.value = null;
 };
 
 const update = () => {
     form.grupo_tallas = grupoTallas.value;
+    form.productos = productos.aplicados.map((p) => p.id);
     form.distribucion_tallas = distribucion.items
         .filter((item) => (item.talla && item.talla.trim() !== '') || Number(item.cantidad) > 0)
         .map((item) => ({
@@ -159,7 +187,6 @@ watchEffect(() => {
         form.fecha_creacion = String(op.fecha_creacion ?? '').substring(0, 10);
         form.fecha_prevista_envio_taller = String(op.fecha_prevista_envio_taller ?? '').substring(0, 10);
         form.taller_id = op.taller_id ?? '';
-        form.estado_op_id = op.estado_op_id ?? '';
         form.user_id = op.user_id ?? '';
         form.id_shopify_producto = op.id_shopify_producto ?? '';
         form.observaciones = op.observaciones ?? '';
@@ -169,6 +196,10 @@ watchEffect(() => {
             id: t.id,
             talla: t.talla ?? '',
             cantidad: String(t.cantidad_planificada ?? ''),
+        }));
+        productos.aplicados = ((op.productos || []) as any[]).map((p: any) => ({
+            id: p.id,
+            nombre: p.Titulo_Shopify || p.Codigo_interno || `Producto #${p.id}`,
         }));
     }
 });
@@ -207,6 +238,26 @@ watchEffect(() => {
                             v-model="form.producto_referencia_id"
                             placeholder="Buscar producto..."
                         />
+                        <button
+                            type="button"
+                            @click="abrirProductos"
+                            class="mt-2 inline-flex items-center px-3 py-1.5 rounded-md border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-600 transition"
+                        >
+                            <ListBulletIcon class="w-4 h-4 mr-1 text-blue-600 dark:text-blue-400" />
+                            Lista de productos{{ productos.aplicados.length ? ` (${productos.aplicados.length})` : '' }}
+                        </button>
+                        <div v-if="productos.aplicados.length" class="mt-2 flex flex-wrap gap-1">
+                            <span
+                                v-for="p in productos.aplicados"
+                                :key="p.id"
+                                class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
+                            >
+                                {{ p.nombre }}
+                                <button type="button" @click="quitarProducto(p.id)" class="hover:text-red-600">
+                                    <XMarkIcon class="w-3.5 h-3.5" />
+                                </button>
+                            </span>
+                        </div>
                         <InputError class="mt-2" :message="form.errors.producto_referencia_id" />
                     </div>
 
@@ -281,20 +332,6 @@ watchEffect(() => {
                             placeholder="Seleccione un taller..."
                         />
                         <InputError class="mt-2" :message="form.errors.taller_id" />
-                    </div>
-
-                    <div>
-                        <InputLabel for="estado_op_id" :value="lang().t('app.label.estado_op_id') || 'Estado OP'" />
-                        <v-select
-                            id="estado_op_id"
-                            class="mt-1 block w-full"
-                            :options="props.losSelect?.estado_op_id || []"
-                            label="name"
-                            :reduce="(item: any) => item.id"
-                            v-model="form.estado_op_id"
-                            placeholder="Seleccione estado..."
-                        />
-                        <InputError class="mt-2" :message="form.errors.estado_op_id" />
                     </div>
 
                     <div>
@@ -488,6 +525,67 @@ watchEffect(() => {
                     </SecondaryButton>
                     <PrimaryButton type="button" @click="aplicarDistribucion">
                         Aplicar a Cantidad ({{ totalDistribucion }})
+                    </PrimaryButton>
+                </div>
+            </div>
+        </Modal>
+
+        <Modal :show="productos.show" @close="productos.show = false" :maxWidth="'lg'">
+            <div class="p-6">
+                <div class="flex items-center justify-between border-b pb-3 dark:border-gray-700">
+                    <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100">
+                        Lista de Productos de la Orden
+                    </h3>
+                    <button type="button" @click="productos.show = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                        ✕
+                    </button>
+                </div>
+
+                <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                    Busque y seleccione uno o varios productos. Quedarán asociados a esta orden de producción.
+                </p>
+
+                <div class="mt-4">
+                    <v-select
+                        multiple
+                        class="block w-full"
+                        :options="opcionesProducto"
+                        label="name"
+                        :reduce="(item: any) => item.id"
+                        v-model="productos.temporal"
+                        placeholder="Buscar producto..."
+                    />
+                </div>
+
+                <div v-if="productos.temporal.length" class="mt-4 max-h-64 overflow-y-auto space-y-2">
+                    <div
+                        v-for="pid in productos.temporal"
+                        :key="pid"
+                        class="flex items-center justify-between px-3 py-2 rounded-md border border-gray-200 dark:border-gray-700"
+                    >
+                        <span class="text-sm text-gray-800 dark:text-gray-200">
+                            {{ opcionesProducto.find((p: any) => p.id === pid)?.name ?? ('Producto #' + pid) }}
+                        </span>
+                        <button
+                            type="button"
+                            @click="productos.temporal = productos.temporal.filter((x) => x !== pid)"
+                            class="p-1.5 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition"
+                            title="Quitar producto"
+                        >
+                            <TrashIcon class="w-4 h-4" />
+                        </button>
+                    </div>
+                </div>
+                <p v-else class="mt-4 text-sm text-gray-500 dark:text-gray-400">
+                    Todavía no ha seleccionado productos.
+                </p>
+
+                <div class="mt-6 flex justify-end space-x-3 border-t pt-4 dark:border-gray-700">
+                    <SecondaryButton type="button" @click="productos.show = false">
+                        Cancelar
+                    </SecondaryButton>
+                    <PrimaryButton type="button" @click="aplicarProductos">
+                        Aplicar{{ productos.temporal.length ? ` (${productos.temporal.length})` : '' }}
                     </PrimaryButton>
                 </div>
             </div>

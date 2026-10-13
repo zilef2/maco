@@ -15,6 +15,7 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
@@ -28,16 +29,28 @@ class OrdenProduccionController extends Controller {
 
     public function index(Request $request) {
         $numberPermissions = MyModels::getPermissionToNumber(Myhelp::EscribirEnLog($this, ' OrdenProduccions '));
-        $OrdenProduccions = $this->Filtros($request)->get()->map(function ($op) {
-            $producto = $op->productoReferencia;
-            $op->producto_nombre = $producto
-                ? ($producto->Titulo_Shopify ?: ($producto->Codigo_interno ?: 'Producto #' . $producto->id))
-                : ($op->producto_referencia_id ? '#' . $op->producto_referencia_id : '');
-            $op->taller_nombre = $op->taller?->nombre ?? ($op->taller_id ? '#' . $op->taller_id : '');
-            $op->estado_nombre = $op->estadoOp?->nombre ?? ($op->estado_op_id ? '#' . $op->estado_op_id : '');
-            $op->responsable_nombre = $op->responsable?->name ?? ($op->user_id ? '#' . $op->user_id : '');
-            return $op;
+
+        // Cache del listado: la clave incluye versión + filtros; se invalida al escribir
+        $filtros = $request->all(['search', 'field', 'order']);
+        $claveListado = 'op_index_' . $this->versionCache() . '_' . md5(json_encode($filtros));
+        $OrdenProduccions = Cache::remember($claveListado, now()->addMinutes(0), function () use ($request) {
+            return $this->Filtros($request)->get()->map(function ($op) {
+                $producto = $op->productoReferencia;
+                $op->producto_nombre = $producto
+                    ? ($producto->Titulo_Shopify ?: ($producto->Codigo_interno ?: 'Producto #' . $producto->id))
+                    : ($op->producto_referencia_id ? '#' . $op->producto_referencia_id : '');
+                $op->productos_nombres = $op->productos
+                    ->map(fn ($p) => $p->Titulo_Shopify ?: ($p->Codigo_interno ?: 'Producto #' . $p->id))
+                    ->implode(', ');
+                $op->taller_nombre = $op->taller?->nombre ?? ($op->taller_id ? '#' . $op->taller_id : '');
+                $op->estado_nombre = $op->estadoOp?->nombre ?? ($op->estado_op_id ? '#' . $op->estado_op_id : '');
+                $op->responsable_nombre = $op->responsable?->name ?? ($op->user_id ? '#' . $op->user_id : '');
+                return $op;
+            });
         });
+
+        // Cache de los selects (productos, talleres, estados, usuarios, grupos, siguiente OP)
+        $losSelect = Cache::remember('op_selects', now()->addMinutes(30), fn () => $this->obtenerSelects());
 
         $perPage = $request->has('perPage') ? $request->perPage : 10;
         return Inertia::render($this->FromController . '/Index', [
@@ -48,10 +61,27 @@ class OrdenProduccionController extends Controller {
             'filters' => $request->all(['search', 'field', 'order']),
             'perPage' => (int)$perPage,
             'numberPermissions' => $numberPermissions,
-            'losSelect'         => $this->obtenerSelects(),
+            'losSelect'         => $losSelect,
 	        'titulos'           => OrdenProduccion::getFillableWithTypes(),
 
         ]);
+    }
+
+    /**
+     * Versión del cache del listado: al incrementarse, todas las claves
+     * anteriores dejan de usarse y se reconstruyen con datos frescos.
+     */
+    private function versionCache(): int {
+        Cache::add('op_index_version', 1, now()->addDays(7));
+        return (int) Cache::get('op_index_version', 1);
+    }
+
+    /**
+     * Invalida el listado y los selects tras una escritura (create/update/delete).
+     */
+    private function invalidarCache(): void {
+        Cache::increment('op_index_version');
+        Cache::forget('op_selects');
     }
 
     public function obtenerSelects(): array {
@@ -71,7 +101,7 @@ class OrdenProduccionController extends Controller {
                 ];
             });
 
-        $estadoOperaciones = EstadoOperacion::all(['id', 'nombre'])
+        $estadoOperaciones = EstadoOperacion::all(['id', 'nombre', 'puede_pasar_a', 'regla_clave'])
             ->map(function ($estado) {
                 return [
                     'id'    => $estado->id,
@@ -79,6 +109,8 @@ class OrdenProduccionController extends Controller {
                     'name'  => $estado->nombre,
                     'label' => $estado->nombre,
                     'title' => $estado->nombre,
+                    'permitidos' => $estado->idsPuedePasarA(),
+                    'regla_clave' => $estado->regla_clave,
                 ];
             });
 
@@ -170,7 +202,7 @@ class OrdenProduccionController extends Controller {
 	}
 
     public function Filtros($request): Builder {
-        $OrdenProduccions = OrdenProduccion::query()->with(['productoReferencia', 'taller', 'estadoOp', 'responsable', 'distribucionesPorTallas']);
+        $OrdenProduccions = OrdenProduccion::query()->with(['productoReferencia', 'taller', 'estadoOp', 'responsable', 'distribucionesPorTallas', 'productos']);
         if ($request->has('search')) {
             $OrdenProduccions = $OrdenProduccions->where(function ($query) use ($request) {
                 $query->where('numero_op', 'LIKE', "%" . $request->search . "%");
@@ -215,7 +247,7 @@ class OrdenProduccionController extends Controller {
         $permissions = Myhelp::EscribirEnLog($this, ' Begin STORE:OrdenProduccions');
         DB::beginTransaction();
 
-        $data = $request->only(['numero_op', 'producto_referencia_id', 'cantidad_planificada', 'fecha_creacion', 'fecha_prevista_envio_taller', 'taller_id', 'estado_op_id', 'user_id', 'id_shopify_producto', 'observaciones']);
+        $data = $request->only(['numero_op', 'producto_referencia_id', 'cantidad_planificada', 'fecha_creacion', 'fecha_prevista_envio_taller', 'taller_id', 'user_id', 'id_shopify_producto', 'observaciones']);
 
         if (empty($data['user_id']) && $request->filled('responsable_id')) {
             $data['user_id'] = $request->input('responsable_id');
@@ -224,6 +256,7 @@ class OrdenProduccionController extends Controller {
         if (empty($data['fecha_creacion'])) {
             $data['fecha_creacion'] = now()->toDateString();
         }
+        $data['estado_op_id'] = EstadoOperacion::where('nombre', 'Borrador')->value('id');
         if (empty($data['numero_op'])) {
             $maxOp = OrdenProduccion::selectRaw('MAX(CAST(numero_op AS UNSIGNED)) as max_op')->value('max_op');
             $data['numero_op'] = ($maxOp && (int)$maxOp >= 100) ? ((int)$maxOp + 1) : 100;
@@ -250,7 +283,10 @@ class OrdenProduccionController extends Controller {
             $OrdenProduccion->distribucionesPorTallas()->attach($nueva->id);
         }
 
+        $OrdenProduccion->productos()->sync(array_map('intval', $request->input('productos', [])));
+
         DB::commit();
+        $this->invalidarCache();
         $identificador = $OrdenProduccion->numero_op ?? $OrdenProduccion->id;
         Myhelp::EscribirEnLog($this, 'STORE:OrdenProduccions EXITOSO', 'OrdenProduccion id:' . $OrdenProduccion->id . ' | ' . $identificador, false);
         return back()->with('success', __('app.label.created_successfully', ['name' => $identificador]));
@@ -274,7 +310,7 @@ class OrdenProduccionController extends Controller {
         $permissions = Myhelp::EscribirEnLog($this, ' Begin UPDATE:OrdenProduccions');
         DB::beginTransaction();
 
-        $data = $request->only(['numero_op', 'producto_referencia_id', 'cantidad_planificada', 'fecha_creacion', 'fecha_prevista_envio_taller', 'taller_id', 'estado_op_id', 'user_id', 'id_shopify_producto', 'observaciones']);
+        $data = $request->only(['numero_op', 'producto_referencia_id', 'cantidad_planificada', 'fecha_creacion', 'fecha_prevista_envio_taller', 'taller_id', 'user_id', 'id_shopify_producto', 'observaciones']);
 
         if (empty($data['user_id']) && $request->filled('responsable_id')) {
             $data['user_id'] = $request->input('responsable_id');
@@ -288,9 +324,42 @@ class OrdenProduccionController extends Controller {
             $this->sincronizarTallas($OrdenProduccion, $request->input('distribucion_tallas', []), true, $request->input('grupo_tallas'));
         }
 
+        if ($request->has('productos')) {
+            $OrdenProduccion->productos()->sync(array_map('intval', $request->input('productos', [])));
+        }
+
         DB::commit();
+        $this->invalidarCache();
         $identificador = $OrdenProduccion->numero_op ?? $OrdenProduccion->id;
         Myhelp::EscribirEnLog($this, 'UPDATE:OrdenProduccions EXITOSO', 'OrdenProduccion id:' . $OrdenProduccion->id . ' | ' . $identificador, false);
+        return back()->with('success', __('app.label.updated_successfully2', ['nombre' => $identificador]));
+    }
+
+    /**
+     * Cambia exclusivamente el estado de una OP, validando la transición
+     * contra la columna puede_pasar_a del estado actual.
+     */
+    public function cambiarEstado(Request $request, $id): RedirectResponse {
+        $request->validate([
+            'estado_op_id' => ['required', 'integer', 'exists:estado_operacions,id'],
+        ]);
+
+        $OrdenProduccion = OrdenProduccion::findOrFail($id);
+        $estadoActual = $OrdenProduccion->estadoOp;
+        $permitidos = $estadoActual?->idsPuedePasarA() ?? [];
+
+        if (! in_array((int) $request->estado_op_id, $permitidos, true)) {
+            return back()->withErrors([
+                'estado_op_id' => "Transición no permitida desde el estado '{$estadoActual?->nombre}'.",
+            ]);
+        }
+
+        $OrdenProduccion->forceFill(['estado_op_id' => (int) $request->estado_op_id])->save();
+        $this->invalidarCache();
+
+        $nuevoEstado = EstadoOperacion::find($request->estado_op_id);
+        $identificador = $OrdenProduccion->numero_op ?? $OrdenProduccion->id;
+        Myhelp::EscribirEnLog($this, 'CAMBIAR-ESTADO:OrdenProduccions', 'OrdenProduccion id:' . $OrdenProduccion->id . ' | ' . $identificador . ' | ' . ($estadoActual?->nombre ?? '?') . ' -> ' . $nuevoEstado?->nombre, false);
         return back()->with('success', __('app.label.updated_successfully2', ['nombre' => $identificador]));
     }
 
@@ -302,6 +371,7 @@ class OrdenProduccionController extends Controller {
         $this->sincronizarTallas($OrdenProduccion, $request->input('distribucion_tallas', []), false);
 
         DB::commit();
+        $this->invalidarCache();
         $identificador = $OrdenProduccion->numero_op ?? $OrdenProduccion->id;
         Myhelp::EscribirEnLog($this, 'SYNC-DISTRIBUCION:OrdenProduccions EXITOSO', 'OrdenProduccion id:' . $OrdenProduccion->id . ' | ' . $identificador, false);
         return back()->with('success', __('app.label.updated_successfully2', ['nombre' => $identificador]));
@@ -365,6 +435,7 @@ class OrdenProduccionController extends Controller {
         $OrdenProduccion = OrdenProduccion::find($OrdenProduccionid);
         $elnombre = $OrdenProduccion->nombre;
         $OrdenProduccion->delete();
+        $this->invalidarCache();
         Myhelp::EscribirEnLog($this, 'DELETE:OrdenProduccions', 'OrdenProduccion id:' . $OrdenProduccion->id . ' | ' . $OrdenProduccion->nombre . ' borrado', false);
         return back()->with('success', __('app.label.deleted_successfully', ['name' => $elnombre]));
     }
@@ -372,6 +443,7 @@ class OrdenProduccionController extends Controller {
     public function destroyBulk(Request $request) {
         $OrdenProduccion = OrdenProduccion::whereIn('id', $request->id);
         $OrdenProduccion->delete();
+        $this->invalidarCache();
         return back()->with('success', __('app.label.deleted_successfully', ['name' => count($request->id) . ' ' . __('app.label.user')]));
     }
     //FIN : STORE - UPDATE - DELETE

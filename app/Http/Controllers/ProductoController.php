@@ -13,6 +13,7 @@ use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class ProductoController extends Controller {
     public array $thisAtributos;
@@ -171,5 +172,188 @@ class ProductoController extends Controller {
         return back()->with('success', __('app.label.deleted_successfully', ['name' => count($request->id) . ' ' . __('app.label.user')]));
     }
     //FIN : STORE - UPDATE - DELETE
+
+    // ─────────────────────────────────────────────────────────
+    //  CARGA MASIVA DESDE EXCEL (general, sin FK)
+    // ─────────────────────────────────────────────────────────
+    public function uploadExcel(Request $request): RedirectResponse
+    {
+        Myhelp::EscribirEnLog($this, 'uploadExcel: inicio');
+
+        // 1. Validaciones de seguridad del archivo (previas a cualquier lectura)
+        $request->validate([
+            'archivo' => [
+                'required',
+                'file',
+                'max:10240',    // máx 10 MB
+                'mimes:xlsx',   // valida por extensión del cliente (suficiente como primera capa)
+            ],
+        ]);
+
+        $archivo = $request->file('archivo');
+
+        // 2. Doble-verificación de extensión (defensa en profundidad)
+        if (strtolower($archivo->getClientOriginalExtension()) !== 'xlsx') {
+            return back()->with('error', 'Solo se permiten archivos con extensión .xlsx');
+        }
+
+        // 3. Verificación de firma de bytes (magic bytes del ZIP/OOXML: PK\x03\x04)
+        $handle = fopen($archivo->getRealPath(), 'rb');
+        $magic  = fread($handle, 4);
+        fclose($handle);
+        if ($magic !== "PK\x03\x04") {
+            return back()->with('error', 'El archivo no tiene un formato XLSX válido.');
+        }
+
+        // 4. Leer el archivo con PhpSpreadsheet
+        try {
+            $spreadsheet = IOFactory::load($archivo->getRealPath());
+        } catch (\Throwable $e) {
+            Myhelp::EscribirEnLog($this, 'uploadExcel ERROR lectura', $e->getMessage());
+            return back()->with('error', 'No se pudo leer el archivo: ' . $e->getMessage());
+        }
+
+        $hoja  = $spreadsheet->getActiveSheet();
+        $filas = $hoja->toArray(null, true, true, true);
+
+        if (empty($filas)) {
+            return back()->with('error', 'El archivo está vacío.');
+        }
+
+        // 5. Normalizar encabezados (acepta snake_case y nombres legibles)
+        $columnasRequeridas = ['Codigo_interno', 'Titulo_Shopify'];
+
+        $aliasColumnas = [
+            'codigointerno'      => 'Codigo_interno',
+            'codigo'             => 'Codigo_interno',
+            'tituloshopify'      => 'Titulo_Shopify',
+            'titulo'             => 'Titulo_Shopify',
+            'idproductoshopify'  => 'ID_producto_Shopify',
+            'idshopify'          => 'ID_producto_Shopify',
+            'categoriaoriginal'  => 'Categoria_original',
+            'categoria'          => 'Categoria_original',
+            'familianormalizada' => 'Familia_normalizada',
+            'familia'            => 'Familia_normalizada',
+            'controldevariante'  => 'Control_de_variante',
+            'variante'           => 'Control_de_variante',
+            'opciones'           => 'Opciones',
+            'rango'              => 'Opciones',
+            'rangotallas'        => 'Opciones',
+            'estado'             => 'Estado',
+            'observaciones'      => 'Observaciones',
+            'descripcion'        => 'descripcion',
+            'preciopredicho'     => 'precio_predicho',
+            'preciopreventa'     => 'precio_preventa',
+        ];
+
+        $normalizarTexto = fn (string $texto): string => strtr(
+            mb_strtolower(trim($texto)),
+            ['á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u', 'ü' => 'u', 'ñ' => 'n']
+        );
+
+        $filaEncabezados = array_shift($filas);
+        $encabezado = [];
+        foreach ($filaEncabezados as $col => $titulo) {
+            $clave = preg_replace('/[^a-z0-9]/', '', $normalizarTexto((string) $titulo));
+            if (isset($aliasColumnas[$clave])) {
+                $encabezado[$col] = $aliasColumnas[$clave];
+            }
+        }
+
+        $faltantes = array_diff($columnasRequeridas, array_values($encabezado));
+        if (!empty($faltantes)) {
+            return back()->with(
+                'error',
+                'El archivo no tiene las columnas requeridas. Faltan: ' . implode(', ', $faltantes)
+            );
+        }
+
+        // 6. Construir registros (sin tocar la BD aún: primero validar todo)
+        $texto = function ($valor, int $max = 255): string {
+            return mb_substr(strip_tags((string) ($valor ?? '')), 0, $max);
+        };
+        $entero = function ($valor) {
+            return is_numeric($valor) ? (int) $valor : null;
+        };
+
+        $errores    = [];
+        $existentes = Producto::pluck('Codigo_interno')->flip();
+        $registros  = [];
+
+        foreach ($filas as $numFila => $fila) {
+            $filaExcel = $numFila + 1; // fila real en el Excel (el encabezado es la 1)
+
+            $registro = [];
+            foreach ($encabezado as $col => $claveCanonica) {
+                $valorNuevo = $fila[$col] ?? null;
+                // Varias columnas pueden mapear a la misma clave (ej: "Rango" y "Opciones"):
+                // gana la primera con valor; una vacía no pisa a una ya cargada.
+                if (!array_key_exists($claveCanonica, $registro)
+                    || (($registro[$claveCanonica] === null || $registro[$claveCanonica] === '')
+                        && $valorNuevo !== null && $valorNuevo !== '')) {
+                    $registro[$claveCanonica] = $valorNuevo;
+                }
+            }
+
+            // Omitir filas completamente vacías
+            if (!array_filter($registro, fn ($v) => $v !== null && $v !== '')) {
+                continue;
+            }
+
+            $codigo  = trim((string) ($registro['Codigo_interno'] ?? ''));
+            $titulo  = trim((string) ($registro['Titulo_Shopify'] ?? ''));
+
+            if ($codigo === '' || $titulo === '') {
+                $errores[] = "Fila {$filaExcel}: faltan datos obligatorios (Codigo interno y Titulo Shopify)";
+                continue;
+            }
+
+            $registros[] = [
+                'Codigo_interno'        => $codigo,
+                'Titulo_Shopify'        => $titulo,
+                'ID_producto_Shopify'   => $texto($registro['ID_producto_Shopify'] ?? ''),
+                'Categoria_original'    => $texto($registro['Categoria_original'] ?? ''),
+                'Familia_normalizada'   => $texto($registro['Familia_normalizada'] ?? ''),
+                'Control_de_variante'   => $texto($registro['Control_de_variante'] ?? ''),
+                'Opciones'              => $texto($registro['Opciones'] ?? ''),
+                'Estado'                => $texto($registro['Estado'] ?? ''),
+                'Observaciones'         => $texto($registro['Observaciones'] ?? ''),
+                'descripcion'           => mb_substr(strip_tags((string) ($registro['descripcion'] ?? '')), 0, 5000),
+                'precio_predicho'       => $entero($registro['precio_predicho'] ?? null),
+                'precio_preventa'       => $entero($registro['precio_preventa'] ?? null),
+            ];
+        }
+
+        if (!empty($errores)) {
+            return back()->with('error', 'No se importó nada por los siguientes problemas: ' . implode(' | ', $errores));
+        }
+        if (empty($registros)) {
+            return back()->with('error', 'El archivo no contiene filas de datos.');
+        }
+
+        // 7. Insertar/actualizar registros (upsert por Codigo_interno)
+        $creados      = 0;
+        $actualizados = 0;
+        DB::beginTransaction();
+        try {
+            foreach ($registros as $registro) {
+                if (isset($existentes[$registro['Codigo_interno']])) {
+                    Producto::where('Codigo_interno', $registro['Codigo_interno'])->update($registro);
+                    $actualizados++;
+                } else {
+                    Producto::create($registro);
+                    $creados++;
+                }
+            }
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            Myhelp::EscribirEnLog($this, 'uploadExcel ERROR inserción', $e->getMessage());
+            return back()->with('error', 'Error al guardar los registros: ' . $e->getMessage());
+        }
+
+        Myhelp::EscribirEnLog($this, 'uploadExcel OK', "Creados: {$creados} | Actualizados: {$actualizados}");
+        return back()->with('success', "Importación completada: {$creados} creado(s), {$actualizados} actualizado(s).");
+    }
 
 }

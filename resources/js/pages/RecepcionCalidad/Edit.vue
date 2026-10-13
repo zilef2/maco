@@ -97,8 +97,8 @@ const update = () => {
                     <div v-for="(atributosform, indice) in data.printForm" :key="indice">
                         <div v-if="atributosform.type === 'foreign'" id="SelectVue" class="">
                             <label name="labelSelectVue"> {{ atributosform.label }} </label>
-                            <v-select :options="props.losSelect" v-model="form[atributosform.idd]"
-                                :reduce="element => element.value" label="label"></v-select>
+                            <v-select :options="props.losSelect[atributosform.idd] || []" v-model="form[atributosform.idd]"
+                                :reduce="element => element.value" label="title"></v-select>
                             <InputError class="mt-2" :message="form.errors[atributosform.idd]" />
                         </div>
 

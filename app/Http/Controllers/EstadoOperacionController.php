@@ -13,6 +13,7 @@ use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
+use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class EstadoOperacionController extends Controller {
     public array $thisAtributos;
@@ -172,5 +173,160 @@ class EstadoOperacionController extends Controller {
         return back()->with('success', __('app.label.deleted_successfully', ['name' => count($request->id) . ' ' . __('app.label.user')]));
     }
     //FIN : STORE - UPDATE - DELETE
+
+    // ─────────────────────────────────────────────────────────
+    //  CARGA MASIVA DESDE EXCEL (todos los campos son texto)
+    // ─────────────────────────────────────────────────────────
+    public function uploadExcel(Request $request): RedirectResponse
+    {
+        Myhelp::EscribirEnLog($this, 'uploadExcel: inicio');
+
+        // 1. Validaciones de seguridad del archivo (previas a cualquier lectura)
+        $request->validate([
+            'archivo' => [
+                'required',
+                'file',
+                'max:10240',    // máx 10 MB
+                'mimes:xlsx',
+            ],
+        ]);
+
+        $archivo = $request->file('archivo');
+
+        // 2. Doble-verificación de extensión
+        if (strtolower($archivo->getClientOriginalExtension()) !== 'xlsx') {
+            return back()->with('error', 'Solo se permiten archivos con extensión .xlsx');
+        }
+
+        // 3. Verificación de firma de bytes (ZIP/OOXML: PK\x03\x04)
+        $handle = fopen($archivo->getRealPath(), 'rb');
+        $magic  = fread($handle, 4);
+        fclose($handle);
+        if ($magic !== "PK\x03\x04") {
+            return back()->with('error', 'El archivo no tiene un formato XLSX válido.');
+        }
+
+        // 4. Leer el archivo con PhpSpreadsheet
+        try {
+            $spreadsheet = IOFactory::load($archivo->getRealPath());
+        } catch (\Throwable $e) {
+            Myhelp::EscribirEnLog($this, 'uploadExcel ERROR lectura', $e->getMessage());
+            return back()->with('error', 'No se pudo leer el archivo: ' . $e->getMessage());
+        }
+
+        $hoja  = $spreadsheet->getActiveSheet();
+        $filas = $hoja->toArray(null, true, true, true);
+
+        if (empty($filas)) {
+            return back()->with('error', 'El archivo está vacío.');
+        }
+
+        // 5. Normalizar encabezados (acepta snake_case y nombres legibles)
+        $columnasRequeridas = ['nombre'];
+
+        $aliasColumnas = [
+            'nombre'         => 'nombre',
+            'estado'         => 'nombre',
+            'cuandoaplica'   => 'cuando_aplica',
+            'aplica'         => 'cuando_aplica',
+            'reglaclave'     => 'regla_clave',
+            'regla'          => 'regla_clave',
+            'puedepasara'    => 'puede_pasar_a',
+            'puedepasar'     => 'puede_pasar_a',
+            'pasara'         => 'puede_pasar_a',
+            'pasar'          => 'puede_pasar_a',
+        ];
+
+        $normalizarTexto = fn (string $texto): string => strtr(
+            mb_strtolower(trim($texto)),
+            ['á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u', 'ü' => 'u', 'ñ' => 'n']
+        );
+
+        $filaEncabezados = array_shift($filas);
+        $encabezado = [];
+        foreach ($filaEncabezados as $col => $titulo) {
+            $clave = preg_replace('/[^a-z0-9]/', '', $normalizarTexto((string) $titulo));
+            if (isset($aliasColumnas[$clave])) {
+                $encabezado[$col] = $aliasColumnas[$clave];
+            }
+        }
+
+        $faltantes = array_diff($columnasRequeridas, array_values($encabezado));
+        if (!empty($faltantes)) {
+            return back()->with(
+                'error',
+                'El archivo no tiene las columnas requeridas. Faltan: ' . implode(', ', $faltantes)
+            );
+        }
+
+        // 6. Construir registros (sin tocar la BD aún: primero validar todo)
+        $errores    = [];
+        $existentes = EstadoOperacion::pluck('nombre')->flip();
+        $registros  = [];
+
+        foreach ($filas as $numFila => $fila) {
+            $filaExcel = $numFila + 1; // fila real en el Excel (el encabezado es la 1)
+
+            $registro = [];
+            foreach ($encabezado as $col => $claveCanonica) {
+                $valorNuevo = $fila[$col] ?? null;
+                // Varias columnas pueden mapear a la misma clave: gana la primera con valor
+                if (!array_key_exists($claveCanonica, $registro)
+                    || (($registro[$claveCanonica] === null || $registro[$claveCanonica] === '')
+                        && $valorNuevo !== null && $valorNuevo !== '')) {
+                    $registro[$claveCanonica] = $valorNuevo;
+                }
+            }
+
+            // Omitir filas completamente vacías
+            if (!array_filter($registro, fn ($v) => $v !== null && $v !== '')) {
+                continue;
+            }
+
+            $nombre = trim((string) ($registro['nombre'] ?? ''));
+            if ($nombre === '') {
+                $errores[] = "Fila {$filaExcel}: falta el nombre (obligatorio)";
+                continue;
+            }
+
+            $registros[] = [
+                'nombre'          => mb_substr(strip_tags($nombre), 0, 255),
+                'cuando_aplica'   => strip_tags((string) ($registro['cuando_aplica'] ?? '')),
+                'regla_clave'     => strip_tags((string) ($registro['regla_clave'] ?? '')),
+                'puede_pasar_a'   => mb_substr(strip_tags((string) ($registro['puede_pasar_a'] ?? '')), 0, 255),
+            ];
+        }
+
+        if (!empty($errores)) {
+            return back()->with('error', 'No se importó nada por los siguientes problemas: ' . implode(' | ', $errores));
+        }
+        if (empty($registros)) {
+            return back()->with('error', 'El archivo no contiene filas de datos.');
+        }
+
+        // 7. Insertar/actualizar registros (upsert por nombre)
+        $creados      = 0;
+        $actualizados = 0;
+        DB::beginTransaction();
+        try {
+            foreach ($registros as $registro) {
+                if (isset($existentes[$registro['nombre']])) {
+                    EstadoOperacion::where('nombre', $registro['nombre'])->update($registro);
+                    $actualizados++;
+                } else {
+                    EstadoOperacion::create($registro);
+                    $creados++;
+                }
+            }
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            Myhelp::EscribirEnLog($this, 'uploadExcel ERROR inserción', $e->getMessage());
+            return back()->with('error', 'Error al guardar los registros: ' . $e->getMessage());
+        }
+
+        Myhelp::EscribirEnLog($this, 'uploadExcel OK', "Creados: {$creados} | Actualizados: {$actualizados}");
+        return back()->with('success', "Importación completada: {$creados} creado(s), {$actualizados} actualizado(s).");
+    }
 
 }

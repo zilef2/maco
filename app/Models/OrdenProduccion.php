@@ -20,6 +20,11 @@ use Illuminate\Database\Eloquent\SoftDeletes;
         return $this->belongsTo(Producto::class, 'producto_referencia_id');
     }
 
+    public function productos()
+    {
+        return $this->belongsToMany(Producto::class, 'orden_produccion_producto')->withTimestamps();
+    }
+
     public function taller()
     {
         return $this->belongsTo(Taller::class, 'taller_id');

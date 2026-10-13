@@ -65,6 +65,11 @@ const navGroups: NavGroup[] = [
                 href: '/user',
                 icon: Users,
             },
+            {
+                title: 'RecepcionCalidad',
+                href: '/RecepcionCalidad',
+                icon: BadgeCheck,
+            },
         ],
     },
     {
@@ -85,11 +90,7 @@ const navGroups: NavGroup[] = [
                 href: '/KitTaller',
                 icon: PackageOpen,
             },
-            {
-                title: 'RecepcionCalidad',
-                href: '/RecepcionCalidad',
-                icon: BadgeCheck,
-            },
+
             {
                 title: 'CierreOrdenProduccion',
                 href: '/CierreOrdenProduccion',

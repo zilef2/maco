@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\RecepcionCalidad;
+use App\Models\OrdenProduccion;
+use App\Models\Producto;
 use App\helpers\Myhelp;
 use App\helpers\MyModels;
 use Illuminate\Database\Eloquent\Builder;
@@ -43,14 +45,33 @@ class RecepcionCalidadController extends Controller {
             'filters' => $request->all(['search', 'field', 'order']),
             'perPage' => (int)$perPage,
             'numberPermissions' => $numberPermissions,
-            'losSelect'         => $this->losSelect(RecepcionCalidad::class, ' RecepcionCalidad','proveeNombre'),
+            'losSelect'         => $this->Dependencias(),
 	        'titulos'           => RecepcionCalidad::getFillableWithTypes(),
 
         ]);
     }
 
-	public function losSelect(string $modelClass, string $label, string $displayField = 'nombre'): array {
-		// Verifica si la clase del modelo existe
+	public function Dependencias(): array {
+		$ordenesProduccion = OrdenProduccion::orderByDesc('updated_at')
+			->get(['id', 'numero_op'])
+			->map(fn ($op) => [
+				'title' => 'OP ' . $op->numero_op,
+				'value' => $op->id,
+			])->values()->all();
+
+		$productos = Producto::get(['id', 'Titulo_Shopify', 'Codigo_interno'])
+			->map(fn ($producto) => [
+				'title' => $producto->Titulo_Shopify ?: ($producto->Codigo_interno ?: 'Producto #' . $producto->id),
+				'value' => $producto->id,
+			])->values()->all();
+
+		return [
+			'orden_produccion_id'    => $ordenesProduccion,
+			'producto_referencia_id' => $productos,
+		];
+	}
+
+	public function losSelect(string $modelClass, string $label, string $displayField = 'nombre'): array {		// Verifica si la clase del modelo existe
 		if (!class_exists($modelClass)) {
 			return []; // O podrías lanzar una excepción más informativa
 		}

@@ -39,14 +39,26 @@ const justNames = props.titulos.map(names => {
 })
 const form = useForm({ ...Object.fromEntries(justNames.map(field => [field, ''])) });
 onMounted(() => {
-    if (props.numberPermissions > 9) {
+    if (props.numberPermissions === 100) {
+        const opcionesValidas = (lista: any[]) => (lista || []).filter((o: any) => o.value)
+        const aleatorioDe = (lista: any[]) => {
+            const validas = opcionesValidas(lista)
+            return validas.length ? validas[Math.floor(Math.random() * validas.length)].value : ''
+        }
 
-        const valueRAn = Math.floor(Math.random() * (9) + 1)
-        form.nombre = 'nombre genenerico ' + (valueRAn);
-        form.codigo = (valueRAn);
-        // form.hora_inicial = '0'+valueRAn+':00'//temp
-        // form.fecha = '2023-06-01'
-
+        const valueRAn = Math.floor(Math.random() * (1000) + 1)
+        form.orden_produccion_id = aleatorioDe(props.losSelect?.orden_produccion_id)
+        form.producto_referencia_id = aleatorioDe(props.losSelect?.producto_referencia_id)
+        form.talla = ['S', 'M', 'L', 'XL'][Math.floor(Math.random() * 4)]
+        form.cantidad_esperada = Math.floor(Math.random() * 100 + 10)
+        form.cantidad_recibida = Math.floor(Math.random() * 100 + 10)
+        form.cantidad_aprobada = Math.floor(Math.random() * 80 + 10)
+        form.cantidad_en_reparacion = Math.floor(Math.random() * 4)
+        form.cantidad_no_recuperable = Math.floor(Math.random() * 3)
+        form.fecha_recepcion = new Date().toISOString().split('T')[0]
+        form.fecha_inicio_revision = new Date().toISOString().split('T')[0]
+        form.fecha_fin_revision = new Date().toISOString().split('T')[0]
+        form.observaciones = 'observaciones genenericas ' + (valueRAn)
     }
 });
 
@@ -112,8 +124,8 @@ const sexos = [{ label: 'Masculino', value: 0 }, { label: 'Femenino', value: 1 }
 
                         <div v-if="atributosform.type === 'foreign'" id="SelectVue" class="">
                             <label name="labelSelectVue"> {{ atributosform.label }} </label>
-                            <v-select :options="props.losSelect[0]" v-model="form[atributosform.idd]"
-                                :reduce="element => element.value" label="name"></v-select>
+                            <v-select :options="props.losSelect[atributosform.idd] || []" v-model="form[atributosform.idd]"
+                                :reduce="element => element.value" label="title"></v-select>
                             <InputError class="mt-2" :message="form.errors[atributosform.idd]" />
                         </div>
 

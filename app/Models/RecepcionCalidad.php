@@ -13,7 +13,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 {
     /** @use HasFactory<\Database\Factories\RecepcionCalidadFactory> */
     use HasFactory;
-    protected $fillable = ['orden_produccion_id', 'producto_referencia_id', 'talla', 'cantidad_esperada', 'cantidad_recibida', 'cantidad_aprobada', 'cantidad_en_reparacion', 'cantidad_no_recuperable', 'fecha_recepcion', 'id', 'observaciones', 'fecha_inicio_revision', 'fecha_fin_revision'];
+    protected $fillable = ['orden_produccion_id', 'producto_referencia_id', 'talla', 'cantidad_esperada', 'cantidad_recibida', 'cantidad_aprobada', 'cantidad_en_reparacion', 'cantidad_no_recuperable', 'fecha_recepcion', 'observaciones', 'fecha_inicio_revision', 'fecha_fin_revision'];
 
 
 

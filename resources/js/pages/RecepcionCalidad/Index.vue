@@ -95,7 +95,6 @@ const titulos = [
     { order: 'cantidad_en_reparacion', label: 'cantidad_en_reparacion', type: 'number' },
     { order: 'cantidad_no_recuperable', label: 'cantidad_no_recuperable', type: 'number' },
     { order: 'fecha_recepcion', label: 'fecha_recepcion', type: 'datetime' },
-    { order: 'id', label: 'id', type: 'string' },
     { order: 'observaciones', label: 'observaciones', type: 'text' },
     { order: 'fecha_inicio_revision', label: 'fecha_inicio_revision', type: 'datetime' },
     { order: 'fecha_fin_revision', label: 'fecha_fin_revision', type: 'datetime' },

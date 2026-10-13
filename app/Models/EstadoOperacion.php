@@ -15,6 +15,19 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     use HasFactory;
     protected $fillable = ['nombre', 'cuando_aplica', 'regla_clave', 'puede_pasar_a'];
 
+    /**
+     * Ids de estados a los que se puede transicionar desde el estado actual,
+     * según la lista "nombre / nombre / ..." de la columna puede_pasar_a.
+     */
+    public function idsPuedePasarA(): array
+    {
+        if (empty($this->puede_pasar_a)) {
+            return [];
+        }
+        $nombres = array_map('trim', explode('/', $this->puede_pasar_a));
+        return EstadoOperacion::whereIn('nombre', $nombres)->pluck('id')->all();
+    }
+
 
 
     public static function getFillableWithTypes(): array

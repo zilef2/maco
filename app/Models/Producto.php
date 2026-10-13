@@ -35,6 +35,11 @@ class Producto extends Model
 // Taller
 // Fecha entrega
 
+    public function ordenesProduccion()
+    {
+        return $this->belongsToMany(OrdenProduccion::class, 'orden_produccion_producto')->withTimestamps();
+    }
+
     public static function getFillableWithTypes(): array
     {
         $table = (new static)->getTable();

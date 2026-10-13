@@ -11,10 +11,11 @@ import DangerButton from '@/components/DangerButton.vue';
 import pkg from 'lodash';
 
 import Pagination from '@/components/Pagination.vue';
-import { ChevronUpDownIcon, PencilIcon, TrashIcon } from '@heroicons/vue/24/solid';
+import { ChevronUpDownIcon, PencilIcon, TrashIcon, ArrowUpTrayIcon } from '@heroicons/vue/24/solid';
 import Create from '@/pages/Producto/Create.vue';
 import Edit from '@/pages/Producto/Edit.vue';
 import Delete from '@/pages/Producto/Delete.vue';
+import ImportarProductoModal from '@/pages/Producto/ImportarProductoModal.vue';
 
 import Checkbox from '@/components/Checkbox.vue';
 import InfoButton from '@/components/InfoButton.vue';
@@ -57,6 +58,7 @@ const data = reactive({
     createOpen: false,
     editOpen: false,
     deleteOpen: false,
+    importOpen: false,
     dataSet: (usePage().props as any)?.app?.perpage ?? defaultPerPage,
 })
 
@@ -111,9 +113,18 @@ const titulos = [
         <div class="space-y-4">
             <div class="px-4 sm:px-0">
                 <div class="rounded-lg overflow-hidden w-fit">
-                    <PrimaryButton class="m-1" @click="data.createOpen = true" v-if="can(['create Producto'])">
+                    <PrimaryButton class="m-1 align-top" @click="data.createOpen = true" v-if="can(['create Producto'])">
                         {{ lang().t('app.button.add') }}
                     </PrimaryButton>
+
+                    <PrimaryButton v-if="can(['create Producto'])"
+                        class="m-1 align-top bg-emerald-600 hover:bg-emerald-700 focus:ring-emerald-500"
+                        @click="data.importOpen = true">
+                        <ArrowUpTrayIcon class="w-4 h-4 mr-1 inline" />
+                        Cargar Excel
+                    </PrimaryButton>
+
+                    <ImportarProductoModal :show="data.importOpen" @close="data.importOpen = false" />
 
                     <Create v-if="can(['create Producto'])" :numberPermissions="props.numberPermissions"
                         :titulos="titulos" :show="data.createOpen" @close="data.createOpen = false" :title="props.title"

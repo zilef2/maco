@@ -5,20 +5,20 @@ import Breadcrumb from '@/components/Breadcrumb.vue';
 import TextInput from '@/components/TextInput.vue';
 import PrimaryButton from '@/components/PrimaryButton.vue';
 import SelectInput from '@/components/SelectInput.vue';
-import { reactive, watch } from 'vue';
+import { reactive, ref, watch } from 'vue';
 
 import DangerButton from '@/components/DangerButton.vue';
 import pkg from 'lodash';
 
 import Pagination from '@/components/Pagination.vue';
-import { ChevronUpDownIcon, EyeIcon, PencilIcon, TrashIcon, ArrowUpTrayIcon, ClipboardIcon } from '@heroicons/vue/24/solid';
+import { ChevronUpDownIcon, EyeIcon, PencilIcon, TrashIcon, ArrowUpTrayIcon, ClipboardIcon, ArrowPathIcon } from '@heroicons/vue/24/solid';
 import Create from '@/pages/OrdenProduccion/Create.vue';
 import Edit from '@/pages/OrdenProduccion/Edit.vue';
 import Delete from '@/pages/OrdenProduccion/Delete.vue';
 import DistribucionTallas from '@/pages/OrdenProduccion/DistribucionTallas.vue';
 import VerObservacion from '@/pages/OrdenProduccion/VerObservacion.vue';
-import ImportarKitModal from '@/pages/OrdenProduccion/ImportarKitModal.vue';
 import KitTallerOPModal from '@/pages/OrdenProduccion/KitTallerOPModal.vue';
+import CambiarEstadoModal from '@/pages/OrdenProduccion/CambiarEstadoModal.vue';
 
 import Checkbox from '@/components/Checkbox.vue';
 import InfoButton from '@/components/InfoButton.vue';
@@ -66,9 +66,10 @@ const data = reactive({
     observacionOp: '' as string,
     distribucionOpen: false,
     distribucionOp: null as any,
-    importKitOpen: false,
     kitTallerOpen: false,
     kitTallerOp: null as any,
+    cambioEstadoOpen: false,
+    cambioEstadoOp: null as any,
     dataSet: (usePage().props as any)?.app?.perpage ?? defaultPerPage,
 })
 
@@ -76,6 +77,21 @@ const order = (field: string) => {
     data.params.field = field
     data.params.order = data.params.order === "asc" ? "desc" : "asc"
 }
+
+// Skeleton: se muestra mientras Inertia vuelve a pedir datos de ESTA misma página
+// (buscar, paginar, crear/editar con redirección back), no en navegaciones a otras rutas.
+const cargando = ref(false)
+const rutaIndex = new URL(String(route('OrdenProduccion.index')), window.location.origin).pathname
+router.on('start', (event) => {
+    const url = event.detail.visit.url
+    const pathname = url instanceof URL ? url.pathname : new URL(String(url), window.location.origin).pathname
+    if (pathname === rutaIndex) {
+        cargando.value = true
+    }
+})
+router.on('finish', () => {
+    cargando.value = false
+})
 
 watch(() => _.cloneDeep(data.params), debounce(() => {
     const params = pickBy(data.params)
@@ -113,6 +129,11 @@ const abrirKitTaller = (op: any) => {
     data.kitTallerOpen = true
 }
 
+const abrirCambioEstado = (op: any) => {
+    data.cambioEstadoOp = op ?? null
+    data.cambioEstadoOpen = true
+}
+
 const titulos = [
     { order: 'numero_op', label: 'numero_op', type: 'string' },
     { order: 'producto_referencia_id', label: 'producto_referencia_id', type: 'foreign', nameid: 'producto_nombre' },
@@ -133,7 +154,7 @@ const titulos = [
     <Head :title="props.title" />
 
     <AppLayout>
-        <!-- <Breadcrumb :title="title" :breadcrumbs="breadcrumbs" class="capitalize text-xl font-bold" /> -->
+        <Breadcrumb :title="title" :breadcrumbs="breadcrumbs" class="capitalize text-xl font-bold" />
         <div class="space-y-4">
             <div class="px-4 sm:px-0">
                 <div class="rounded-lg overflow-hidden w-fit">
@@ -163,11 +184,12 @@ const titulos = [
                         :items="data.distribucionOp?.distribuciones_por_tallas || []"
                         :canEdit="can(['update OrdenProduccion'])" />
 
-                    <ImportarKitModal :show="data.importKitOpen" @close="data.importKitOpen = false"
-                        :ordenProduccion="data.OrdenProducciono" />
-
                     <KitTallerOPModal :show="data.kitTallerOpen" @close="data.kitTallerOpen = false"
                         :ordenProduccion="data.kitTallerOp" :title="props.title" />
+
+                    <CambiarEstadoModal :show="data.cambioEstadoOpen" @close="data.cambioEstadoOpen = false"
+                        :title="props.title" :op="data.cambioEstadoOp"
+                        :estados="props.losSelect?.estado_op_id || []" />
                 </div>
             </div>
             <div class="relative bg-white dark:bg-gray-800 shadow sm:rounded-lg">
@@ -198,9 +220,24 @@ const titulos = [
                                     </div>
                                 </th>
                                 <th class="px-2 py-4">Tallas</th>
+                                <th class="px-2 py-4">Productos</th>
                             </tr>
                         </thead>
-                        <tbody>
+                        <tbody v-if="cargando">
+                            <tr v-for="n in 8" :key="'skeleton-' + n"
+                                class="border-t border-gray-200 dark:border-gray-700">
+                                <td :colspan="titulos.length + 5" class="px-2 py-3">
+                                    <div class="flex items-center gap-4">
+                                        <div class="h-4 w-4 rounded bg-gray-200 dark:bg-gray-800 animate-pulse"></div>
+                                        <div class="h-4 w-10 rounded bg-gray-200 dark:bg-gray-800 animate-pulse"></div>
+                                        <div class="h-4 flex-1 rounded bg-gray-200 dark:bg-gray-800 animate-pulse"></div>
+                                        <div class="h-4 w-20 rounded bg-gray-200 dark:bg-gray-800 animate-pulse"></div>
+                                        <div class="h-4 w-16 rounded bg-gray-200 dark:bg-gray-800 animate-pulse"></div>
+                                    </div>
+                                </td>
+                            </tr>
+                        </tbody>
+                        <tbody v-else>
                             <tr v-for="(claseFromController, indexu) in props.fromController?.data" :key="indexu"
                                 class="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-200/30 hover:dark:bg-gray-900/20">
 
@@ -220,18 +257,24 @@ const titulos = [
                                                 v-tooltip="lang().t('app.tooltip.edit')">
                                                 <PencilIcon class="w-4 h-4" />
                                             </InfoButton>
+                                            <InfoButton v-show="can(['update OrdenProduccion'])" type="button"
+                                                :thecolor="'blue'" @click="abrirCambioEstado(claseFromController)"
+                                                class="px-2 py-1.5 rounded-none"
+                                                v-tooltip="'Cambiar estado'">
+                                                <ArrowPathIcon class="w-4 h-4" />
+                                            </InfoButton>
                                             <InfoButton v-show="can(['create KitTaller'])" type="button"
                                                 :thecolor="'green'"
-                                                @click="(data.importKitOpen = true), (data.OrdenProducciono = claseFromController)"
+                                                @click="abrirKitTaller(claseFromController)"
                                                 class="px-2 py-1.5 rounded-none"
-                                                v-tooltip="'Importar KitTaller desde Excel'">
+                                                v-tooltip="'Ver kit / Importar Excel'">
                                                 <ArrowUpTrayIcon class="w-4 h-4" />
                                             </InfoButton>
-                                            <InfoButton v-show="can(['update OrdenProduccion'])" type="button"
+                                            <!-- <InfoButton v-show="can(['update OrdenProduccion'])" type="button"
                                                 :thecolor="'blue'" @click="abrirKitTaller(claseFromController)"
                                                 class="px-2 py-1.5 rounded-none" v-tooltip="'Ver Kitaller'">
                                                 <ClipboardIcon class="w-4 h-4" />
-                                            </InfoButton>
+                                            </InfoButton> -->
                                             <DangerButton v-show="can(['delete OrdenProduccion'])" type="button"
                                                 @click="(data.deleteOpen = true), (data.OrdenProducciono = claseFromController)"
                                                 class="px-2 py-1.5 rounded-none"
@@ -278,6 +321,18 @@ const titulos = [
                                             class="px-2 py-1.5 rounded-none" v-tooltip="lang().t('app.tooltip.ver')">
                                             <EyeIcon class="w-4 h-4" />
                                         </InfoButton>
+                                    </span>
+                                </td>
+                                <td class="whitespace-nowrap py-4 px-2 sm:py-3 max-w-[260px]">
+                                    <span class="flex items-center gap-2">
+                                        <span
+                                            class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
+                                            {{ (claseFromController.productos || []).length }} productos
+                                        </span>
+                                        <span class="block max-w-[180px] truncate text-sm text-gray-600 dark:text-gray-300"
+                                            :title="claseFromController.productos_nombres">
+                                            {{ claseFromController.productos_nombres || '—' }}
+                                        </span>
                                     </span>
                                 </td>
 
