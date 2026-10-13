@@ -11,10 +11,11 @@ import DangerButton from '@/components/DangerButton.vue';
 import pkg from 'lodash';
 
 import Pagination from '@/components/Pagination.vue';
-import { ChevronUpDownIcon, PencilIcon, TrashIcon } from '@heroicons/vue/24/solid';
-import Create from '@/pages/Talla/Create.vue';
-import Edit from '@/pages/Talla/Edit.vue';
-import Delete from '@/pages/Talla/Delete.vue';
+import { ChevronUpDownIcon, PencilIcon, TrashIcon, ArrowUpTrayIcon } from '@heroicons/vue/24/solid';
+import Create from '@/pages/Material/Create.vue';
+import Edit from '@/pages/Material/Edit.vue';
+import Delete from '@/pages/Material/Delete.vue';
+import ImportarMaterialModal from '@/pages/Material/ImportarMaterialModal.vue';
 
 import Checkbox from '@/components/Checkbox.vue';
 import InfoButton from '@/components/InfoButton.vue';
@@ -51,12 +52,13 @@ const data = reactive({
         order: props.filters?.order,
         perPage: props.perPage,
     },
-    Tallao: null as any,
+    Materialo: null as any,
     selectedId: [] as number[],
     multipleSelect: false,
     createOpen: false,
     editOpen: false,
     deleteOpen: false,
+    importOpen: false,
     dataSet: (usePage().props as any)?.app?.perpage ?? defaultPerPage,
 })
 
@@ -66,8 +68,8 @@ const order = (field: string) => {
 }
 
 watch(() => _.cloneDeep(data.params), debounce(() => {
-    let params = pickBy(data.params)
-    router.get(route("Talla.index"), params, {
+    const params = pickBy(data.params)
+    router.get(route("Material.index"), params, {
         replace: true,
         preserveState: true,
         preserveScroll: true,
@@ -78,19 +80,25 @@ const selectAll = (event: any) => {
     if (event.target.checked === false) {
         data.selectedId = []
     } else {
-        props.fromController?.data.forEach((Talla: any) => {
-            data.selectedId.push(Talla.id)
+        props.fromController?.data.forEach((Material: any) => {
+            data.selectedId.push(Material.id)
         })
     }
 }
 const select = () => data.multipleSelect = props.fromController?.data.length === data.selectedId.length;
 
 const titulos = [
-    { order: 'referencia', label: 'referencia', type: 'string' },
-    { order: 'nombre', label: 'nombre', type: 'string' },
-    { order: 'descripcion', label: 'descripcion', type: 'text' },
-    { order: 'tipo', label: 'tipo', type: 'string' },
-    { order: 'estado', label: 'estado', type: 'number' },
+    { order: 'codigo_material', label: 'codigo_material', type: 'string' },
+    { order: 'categoria', label: 'categoria', type: 'string' },
+    { order: 'nombre_base', label: 'nombre_base', type: 'string' },
+    { order: 'unidad_inventario', label: 'unidad_inventario', type: 'string' },
+    { order: 'maneja_color', label: 'maneja_color', type: 'boolean' },
+    { order: 'maneja_talla', label: 'maneja_talla', type: 'boolean' },
+    { order: 'maneja_otra_variante', label: 'maneja_otra_variante', type: 'boolean' },
+    { order: 'estado', label: 'estado', type: 'string' },
+    { order: 'variante_atributo_sugerido', label: 'variante_atributo_sugerido', type: 'string' },
+    { order: 'proveedor_habitual', label: 'proveedor_habitual', type: 'string' },
+    { order: 'observaciones', label: 'observaciones', type: 'string' },
 ];
 
 </script>
@@ -104,20 +112,29 @@ const titulos = [
         <div class="space-y-4">
             <div class="px-4 sm:px-0">
                 <div class="rounded-lg overflow-hidden w-fit">
-                    <PrimaryButton class="m-1" @click="data.createOpen = true" v-if="can(['create Talla'])">
+                    <PrimaryButton class="m-1" @click="data.createOpen = true" v-if="can(['create Material'])">
                         {{ lang().t('app.button.add') }}
                     </PrimaryButton>
 
-                    <Create v-if="can(['create Talla'])" :numberPermissions="props.numberPermissions"
+                    <PrimaryButton v-if="can(['create Material'])"
+                        class="m-1 bg-emerald-600 hover:bg-emerald-700 focus:ring-emerald-500"
+                        @click="data.importOpen = true">
+                        <ArrowUpTrayIcon class="w-4 h-4 mr-1 inline" />
+                        Cargar Excel
+                    </PrimaryButton>
+
+                    <ImportarMaterialModal :show="data.importOpen" @close="data.importOpen = false" />
+
+                    <Create v-if="can(['create Material'])" :numberPermissions="props.numberPermissions"
                         :titulos="titulos" :show="data.createOpen" @close="data.createOpen = false" :title="props.title"
                         :losSelect="props.losSelect" />
 
-                    <Edit v-if="can(['update Talla'])" :titulos="titulos" :numberPermissions="props.numberPermissions"
-                        :show="data.editOpen" @close="data.editOpen = false" :Tallaa="data.Tallao"
+                    <Edit v-if="can(['update Material'])" :titulos="titulos" :numberPermissions="props.numberPermissions"
+                        :show="data.editOpen" @close="data.editOpen = false" :Materiala="data.Materialo"
                         :title="props.title" :losSelect="props.losSelect" />
 
-                    <Delete v-if="can(['delete Talla'])" :numberPermissions="props.numberPermissions"
-                        :show="data.deleteOpen" @close="data.deleteOpen = false" :Tallaa="data.Tallao"
+                    <Delete v-if="can(['delete Material'])" :numberPermissions="props.numberPermissions"
+                        :show="data.deleteOpen" @close="data.deleteOpen = false" :Materiala="data.Materialo"
                         :title="props.title" />
                 </div>
             </div>
@@ -164,14 +181,14 @@ const titulos = [
                                     class="whitespace-nowrap py-4 w-12 px-2 sm:py-3">
                                     <div class="flex justify-center items-center">
                                         <div class="rounded-md overflow-hidden">
-                                            <InfoButton v-show="can(['update Talla'])" type="button"
-                                                @click="(data.editOpen = true), (data.Tallao = claseFromController)"
+                                            <InfoButton v-show="can(['update Material'])" type="button"
+                                                @click="(data.editOpen = true), (data.Materialo = claseFromController)"
                                                 class="px-2 py-1.5 rounded-none"
                                                 v-tooltip="lang().t('app.tooltip.edit')">
                                                 <PencilIcon class="w-4 h-4" />
                                             </InfoButton>
-                                            <DangerButton v-show="can(['delete Talla'])" type="button"
-                                                @click="(data.deleteOpen = true), (data.Tallao = claseFromController)"
+                                            <DangerButton v-show="can(['delete Material'])" type="button"
+                                                @click="(data.deleteOpen = true), (data.Materialo = claseFromController)"
                                                 class="px-2 py-1.5 rounded-none"
                                                 v-tooltip="lang().t('app.tooltip.delete')">
                                                 <TrashIcon class="w-4 h-4" />

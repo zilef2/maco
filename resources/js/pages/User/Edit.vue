@@ -31,7 +31,7 @@ const data = reactive({
 })
 //very usefull
 const justNames = props.titulos.map((names: any) => names['order'])
-let form = useForm<Record<string, any>>({
+const form = useForm<Record<string, any>>({
     ...Object.fromEntries(justNames.map((field: string) => [field, ''])),
     role: ''
 });
@@ -161,8 +161,8 @@ const flow = ref<any>(['year', 'month', 'calendar']);
                             </div>
                             <VueDatePicker :is-24="false" :day-names="daynames" :format="formatToVue" :flow="flow"
                                 auto-apply :enable-time-picker="false" :id="atributosform.idd" class="mt-1 block w-full"
-                                v-model="form[atributosform.idd]" required :placeholder="atributosform.label"
-                                :error="form.errors[atributosform.idd]" />
+                                v-model="form[atributosform.idd]" model-type="yyyy-MM-dd" required
+                                :placeholder="atributosform.label" :error="form.errors[atributosform.idd]" />
                             <InputError class="mt-2" :message="form.errors[atributosform.idd]" />
                         </div>
 

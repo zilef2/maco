@@ -2,7 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\materias_primas;
+use App\Models\OrdenProduccion;
 use App\Models\ProcesoExterno;
+use App\Models\Proveedor;
 use App\helpers\Myhelp;
 use App\helpers\MyModels;
 use Illuminate\Database\Eloquent\Builder;
@@ -43,10 +46,56 @@ class ProcesoExternoController extends Controller {
             'filters' => $request->all(['search', 'field', 'order']),
             'perPage' => (int)$perPage,
             'numberPermissions' => $numberPermissions,
-            'losSelect'         => $this->losSelect(ProcesoExterno::class, ' ProcesoExterno','proveeNombre'),
+            'losSelect'         => $this->obtenerSelects(),
 	        'titulos'           => ProcesoExterno::getFillableWithTypes(),
 
         ]);
+    }
+
+    public function obtenerSelects(): array {
+        $ordenes = OrdenProduccion::orderByDesc('id')
+            ->get(['id', 'numero_op'])
+            ->map(function ($op) {
+                $nombre = 'OP ' . $op->numero_op;
+                return [
+                    'id'    => $op->id,
+                    'value' => $op->id,
+                    'name'  => $nombre,
+                    'label' => $nombre,
+                    'title' => $nombre,
+                ];
+            });
+
+        $materiales = materias_primas::orderBy('nombre')
+            ->get(['id', 'codigo', 'nombre'])
+            ->map(function ($material) {
+                $nombre = $material->nombre ?: ($material->codigo ?: 'Material #' . $material->id);
+                return [
+                    'id'    => $material->id,
+                    'value' => $material->id,
+                    'name'  => $nombre,
+                    'label' => $nombre,
+                    'title' => $nombre,
+                ];
+            });
+
+        $proveedores = Proveedor::orderBy('nombre')
+            ->get(['id', 'nombre'])
+            ->map(function ($proveedor) {
+                return [
+                    'id'    => $proveedor->id,
+                    'value' => $proveedor->id,
+                    'name'  => $proveedor->nombre,
+                    'label' => $proveedor->nombre,
+                    'title' => $proveedor->nombre,
+                ];
+            });
+
+        return [
+            'orden_produccion_id'  => $ordenes,
+            'material_origen_id'   => $materiales,
+            'proveedor_destino_id' => $proveedores,
+        ];
     }
 
 	public function losSelect(string $modelClass, string $label, string $displayField = 'nombre'): array {
@@ -72,9 +121,9 @@ class ProcesoExternoController extends Controller {
         $ProcesoExternos = ProcesoExterno::query();
         if ($request->has('search')) {
             $ProcesoExternos = $ProcesoExternos->where(function ($query) use ($request) {
-                $query->where('nombre', 'LIKE', "%" . $request->search . "%")
-                    //                    ->orWhere('codigo', 'LIKE', "%" . $request->search . "%")
-                    //                    ->orWhere('identificacion', 'LIKE', "%" . $request->search . "%")
+                $query->where('etapa_componente', 'LIKE', "%" . $request->search . "%")
+                    ->orWhere('servicio_proceso', 'LIKE', "%" . $request->search . "%")
+                    ->orWhere('bodega_origen', 'LIKE', "%" . $request->search . "%")
                 ;
             });
         }

@@ -28,8 +28,6 @@ class UserStoreRequest extends FormRequest
         return [
             'name'              => 'required|string|max:255',
             'email'             => 'required|string|email|max:255|unique:' . User::class,
-            'cedula'            => 'required|numeric|min:6',
-            // 'password'       => ['required', 'confirmed', Password::defaults()],
             'role'              => ['required'],
 
             'identificacion'    => ['required'],
@@ -37,6 +35,9 @@ class UserStoreRequest extends FormRequest
             'celular'           => ['nullable'],
             'fecha_de_ingreso'  => ['nullable'],
             'sexo'              => ['nullable'],
+            'area'              => ['nullable', 'string', 'max:255'],
+            'cargo'             => ['nullable', 'string', 'max:255'],
+            'fecha_nacimiento'  => ['nullable', 'date'],
         ];
     }
 }

@@ -34,7 +34,7 @@ const data = reactive({
 })
 
 const goto = (link) => {
-    let params = pickBy(data.params);
+    const params = pickBy(data.params);
     router.get(link, params, {
         replace: true,
         preserveState: true,

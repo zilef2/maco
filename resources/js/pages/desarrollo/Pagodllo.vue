@@ -42,7 +42,7 @@ watchEffect(() => {
         setTimeout(() => {
             data.numCoutasaNow = props.desarrolloa?.Numcuotas + 1
             // const valueRAn = Math.floor(Math.random() * (9) + 1)
-            let hoy = Date_to_html(new Date())
+            const hoy = Date_to_html(new Date())
             form.fecha = hoy
         }, 350);
     }

@@ -71,10 +71,6 @@ const submit = () => {
                 </Button>
             </div>
 
-            <div class="text-center text-sm text-muted-foreground">
-                ¿Aun no tienes cuenta?
-                <TextLink :href="route('register')" :tabindex="5">Registrarse</TextLink>
-            </div>
         </form>
     </AuthBase>
 </template>

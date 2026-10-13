@@ -131,10 +131,11 @@ class UserController extends Controller
     //! STORE functions
     public function updatingDate($date)
     {
-        if ($date === null || $date == '1969-12-31') {
+        if ($date === null || $date === '' || $date == '1969-12-31') {
             return null;
         }
-        return date("Y-m-d", strtotime($date));
+        $timestamp = strtotime($date);
+        return $timestamp === false ? null : date("Y-m-d", $timestamp);
     }
 
     public function store(UserStoreRequest $request)
@@ -148,10 +149,6 @@ class UserController extends Controller
             } else {
                 $sexo = 'Masculino';
             }
-            //16marzo: updating all repositories
-            /*git filter-branch --tree-filter 'rm -rf database' HEAD
-            git filter-branch --tree-filter 'rm -rf database' HEAD
-            */
             $user = User::create([
                 'name' => $request->name,
                 'email' => $request->email,

@@ -19,15 +19,15 @@ class UpdateModelAttributes extends Command
 
     protected array $modelos = [
 
-        'EstadoOperacion' => [
+        'Proveedor' => [
             'required' => [
-                'nombre' => 'string',
-                'cuando_aplica' => 'text',
-                'regla_clave' => 'text',
-            ],
-            'optional' => [
-                'puede_pasar_a' => 'string',
-            ],
+                    'nombre' => 'string',
+                    'categoria' => 'string',
+                ],
+                'optional' => [
+                    'celular1' => 'integer',
+                    'celular2' => 'integer',
+                ],
         ],
     ];
 

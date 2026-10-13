@@ -18,6 +18,11 @@ export interface NavItem {
     isActive?: boolean;
 }
 
+export interface NavGroup {
+    label: string;
+    items: NavItem[];
+}
+
 export interface SharedData extends PageProps {
     name: string;
     quote: { message: string; author: string };

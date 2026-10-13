@@ -31,7 +31,7 @@ const formatToVue = (date) => {
 const flow = ref(['year', 'month', 'calendar']);
 const anioHoy = new Date().getFullYear();
 
-let anio = ref(0);
+const anio = ref(0);
 const anio18 = anioHoy - 18;
 // VueDatePicker
 
@@ -69,9 +69,9 @@ watchEffect(() => {
     form.errors = {}
   }
   if (form.fecha_nacimiento)
-    anio = parseInt(anioHoy - new Date(form.fecha_nacimiento).getFullYear())
+    anio.value = parseInt(anioHoy - new Date(form.fecha_nacimiento).getFullYear())
   if (form.semestre)
-    anio = 2024
+    anio.value = 2024
 })
 //TOSTUDY
 const roles = props.roles?.map(role => ({
@@ -175,7 +175,8 @@ const daynames = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom'];
               </div>
               <VueDatePicker :is-24="false" :day-names="daynames" :format="formatToVue" :flow="flow" auto-apply
                 :enable-time-picker="false" id="fecha_nacimiento" class="mt-1 block w-full"
-                v-model="form.fecha_nacimiento" required :placeholder="lang().t('app.placeholder.fecha_nacimiento')"
+                v-model="form.fecha_nacimiento" model-type="yyyy-MM-dd" required
+                :placeholder="lang().t('app.placeholder.fecha_nacimiento')"
                 :error="form.errors.fecha_nacimiento" />
               <InputError class="mt-2" :message="form.errors.fecha_nacimiento" />
             </div>

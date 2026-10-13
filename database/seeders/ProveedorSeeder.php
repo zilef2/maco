@@ -4,8 +4,8 @@ namespace Database\Seeders;
 
 use App\Models\Permission;
 use App\Models\User;
+use App\Models\Proveedor;
 use Illuminate\Database\Seeder;
-use Spatie\Permission\Models\Role;
 
 class ProveedorSeeder extends Seeder
 {
@@ -33,5 +33,11 @@ class ProveedorSeeder extends Seeder
                 $admin->givePermissionTo([$value.' '.$model]);
             }
         }
+
+        Proveedor::create([
+            'nombre' => 'Pedro Hernandez',
+            'categoria' => 'Cuero',
+            'celular1' => 812312312312,
+        ]);
     }
 }

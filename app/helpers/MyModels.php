@@ -49,6 +49,8 @@ class MyModels {
 			'FichaTecnicaMateriales',
 			'PendientesProduccion',
 			'Taller',
+			'Distribucion_por_tallas',
+			'Material',
 			//aquipues
 
 		];

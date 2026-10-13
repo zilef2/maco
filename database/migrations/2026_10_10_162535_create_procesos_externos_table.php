@@ -13,15 +13,21 @@ return new class extends Migration
     {
         Schema::create('procesos_externos', function (Blueprint $table) {
             $table->id();
-            $table->string('etapa_componente');
-            $table->decimal('cantidad');
-            $table->string('unidad');
-            $table->string('sale_de');
-            $table->string('proceso_servicio');
+            $table->unsignedBigInteger('orden_produccion_id')->nullable();
+            $table->string('etapa_componente')->nullable();
+            $table->unsignedBigInteger('material_origen_id')->nullable(); // FK a materias_primas
+            $table->decimal('cantidad_salida')->nullable();
+            $table->string('unidad_medida')->nullable();
+            $table->string('bodega_origen')->nullable();
+            $table->unsignedBigInteger('proveedor_destino_id')->nullable();
+            $table->string('servicio_proceso')->nullable();
             $table->date('fecha_salida')->nullable();
-            $table->date('fecha_regreso')->nullable();
+            $table->date('fecha_prevista_regreso')->nullable();
+            $table->date('fecha_regreso_real')->nullable();
             $table->text('resultado_observaciones')->nullable();
             $table->timestamps();
+
+            $table->foreign('material_origen_id')->references('id')->on('materias_primas')->nullOnDelete();
         });
     }
 

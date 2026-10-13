@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Distribucion_por_tallas;
 use App\Models\OrdenProduccion;
 use App\Models\User;
 use App\Models\EstadoOperacion;
@@ -107,6 +108,30 @@ class OrdenProduccionController extends Controller {
                 ];
             });
 
+        $gruposTallas = Distribucion_por_tallas::whereNotNull('grupo')
+            ->orderBy('grupo')
+            ->orderBy('talla')
+            ->get(['id', 'grupo', 'talla', 'cantidad_planificada'])
+            ->groupBy('grupo')
+            ->map(function ($filas, $grupo) {
+                $nombres = $filas->pluck('talla')->filter()->implode(', ');
+                $etiqueta = 'Grupo ' . $grupo . ($nombres ? ' (' . $nombres . ')' : '');
+                return [
+                    'id'     => (int) $grupo,
+                    'value'  => (int) $grupo,
+                    'name'   => $etiqueta,
+                    'label'  => $etiqueta,
+                    'title'  => $etiqueta,
+                    'tallas' => $filas->map(function ($fila) {
+                        return [
+                            'id'                   => $fila->id,
+                            'talla'                => $fila->talla,
+                            'cantidad_planificada' => $fila->cantidad_planificada,
+                        ];
+                    })->values()->all(),
+                ];
+            })->values()->all();
+
         return [
             // 'responsable_id'         => $usuarios,
             // 'responsable'            => $usuarios,
@@ -123,6 +148,7 @@ class OrdenProduccionController extends Controller {
             'producto_referencia_id' => $productos,
             'producto_id'            => $productos,
             'taller_id'              => $talleres,
+            'grupos_tallas'          => $gruposTallas,
             'siguiente_numero_op'    => $siguienteNumeroOp,
         ];
     }
@@ -144,7 +170,7 @@ class OrdenProduccionController extends Controller {
 	}
 
     public function Filtros($request): Builder {
-        $OrdenProduccions = OrdenProduccion::query()->with(['productoReferencia', 'taller', 'estadoOp', 'responsable']);
+        $OrdenProduccions = OrdenProduccion::query()->with(['productoReferencia', 'taller', 'estadoOp', 'responsable', 'distribucionesPorTallas']);
         if ($request->has('search')) {
             $OrdenProduccions = $OrdenProduccions->where(function ($query) use ($request) {
                 $query->where('numero_op', 'LIKE', "%" . $request->search . "%");
@@ -207,6 +233,23 @@ class OrdenProduccionController extends Controller {
         $OrdenProduccion->forceFill($data);
         $OrdenProduccion->save();
 
+        $grupoTallas = $request->input('grupo_tallas');
+        foreach ($request->input('distribucion_tallas', []) as $talla) {
+            if (!empty($talla['id'])) {
+                $OrdenProduccion->distribucionesPorTallas()->syncWithoutDetaching([(int) $talla['id']]);
+                continue;
+            }
+            if (empty($talla['talla']) && empty($talla['cantidad_planificada'])) {
+                continue;
+            }
+            $nueva = Distribucion_por_tallas::create([
+                'grupo' => $grupoTallas,
+                'talla' => $talla['talla'] ?? null,
+                'cantidad_planificada' => (int) ($talla['cantidad_planificada'] ?? 0),
+            ]);
+            $OrdenProduccion->distribucionesPorTallas()->attach($nueva->id);
+        }
+
         DB::commit();
         $identificador = $OrdenProduccion->numero_op ?? $OrdenProduccion->id;
         Myhelp::EscribirEnLog($this, 'STORE:OrdenProduccions EXITOSO', 'OrdenProduccion id:' . $OrdenProduccion->id . ' | ' . $identificador, false);
@@ -236,15 +279,78 @@ class OrdenProduccionController extends Controller {
         if (empty($data['user_id']) && $request->filled('responsable_id')) {
             $data['user_id'] = $request->input('responsable_id');
         }
-
         $OrdenProduccion = OrdenProduccion::findOrFail($id);
+
         $OrdenProduccion->forceFill($data);
         $OrdenProduccion->save();
+
+        if ($request->has('distribucion_tallas')) {
+            $this->sincronizarTallas($OrdenProduccion, $request->input('distribucion_tallas', []), true, $request->input('grupo_tallas'));
+        }
 
         DB::commit();
         $identificador = $OrdenProduccion->numero_op ?? $OrdenProduccion->id;
         Myhelp::EscribirEnLog($this, 'UPDATE:OrdenProduccions EXITOSO', 'OrdenProduccion id:' . $OrdenProduccion->id . ' | ' . $identificador, false);
         return back()->with('success', __('app.label.updated_successfully2', ['nombre' => $identificador]));
+    }
+
+    public function syncDistribucion(Request $request, $id): RedirectResponse {
+        $permissions = Myhelp::EscribirEnLog($this, ' Begin SYNC-DISTRIBUCION:OrdenProduccions');
+        DB::beginTransaction();
+
+        $OrdenProduccion = OrdenProduccion::findOrFail($id);
+        $this->sincronizarTallas($OrdenProduccion, $request->input('distribucion_tallas', []), false);
+
+        DB::commit();
+        $identificador = $OrdenProduccion->numero_op ?? $OrdenProduccion->id;
+        Myhelp::EscribirEnLog($this, 'SYNC-DISTRIBUCION:OrdenProduccions EXITOSO', 'OrdenProduccion id:' . $OrdenProduccion->id . ' | ' . $identificador, false);
+        return back()->with('success', __('app.label.updated_successfully2', ['nombre' => $identificador]));
+    }
+
+    /**
+     * Sincroniza las tallas de una orden vía pivote: actualiza las que traen id,
+     * crea+vincula las nuevas y desvincula (sin borrar) las que ya no vienen.
+     * Con $conPlanificada en true también actualiza cantidad_planificada.
+     */
+    private function sincronizarTallas(OrdenProduccion $orden, array $tallas, bool $conPlanificada, $grupoNuevo = null): array {
+        $conservados = [];
+        $aEnteroONulo = function ($valor) {
+            if ($valor === '' || $valor === null) {
+                return null;
+            }
+            return (int) $valor;
+        };
+        foreach ($tallas as $talla) {
+            if (!empty($talla['id'])) {
+                $distribucion = Distribucion_por_tallas::find($talla['id']);
+                if ($distribucion) {
+                    $datos = [
+                        'talla' => $talla['talla'] ?? $distribucion->talla,
+                        'cantidad_recibida_buena' => $aEnteroONulo($talla['cantidad_recibida_buena'] ?? null),
+                        'cantidad_pendiente_reparacion' => $aEnteroONulo($talla['cantidad_pendiente_reparacion'] ?? null),
+                    ];
+                    if ($conPlanificada && array_key_exists('cantidad_planificada', $talla)) {
+                        $datos['cantidad_planificada'] = (int) ($talla['cantidad_planificada'] ?? 0);
+                    }
+                    $distribucion->update($datos);
+                    $conservados[] = $distribucion->id;
+                }
+                continue;
+            }
+            if (empty($talla['talla']) && empty($talla['cantidad_planificada']) && empty($talla['cantidad_recibida_buena']) && empty($talla['cantidad_pendiente_reparacion'])) {
+                continue;
+            }
+            $nueva = Distribucion_por_tallas::create([
+                'grupo' => $grupoNuevo,
+                'talla' => $talla['talla'] ?? null,
+                'cantidad_planificada' => (int) ($talla['cantidad_planificada'] ?? 0),
+                'cantidad_recibida_buena' => $aEnteroONulo($talla['cantidad_recibida_buena'] ?? null),
+                'cantidad_pendiente_reparacion' => $aEnteroONulo($talla['cantidad_pendiente_reparacion'] ?? null),
+            ]);
+            $conservados[] = $nueva->id;
+        }
+        $orden->distribucionesPorTallas()->sync($conservados);
+        return $conservados;
     }
 
     /**

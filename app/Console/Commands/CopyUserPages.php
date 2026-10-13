@@ -20,8 +20,8 @@ class CopyUserPages extends Command
 {
     use Constants;
 
-    protected $signature = 'copy:u';
-    //similar: model:find-usages
+    protected $signature = 'copy';
+    // similar: model:find-usages
     // similar: copy:attr
 
     const MSJ_EXITO = ' fue realizada con exito ';
@@ -49,12 +49,22 @@ class CopyUserPages extends Command
         // Tipos válidos: string text number dinero date datetime boolean foreign json
         // Cada entrada: [ 'NombreModelo', 'required' => [...], 'optional' => [...] ]
         return [
-
-             [
-                'Taller',
+            [
+                'Material',
                 'required' => [
-                    'nombre' => 'string',
-                    'direccion' => 'string',
+                    'codigo_material' => 'string',
+                    'categoria' => 'string',
+                    'nombre_base' => 'string',
+                    'unidad_inventario' => 'string',
+                    'maneja_color' => 'boolean',
+                    'maneja_talla' => 'boolean',
+                    'maneja_otra_variante' => 'boolean',
+                    'estado' => 'string',
+                ],
+                'optional' => [
+                    'variante_atributo_sugerido' => 'string',
+                    'proveedor_habitual' => 'string',
+                    'observaciones' => 'string',
                 ],
             ],
         ];

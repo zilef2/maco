@@ -46,7 +46,7 @@ import {toInteger} from "lodash";
 
 //<editor-fold desc="This Project">
 // this Project
-export function LookForValueInArray(arrayOfObjects: Object[], searchValue): String {
+export function LookForValueInArray(arrayOfObjects: object[], searchValue): string {
     if (arrayOfObjects === null) return null
     //ex: { title: '123', value: 1 },
     let foundObject = '';
@@ -92,10 +92,10 @@ export function DiferenciaMinutos(hora1: string, hora2: string): number {
     return Math.floor(diferenciaMs / (1000 * 60));
 }
 
-export function IsDate_GOES_formatDate(text: string): String {
+export function IsDate_GOES_formatDate(text: string): string {
     const [day, month, year] = text.split('/').map(Number);
-    let date = new Date(year, month - 1, day);
-    let Ndate = toInteger(date)
+    const date = new Date(year, month - 1, day);
+    const Ndate = toInteger(date)
     const ANumber = !isNaN(Ndate);
 
     if (!(ANumber)) {
@@ -106,7 +106,7 @@ export function IsDate_GOES_formatDate(text: string): String {
     return formatToVue(date);
 }
 
-export function formatToVue(date): String {
+export function formatToVue(date): string {
     const day = date.getDate();
     const month = date.getMonth() + 1;
     const year = date.getFullYear();
@@ -161,8 +161,8 @@ export function formatTime(date): string {
     }
     // validDate = new Date(validDate.getTime() + (5 * 60 * 60 * 1000))
 
-    let hora = validDate.getHours();
-    let hourAndtime = (hora < 10 ? '0' : '') + hora + ':'
+    const hora = validDate.getHours();
+    const hourAndtime = (hora < 10 ? '0' : '') + hora + ':'
         + (validDate.getMinutes() < 10 ? '0' : '')
         + validDate.getMinutes() + ':00';
 
@@ -202,16 +202,16 @@ export function NumToHour(HourWithDecimals : number) {
     return `${hours} h ${minutes} mins`;
 }
 
-export function Date_to_html(date: Date): String {
+export function Date_to_html(date: Date): string {
     if (!(date instanceof Date) || isNaN(date.getTime())) {
         return ''
     }
     const day = date.getDate();
     const month = date.getMonth() + 1;
     const year = date.getFullYear();
-    let day2: string = day < 10 ? '0' + day : day + '';
+    const day2: string = day < 10 ? '0' + day : day + '';
 
-    let month2: string = month < 10 ? '0' + month : month + '';
+    const month2: string = month < 10 ? '0' + month : month + '';
 
     return `${year}-${month2}-${day2}`;
 }
@@ -224,16 +224,16 @@ export function formatdinero(amount: any): string {
     if (typeof amount === 'undefined' || amount === null || amount === '') return '$0';
     
     // Extraer solo números y signo negativo
-    let strAmount = amount.toString().replace(/[^0-9\.-]/g, '');
-    let num = parseFloat(strAmount);
+    const strAmount = amount.toString().replace(/[^0-9\.-]/g, '');
+    const num = parseFloat(strAmount);
     
     if (isNaN(num)) return '$0';
 
     let integerPart = Math.round(num).toString();
-    let isNegative = integerPart.startsWith('-');
+    const isNegative = integerPart.startsWith('-');
     if (isNegative) integerPart = integerPart.substring(1);
     
-    let reversed = integerPart.split('').reverse().join('');
+    const reversed = integerPart.split('').reverse().join('');
     let formatted = '';
     
     for (let i = 0; i < reversed.length; i++) {
@@ -247,7 +247,7 @@ export function formatdinero(amount: any): string {
         formatted += reversed[i];
     }
     
-    let result = '$' + formatted.split('').reverse().join('');
+    const result = '$' + formatted.split('').reverse().join('');
     return isNegative ? '-' + result : result;
 }
 export function CalcularAvg(TheArray, NameValue = '', isTime = false) {
@@ -303,7 +303,7 @@ export function zilef_nuber_format(amount: any, decimals = 0, isPesos: boolean =
         return parseFloat("0").toFixed(decimals);
     amount = '' + amount.toFixed(decimals);
 
-    var amount_parts = amount.split(' '),
+    const amount_parts = amount.split(' '),
         regexp = /(\d+)(\d{3})/;
 
     while (regexp.test(amount_parts[0]))
@@ -315,9 +315,16 @@ export function zilef_nuber_format(amount: any, decimals = 0, isPesos: boolean =
 }
 
 export function CalcularEdad(nacimiento) {
-    const anioHoy = new Date().getFullYear();
-    const anioNacimiento = new Date(nacimiento).getFullYear();
-    return anioHoy - anioNacimiento;
+    if (!nacimiento) return '';
+    const [anio, mes, dia] = String(nacimiento).slice(0, 10).split('-').map(Number);
+    if (!anio || !mes || !dia) return '';
+    const hoy = new Date();
+    let edad = hoy.getFullYear() - anio;
+    const mesActual = hoy.getMonth() + 1;
+    if (mesActual < mes || (mesActual === mes && hoy.getDate() < dia)) {
+        edad--;
+    }
+    return edad;
 }
 
 export function CalcularSexo(value) {
@@ -329,9 +336,9 @@ export function CalcularSexo(value) {
 
 //STRING FUNCTIONS
 export function sinTildes(value) {
-    let pattern = /[^a-zA-Z0-9\s]/g;
-    let replacement = '';
-    let result = value.replace(pattern, replacement);
+    const pattern = /[^a-zA-Z0-9\s]/g;
+    const replacement = '';
+    const result = value.replace(pattern, replacement);
     return result
 }
 

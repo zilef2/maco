@@ -54,14 +54,21 @@ Route::middleware('auth', 'verified')->group(function () {
 	})->name('notificar.prueba');
 	Route::resource("/Talla", \App\Http\Controllers\TallaController::class);
 	Route::resource("/OrdenProduccion", \App\Http\Controllers\OrdenProduccionController::class);
+	Route::put("/OrdenProduccion/{id}/distribucion", [\App\Http\Controllers\OrdenProduccionController::class, 'syncDistribucion'])->name('OrdenProduccion.distribucion');
 	Route::resource("/ProcesoExterno", \App\Http\Controllers\ProcesoExternoController::class);
 	Route::resource("/KitTaller", \App\Http\Controllers\KitTallerController::class);
+	Route::post("/KitTaller/upload-excel", [\App\Http\Controllers\KitTallerController::class, 'uploadExcel'])->name('KitTaller.upload-excel');
+	Route::get("/KitTaller/por-orden/{id}", [\App\Http\Controllers\KitTallerController::class, 'porOrden'])->name('KitTaller.por-orden');
 	Route::resource("/RecepcionCalidad", \App\Http\Controllers\RecepcionCalidadController::class);
 	Route::resource("/CierreOrdenProduccion", \App\Http\Controllers\CierreOrdenProduccionController::class);
 	Route::resource("/EstadoOperacion", \App\Http\Controllers\EstadoOperacionController::class);
 	Route::resource("/FichaTecnicaMateriales", \App\Http\Controllers\FichaTecnicaMaterialesController::class);
 	Route::resource("/PendientesProduccion", \App\Http\Controllers\PendientesProduccionController::class);
 	Route::resource("/Taller", \App\Http\Controllers\TallerController::class);
+	Route::resource("/Proveedor", \App\Http\Controllers\ProveedorController::class);
+	Route::resource("/Distribucion_por_tallas", \App\Http\Controllers\Distribucion_por_tallasController::class);
+	Route::resource("/Material", \App\Http\Controllers\MaterialController::class);
+	Route::post("/Material/upload-excel", [\App\Http\Controllers\MaterialController::class, 'uploadExcel'])->name('Material.upload-excel');
 	//aquipues
 }); //fin verified
 

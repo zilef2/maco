@@ -13,6 +13,10 @@ return new class extends Migration
     {
         Schema::create('proveedors', function (Blueprint $table) {
             $table->id();
+            $table->string('nombre');
+            $table->string('categoria');
+            $table->bigInteger('celular1')->nullable();
+            $table->bigInteger('celular2')->nullable();
             $table->timestamps();
         });
     }

@@ -3,7 +3,7 @@ import NavFooter from '@/components/NavFooter.vue';
 import NavMain from '@/components/NavMain.vue';
 import NavUser from '@/components/NavUser.vue';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
-import { type NavItem } from '@/types';
+import { type NavGroup } from '@/types';
 import { Link } from '@inertiajs/vue3';
 import {
     Building2,
@@ -20,97 +20,124 @@ import {
     Activity,
     BookText,
     AlertCircle,
+    Boxes,
+    List,
 } from 'lucide-vue-next';
 import AppLogo from './AppLogo.vue';
 import AppLogoMini from './AppLogoMini.vue';
 
-const mainNavItems: NavItem[] = [
+const navGroups: NavGroup[] = [
     {
-        title: 'Dashboard',
-        href: '/dashboard',
-        icon: LayoutDashboard,
-    },
-    // {
-    //     title: 'Presupuesto',
-    //     href: '/Presupuesto',
-    //     icon: LayoutDashboard,
-    // },
-    {
-        title: 'Usuarios',
-        href: '/user',
-        icon: Users,
-    },
-    // {
-    //     title: 'Materias primas',
-    //     href: '/materias_primas',
-    //     icon: Boxes,
-    // },
-    {
-        title: 'Producto',
-        href: '/Producto',
-        icon: ShoppingBag,
-    },
-    // {
-    // 	title: 'Talla',
-    // 	href: '/Talla',
-    // 	icon: Ruler,
-    // },
-    {
-        title: 'OrdenProduccion',
-        href: '/OrdenProduccion',
-        icon: ClipboardList,
+        label: 'General',
+        items: [
+            {
+                title: 'Dashboard',
+                href: '/dashboard',
+                icon: LayoutDashboard,
+            },
+        ],
     },
     {
-        title: 'ProcesoExterno',
-        href: '/ProcesoExterno',
-        icon: ArrowLeftRight,
+        label: 'Proxima entrega',
+        items: [
+            {
+                title: 'OrdenProduccion',
+                href: '/OrdenProduccion',
+                icon: ClipboardList,
+            },
+            {
+                title: 'Producto',
+                href: '/Producto',
+                icon: ShoppingBag,
+            },
+            {
+                title: 'Taller',
+                href: '/Taller',
+                icon: LayoutGrid,
+            },
+            {
+                title: 'EstadoOperacion',
+                href: '/EstadoOperacion',
+                icon: Activity,
+            },
+            {
+                title: 'Usuarios',
+                href: '/user',
+                icon: Users,
+            },
+        ],
     },
     {
-        title: 'KitTaller',
-        href: '/KitTaller',
-        icon: PackageOpen,
+        label: 'Maestros',
+        items: [
+            {
+                title: 'Materias primas',
+                href: '/materias_primas',
+                icon: Boxes,
+            },
+            {
+                title: 'ProcesoExterno',
+                href: '/ProcesoExterno',
+                icon: ArrowLeftRight,
+            },
+            {
+                title: 'KitTaller',
+                href: '/KitTaller',
+                icon: PackageOpen,
+            },
+            {
+                title: 'RecepcionCalidad',
+                href: '/RecepcionCalidad',
+                icon: BadgeCheck,
+            },
+            {
+                title: 'CierreOrdenProduccion',
+                href: '/CierreOrdenProduccion',
+                icon: CheckCircle2,
+            },
+            {
+                title: 'FichaTecnicaMateriales',
+                href: '/FichaTecnicaMateriales',
+                icon: BookText,
+            },
+            {
+                title: 'Material',
+                href: '/Material',
+                icon: LayoutGrid,
+            },
+            //aquipuesSide
+        ],
     },
     {
-        title: 'RecepcionCalidad',
-        href: '/RecepcionCalidad',
-        icon: BadgeCheck,
+        label: 'Listas',
+        items: [
+            {
+                title: 'PendientesProduccion',
+                href: '/PendientesProduccion',
+                icon: AlertCircle,
+            },
+            {
+                title: 'Distribucion por tallas',
+                href: '/Distribucion_por_tallas',
+                icon: List,
+            },
+            {
+                title: 'Proveedor',
+                href: '/Proveedor',
+                icon: List,
+            },
+        ],
     },
-    {
-        title: 'CierreOrdenProduccion',
-        href: '/CierreOrdenProduccion',
-        icon: CheckCircle2,
-    },
-    {
-        title: 'EstadoOperacion',
-        href: '/EstadoOperacion',
-        icon: Activity,
-    },
-    {
-        title: 'FichaTecnicaMateriales',
-        href: '/FichaTecnicaMateriales',
-        icon: BookText,
-    },
-    {
-        title: 'PendientesProduccion',
-        href: '/PendientesProduccion',
-        icon: AlertCircle,
-    },
-    {
-		title: 'Taller',
-		href: '/Taller',
-		icon: LayoutGrid,
-	},
-	//aquipuesSide
 ];
 
-const footerAdminItems: NavItem[] = [
+const footerAdminItems = [
     {
         title: 'Desarrollo',
         href: '/desarrollo',
         icon: Folder,
     },
 ];
-const footerNavItems: NavItem[] = [
+const footerNavItems = [
     {
         title: 'Página de la empresa',
         href: 'https://macondas.com/',
@@ -134,10 +161,10 @@ const footerNavItems: NavItem[] = [
         </SidebarHeader>
 
         <SidebarContent>
-            <NavMain :items="mainNavItems" />
+            <NavMain :groups="navGroups" />
         </SidebarContent>
 
-        <SidebarFooter  class="hidden md:flex" v-if="can(['isadmin'])">
+        <SidebarFooter class="hidden md:flex" v-if="can(['isadmin'])">
             <NavFooter :items="footerAdminItems" />
         </SidebarFooter>
         <SidebarFooter>

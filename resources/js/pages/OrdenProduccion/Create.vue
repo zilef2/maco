@@ -5,9 +5,9 @@ import Modal from '@/components/Modal.vue';
 import PrimaryButton from '@/components/PrimaryButton.vue';
 import SecondaryButton from '@/components/SecondaryButton.vue';
 import TextInput from '@/components/TextInput.vue';
-import { CalculatorIcon, TrashIcon } from '@heroicons/vue/24/solid';
+import { CalculatorIcon, SquaresPlusIcon, TrashIcon } from '@heroicons/vue/24/solid';
 import { useForm } from '@inertiajs/vue3';
-import { computed, reactive, watchEffect } from 'vue';
+import { computed, reactive, ref, watchEffect } from 'vue';
 import vSelect from "vue-select";
 import "vue-select/dist/vue-select.css";
 
@@ -26,6 +26,13 @@ const verificador = reactive({
     items: [] as Array<{ nombre: string; cantidad: string }>,
 });
 
+const distribucion = reactive({
+    show: false,
+    items: [] as Array<{ id?: number; talla: string; cantidad: string }>,
+});
+
+const grupoTallas = ref<number | null>(null);
+
 const form = useForm({
     numero_op: '',
     producto_referencia_id: '',
@@ -37,10 +44,19 @@ const form = useForm({
     user_id: '',
     id_shopify_producto: '',
     observaciones: '',
+    distribucion_tallas: [] as Array<{ id?: number; talla: string; cantidad_planificada: number }>,
+    grupo_tallas: null as number | null,
 });
 
 const totalVerificador = computed(() => {
     return verificador.items.reduce((total, item) => {
+        const val = Number(item.cantidad);
+        return total + (isNaN(val) ? 0 : val);
+    }, 0);
+});
+
+const totalDistribucion = computed(() => {
+    return distribucion.items.reduce((total, item) => {
         const val = Number(item.cantidad);
         return total + (isNaN(val) ? 0 : val);
     }, 0);
@@ -68,14 +84,61 @@ const aplicarTotal = () => {
     verificador.show = false;
 };
 
+const abrirDistribucion = () => {
+    if (distribucion.items.length === 0 && form.cantidad_planificada) {
+        distribucion.items = [
+            { talla: '', cantidad: form.cantidad_planificada ?? '' }
+        ];
+    }
+    distribucion.show = true;
+};
+
+const agregarTalla = () => {
+    distribucion.items.push({ talla: '', cantidad: '' });
+};
+
+const eliminarTalla = (index: number) => {
+    distribucion.items.splice(index, 1);
+};
+
+const aplicarDistribucion = () => {
+    form.cantidad_planificada = String(totalDistribucion.value);
+    distribucion.show = false;
+};
+
+const elegirGrupo = (grupo: any) => {
+    const g = grupo ?? (props.losSelect?.grupos_tallas || []).find((x: any) => x.id === grupoTallas.value);
+    if (!g || !g.tallas) {
+        return;
+    }
+    grupoTallas.value = g.id;
+    const existentes = new Set(distribucion.items.map((i) => (i.talla ?? '').trim().toLowerCase()));
+    (g.tallas || []).forEach((t: any) => {
+        if (!existentes.has(String(t.talla ?? '').trim().toLowerCase())) {
+            distribucion.items.push({ id: t.id, talla: t.talla ?? '', cantidad: String(t.cantidad_planificada ?? '') });
+        }
+    });
+};
+
 const closeModal = () => {
     emit("close");
     form.reset();
     verificador.items = [];
     verificador.show = false;
+    distribucion.items = [];
+    distribucion.show = false;
+    grupoTallas.value = null;
 };
 
 const create = () => {
+    form.grupo_tallas = grupoTallas.value;
+    form.distribucion_tallas = distribucion.items
+        .filter((item) => (item.talla && item.talla.trim() !== '') || Number(item.cantidad) > 0)
+        .map((item) => ({
+            ...(item.id ? { id: item.id } : {}),
+            talla: (item.talla ?? '').trim(),
+            cantidad_planificada: Number(item.cantidad) || 0,
+        }));
     form.post(route('OrdenProduccion.store'), {
         preserveScroll: true,
         onSuccess: () => {
@@ -117,8 +180,14 @@ watchEffect(() => {
             const arr = props.losSelect.producto_referencia_id;
             form.producto_referencia_id = arr[Math.floor(Math.random() * arr.length)].id;
         }
-        if (!form.cantidad_planificada) {
-            form.cantidad_planificada = String(Math.floor(Math.random() * 900 + 100));
+        if (distribucion.items.length === 0) {
+            let suma = 0;
+            distribucion.items = ['S', 'M', 'L'].map((talla) => {
+                const c = Math.floor(Math.random() * 300 + 50);
+                suma += c;
+                return { talla, cantidad: String(c) };
+            });
+            form.cantidad_planificada = String(suma);
         }
         if (!form.fecha_creacion) {
             form.fecha_creacion = new Date().toISOString().split('T')[0];
@@ -200,12 +269,23 @@ watchEffect(() => {
                             <button
                                 type="button"
                                 @click="abrirVerificador"
-                                class="inline-flex items-center px-4 py-2 border border-l-0 border-gray-300 dark:border-gray-700 rounded-r-md bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-600 transition"
+                                class="inline-flex items-center px-4 py-2 border border-l-0 border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-600 transition"
                             >
                                 <CalculatorIcon class="w-4 h-4 mr-1 text-indigo-600 dark:text-indigo-400" />
                                 Verificar suma
                             </button>
+                            <button
+                                type="button"
+                                @click="abrirDistribucion"
+                                class="inline-flex items-center px-4 py-2 border border-l-0 border-gray-300 dark:border-gray-700 rounded-r-md bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-600 transition"
+                            >
+                                <SquaresPlusIcon class="w-4 h-4 mr-1 text-emerald-600 dark:text-emerald-400" />
+                                Tallas{{ distribucion.items.length ? ` (${distribucion.items.length})` : '' }}
+                            </button>
                         </div>
+                        <p v-if="distribucion.items.length" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            Distribución por tallas: {{ distribucion.items.length }} talla(s) · total {{ totalDistribucion }} — quedará asociada a esta orden.
+                        </p>
                         <InputError class="mt-2" :message="form.errors.cantidad_planificada" />
                     </div>
 
@@ -372,6 +452,86 @@ watchEffect(() => {
                     </SecondaryButton>
                     <PrimaryButton type="button" @click="aplicarTotal">
                         Aplicar a Cantidad ({{ totalVerificador }})
+                    </PrimaryButton>
+                </div>
+            </div>
+        </Modal>
+
+        <Modal :show="distribucion.show" @close="distribucion.show = false" :maxWidth="'lg'">
+            <div class="p-6">
+                <div class="flex items-center justify-between border-b pb-3 dark:border-gray-700">
+                    <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100">
+                        Distribución por Tallas
+                    </h3>
+                    <button type="button" @click="distribucion.show = false" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                        ✕
+                    </button>
+                </div>
+
+                <p class="mt-2 text-sm text-gray-600 dark:text-gray-400">
+                    Defina las tallas y sus cantidades. El total se aplicará como cantidad planificada y las filas quedarán asociadas a esta orden de producción.
+                </p>
+
+                <div class="mt-3">
+                    <InputLabel for="grupo_tallas" :value="'Grupo de tallas (sugerencia)'" />
+                    <v-select
+                        id="grupo_tallas"
+                        class="mt-1 block w-full"
+                        :options="props.losSelect?.grupos_tallas || []"
+                        label="name"
+                        :reduce="(item: any) => item.id"
+                        v-model="grupoTallas"
+                        @option:selected="(opt: any) => elegirGrupo(opt)"
+                        placeholder="Seleccione un grupo para cargar sus tallas..."
+                    />
+                </div>
+
+                <div class="mt-4 max-h-64 overflow-y-auto space-y-3">
+                    <div
+                        v-for="(item, index) in distribucion.items"
+                        :key="index"
+                        class="flex items-center space-x-2"
+                    >
+                        <TextInput
+                            type="text"
+                            v-model="item.talla"
+                            placeholder="Talla (ej: S, M, L)"
+                            class="block w-2/3 text-sm"
+                        />
+                        <TextInput
+                            type="number"
+                            min="0"
+                            v-model="item.cantidad"
+                            placeholder="Cantidad"
+                            class="block w-1/3 text-sm"
+                        />
+                        <button
+                            type="button"
+                            @click="eliminarTalla(index)"
+                            class="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md transition"
+                            title="Eliminar talla"
+                        >
+                            <TrashIcon class="w-5 h-5" />
+                        </button>
+                    </div>
+                </div>
+
+                <div class="mt-4 flex justify-between items-center">
+                    <SecondaryButton type="button" @click="agregarTalla" class="text-xs">
+                        + Agregar talla
+                    </SecondaryButton>
+                    <div class="text-right">
+                        <span class="text-xs text-gray-500 dark:text-gray-400 block">Total calculado:</span>
+                        <span class="text-lg font-bold text-gray-900 dark:text-gray-100">{{ totalDistribucion }}</span>
+                    </div>
+                </div>
+
+                <div class="mt-6 flex justify-end space-x-3 border-t pt-4 dark:border-gray-700">
+                    <SecondaryButton type="button" @click="distribucion.show = false">
+                        Cancelar
+                    </SecondaryButton>
+                    <PrimaryButton type="button" @click="aplicarDistribucion">
+                        Aplicar a Cantidad ({{ totalDistribucion }})
                     </PrimaryButton>
                 </div>
             </div>

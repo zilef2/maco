@@ -72,7 +72,7 @@ const order = (field: string) => {
 };
 
 watch(() => cloneDeep(data.params), debounce(() => {
-    let params = pickBy(data.params);
+    const params = pickBy(data.params);
     router.get(route("permission.index"), params, {
         replace: true,
         preserveState: true,

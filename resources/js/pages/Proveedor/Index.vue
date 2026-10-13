@@ -12,10 +12,9 @@ import pkg from 'lodash';
 
 import Pagination from '@/components/Pagination.vue';
 import { ChevronUpDownIcon, PencilIcon, TrashIcon } from '@heroicons/vue/24/solid';
-// import { CursorArrowRippleIcon, ChevronUpDownIcon,QuestionMarkCircleIcon, EyeIcon, PencilIcon, TrashIcon, UserGroupIcon } from '@heroicons/vue/24/solid';
-import Create from '@/pages/Proveedor/Create.vue';
-import Edit from '@/pages/Proveedor/Edit.vue';
-import Delete from '@/pages/Proveedor/Delete.vue';
+import Create from '@/pages/proveedor/Create.vue';
+import Edit from '@/pages/proveedor/Edit.vue';
+import Delete from '@/pages/proveedor/Delete.vue';
 
 import Checkbox from '@/components/Checkbox.vue';
 import InfoButton from '@/components/InfoButton.vue';
@@ -37,68 +36,60 @@ const props = defineProps({
     titulos: Array,
 })
 
+const defaultPerPage = [
+    { label: '5', value: 5 },
+    { label: '10', value: 10 },
+    { label: '25', value: 25 },
+    { label: '50', value: 50 },
+    { label: '100', value: 100 },
+];
+
 const data = reactive({
     params: {
-        search: props.filters.search,
-        // search2: props.filters.search2,
-        //   search3: props.filters.search3,
-        field: props.filters.field,
-        order: props.filters.order,
+        search: props.filters?.search,
+        field: props.filters?.field,
+        order: props.filters?.order,
         perPage: props.perPage,
     },
-    Proveedoro: null,
-    selectedId: [],
+    proveedoro: null as any,
+    selectedId: [] as number[],
     multipleSelect: false,
     createOpen: false,
     editOpen: false,
     deleteOpen: false,
-    // deleteBulkOpen: false,
-    dataSet: usePage().props.app.perpage,
+    dataSet: (usePage().props as any)?.app?.perpage ?? defaultPerPage,
 })
 
-// <!--<editor-fold desc="order, watchclone, select">-->
-const order = (field) => {
+const order = (field: string) => {
     data.params.field = field
     data.params.order = data.params.order === "asc" ? "desc" : "asc"
 }
 
 watch(() => _.cloneDeep(data.params), debounce(() => {
-    let params = pickBy(data.params)
-    router.get(route("Proveedor.index"), params, {
+    const params = pickBy(data.params)
+    router.get(route("proveedor.index"), params, {
         replace: true,
         preserveState: true,
         preserveScroll: true,
     })
 }, 150))
 
-const selectAll = (event) => {
+const selectAll = (event: any) => {
     if (event.target.checked === false) {
         data.selectedId = []
     } else {
-        props.fromController?.data.forEach((Proveedor) => {
-            data.selectedId.push(Proveedor.id)
+        props.fromController?.data.forEach((proveedor: any) => {
+            data.selectedId.push(proveedor.id)
         })
     }
 }
 const select = () => data.multipleSelect = props.fromController?.data.length === data.selectedId.length;
 
-// <!--</editor-fold>-->
-
-
-// const form = useForm({ })
-// watchEffect(() => { })
-
-
-// text - string // number // dinero // date // datetime // foreign
 const titulos = [
     { order: 'nombre', label: 'nombre', type: 'string' },
-    { order: 'nit', label: 'nit', type: 'string' },
-    { order: 'telefono', label: 'telefono', type: 'string' },
-    { order: 'email', label: 'email', type: 'string' },
-    { order: 'direccion', label: 'direccion', type: 'text' },
-    { order: 'tipo_proveedor', label: 'tipo_proveedor', type: 'string' },
-    { order: 'estado', label: 'estado', type: 'string' },
-    { order: 'observaciones', label: 'observaciones', type: 'text' },
+    { order: 'categoria', label: 'categoria', type: 'string' },
+    { order: 'celular1', label: 'celular1', type: 'number' },
+    { order: 'celular2', label: 'celular2', type: 'number' },
 ];
 
 </script>
@@ -110,25 +101,22 @@ const titulos = [
     <AppLayout>
         <Breadcrumb :title="title" :breadcrumbs="breadcrumbs" class="capitalize text-xl font-bold" />
         <div class="space-y-4">
-            <!-- {{ props.fromController.data[2] }} -->
             <div class="px-4 sm:px-0">
                 <div class="rounded-lg overflow-hidden w-fit">
-                    <PrimaryButton class="rounded-none" @click="data.createOpen = true"
-                        v-if="can(['create Proveedor'])">
-                        {{ lang().t('app.button.new') }}
+                    <PrimaryButton class="m-1" @click="data.createOpen = true">
+                        {{ lang().t('app.button.add') }}
                     </PrimaryButton>
-
-                    <Create v-if="can(['create Proveedor'])" :numberPermissions="props.numberPermissions"
+<!-- v-if="can(['create proveedor'])" -->
+                    <Create  :numberPermissions="props.numberPermissions"
                         :titulos="titulos" :show="data.createOpen" @close="data.createOpen = false" :title="props.title"
-                        :losSelect=props.losSelect />
+                        :losSelect="props.losSelect" />
 
-                    <Edit v-if="can(['update Proveedor'])" :titulos="titulos"
-                        :numberPermissions="props.numberPermissions" :show="data.editOpen"
-                        @close="data.editOpen = false" :Proveedora="data.Proveedoro" :title="props.title"
-                        :losSelect=props.losSelect />
+                    <Edit v-if="can(['update proveedor'])" :titulos="titulos" :numberPermissions="props.numberPermissions"
+                        :show="data.editOpen" @close="data.editOpen = false" :proveedora="data.proveedoro"
+                        :title="props.title" :losSelect="props.losSelect" />
 
-                    <Delete v-if="can(['delete Proveedor'])" :numberPermissions="props.numberPermissions"
-                        :show="data.deleteOpen" @close="data.deleteOpen = false" :Proveedora="data.Proveedoro"
+                    <Delete v-if="can(['delete proveedor'])" :numberPermissions="props.numberPermissions"
+                        :show="data.deleteOpen" @close="data.deleteOpen = false" :proveedora="data.proveedoro"
                         :title="props.title" />
                 </div>
             </div>
@@ -136,42 +124,33 @@ const titulos = [
                 <div class="flex justify-between p-2">
                     <div class="flex space-x-2">
                         <SelectInput v-model="data.params.perPage" :dataSet="data.dataSet" />
-                        <!-- <DangerButton @click="data.deleteBulkOpen = true"
-                            v-show="data.selectedId.length != 0 && can(['delete Proveedor'])" class="px-3 py-1.5"
-                            v-tooltip="lang().t('app.tooltip.delete_selected')">
-                            <TrashIcon class="w-5 h-5" />
-                        </DangerButton> -->
                     </div>
-                    <TextInput v-if="props.numberPermissions > 1" v-model="data.params.search" type="text"
-                        class="block w-4/6 md:w-3/6 lg:w-2/6 rounded-lg" placeholder="Nombre, codigo" />
+                    <TextInput v-if="props.numberPermissions && props.numberPermissions > 1"
+                        v-model="data.params.search" type="text" class="block w-4/6 md:w-3/6 lg:w-2/6 rounded-lg"
+                        :placeholder="lang().t('app.placeholder.search')" />
                 </div>
                 <div class="overflow-x-auto scrollbar-table">
-                    <table v-if="props.total > 0" class="w-full">
+                    <table v-if="props.total && props.total > 0" class="w-full">
                         <thead class="uppercase text-sm border-t border-gray-200 dark:border-gray-700">
                             <tr class="dark:bg-gray-900/50 text-left">
                                 <th class="px-2 py-4 text-center">
                                     <Checkbox v-model:checked="data.multipleSelect" @change="selectAll" />
                                 </th>
-                                <th v-if="numberPermissions > 1" class="px-2 py-4">Accion</th>
+                                <th v-if="props.numberPermissions && props.numberPermissions > 1" class="px-2 py-4">
+                                    Accion</th>
 
                                 <th class="px-2 py-4 text-center">#</th>
-                                <th v-for="titulo in titulos" class="px-2 py-4 cursor-pointer"
+                                <th v-for="titulo in titulos" :key="titulo.order" class="px-2 py-4 cursor-pointer"
                                     v-on:click="order(titulo['order'])">
                                     <div class="flex justify-between items-center">
-                                        <span>{{ lang().t("app.label." + titulo['label']) }}</span>
+                                        <span>{{ lang().t('app.label.' + titulo['label']) }}</span>
                                         <ChevronUpDownIcon class="w-4 h-4" />
                                     </div>
                                 </th>
-                                <!-- <th class="px-2 py-4 cursor-pointer" v-on:click="order('fecha_nacimiento')">
-                                    <div class="flex justify-between items-center"> <span>{{ lang().t('app.label.edad') }}</span>
-                                        <ChevronUpDownIcon class="w-4 h-4" />
-                                    </div>
-                                </th> -->
-
                             </tr>
                         </thead>
                         <tbody>
-                            <tr v-for="(claseFromController, indexu) in props.fromController.data" :key="indexu"
+                            <tr v-for="(claseFromController, indexu) in props.fromController?.data" :key="indexu"
                                 class="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-200/30 hover:dark:bg-gray-900/20">
 
                                 <td class="whitespace-nowrap py-4 px-2 sm:py-3 text-center">
@@ -180,17 +159,18 @@ const titulos = [
                                         type="checkbox" @change="select" :value="claseFromController.id"
                                         v-model="data.selectedId" />
                                 </td>
-                                <td v-if="numberPermissions > 1" class="whitespace-nowrap py-4 w-12 px-2 sm:py-3">
+                                <td v-if="props.numberPermissions && props.numberPermissions > 1"
+                                    class="whitespace-nowrap py-4 w-12 px-2 sm:py-3">
                                     <div class="flex justify-center items-center">
                                         <div class="rounded-md overflow-hidden">
-                                            <InfoButton v-show="can(['update Proveedor'])" type="button"
-                                                @click="(data.editOpen = true), (data.Proveedoro = claseFromController)"
+                                            <InfoButton v-show="can(['update proveedor'])" type="button"
+                                                @click="(data.editOpen = true), (data.proveedoro = claseFromController)"
                                                 class="px-2 py-1.5 rounded-none"
                                                 v-tooltip="lang().t('app.tooltip.edit')">
                                                 <PencilIcon class="w-4 h-4" />
                                             </InfoButton>
-                                            <DangerButton v-show="can(['delete Proveedor'])" type="button"
-                                                @click="(data.deleteOpen = true), (data.Proveedoro = claseFromController)"
+                                            <DangerButton v-show="can(['delete proveedor'])" type="button"
+                                                @click="(data.deleteOpen = true), (data.proveedoro = claseFromController)"
                                                 class="px-2 py-1.5 rounded-none"
                                                 v-tooltip="lang().t('app.tooltip.delete')">
                                                 <TrashIcon class="w-4 h-4" />
@@ -199,7 +179,8 @@ const titulos = [
                                     </div>
                                 </td>
                                 <td class="whitespace-nowrap py-4 px-2 sm:py-3 text-center">{{ ++indexu }}</td>
-                                <td v-for="titulo in titulos" class="whitespace-nowrap py-4 px-2 sm:py-3">
+                                <td v-for="titulo in titulos" :key="titulo.order"
+                                    class="whitespace-nowrap py-4 px-2 sm:py-3">
                                     <span v-if="titulo['type'] === 'text' || titulo['type'] === 'string'"> {{
                                         claseFromController[titulo['order']] }} </span>
                                     <span v-if="titulo['type'] === 'number'"> {{
@@ -217,7 +198,7 @@ const titulos = [
 
                             </tr>
                             <tr class="border-t border-gray-600">
-                                <td v-if="numberPermissions > 1"
+                                <td v-if="props.numberPermissions && props.numberPermissions > 1"
                                     class="whitespace-nowrap py-4 w-12 px-2 sm:py-3 text-center"> -
                                 </td>
                                 <td class="whitespace-nowrap py-4 px-2 sm:py-3 text-center"> Total: </td>
@@ -229,7 +210,7 @@ const titulos = [
                     </table>
                     <h2 v-else class="text-center text-xl my-8">Sin Registros</h2>
                 </div>
-                <div v-if="props.total > 0"
+                <div v-if="props.total && props.total > 0"
                     class="flex justify-between items-center p-2 border-t border-gray-200 dark:border-gray-700">
                     <Pagination :links="props.fromController" :filters="data.params" />
                 </div>

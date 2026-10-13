@@ -49,7 +49,7 @@ const data = reactive({
 
 // <!--<editor-fold desc="order, watchclone, select">-->
 watch(() => _.cloneDeep(data.params), debounce(() => {
-    let params = pickBy(data.params)
+    const params = pickBy(data.params)
     router.get(route("desarrollo.index"), params, {
         replace: true,
         preserveState: true,

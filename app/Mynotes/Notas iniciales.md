@@ -15,3 +15,8 @@ rm -rf .git && git init && git add . && git commit -m "Commit inicial" && git br
 
 # must have
 npm i -g npm ; npm i --save lodash
+
+
+# learning ia
+//busca la version de laravel en el archivo composer.json
+Select-String -Path "c:\laragon\www\maco\composer.json" -Pattern "laravel"

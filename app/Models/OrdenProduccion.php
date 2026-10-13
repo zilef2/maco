@@ -35,6 +35,11 @@ use Illuminate\Database\Eloquent\SoftDeletes;
         return $this->belongsTo(User::class, 'user_id');
     }
 
+    public function distribucionesPorTallas()
+    {
+        return $this->belongsToMany(Distribucion_por_tallas::class, 'distribucion_orden_produccion', 'orden_produccion_id', 'distribucion_por_talla_id')->withTimestamps();
+    }
+
 
 
     public static function getFillableWithTypes(): array

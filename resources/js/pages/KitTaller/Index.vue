@@ -34,6 +34,7 @@ const props = defineProps({
     numberPermissions: Number,
     losSelect: Object,
     titulos: Array,
+    ordenProduccionId: Number,
 })
 
 const defaultPerPage = [
@@ -66,8 +67,22 @@ const order = (field: string) => {
 }
 
 watch(() => _.cloneDeep(data.params), debounce(() => {
-    let params = pickBy(data.params)
+    const params = pickBy(data.params)
     router.get(route("KitTaller.index"), params, {
+        replace: true,
+        preserveState: true,
+        preserveScroll: true,
+    })
+}, 150))
+
+watch(() => data.ordenProduccionId, debounce(() => {
+    data.params.search = ''
+    data.params.field = ''
+    data.params.order = 'orden_produccion_id'
+    router.get(route("KitTaller.index"), {
+        orden_produccion_id: data.ordenProduccionId,
+        ...data.params
+    }, {
         replace: true,
         preserveState: true,
         preserveScroll: true,
@@ -86,8 +101,8 @@ const selectAll = (event: any) => {
 const select = () => data.multipleSelect = props.fromController?.data.length === data.selectedId.length;
 
 const titulos = [
-    { order: 'orden_produccion_id', label: 'orden_produccion_id', type: 'foreign' },
-    { order: 'material_id', label: 'material_id', type: 'foreign' },
+    { order: 'orden_produccion_id', label: 'orden_produccion_id', type: 'foreign', nameid: 'orden_produccion_numero' },
+    { order: 'material_id', label: 'material_id', type: 'foreign', nameid: 'material_codigo' },
     { order: 'estado_requerido', label: 'estado_requerido', type: 'string' },
     { order: 'unidad', label: 'unidad', type: 'string' },
     { order: 'cantidad_requerida', label: 'cantidad_requerida', type: 'decimal' },
@@ -193,12 +208,17 @@ const titulos = [
                                         zilef_nuber_format(claseFromController[titulo['order']], 0, false) }} </span>
                                     <span v-if="titulo['type'] === 'dinero'"> {{
                                         zilef_nuber_format(claseFromController[titulo['order']], 0, true) }} </span>
+                                    <span v-if="titulo['type'] === 'decimal'"> {{
+                                        zilef_nuber_format(claseFromController[titulo['order']], 2, false) }} </span>
+                                    <span v-if="titulo['type'] === 'boolean'">
+                                        {{ claseFromController[titulo['order']] ? 'SI' : 'NO' }}
+                                    </span>
                                     <span v-if="titulo['type'] === 'date'"> {{
                                         formatDate(claseFromController[titulo['order']], false) }} </span>
                                     <span v-if="titulo['type'] === 'datetime'"> {{
                                         formatDate(claseFromController[titulo['order']], true) }} </span>
                                     <span v-if="titulo['type'] === 'foreign'">
-                                        {{ claseFromController?.[titulo?.['nameid']] ?? '' }}
+                                        {{ titulo['nameid'] ? (claseFromController?.[titulo?.['nameid']] ?? '') : (claseFromController[titulo['order']] ?? '') }}
                                     </span>
                                 </td>
 

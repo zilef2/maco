@@ -24,7 +24,7 @@ const emit = defineEmits(["close"]);
 const data = reactive({ })
 
 //very usefull
-let justNames = props.titulos.map(names => {
+const justNames = props.titulos.map(names => {
     if (names['order'] !== 'estado'
         // && names['order'] !== 'noquiero1'
     )

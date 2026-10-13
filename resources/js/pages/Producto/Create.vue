@@ -32,7 +32,7 @@ const data = reactive({
 })
 
 //very usefull
-let justNames = props.titulos.map(names => {
+const justNames = props.titulos.map(names => {
     if (names['order'] !== 'noquiero'
         // &&
         // names['order'] !== 'noquiero1'
@@ -104,16 +104,15 @@ const sexos = [{ label: 'Masculino', value: 0 }, { label: 'Femenino', value: 1 }
 
 <template>
     <section class="space-y-6">
-        <Modal :show="props.show" @close="emit('close')" :maxWidth="'xl4'">
+        <Modal :show="props.show" @close="emit('close')" :maxWidth="'xl5'">
             <form class="p-6" @submit.prevent="create">
-                <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100">
+                <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-6">
                     {{ lang().t('app.label.add') }} {{ props.title }}
                 </h2>
-                <p>{{ props.losSelect }}</p>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <div v-for="(atributosform, indice) in printForm" :key="indice">
 
-                        <div v-if="atributosform.idd === 'Categoria_original'" class="">
+                        <!-- <div v-if="atributosform.idd === 'Categoria_original'" class="">
                             <InputLabel :for="atributosform.label"
                                 :value="lang().t('app.label')[atributosform.label] || atributosform.label" />
                             <select
@@ -128,7 +127,7 @@ const sexos = [{ label: 'Masculino', value: 0 }, { label: 'Femenino', value: 1 }
                                 </option>
                             </select>
                             <InputError class="mt-2" :message="form.errors[atributosform.idd]" />
-                        </div>
+                        </div> -->
 
                         <div v-if="atributosform.type === 'foreign'" id="SelectVue" class="">
                             <label name="labelSelectVue"> {{ atributosform.label }} </label>

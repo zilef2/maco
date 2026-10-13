@@ -31,7 +31,7 @@ const data = reactive({
 })
 
 //very usefull
-let justNames = props.titulos.map(names => {
+const justNames = props.titulos.map(names => {
     if (names['order'] !== 'fecha_cotizacion'
         && names['order'] !== 'fecha_cotizacion_aceptada'
         && names['order'] !== 'estado'
@@ -92,7 +92,7 @@ const create = () => {
 }
 
 watch(() => form.valor_inicial, (newValor) => {
-    let newval = parseInt(newValor);
+    const newval = parseInt(newValor);
     form.valor_parcial1 = newval / 2;
 });
 
@@ -105,7 +105,7 @@ watchEffect(() => {
             setTimeout(() => {
                 // const valueRAn = Math.floor(Math.random() * (9) + 1)
                 form.nombre = 'Cotización nueva funcion ';
-                let hoy = new Date()
+                const hoy = new Date()
                 form.fecha_reunion = Date_to_html(hoy)
                 form.valor_inicial = 0
             }, 350);

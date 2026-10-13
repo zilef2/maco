@@ -11,11 +11,14 @@ import DangerButton from '@/components/DangerButton.vue';
 import pkg from 'lodash';
 
 import Pagination from '@/components/Pagination.vue';
-import { ChevronUpDownIcon, EyeIcon, PencilIcon, TrashIcon } from '@heroicons/vue/24/solid';
+import { ChevronUpDownIcon, EyeIcon, PencilIcon, TrashIcon, ArrowUpTrayIcon, ClipboardIcon } from '@heroicons/vue/24/solid';
 import Create from '@/pages/OrdenProduccion/Create.vue';
 import Edit from '@/pages/OrdenProduccion/Edit.vue';
 import Delete from '@/pages/OrdenProduccion/Delete.vue';
+import DistribucionTallas from '@/pages/OrdenProduccion/DistribucionTallas.vue';
 import VerObservacion from '@/pages/OrdenProduccion/VerObservacion.vue';
+import ImportarKitModal from '@/pages/OrdenProduccion/ImportarKitModal.vue';
+import KitTallerOPModal from '@/pages/OrdenProduccion/KitTallerOPModal.vue';
 
 import Checkbox from '@/components/Checkbox.vue';
 import InfoButton from '@/components/InfoButton.vue';
@@ -61,6 +64,11 @@ const data = reactive({
     observacionOpen: false,
     observacionTexto: '' as string,
     observacionOp: '' as string,
+    distribucionOpen: false,
+    distribucionOp: null as any,
+    importKitOpen: false,
+    kitTallerOpen: false,
+    kitTallerOp: null as any,
     dataSet: (usePage().props as any)?.app?.perpage ?? defaultPerPage,
 })
 
@@ -70,7 +78,7 @@ const order = (field: string) => {
 }
 
 watch(() => _.cloneDeep(data.params), debounce(() => {
-    let params = pickBy(data.params)
+    const params = pickBy(data.params)
     router.get(route("OrdenProduccion.index"), params, {
         replace: true,
         preserveState: true,
@@ -95,6 +103,16 @@ const abrirObservacion = (op: any) => {
     data.observacionOpen = true
 }
 
+const abrirDistribucion = (op: any) => {
+    data.distribucionOp = op ?? null
+    data.distribucionOpen = true
+}
+
+const abrirKitTaller = (op: any) => {
+    data.kitTallerOp = op ?? null
+    data.kitTallerOpen = true
+}
+
 const titulos = [
     { order: 'numero_op', label: 'numero_op', type: 'string' },
     { order: 'producto_referencia_id', label: 'producto_referencia_id', type: 'foreign', nameid: 'producto_nombre' },
@@ -115,7 +133,7 @@ const titulos = [
     <Head :title="props.title" />
 
     <AppLayout>
-        <Breadcrumb :title="title" :breadcrumbs="breadcrumbs" class="capitalize text-xl font-bold" />
+        <!-- <Breadcrumb :title="title" :breadcrumbs="breadcrumbs" class="capitalize text-xl font-bold" /> -->
         <div class="space-y-4">
             <div class="px-4 sm:px-0">
                 <div class="rounded-lg overflow-hidden w-fit">
@@ -127,16 +145,29 @@ const titulos = [
                         :titulos="titulos" :show="data.createOpen" @close="data.createOpen = false" :title="props.title"
                         :losSelect="props.losSelect" />
 
-                    <Edit v-if="can(['update OrdenProduccion'])" :titulos="titulos" :numberPermissions="props.numberPermissions"
-                        :show="data.editOpen" @close="data.editOpen = false" :OrdenProducciona="data.OrdenProducciono"
-                        :title="props.title" :losSelect="props.losSelect" />
+                    <Edit v-if="can(['update OrdenProduccion'])" :titulos="titulos"
+                        :numberPermissions="props.numberPermissions" :show="data.editOpen"
+                        @close="data.editOpen = false" :OrdenProducciona="data.OrdenProducciono" :title="props.title"
+                        :losSelect="props.losSelect" />
 
                     <Delete v-if="can(['delete OrdenProduccion'])" :numberPermissions="props.numberPermissions"
-                        :show="data.deleteOpen" @close="data.deleteOpen = false" :OrdenProducciona="data.OrdenProducciono"
-                        :title="props.title" />
+                        :show="data.deleteOpen" @close="data.deleteOpen = false"
+                        :OrdenProducciona="data.OrdenProducciono" :title="props.title" />
 
                     <VerObservacion :show="data.observacionOpen" @close="data.observacionOpen = false"
                         :title="props.title" :numeroOp="data.observacionOp" :observacion="data.observacionTexto" />
+
+                    <DistribucionTallas :show="data.distribucionOpen" @close="data.distribucionOpen = false"
+                        :title="props.title" :ordenId="data.distribucionOp?.id"
+                        :numeroOp="data.distribucionOp?.numero_op"
+                        :items="data.distribucionOp?.distribuciones_por_tallas || []"
+                        :canEdit="can(['update OrdenProduccion'])" />
+
+                    <ImportarKitModal :show="data.importKitOpen" @close="data.importKitOpen = false"
+                        :ordenProduccion="data.OrdenProducciono" />
+
+                    <KitTallerOPModal :show="data.kitTallerOpen" @close="data.kitTallerOpen = false"
+                        :ordenProduccion="data.kitTallerOp" :title="props.title" />
                 </div>
             </div>
             <div class="relative bg-white dark:bg-gray-800 shadow sm:rounded-lg">
@@ -166,6 +197,7 @@ const titulos = [
                                         <ChevronUpDownIcon class="w-4 h-4" />
                                     </div>
                                 </th>
+                                <th class="px-2 py-4">Tallas</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -188,6 +220,18 @@ const titulos = [
                                                 v-tooltip="lang().t('app.tooltip.edit')">
                                                 <PencilIcon class="w-4 h-4" />
                                             </InfoButton>
+                                            <InfoButton v-show="can(['create KitTaller'])" type="button"
+                                                :thecolor="'green'"
+                                                @click="(data.importKitOpen = true), (data.OrdenProducciono = claseFromController)"
+                                                class="px-2 py-1.5 rounded-none"
+                                                v-tooltip="'Importar KitTaller desde Excel'">
+                                                <ArrowUpTrayIcon class="w-4 h-4" />
+                                            </InfoButton>
+                                            <InfoButton v-show="can(['update OrdenProduccion'])" type="button"
+                                                :thecolor="'blue'" @click="abrirKitTaller(claseFromController)"
+                                                class="px-2 py-1.5 rounded-none" v-tooltip="'Ver Kitaller'">
+                                                <ClipboardIcon class="w-4 h-4" />
+                                            </InfoButton>
                                             <DangerButton v-show="can(['delete OrdenProduccion'])" type="button"
                                                 @click="(data.deleteOpen = true), (data.OrdenProducciono = claseFromController)"
                                                 class="px-2 py-1.5 rounded-none"
@@ -201,12 +245,12 @@ const titulos = [
                                 <td v-for="titulo in titulos" :key="titulo.order"
                                     class="whitespace-nowrap py-4 px-2 sm:py-3">
                                     <span v-if="titulo['order'] === 'observaciones'" class="flex items-center gap-2">
-                                        <span class="block max-w-[240px] truncate">{{ claseFromController[titulo['order']]
+                                        <span class="block max-w-[240px] truncate">{{
+                                            claseFromController[titulo['order']]
                                             || '—' }}</span>
                                         <InfoButton v-if="claseFromController[titulo['order']]" type="button"
                                             @click="abrirObservacion(claseFromController)"
-                                            class="px-2 py-1.5 rounded-none"
-                                            v-tooltip="lang().t('app.tooltip.ver')">
+                                            class="px-2 py-1.5 rounded-none" v-tooltip="lang().t('app.tooltip.ver')">
                                             <EyeIcon class="w-4 h-4" />
                                         </InfoButton>
                                     </span>
@@ -222,6 +266,18 @@ const titulos = [
                                         formatDate(claseFromController[titulo['order']], true) }} </span>
                                     <span v-if="titulo['type'] === 'foreign'">
                                         {{ claseFromController?.[titulo?.['nameid']] ?? '' }}
+                                    </span>
+                                </td>
+                                <td class="whitespace-nowrap py-4 px-2 sm:py-3">
+                                    <span class="flex items-center gap-2">
+                                        <span
+                                            class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300">
+                                            {{ (claseFromController.distribuciones_por_tallas || []).length }} tallas
+                                        </span>
+                                        <InfoButton type="button" @click="abrirDistribucion(claseFromController)"
+                                            class="px-2 py-1.5 rounded-none" v-tooltip="lang().t('app.tooltip.ver')">
+                                            <EyeIcon class="w-4 h-4" />
+                                        </InfoButton>
                                     </span>
                                 </td>
 

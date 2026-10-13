@@ -66,7 +66,7 @@ const order = (field: string) => {
 }
 
 watch(() => _.cloneDeep(data.params), debounce(() => {
-    let params = pickBy(data.params)
+    const params = pickBy(data.params)
     router.get(route("EstadoOperacion.index"), params, {
         replace: true,
         preserveState: true,
