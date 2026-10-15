@@ -13,8 +13,8 @@ return new class extends Migration
     {
         Schema::create('orden_produccion_producto', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('orden_produccion_id')->constrained('orden_produccions')->cascadeOnDelete();
-            $table->foreignId('producto_id')->constrained('productos')->cascadeOnDelete();
+            $table->unsignedInteger('orden_produccion_id');
+            $table->unsignedInteger('producto_id');
             $table->timestamps();
         });
     }

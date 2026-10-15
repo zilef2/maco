@@ -18,7 +18,7 @@ return new class extends Migration
             $table->integer('cantidad_recibida_buena')->nullable();
             $table->integer('cantidad_pendiente_reparacion')->nullable();
             $table->id();
-            $table->foreignId('orden_produccion_id')->nullable()->constrained('orden_produccions');
+            $table->integer('orden_produccion_id')->nullable();
             $table->timestamps();
         });
     }

@@ -123,7 +123,7 @@ const select = () => {
                     :selectedId="data.selectedId" :title="props.title" />
             </div>
 
-            <div class="bg-white dark:bg-gray-900 border border-gray-200/80 dark:border-gray-800 rounded-xl shadow-xs overflow-hidden">
+            <div class="bg-white dark:bg-gray-900 border border-gray-200/80 dark:border-gray-800 rounded-xl shadow-xs w-max min-w-full">
                 <div class="flex justify-between items-center p-3 border-b border-gray-200/80 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-900/40">
                     <div class="flex items-center space-x-2">
                         <DangerButton @click="data.deleteBulkOpen = true"
@@ -135,7 +135,7 @@ const select = () => {
                         class="block w-48 md:w-64 rounded-lg text-xs"
                         :placeholder="lang().t('app.placeholder.search')" />
                 </div>
-                <div class="overflow-x-auto scrollbar-table">
+                <div>
                     <table class="w-full text-left border-collapse text-xs">
                         <thead class="bg-gray-50/80 dark:bg-gray-800/60 border-b border-gray-200/80 dark:border-gray-700/80 text-gray-500 dark:text-gray-400 font-semibold uppercase tracking-wider">
                             <tr>

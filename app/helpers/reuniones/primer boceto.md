@@ -188,7 +188,7 @@ Al finalizar esta primera etapa, Macondas deberá poder responder fácilmente:
 | ¿Cuánto nos costaron? | ✅ |
 | ¿Dónde se encuentran actualmente? | ✅ |
 | ¿Qué materiales están en procesos externos? | ✅ |
-| ¿Cuánto debería consumir cada referencia? | ✅ |
+| ¿Cuánto debería consumir cada referencia? | ✅ | 
 | ¿Cuánto consumió realmente una producción? | ✅ |
 | ¿Cuánto cuesta producir cada par? | ✅ |
 | ¿Cuántos pares terminados tenemos por referencia y talla? | ✅ |

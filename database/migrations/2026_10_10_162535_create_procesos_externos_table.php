@@ -27,7 +27,6 @@ return new class extends Migration
             $table->text('resultado_observaciones')->nullable();
             $table->timestamps();
 
-            $table->foreign('material_origen_id')->references('id')->on('material')->nullOnDelete();
         });
     }
 

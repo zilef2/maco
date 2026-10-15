@@ -129,7 +129,7 @@ const titulos = [
                         :title="props.title" />
                 </div>
             </div>
-            <div class="relative bg-white dark:bg-gray-800 shadow sm:rounded-lg">
+            <div class="relative bg-white dark:bg-gray-800 shadow sm:rounded-lg w-max min-w-full">
                 <div class="flex justify-between p-2">
                     <div class="flex space-x-2">
                         <SelectInput v-model="data.params.perPage" :dataSet="data.dataSet" />
@@ -138,7 +138,7 @@ const titulos = [
                         v-model="data.params.search" type="text" class="block w-4/6 md:w-3/6 lg:w-2/6 rounded-lg"
                         :placeholder="lang().t('app.placeholder.search')" />
                 </div>
-                <div class="overflow-x-auto scrollbar-table">
+                <div>
                     <table v-if="props.total && props.total > 0" class="w-full">
                         <thead class="uppercase text-sm border-t border-gray-200 dark:border-gray-700">
                             <tr class="dark:bg-gray-900/50 text-left">

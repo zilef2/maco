@@ -5,7 +5,7 @@ import Breadcrumb from '@/components/Breadcrumb.vue';
 import TextInput from '@/components/TextInput.vue';
 import PrimaryButton from '@/components/PrimaryButton.vue';
 import SelectInput from '@/components/SelectInput.vue';
-import { reactive, watch } from 'vue';
+import { reactive, computed, watch } from 'vue';
 
 import DangerButton from '@/components/DangerButton.vue';
 import pkg from 'lodash';
@@ -18,6 +18,7 @@ import Delete from '@/pages/Material/Delete.vue';
 import ImportarMaterialModal from '@/pages/Material/ImportarMaterialModal.vue';
 import AlterarExistencia from '@/pages/Material/AlterarExistencia.vue';
 import HistorialMovimientos from '@/pages/Material/HistorialMovimientos.vue';
+import HistorialMultiples from '@/pages/Material/HistorialMultiples.vue';
 
 import Checkbox from '@/components/Checkbox.vue';
 import InfoButton from '@/components/InfoButton.vue';
@@ -63,6 +64,8 @@ const data = reactive({
     importOpen: false,
     alterarExistenciaOpen: false,
     historialOpen: false,
+    historialMultipleOpen: false,
+    historialMateriales: [] as any[],
     dataSet: (usePage().props as any)?.app?.perpage ?? defaultPerPage,
 })
 
@@ -90,6 +93,20 @@ const selectAll = (event: any) => {
     }
 }
 const select = () => data.multipleSelect = props.fromController?.data.length === data.selectedId.length;
+
+// Historial de varios materiales: activo solo con 1 a 3 seleccionados
+const MAX_HISTORIAL_MULTIPLE = 3;
+const puedeHistorialMultiple = computed(
+    () => data.selectedId.length >= 1 && data.selectedId.length <= MAX_HISTORIAL_MULTIPLE
+);
+
+const abrirHistorialMultiple = () => {
+    if (!puedeHistorialMultiple.value) return;
+    data.historialMateriales = (props.fromController?.data ?? []).filter((m: any) =>
+        data.selectedId.includes(m.id)
+    );
+    data.historialMultipleOpen = true;
+};
 
 const titulos = [
     { order: 'codigo_material', label: 'codigo_material', type: 'string' },
@@ -128,6 +145,21 @@ const titulos = [
                         Cargar Excel
                     </PrimaryButton>
 
+                    <PrimaryButton v-if="can(['read Material'])"
+                        class="m-1 align-top bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed"
+                        :disabled="!puedeHistorialMultiple"
+                        v-tooltip="data.selectedId.length > MAX_HISTORIAL_MULTIPLE
+                            ? `Máximo ${MAX_HISTORIAL_MULTIPLE} materiales`
+                            : 'Ver historial de los materiales seleccionados'"
+                        @click="abrirHistorialMultiple">
+                        <ClockIcon class="w-4 h-4 mr-1 inline" />
+                        Ver historial{{ data.selectedId.length ? ` (${data.selectedId.length})` : '' }}
+                    </PrimaryButton>
+
+                    <HistorialMultiples :show="data.historialMultipleOpen"
+                        :materiales="data.historialMateriales"
+                        @close="data.historialMultipleOpen = false" />
+
                     <ImportarMaterialModal :show="data.importOpen" @close="data.importOpen = false" />
 
                     <Create v-if="can(['create Material'])" :numberPermissions="props.numberPermissions"
@@ -153,7 +185,7 @@ const titulos = [
                         @close="data.historialOpen = false" />
                 </div>
             </div>
-            <div class="relative bg-white dark:bg-gray-800 shadow sm:rounded-lg">
+            <div class="relative bg-white dark:bg-gray-800 shadow sm:rounded-lg w-max min-w-full">
                 <div class="flex justify-between p-2">
                     <div class="flex space-x-2">
                         <SelectInput v-model="data.params.perPage" :dataSet="data.dataSet" />
@@ -162,7 +194,7 @@ const titulos = [
                         v-model="data.params.search" type="text" class="block w-4/6 md:w-3/6 lg:w-2/6 rounded-lg"
                         :placeholder="lang().t('app.placeholder.search')" />
                 </div>
-                <div class="overflow-x-auto scrollbar-table">
+                <div>
                     <table v-if="props.total && props.total > 0" class="w-full">
                         <thead class="uppercase text-sm border-t border-gray-200 dark:border-gray-700">
                             <tr class="dark:bg-gray-900/50 text-left">

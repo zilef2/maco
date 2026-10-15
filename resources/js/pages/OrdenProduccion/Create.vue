@@ -267,24 +267,32 @@ watchEffect(() => {
 
                     <div>
                         <InputLabel for="cantidad_planificada" :value="lang().t('app.label.cantidad_planificada') || 'Cantidad Planificada'" />
-                        <div class="mt-1 flex rounded-md shadow-sm">
-                            <TextInput
-                                id="cantidad_planificada"
-                                type="number"
-                                min="1"
-                                class="block w-full rounded-none rounded-l-md"
-                                v-model="form.cantidad_planificada"
-                                required
-                                placeholder="0"
-                            />
-                            <button
-                                type="button"
-                                @click="abrirDistribucion"
-                                class="inline-flex items-center px-4 py-2 border border-l-0 border-gray-300 dark:border-gray-700 rounded-r-md bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-600 transition"
-                            >
-                                <SquaresPlusIcon class="w-4 h-4 mr-1 text-emerald-600 dark:text-emerald-400" />
-                                Tallas{{ distribucion.items.length ? ` (${distribucion.items.length})` : '' }}
-                            </button>
+                        <TextInput
+                            id="cantidad_planificada"
+                            type="number"
+                            min="1"
+                            class="mt-1 block w-full"
+                            v-model="form.cantidad_planificada"
+                            required
+                            placeholder="0"
+                        />
+                        <div class="mt-2 border-b border-gray-200 dark:border-gray-700">
+                            <div class="-mb-px flex gap-6" role="tablist" aria-label="Acciones de cantidad">
+                                <button
+                                    type="button"
+                                    role="tab"
+                                    @click="abrirDistribucion"
+                                    :class="[
+                                        'inline-flex items-center gap-1.5 border-b-2 px-1 py-2 text-sm font-medium transition',
+                                        distribucion.items.length
+                                            ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                                            : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200'
+                                    ]"
+                                >
+                                    <SquaresPlusIcon class="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                                    Tallas{{ distribucion.items.length ? ` (${distribucion.items.length})` : '' }}
+                                </button>
+                            </div>
                         </div>
                         <p v-if="distribucion.items.length" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                             Distribución por tallas: {{ distribucion.items.length }} talla(s) · total {{ totalDistribucion }} — quedará asociada a esta orden.

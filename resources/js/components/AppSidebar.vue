@@ -22,53 +22,71 @@ import {
     AlertCircle,
     Boxes,
     List,
+    FileUp,
 } from 'lucide-vue-next';
-import AppLogo from './AppLogo.vue';
 import AppLogoMini from './AppLogoMini.vue';
 
 const navGroups: NavGroup[] = [
     {
-        label: 'General',
+        label: 'Inventario',
         items: [
             {
-                title: 'Dashboard',
-                href: '/dashboard',
-                icon: LayoutDashboard,
-            },
-        ],
-    },
-    {
-        label: 'Proxima entrega',
-        items: [
-            {
-                title: 'OrdenProduccion',
-                href: '/OrdenProduccion',
-                icon: ClipboardList,
+                title: 'Material',
+                href: '/Material',
+                icon: Boxes,
             },
             {
                 title: 'Producto',
                 href: '/Producto',
                 icon: ShoppingBag,
             },
+        ],
+    },
+    {
+        label: 'Orden Producción',
+        items: [
             {
-                title: 'Taller',
-                href: '/Taller',
-                icon: LayoutGrid,
+                title: 'Dashboard',
+                href: '/dashboard',
+                icon: LayoutDashboard,
             },
+            {
+                title: 'OrdenProduccion',
+                href: '/OrdenProduccion',
+                icon: ClipboardList,
+            },
+        ],
+    },
+];
+
+const navDropdown: NavGroup[] = [
+    {
+        label: 'Operación',
+        items: [
             {
                 title: 'EstadoOperacion',
                 href: '/EstadoOperacion',
                 icon: Activity,
             },
             {
-                title: 'Usuarios',
-                href: '/user',
-                icon: Users,
-            },
-            {
                 title: 'RecepcionCalidad',
                 href: '/RecepcionCalidad',
                 icon: BadgeCheck,
+            },
+            {
+                title: 'PendientesProduccion',
+                href: '/PendientesProduccion',
+                icon: AlertCircle,
+            },
+            {
+                title: 'CierreOrdenProduccion',
+                href: '/CierreOrdenProduccion',
+                icon: CheckCircle2,
+            },
+            {
+                title: 'Distribucion por tallas',
+                href: '/Distribucion_por_tallas',
+                icon: List,
             },
         ],
     },
@@ -76,9 +94,14 @@ const navGroups: NavGroup[] = [
         label: 'Maestros',
         items: [
             {
-                title: 'Materias primas',
-                href: '/materias_primas',
-                icon: Boxes,
+                title: 'Taller',
+                href: '/Taller',
+                icon: LayoutGrid,
+            },
+            {
+                title: 'KitTaller',
+                href: '/KitTaller',
+                icon: PackageOpen,
             },
             {
                 title: 'ProcesoExterno',
@@ -86,15 +109,9 @@ const navGroups: NavGroup[] = [
                 icon: ArrowLeftRight,
             },
             {
-                title: 'KitTaller',
-                href: '/KitTaller',
-                icon: PackageOpen,
-            },
-
-            {
-                title: 'CierreOrdenProduccion',
-                href: '/CierreOrdenProduccion',
-                icon: CheckCircle2,
+                title: 'GrupoTalla',
+                href: '/GrupoTalla',
+                icon: BookText,
             },
             {
                 title: 'FichaTecnicaMateriales',
@@ -102,35 +119,25 @@ const navGroups: NavGroup[] = [
                 icon: BookText,
             },
             {
-                title: 'Material',
-                href: '/Material',
-                icon: LayoutGrid,
-            },
-            {
-                title: 'GrupoTalla',
-                href: '/GrupoTalla',
-                icon: LayoutGrid,
+                title: 'Proveedor',
+                href: '/Proveedor',
+                icon: List,
             },
             //aquipuesSide
         ],
     },
     {
-        label: 'Listas',
+        label: 'Sistema',
         items: [
             {
-                title: 'PendientesProduccion',
-                href: '/PendientesProduccion',
-                icon: AlertCircle,
+                title: 'Usuarios',
+                href: '/user',
+                icon: Users,
             },
             {
-                title: 'Distribucion por tallas',
-                href: '/Distribucion_por_tallas',
-                icon: List,
-            },
-            {
-                title: 'Proveedor',
-                href: '/Proveedor',
-                icon: List,
+                title: 'Importar Excel',
+                href: '/ImportarExcel',
+                icon: FileUp,
             },
         ],
     },
@@ -167,7 +174,7 @@ const footerNavItems = [
         </SidebarHeader>
 
         <SidebarContent>
-            <NavMain :groups="navGroups" />
+            <NavMain :groups="navGroups" :dropdown="navDropdown" />
         </SidebarContent>
 
         <SidebarFooter class="hidden md:flex" v-if="can(['isadmin'])">

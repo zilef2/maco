@@ -14,13 +14,13 @@ return new class extends Migration
 
         Schema::create('material_movimientos', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('material_id')->constrained('materials')->onDelete('cascade');
+            $table->unsignedBigInteger('material_id');
             $table->string('tipo_movimiento')->default('ajuste');
             $table->decimal('cantidad', 12, 2)->default(0);
             $table->decimal('existencia_anterior', 12, 2)->default(0);
             $table->decimal('existencia_nueva', 12, 2)->default(0);
             $table->string('motivo')->nullable();
-            $table->foreignId('user_id')->nullable()->constrained('users')->nullOnDelete();
+            $table->unsignedBigInteger('user_id')->nullable();
             $table->timestamps();
         });
     }

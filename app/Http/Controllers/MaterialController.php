@@ -155,7 +155,7 @@ class MaterialController extends Controller {
         $Material = Material::findOrFail($id);
         $existenciaAnterior = (float) ($Material->existencia_actual ?? 0);
 //        $request->merge(['no_nada_id' => $request->no_nada['id']]);
-        $Material->update($request->all());
+        $Material->update($request->except(['codigo_material', 'existencia_actual']));
         $this->registrarMovimientoActualizacion($Material, $existenciaAnterior, $request->input('motivo'));
 
         DB::commit();
