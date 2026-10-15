@@ -2,30 +2,34 @@
 
 namespace App\Models;
 
-use Illuminate\Support\Facades\DB;
-
+use Database\Factories\MaterialFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\DB;
 
-use Illuminate\Database\Eloquent\SoftDeletes;
-
-    class Material extends Model
+class Material extends Model
 {
-    /** @use HasFactory<\Database\Factories\MaterialFactory> */
+    /** @use HasFactory<MaterialFactory> */
     use HasFactory;
+
     protected $fillable = ['codigo_material',
-     'categoria',
-     'nombre_base',
-     'unidad_inventario',
-     'maneja_color',
-      'maneja_talla',
-      'maneja_otra_variante',
-      'estado',
-      'variante_atributo_sugerido',
-      'proveedor_habitual',
-      'observaciones'];
+        'categoria',
+        'nombre_base',
+        'unidad_inventario',
+        'existencia_actual',
+        'maneja_color',
+        'maneja_talla',
+        'maneja_otra_variante',
+        'estado',
+        'variante_atributo_sugerido',
+        'proveedor_habitual',
+        'observaciones'];
 
-
+    public function movimientos(): HasMany
+    {
+        return $this->hasMany(MaterialMovimiento::class, 'material_id');
+    }
 
     public static function getFillableWithTypes(): array
     {

@@ -146,7 +146,7 @@ const titulos = [
                     </div>
                     <TextInput v-if="props.numberPermissions && props.numberPermissions > 1"
                         v-model="data.params.search" type="text" class="block w-4/6 md:w-3/6 lg:w-2/6 rounded-lg"
-                        :placeholder="lang().t('app.placeholder.search')" />
+                        :placeholder="lang().t('app.placeholder.searchfor_producto')" />
                 </div>
                 <div class="overflow-x-auto scrollbar-table">
                     <table v-if="props.total && props.total > 0" class="w-full">

@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\materias_primas;
+use App\Models\Material;
 use App\Models\OrdenProduccion;
 use App\Models\ProcesoExterno;
 use App\Models\Proveedor;
@@ -66,16 +66,16 @@ class ProcesoExternoController extends Controller {
                 ];
             });
 
-        $materiales = materias_primas::orderBy('nombre')
-            ->get(['id', 'codigo', 'nombre'])
+        $materiales = Material::orderBy('nombre_base')
+            ->get(['id', 'categoria', 'nombre_base'])
             ->map(function ($material) {
-                $nombre = $material->nombre ?: ($material->codigo ?: 'Material #' . $material->id);
+                $nombre_base = $material->nombre_base ?: ($material->categoria ?: 'Material #' . $material->id);
                 return [
                     'id'    => $material->id,
                     'value' => $material->id,
-                    'name'  => $nombre,
-                    'label' => $nombre,
-                    'title' => $nombre,
+                    'name'  => $nombre_base,
+                    'label' => $nombre_base,
+                    'title' => $nombre_base,
                 ];
             });
 

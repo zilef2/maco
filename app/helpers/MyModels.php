@@ -51,6 +51,7 @@ class MyModels {
 			'Taller',
 			'Distribucion_por_tallas',
 			'Material',
+			'GrupoTalla',
 			//aquipues
 
 		];

@@ -4,7 +4,7 @@ namespace App\Http\Requests\User;
 
 use App\Models\User;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rules\Password;
+use Illuminate\Validation\Rule;
 
 class UserStoreRequest extends FormRequest
 {
@@ -27,7 +27,7 @@ class UserStoreRequest extends FormRequest
     {
         return [
             'name'              => 'required|string|max:255',
-            'email'             => 'required|string|email|max:255|unique:' . User::class,
+            'email'             => ['required', 'string', 'email', 'max:255', Rule::unique('users', 'email')],
             'role'              => ['required'],
 
             'identificacion'    => ['required'],

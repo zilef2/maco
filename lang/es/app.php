@@ -380,6 +380,10 @@ return [
 		'variante_atributo_sugerido' => 'variante_atributo_sugerido',
 		'proveedor_habitual' => 'proveedor_habitual',
 		'observaciones' => 'observaciones',
+		'grupotalla' => 'Grupotalla',
+		'GrupoTalla' => 'GrupoTalla',
+		'nombre' => 'nombre',
+		'valor' => 'valor',
 		//aquipues
 	    
     ],
@@ -412,6 +416,7 @@ return [
     'placeholder' => [
         //materia
         'cuantosReq' => 'cuantos Requisitos?',
+        'searchfor_producto' => 'Buscar codigo , titulo shopify...',
 
         //carrera
         'UnObjetivo' => 'Describa el objetivo',
@@ -736,6 +741,10 @@ return [
 		'variante_atributo_sugerido' => 'variante_atributo_sugerido',
 		'proveedor_habitual' => 'proveedor_habitual',
 		'observaciones' => 'observaciones',
+		'grupotalla' => 'Grupotalla',
+		'GrupoTalla' => 'GrupoTalla',
+		'nombre' => 'nombre',
+		'valor' => 'valor',
 		//aquipues
     ],
 ];

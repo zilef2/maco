@@ -7,7 +7,7 @@ import { reactive, watch } from 'vue';
 
 const props = defineProps({
     show: Boolean,
-    materiaPrima: {
+    material: {
         type: Object,
         default: null,
     },
@@ -22,15 +22,15 @@ const state = reactive({
 });
 
 const cargarMovimientos = async () => {
-    if (!props.materiaPrima?.id) return;
+    if (!props.material?.id) return;
 
     state.loading = true;
     state.error = '';
     try {
-        const response = await axios.get(route('materias_primas.movimientos', props.materiaPrima.id));
+        const response = await axios.get(route('Material.movimientos', props.material.id));
         const res = response.data?.movimientos;
         state.movimientos = Array.isArray(res) ? res : (res?.data ?? []);
-    } catch (e: any) {
+    } catch {
         state.error = 'No fue posible cargar el historial.';
     } finally {
         state.loading = false;
@@ -40,7 +40,7 @@ const cargarMovimientos = async () => {
 watch(
     () => props.show,
     (isOpen) => {
-        if (isOpen && props.materiaPrima) {
+        if (isOpen && props.material) {
             cargarMovimientos();
         } else {
             state.movimientos = [];
@@ -59,13 +59,13 @@ watch(
                             Historial de Existencias
                         </h2>
                         <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                            {{ props.materiaPrima?.nombre }} (Código: {{ props.materiaPrima?.codigo || '-' }})
+                            {{ props.material?.nombre_base }} (Código: {{ props.material?.codigo_material || '-' }})
                         </p>
                     </div>
                     <div class="text-right">
                         <span class="text-xs text-gray-500 dark:text-gray-400">Existencia actual</span>
                         <p class="text-base font-bold text-gray-900 dark:text-gray-100">
-                            {{ props.materiaPrima?.existencia_actual ?? 0 }} {{ props.materiaPrima?.unidad_medida || '' }}
+                            {{ props.material?.existencia_actual ?? 0 }} {{ props.material?.unidad_inventario || '' }}
                         </p>
                     </div>
                 </div>
@@ -83,7 +83,7 @@ watch(
                 </div>
 
                 <div v-else-if="state.movimientos.length === 0" class="py-8 text-center text-gray-500 dark:text-gray-400 text-sm">
-                    No se registran movimientos históricos para esta materia prima.
+                    No se registran movimientos históricos para este material.
                 </div>
 
                 <div v-else class="overflow-x-auto max-h-96 scrollbar-table">

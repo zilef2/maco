@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\materias_primas;
+use App\Models\GrupoTalla;
 use App\helpers\Myhelp;
 use App\helpers\MyModels;
 use Illuminate\Database\Eloquent\Builder;
@@ -12,39 +12,39 @@ use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
-use App\Traits\MateriasPrimasMovimientoTrait;
 use Inertia\Response;
 
-class Materias_primasController extends Controller {
-    use MateriasPrimasMovimientoTrait;
-
+class GrupoTallaController extends Controller {
     public array $thisAtributos;
-    public string $FromController = 'materias_primas';
+    public string $FromController = 'GrupoTalla';
 
 
     //<editor-fold desc="Construc | filtro and dependencia">
-    public function __construct( protected \App\Services\ListaDesplegableService $listaDesplegableService ) {
-        $this->thisAtributos = (new materias_primas())->getFillable();
+    public function __construct() {
+//        $this->middleware('permission:create GrupoTalla', ['only' => ['create', 'store']]);
+//        $this->middleware('permission:read GrupoTalla', ['only' => ['index', 'show']]);
+//        $this->middleware('permission:update GrupoTalla', ['only' => ['edit', 'update']]);
+//        $this->middleware('permission:delete GrupoTalla', ['only' => ['destroy', 'destroyBulk']]);
+        $this->thisAtributos = (new GrupoTalla())->getFillable(); //not using
     }
 
     public function index(Request $request) {
-        $numberPermissions = MyModels::getPermissionToNumber(Myhelp::EscribirEnLog($this, ' materias_primass '));
-        $materias_primass = $this->Filtros($request)->get();
-        $listasDesplegables = $this->listaDesplegableService->getOptionsByCategoriaGrouped($this->FromController);
+        $numberPermissions = MyModels::getPermissionToNumber(Myhelp::EscribirEnLog($this, ' GrupoTallas '));
+        $GrupoTallas = $this->Filtros($request)->get();
+//        $losSelect = $this->Dependencias();
+
 
         $perPage = $request->has('perPage') ? $request->perPage : 10;
         return Inertia::render($this->FromController . '/Index', [
-            'fromController' => $this->PerPageAndPaginate($request, $materias_primass),
-            'total' => $materias_primass->count(),
+            'fromController' => $this->PerPageAndPaginate($request, $GrupoTallas),
+            'total' => $GrupoTallas->count(),
             'breadcrumbs' => [['label' => __('app.label.' . $this->FromController), 'href' => route($this->FromController . '.index')]],
             'title' => __('app.label.' . $this->FromController),
             'filters' => $request->all(['search', 'field', 'order']),
             'perPage' => (int)$perPage,
             'numberPermissions' => $numberPermissions,
-            'losSelect'         => [
-                'unidad_medida' => $listasDesplegables['unidad_medida'] ?? [],
-            ],
-	        'titulos'           => materias_primas::getFillableWithTypes(),
+            'losSelect'         => $this->losSelect(GrupoTalla::class, ' GrupoTalla','proveeNombre'),
+	        'titulos'           => GrupoTalla::getFillableWithTypes(),
 
         ]);
     }
@@ -69,9 +69,9 @@ class Materias_primasController extends Controller {
 		];
 	}
     public function Filtros($request): Builder {
-        $materias_primass = materias_primas::query();
+        $GrupoTallas = GrupoTalla::query();
         if ($request->has('search')) {
-            $materias_primass = $materias_primass->where(function ($query) use ($request) {
+            $GrupoTallas = $GrupoTallas->where(function ($query) use ($request) {
                 $query->where('nombre', 'LIKE', "%" . $request->search . "%")
                     //                    ->orWhere('codigo', 'LIKE', "%" . $request->search . "%")
                     //                    ->orWhere('identificacion', 'LIKE', "%" . $request->search . "%")
@@ -80,10 +80,10 @@ class Materias_primasController extends Controller {
         }
 
         if ($request->has(['field', 'order'])) {
-            $materias_primass = $materias_primass->orderBy($request->field, $request->order);
+            $GrupoTallas = $GrupoTallas->orderBy($request->field, $request->order);
         } else
-            $materias_primass = $materias_primass->orderBy('updated_at', 'DESC');
-        return $materias_primass;
+            $GrupoTallas = $GrupoTallas->orderBy('updated_at', 'DESC');
+        return $GrupoTallas;
     }
 
 //    public function Dependencias()
@@ -99,12 +99,12 @@ class Materias_primasController extends Controller {
 
     //</editor-fold>
 
-    public function PerPageAndPaginate($request, $materias_primass) {
+    public function PerPageAndPaginate($request, $GrupoTallas) {
         $perPage = $request->has('perPage') ? $request->perPage : 10;
         $page = request('page', 1); // Current page number
         $paginated = new LengthAwarePaginator(
-            $materias_primass->forPage($page, $perPage),
-            $materias_primass->count(),
+            $GrupoTallas->forPage($page, $perPage),
+            $GrupoTallas->count(),
             $perPage,
             $page,
             ['path' => request()->url()]
@@ -113,14 +113,15 @@ class Materias_primasController extends Controller {
     }
 
     public function store(Request $request): RedirectResponse {
-        $permissions = Myhelp::EscribirEnLog($this, ' Begin STORE:materias_primass');
+        $permissions = Myhelp::EscribirEnLog($this, ' Begin STORE:GrupoTallas');
         DB::beginTransaction();
-        $materias_primas = materias_primas::create($request->all());
-        $this->registrarMovimientoCreacion($materias_primas, $request->input('motivo'));
+//        $no_nada = $request->no_nada['id'];
+//        $request->merge(['no_nada_id' => $request->no_nada['id']]);
+        $GrupoTalla = GrupoTalla::create($request->all());
 
         DB::commit();
-        Myhelp::EscribirEnLog($this, 'STORE:materias_primass EXITOSO', 'materias_primas id:' . $materias_primas->id . ' | ' . $materias_primas->nombre, false);
-        return back()->with('success', __('app.label.created_successfully', ['name' => $materias_primas->nombre]));
+        Myhelp::EscribirEnLog($this, 'STORE:GrupoTallas EXITOSO', 'GrupoTalla id:' . $GrupoTalla->id . ' | ' . $GrupoTalla->nombre, false);
+        return back()->with('success', __('app.label.created_successfully', ['name' => $GrupoTalla->nombre]));
     }
 
     //! STORE - UPDATE - DELETE
@@ -138,21 +139,15 @@ class Materias_primasController extends Controller {
     }
 
     public function update(Request $request, $id): RedirectResponse {
-        $permissions = Myhelp::EscribirEnLog($this, ' Begin UPDATE:materias_primass');
+        $permissions = Myhelp::EscribirEnLog($this, ' Begin UPDATE:GrupoTallas');
         DB::beginTransaction();
-
-        if($request->has('existencia_actual') && $request->input('existencia_actual')<0) {
-            return back()->with('error', __('app.label.existencia_actual_negativa'));
-        }
-
-        $materias_primas = materias_primas::findOrFail($id);
-        $existenciaAnterior = (float) ($materias_primas->existencia_actual ?? 0);
-        $materias_primas->update($request->all());
-        $this->registrarMovimientoActualizacion($materias_primas, $existenciaAnterior, $request->input('motivo'));
+        $GrupoTalla = GrupoTalla::findOrFail($id);
+//        $request->merge(['no_nada_id' => $request->no_nada['id']]);
+        $GrupoTalla->update($request->all());
 
         DB::commit();
-        Myhelp::EscribirEnLog($this, 'UPDATE:materias_primass EXITOSO', 'materias_primas id:' . $materias_primas->id . ' | ' . $materias_primas->nombre, false);
-        return back()->with('success', __('app.label.updated_successfully2', ['nombre' => $materias_primas->nombre]));
+        Myhelp::EscribirEnLog($this, 'UPDATE:GrupoTallas EXITOSO', 'GrupoTalla id:' . $GrupoTalla->id . ' | ' . $GrupoTalla->nombre, false);
+        return back()->with('success', __('app.label.updated_successfully2', ['nombre' => $GrupoTalla->nombre]));
     }
 
     /**
@@ -162,18 +157,18 @@ class Materias_primasController extends Controller {
      * @return \Illuminate\Http\RedirectResponse
      */
 
-    public function destroy($materias_primasid) {
-        $permissions = Myhelp::EscribirEnLog($this, 'DELETE:materias_primass');
-        $materias_primas = materias_primas::find($materias_primasid);
-        $elnombre = $materias_primas->nombre;
-        $materias_primas->delete();
-        Myhelp::EscribirEnLog($this, 'DELETE:materias_primass', 'materias_primas id:' . $materias_primas->id . ' | ' . $materias_primas->nombre . ' borrado', false);
+    public function destroy($GrupoTallaid) {
+        $permissions = Myhelp::EscribirEnLog($this, 'DELETE:GrupoTallas');
+        $GrupoTalla = GrupoTalla::find($GrupoTallaid);
+        $elnombre = $GrupoTalla->nombre;
+        $GrupoTalla->delete();
+        Myhelp::EscribirEnLog($this, 'DELETE:GrupoTallas', 'GrupoTalla id:' . $GrupoTalla->id . ' | ' . $GrupoTalla->nombre . ' borrado', false);
         return back()->with('success', __('app.label.deleted_successfully', ['name' => $elnombre]));
     }
 
     public function destroyBulk(Request $request) {
-        $materias_primas = materias_primas::whereIn('id', $request->id);
-        $materias_primas->delete();
+        $GrupoTalla = GrupoTalla::whereIn('id', $request->id);
+        $GrupoTalla->delete();
         return back()->with('success', __('app.label.deleted_successfully', ['name' => count($request->id) . ' ' . __('app.label.user')]));
     }
     //FIN : STORE - UPDATE - DELETE

@@ -14,8 +14,11 @@ use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use App\Traits\MaterialMovimientoTrait;
 
 class MaterialController extends Controller {
+    use MaterialMovimientoTrait;
+
     public array $thisAtributos;
     public string $FromController = 'Material';
 
@@ -119,6 +122,7 @@ class MaterialController extends Controller {
 //        $no_nada = $request->no_nada['id'];
 //        $request->merge(['no_nada_id' => $request->no_nada['id']]);
         $Material = Material::create($request->all());
+        $this->registrarMovimientoCreacion($Material);
 
         DB::commit();
         Myhelp::EscribirEnLog($this, 'STORE:Materials EXITOSO', 'Material id:' . $Material->id . ' | ' . $Material->nombre, false);
@@ -142,9 +146,17 @@ class MaterialController extends Controller {
     public function update(Request $request, $id): RedirectResponse {
         $permissions = Myhelp::EscribirEnLog($this, ' Begin UPDATE:Materials');
         DB::beginTransaction();
+
+        if ($request->has('existencia_actual') && $request->input('existencia_actual') < 0) {
+            DB::rollBack();
+            return back()->with('error', 'La existencia no puede ser negativa.');
+        }
+
         $Material = Material::findOrFail($id);
+        $existenciaAnterior = (float) ($Material->existencia_actual ?? 0);
 //        $request->merge(['no_nada_id' => $request->no_nada['id']]);
         $Material->update($request->all());
+        $this->registrarMovimientoActualizacion($Material, $existenciaAnterior, $request->input('motivo'));
 
         DB::commit();
         Myhelp::EscribirEnLog($this, 'UPDATE:Materials EXITOSO', 'Material id:' . $Material->id . ' | ' . $Material->nombre, false);
@@ -249,10 +261,32 @@ class MaterialController extends Controller {
 
         $filaEncabezados = array_shift($filas);
         $encabezado = [];
+        $encabezadosIgnorados = [];
+        $clavesAlias = array_keys($aliasColumnas);
+        usort($clavesAlias, fn ($a, $b) => strlen($b) - strlen($a));
+
         foreach ($filaEncabezados as $col => $titulo) {
             $clave = preg_replace('/[^a-z0-9]/', '', $normalizarTexto((string) $titulo));
+            if ($clave === '') {
+                continue;
+            }
             if (isset($aliasColumnas[$clave])) {
                 $encabezado[$col] = $aliasColumnas[$clave];
+                continue;
+            }
+            // Encabezado no exacto (ej: "Nombre base material"): aceptar el alias
+            // mas largo que sea prefijo, para no ignorar columnas por variantes.
+            $mapeada = null;
+            foreach ($clavesAlias as $alias) {
+                if (str_starts_with($clave, $alias)) {
+                    $mapeada = $aliasColumnas[$alias];
+                    break;
+                }
+            }
+            if ($mapeada !== null) {
+                $encabezado[$col] = $mapeada;
+            } else {
+                $encabezadosIgnorados[] = trim((string) $titulo);
             }
         }
 
@@ -339,7 +373,10 @@ class MaterialController extends Controller {
         }
 
         Myhelp::EscribirEnLog($this, 'uploadExcel OK', "Creados: {$creados} | Actualizados: {$actualizados}");
-        return back()->with('success', "Importación completada: {$creados} creado(s), {$actualizados} actualizado(s).");
+        $avisoIgnoradas = empty($encabezadosIgnorados)
+            ? ''
+            : ' Columnas ignoradas (encabezado no reconocido): ' . implode(', ', $encabezadosIgnoradas) . '.';
+        return back()->with('success', "Importación completada: {$creados} creado(s), {$actualizados} actualizado(s).{$avisoIgnoradas}");
     }
 
 }

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Distribucion_por_tallas;
+use App\Models\GrupoTalla;
 use App\Models\OrdenProduccion;
 use App\Models\User;
 use App\Models\EstadoOperacion;
@@ -140,27 +141,25 @@ class OrdenProduccionController extends Controller {
                 ];
             });
 
-        $gruposTallas = Distribucion_por_tallas::whereNotNull('grupo')
-            ->orderBy('grupo')
-            ->orderBy('talla')
-            ->get(['id', 'grupo', 'talla', 'cantidad_planificada'])
-            ->groupBy('grupo')
-            ->map(function ($filas, $grupo) {
-                $nombres = $filas->pluck('talla')->filter()->implode(', ');
-                $etiqueta = 'Grupo ' . $grupo . ($nombres ? ' (' . $nombres . ')' : '');
+        $gruposTallas = GrupoTalla::whereNotNull('valor')
+            ->orderBy('valor')
+            ->orderBy('id')
+            ->get(['id', 'nombre', 'valor'])
+            ->groupBy('valor')
+            ->map(function ($filas, $valor) {
+                $nombres = $filas->pluck('nombre')->filter()->implode(', ');
+                $etiqueta = 'Grupo ' . $valor . ($nombres ? ' (' . $nombres . ')' : '');
                 return [
-                    'id'     => (int) $grupo,
-                    'value'  => (int) $grupo,
+                    'id'     => (int) $valor,
+                    'value'  => (int) $valor,
                     'name'   => $etiqueta,
                     'label'  => $etiqueta,
                     'title'  => $etiqueta,
-                    'tallas' => $filas->map(function ($fila) {
-                        return [
-                            'id'                   => $fila->id,
-                            'talla'                => $fila->talla,
-                            'cantidad_planificada' => $fila->cantidad_planificada,
-                        ];
-                    })->values()->all(),
+                    'tallas' => $filas->map(fn ($fila) => [
+                        'id'                   => $fila->id,
+                        'talla'                => $fila->nombre,
+                        'cantidad_planificada' => null,
+                    ])->values()->all(),
                 ];
             })->values()->all();
 
@@ -247,7 +246,8 @@ class OrdenProduccionController extends Controller {
         $permissions = Myhelp::EscribirEnLog($this, ' Begin STORE:OrdenProduccions');
         DB::beginTransaction();
 
-        $data = $request->only(['numero_op', 'producto_referencia_id', 'cantidad_planificada', 'fecha_creacion', 'fecha_prevista_envio_taller', 'taller_id', 'user_id', 'id_shopify_producto', 'observaciones']);
+        $data = $request->only(['numero_op', 'cantidad_planificada', 'fecha_creacion', 'fecha_prevista_envio_taller', 'taller_id', 'user_id', 'id_shopify_producto', 'observaciones']);
+        $data['producto_referencia_id'] = $request->filled('producto_referencia_id') ? $request->input('producto_referencia_id') : null;
 
         if (empty($data['user_id']) && $request->filled('responsable_id')) {
             $data['user_id'] = $request->input('responsable_id');
@@ -310,7 +310,8 @@ class OrdenProduccionController extends Controller {
         $permissions = Myhelp::EscribirEnLog($this, ' Begin UPDATE:OrdenProduccions');
         DB::beginTransaction();
 
-        $data = $request->only(['numero_op', 'producto_referencia_id', 'cantidad_planificada', 'fecha_creacion', 'fecha_prevista_envio_taller', 'taller_id', 'user_id', 'id_shopify_producto', 'observaciones']);
+        $data = $request->only(['numero_op', 'cantidad_planificada', 'fecha_creacion', 'fecha_prevista_envio_taller', 'taller_id', 'user_id', 'id_shopify_producto', 'observaciones']);
+        $data['producto_referencia_id'] = $request->filled('producto_referencia_id') ? $request->input('producto_referencia_id') : null;
 
         if (empty($data['user_id']) && $request->filled('responsable_id')) {
             $data['user_id'] = $request->input('responsable_id');

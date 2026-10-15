@@ -11,12 +11,10 @@ import DangerButton from '@/components/DangerButton.vue';
 import pkg from 'lodash';
 
 import Pagination from '@/components/Pagination.vue';
-import { ArrowsRightLeftIcon, ChevronUpDownIcon, ClockIcon, PencilIcon, TrashIcon } from '@heroicons/vue/24/solid';
-import Create from '@/pages/materias_primas/Create.vue';
-import Edit from '@/pages/materias_primas/Edit.vue';
-import Delete from '@/pages/materias_primas/Delete.vue';
-import AlterarExistencia from '@/pages/materias_primas/AlterarExistencia.vue';
-import HistorialMovimientos from '@/pages/materias_primas/HistorialMovimientos.vue';
+import { ChevronUpDownIcon, PencilIcon, TrashIcon } from '@heroicons/vue/24/solid';
+import Create from '@/pages/GrupoTalla/Create.vue';
+import Edit from '@/pages/GrupoTalla/Edit.vue';
+import Delete from '@/pages/GrupoTalla/Delete.vue';
 
 import Checkbox from '@/components/Checkbox.vue';
 import InfoButton from '@/components/InfoButton.vue';
@@ -53,14 +51,12 @@ const data = reactive({
         order: props.filters?.order,
         perPage: props.perPage,
     },
-    materias_primaso: null as any,
+    GrupoTallao: null as any,
     selectedId: [] as number[],
     multipleSelect: false,
     createOpen: false,
     editOpen: false,
     deleteOpen: false,
-    alterarExistenciaOpen: false,
-    historialOpen: false,
     dataSet: (usePage().props as any)?.app?.perpage ?? defaultPerPage,
 })
 
@@ -71,7 +67,7 @@ const order = (field: string) => {
 
 watch(() => _.cloneDeep(data.params), debounce(() => {
     const params = pickBy(data.params)
-    router.get(route("materias_primas.index"), params, {
+    router.get(route("GrupoTalla.index"), params, {
         replace: true,
         preserveState: true,
         preserveScroll: true,
@@ -82,22 +78,16 @@ const selectAll = (event: any) => {
     if (event.target.checked === false) {
         data.selectedId = []
     } else {
-        props.fromController?.data.forEach((materias_primas: any) => {
-            data.selectedId.push(materias_primas.id)
+        props.fromController?.data.forEach((GrupoTalla: any) => {
+            data.selectedId.push(GrupoTalla.id)
         })
     }
 }
 const select = () => data.multipleSelect = props.fromController?.data.length === data.selectedId.length;
 
 const titulos = [
-    // { order: 'id', label: 'id', type: 'string' },
-    { order: 'codigo', label: 'codigo', type: 'string' },
     { order: 'nombre', label: 'nombre', type: 'string' },
-    { order: 'categoria', label: 'categoria', type: 'string' },
-    { order: 'unidad_medida', label: 'unidad_medida', type: 'string' },
-    { order: 'existencia_actual', label: 'existencia_actual', type: 'number' },
-    { order: 'costo_promedio_ponderado', label: 'costo_promedio_ponderado', type: 'dinero' },
-    // { order: 'fecha_creacion', label: 'fecha_creacion', type: 'datetime' },
+    { order: 'valor', label: 'valor', type: 'string' },
 ];
 
 </script>
@@ -110,34 +100,22 @@ const titulos = [
         <Breadcrumb :title="title" :breadcrumbs="breadcrumbs" class="capitalize text-xl font-bold" />
         <div class="space-y-4">
             <div class="px-4 sm:px-0">
-                <div class="rounded-lg overflow-hidden w-fit flex flex-wrap items-center">
-                    <PrimaryButton class="m-1" @click="data.createOpen = true" v-if="can(['create materias_primas'])">
+                <div class="rounded-lg overflow-hidden w-fit">
+                    <PrimaryButton class="m-1" @click="data.createOpen = true" v-if="can(['create GrupoTalla'])">
                         {{ lang().t('app.button.add') }}
                     </PrimaryButton>
 
-                    <Create v-if="can(['create materias_primas'])" :numberPermissions="props.numberPermissions"
+                    <Create v-if="can(['create GrupoTalla'])" :numberPermissions="props.numberPermissions"
                         :titulos="titulos" :show="data.createOpen" @close="data.createOpen = false" :title="props.title"
                         :losSelect="props.losSelect" />
 
-                    
-
-                    <Edit v-if="can(['update materias_primas'])" :titulos="titulos" :numberPermissions="props.numberPermissions"
-                        :show="data.editOpen" @close="data.editOpen = false" :materias_primasa="data.materias_primaso"
+                    <Edit v-if="can(['update GrupoTalla'])" :titulos="titulos" :numberPermissions="props.numberPermissions"
+                        :show="data.editOpen" @close="data.editOpen = false" :GrupoTallaa="data.GrupoTallao"
                         :title="props.title" :losSelect="props.losSelect" />
 
-                    <Delete v-if="can(['delete materias_primas'])" :numberPermissions="props.numberPermissions"
-                        :show="data.deleteOpen" @close="data.deleteOpen = false" :materias_primasa="data.materias_primaso"
+                    <Delete v-if="can(['delete GrupoTalla'])" :numberPermissions="props.numberPermissions"
+                        :show="data.deleteOpen" @close="data.deleteOpen = false" :GrupoTallaa="data.GrupoTallao"
                         :title="props.title" />
-
-                    <AlterarExistencia v-if="can(['read materias_primas'])"
-                        :show="data.alterarExistenciaOpen"
-                        :materiaPrima="data.materias_primaso"
-                        @close="data.alterarExistenciaOpen = false" />
-
-                    <HistorialMovimientos v-if="can(['read materias_primas'])"
-                        :show="data.historialOpen"
-                        :materiaPrima="data.materias_primaso"
-                        @close="data.historialOpen = false" />
                 </div>
             </div>
             <div class="relative bg-white dark:bg-gray-800 shadow sm:rounded-lg">
@@ -145,7 +123,7 @@ const titulos = [
                     <div class="flex space-x-2">
                         <SelectInput v-model="data.params.perPage" :dataSet="data.dataSet" />
                     </div>
-                    <TextInput v-if="props.numberPermissions && props.numberPermissions > 0"
+                    <TextInput v-if="props.numberPermissions && props.numberPermissions > 1"
                         v-model="data.params.search" type="text" class="block w-4/6 md:w-3/6 lg:w-2/6 rounded-lg"
                         :placeholder="lang().t('app.placeholder.search')" />
                 </div>
@@ -156,7 +134,7 @@ const titulos = [
                                 <th class="px-2 py-4 text-center">
                                     <Checkbox v-model:checked="data.multipleSelect" @change="selectAll" />
                                 </th>
-                                <th v-if="props.numberPermissions && props.numberPermissions > 0" class="px-2 py-4">
+                                <th v-if="props.numberPermissions && props.numberPermissions > 1" class="px-2 py-4">
                                     Accion</th>
 
                                 <th class="px-2 py-4 text-center">#</th>
@@ -179,32 +157,18 @@ const titulos = [
                                         type="checkbox" @change="select" :value="claseFromController.id"
                                         v-model="data.selectedId" />
                                 </td>
-                                <td v-if="props.numberPermissions && props.numberPermissions > 0"
+                                <td v-if="props.numberPermissions && props.numberPermissions > 1"
                                     class="whitespace-nowrap py-4 w-12 px-2 sm:py-3">
                                     <div class="flex justify-center items-center">
                                         <div class="rounded-md overflow-hidden">
-                                            <InfoButton v-show="can(['update materias_primas'])" type="button"
-                                                @click="(data.editOpen = true), (data.materias_primaso = claseFromController)"
+                                            <InfoButton v-show="can(['update GrupoTalla'])" type="button"
+                                                @click="(data.editOpen = true), (data.GrupoTallao = claseFromController)"
                                                 class="px-2 py-1.5 rounded-none"
                                                 v-tooltip="lang().t('app.tooltip.edit')">
                                                 <PencilIcon class="w-4 h-4" />
                                             </InfoButton>
-                                            <InfoButton v-show="can(['update materias_primas'])" type="button"
-                                                thecolor="green"
-                                                @click="(data.alterarExistenciaOpen = true), (data.materias_primaso = claseFromController)"
-                                                class="px-2 py-1.5 rounded-none"
-                                                v-tooltip="'Alterar Existencia'">
-                                                <ArrowsRightLeftIcon class="w-4 h-4" />
-                                            </InfoButton>
-                                            <InfoButton type="button"
-                                                thecolor="indigo"
-                                                @click="(data.historialOpen = true), (data.materias_primaso = claseFromController)"
-                                                class="px-2 py-1.5 rounded-none"
-                                                v-tooltip="'Ver Historial'">
-                                                <ClockIcon class="w-4 h-4" />
-                                            </InfoButton>
-                                            <DangerButton v-show="can(['delete materias_primas'])" type="button"
-                                                @click="(data.deleteOpen = true), (data.materias_primaso = claseFromController)"
+                                            <DangerButton v-show="can(['delete GrupoTalla'])" type="button"
+                                                @click="(data.deleteOpen = true), (data.GrupoTallao = claseFromController)"
                                                 class="px-2 py-1.5 rounded-none"
                                                 v-tooltip="lang().t('app.tooltip.delete')">
                                                 <TrashIcon class="w-4 h-4" />
@@ -232,7 +196,7 @@ const titulos = [
 
                             </tr>
                             <tr class="border-t border-gray-600">
-                                <td v-if="props.numberPermissions && props.numberPermissions > 0"
+                                <td v-if="props.numberPermissions && props.numberPermissions > 1"
                                     class="whitespace-nowrap py-4 w-12 px-2 sm:py-3 text-center"> -
                                 </td>
                                 <td class="whitespace-nowrap py-4 px-2 sm:py-3 text-center"> Total: </td>

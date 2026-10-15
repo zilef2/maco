@@ -11,11 +11,13 @@ import DangerButton from '@/components/DangerButton.vue';
 import pkg from 'lodash';
 
 import Pagination from '@/components/Pagination.vue';
-import { ChevronUpDownIcon, PencilIcon, TrashIcon, ArrowUpTrayIcon } from '@heroicons/vue/24/solid';
+import { ChevronUpDownIcon, PencilIcon, TrashIcon, ArrowUpTrayIcon, ArrowsRightLeftIcon, ClockIcon } from '@heroicons/vue/24/solid';
 import Create from '@/pages/Material/Create.vue';
 import Edit from '@/pages/Material/Edit.vue';
 import Delete from '@/pages/Material/Delete.vue';
 import ImportarMaterialModal from '@/pages/Material/ImportarMaterialModal.vue';
+import AlterarExistencia from '@/pages/Material/AlterarExistencia.vue';
+import HistorialMovimientos from '@/pages/Material/HistorialMovimientos.vue';
 
 import Checkbox from '@/components/Checkbox.vue';
 import InfoButton from '@/components/InfoButton.vue';
@@ -59,6 +61,8 @@ const data = reactive({
     editOpen: false,
     deleteOpen: false,
     importOpen: false,
+    alterarExistenciaOpen: false,
+    historialOpen: false,
     dataSet: (usePage().props as any)?.app?.perpage ?? defaultPerPage,
 })
 
@@ -92,6 +96,7 @@ const titulos = [
     { order: 'categoria', label: 'categoria', type: 'string' },
     { order: 'nombre_base', label: 'nombre_base', type: 'string' },
     { order: 'unidad_inventario', label: 'unidad_inventario', type: 'string' },
+    { order: 'existencia_actual', label: 'existencia_actual', type: 'dinero' },
     { order: 'maneja_color', label: 'maneja_color', type: 'boolean' },
     { order: 'maneja_talla', label: 'maneja_talla', type: 'boolean' },
     { order: 'maneja_otra_variante', label: 'maneja_otra_variante', type: 'boolean' },
@@ -136,6 +141,16 @@ const titulos = [
                     <Delete v-if="can(['delete Material'])" :numberPermissions="props.numberPermissions"
                         :show="data.deleteOpen" @close="data.deleteOpen = false" :Materiala="data.Materialo"
                         :title="props.title" />
+
+                    <AlterarExistencia v-if="can(['update Material'])"
+                        :show="data.alterarExistenciaOpen"
+                        :material="data.Materialo"
+                        @close="data.alterarExistenciaOpen = false" />
+
+                    <HistorialMovimientos v-if="can(['read Material'])"
+                        :show="data.historialOpen"
+                        :material="data.Materialo"
+                        @close="data.historialOpen = false" />
                 </div>
             </div>
             <div class="relative bg-white dark:bg-gray-800 shadow sm:rounded-lg">
@@ -186,6 +201,20 @@ const titulos = [
                                                 class="px-2 py-1.5 rounded-none"
                                                 v-tooltip="lang().t('app.tooltip.edit')">
                                                 <PencilIcon class="w-4 h-4" />
+                                            </InfoButton>
+                                            <InfoButton v-show="can(['update Material'])" type="button"
+                                                thecolor="green"
+                                                @click="(data.alterarExistenciaOpen = true), (data.Materialo = claseFromController)"
+                                                class="px-2 py-1.5 rounded-none"
+                                                v-tooltip="'Alterar Existencia'">
+                                                <ArrowsRightLeftIcon class="w-4 h-4" />
+                                            </InfoButton>
+                                            <InfoButton v-show="can(['read Material'])" type="button"
+                                                thecolor="indigo"
+                                                @click="(data.historialOpen = true), (data.Materialo = claseFromController)"
+                                                class="px-2 py-1.5 rounded-none"
+                                                v-tooltip="'Ver Historial'">
+                                                <ClockIcon class="w-4 h-4" />
                                             </InfoButton>
                                             <DangerButton v-show="can(['delete Material'])" type="button"
                                                 @click="(data.deleteOpen = true), (data.Materialo = claseFromController)"

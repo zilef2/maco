@@ -10,7 +10,7 @@ import { computed, watchEffect } from 'vue';
 
 const props = defineProps({
     show: Boolean,
-    materiaPrima: {
+    material: {
         type: Object,
         default: null,
     },
@@ -24,32 +24,31 @@ const form = useForm({
 });
 
 watchEffect(() => {
-    if (props.show && props.materiaPrima) {
-        // form.existencia_actual = props.materiaPrima.existencia_actual ?? 0;
+    if (props.show && props.material) {
         form.existencia_actual = 0;
         form.motivo = '';
         form.errors = {};
         setTimeout(() => {
-            (document.getElementById('existencia_actual') as HTMLInputElement | null)?.focus();
+            (document.getElementById('existencia_actual_material') as HTMLInputElement | null)?.focus();
         }, 150);
     }
 });
 
 const diferencia = computed(() => {
-    const anterior = Number(props.materiaPrima?.existencia_actual ?? 0);
+    const anterior = Number(props.material?.existencia_actual ?? 0);
     const nueva = Number(form.existencia_actual ?? 0);
     return nueva - anterior;
 });
 
 const update = () => {
-    if (!props.materiaPrima?.id) return;
+    if (!props.material?.id) return;
 
     if (Number(form.existencia_actual) < 0) {
         form.setError('existencia_actual', 'La existencia no puede ser negativa.');
         return;
     }
 
-    form.put(route('materias_primas.update', props.materiaPrima.id), {
+    form.put(route('Material.update', props.material.id), {
         preserveScroll: true,
         onSuccess: () => {
             emit('close');
@@ -70,7 +69,7 @@ const update = () => {
                         Alterar Existencia Actual
                     </h2>
                     <p class="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                        {{ props.materiaPrima?.nombre }} (Código: {{ props.materiaPrima?.codigo || '-' }})
+                        {{ props.material?.nombre_base }} (Código: {{ props.material?.codigo_material || '-' }})
                     </p>
                 </div>
 
@@ -78,15 +77,15 @@ const update = () => {
                     <div class="flex justify-between items-center text-sm">
                         <span class="text-gray-600 dark:text-gray-400">Existencia actual registrada:</span>
                         <span class="font-bold text-gray-900 dark:text-gray-100 text-base">
-                            {{ props.materiaPrima?.existencia_actual ?? 0 }} {{ props.materiaPrima?.unidad_medida || '' }}
+                            {{ props.material?.existencia_actual ?? 0 }} {{ props.material?.unidad_inventario || '' }}
                         </span>
                     </div>
                 </div>
 
                 <div>
-                    <InputLabel for="existencia_actual" value="Nueva Existencia Actual *" />
+                    <InputLabel for="existencia_actual_material" value="Nueva Existencia Actual *" />
                     <TextInput
-                        id="existencia_actual"
+                        id="existencia_actual_material"
                         type="number"
                         step="any"
                         min="0"
@@ -113,9 +112,9 @@ const update = () => {
                 </div>
 
                 <div>
-                    <InputLabel for="motivo" value="Motivo del cambio" />
+                    <InputLabel for="motivo_material" value="Motivo del cambio" />
                     <TextInput
-                        id="motivo"
+                        id="motivo_material"
                         type="text"
                         class="mt-1 block w-full"
                         v-model="form.motivo"

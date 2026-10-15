@@ -50,21 +50,12 @@ class CopyUserPages extends Command
         // Cada entrada: [ 'NombreModelo', 'required' => [...], 'optional' => [...] ]
         return [
             [
-                'Material',
+                'GrupoTalla',
                 'required' => [
-                    'codigo_material' => 'string',
-                    'categoria' => 'string',
-                    'nombre_base' => 'string',
-                    'unidad_inventario' => 'string',
-                    'maneja_color' => 'boolean',
-                    'maneja_talla' => 'boolean',
-                    'maneja_otra_variante' => 'boolean',
-                    'estado' => 'string',
+                    'nombre' => 'string',
                 ],
                 'optional' => [
-                    'variante_atributo_sugerido' => 'string',
-                    'proveedor_habitual' => 'string',
-                    'observaciones' => 'string',
+                    'valor' => 'string',
                 ],
             ],
         ];

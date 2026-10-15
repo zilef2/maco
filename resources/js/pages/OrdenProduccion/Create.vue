@@ -43,7 +43,6 @@ const grupoTallas = ref<number | null>(null);
 
 const form = useForm({
     numero_op: '',
-    producto_referencia_id: '',
     cantidad_planificada: '',
     fecha_creacion: '',
     fecha_prevista_envio_taller: '',
@@ -70,14 +69,6 @@ const totalDistribucion = computed(() => {
     }, 0);
 });
 
-const abrirVerificador = () => {
-    if (verificador.items.length === 0) {
-        verificador.items = [
-            { nombre: '', cantidad: form.cantidad_planificada ?? '' }
-        ];
-    }
-    verificador.show = true;
-};
 
 const agregarItem = () => {
     verificador.items.push({ nombre: '', cantidad: '' });
@@ -194,10 +185,6 @@ watchEffect(() => {
         if (!form.numero_op) {
             form.numero_op = String(Math.floor(100000 + Math.random() * 900000));
         }
-        if (!form.producto_referencia_id && props.losSelect?.producto_referencia_id?.length) {
-            const arr = props.losSelect.producto_referencia_id;
-            form.producto_referencia_id = arr[Math.floor(Math.random() * arr.length)].id;
-        }
         if (distribucion.items.length === 0) {
             let suma = 0;
             distribucion.items = ['S', 'M', 'L'].map((talla) => {
@@ -233,7 +220,7 @@ watchEffect(() => {
 
 <template>
     <section class="space-y-6">
-        <Modal :show="props.show" @close="closeModal" :maxWidth="'xl4'">
+        <Modal :show="props.show" @close="closeModal" :maxWidth="'xl5'">
             <form class="p-6" @submit.prevent="create">
                 <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-6">
                     {{ lang().t('app.label.add') }} {{ props.title }} 
@@ -255,16 +242,6 @@ watchEffect(() => {
                     </div>
 
                     <div>
-                        <InputLabel for="producto_referencia_id" :value="lang().t('app.label.producto') || 'Producto'" />
-                        <v-select
-                            id="producto_referencia_id"
-                            class="mt-1 block w-full"
-                            :options="props.losSelect?.producto_referencia_id || []"
-                            label="name"
-                            :reduce="(item: any) => item.id"
-                            v-model="form.producto_referencia_id"
-                            placeholder="Buscar producto..."
-                        />
                         <button
                             type="button"
                             @click="abrirProductos"
@@ -285,7 +262,7 @@ watchEffect(() => {
                                 </button>
                             </span>
                         </div>
-                        <InputError class="mt-2" :message="form.errors.producto_referencia_id" />
+                        <InputError class="mt-2" :message="form.errors.productos" />
                     </div>
 
                     <div>
@@ -300,14 +277,6 @@ watchEffect(() => {
                                 required
                                 placeholder="0"
                             />
-                            <button
-                                type="button"
-                                @click="abrirVerificador"
-                                class="inline-flex items-center px-4 py-2 border border-l-0 border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-700 text-gray-700 dark:text-gray-200 text-sm font-medium hover:bg-gray-100 dark:hover:bg-gray-600 transition"
-                            >
-                                <CalculatorIcon class="w-4 h-4 mr-1 text-indigo-600 dark:text-indigo-400" />
-                                Verificar suma
-                            </button>
                             <button
                                 type="button"
                                 @click="abrirDistribucion"
@@ -557,8 +526,8 @@ watchEffect(() => {
             </div>
         </Modal>
 
-        <Modal :show="productos.show" @close="productos.show = false" :maxWidth="'lg'">
-            <div class="p-6">
+        <Modal :show="productos.show" @close="productos.show = false" :maxWidth="'xl8'">
+            <div class="p-6 mb-32">
                 <div class="flex items-center justify-between border-b pb-3 dark:border-gray-700">
                     <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100">
                         Lista de Productos de la Orden

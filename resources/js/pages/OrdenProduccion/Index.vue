@@ -5,23 +5,21 @@ import Breadcrumb from '@/components/Breadcrumb.vue';
 import TextInput from '@/components/TextInput.vue';
 import PrimaryButton from '@/components/PrimaryButton.vue';
 import SelectInput from '@/components/SelectInput.vue';
-import { reactive, ref, watch } from 'vue';
+import { reactive, ref, computed, watch } from 'vue';
 
-import DangerButton from '@/components/DangerButton.vue';
 import pkg from 'lodash';
 
 import Pagination from '@/components/Pagination.vue';
-import { ChevronUpDownIcon, EyeIcon, PencilIcon, TrashIcon, ArrowUpTrayIcon, ClipboardIcon, ArrowPathIcon } from '@heroicons/vue/24/solid';
+import { ChevronUpDownIcon, PencilIcon, TrashIcon, ArrowUpTrayIcon, ArrowPathIcon, SquaresPlusIcon } from '@heroicons/vue/24/solid';
 import Create from '@/pages/OrdenProduccion/Create.vue';
 import Edit from '@/pages/OrdenProduccion/Edit.vue';
 import Delete from '@/pages/OrdenProduccion/Delete.vue';
 import DistribucionTallas from '@/pages/OrdenProduccion/DistribucionTallas.vue';
-import VerObservacion from '@/pages/OrdenProduccion/VerObservacion.vue';
 import KitTallerOPModal from '@/pages/OrdenProduccion/KitTallerOPModal.vue';
 import CambiarEstadoModal from '@/pages/OrdenProduccion/CambiarEstadoModal.vue';
+import FabAcciones from '@/components/FabAcciones.vue';
 
 import Checkbox from '@/components/Checkbox.vue';
-import InfoButton from '@/components/InfoButton.vue';
 
 import { formatDate, zilef_nuber_format } from '@/global.ts';
 
@@ -61,9 +59,6 @@ const data = reactive({
     createOpen: false,
     editOpen: false,
     deleteOpen: false,
-    observacionOpen: false,
-    observacionTexto: '' as string,
-    observacionOp: '' as string,
     distribucionOpen: false,
     distribucionOp: null as any,
     kitTallerOpen: false,
@@ -113,12 +108,6 @@ const selectAll = (event: any) => {
 }
 const select = () => data.multipleSelect = props.fromController?.data.length === data.selectedId.length;
 
-const abrirObservacion = (op: any) => {
-    data.observacionTexto = op?.observaciones ?? ''
-    data.observacionOp = op?.numero_op ?? ''
-    data.observacionOpen = true
-}
-
 const abrirDistribucion = (op: any) => {
     data.distribucionOp = op ?? null
     data.distribucionOpen = true
@@ -132,6 +121,50 @@ const abrirKitTaller = (op: any) => {
 const abrirCambioEstado = (op: any) => {
     data.cambioEstadoOp = op ?? null
     data.cambioEstadoOpen = true
+}
+
+const authCan = (usePage().props as any)?.auth?.can ?? {}
+const puede = (perms: string[]) => perms.some((p) => authCan[p])
+
+// Acciones de la fila agrupadas en el FAB (agregar aquí las futuras)
+const accionesFila = computed(() => {
+    const arr: Array<{ id: string; label: string; icon: any }> = []
+    if (puede(['update OrdenProduccion'])) {
+        arr.push({ id: 'edit', label: 'Editar', icon: PencilIcon })
+        arr.push({ id: 'estado', label: 'Cambiar estado', icon: ArrowPathIcon })
+    }
+    if (puede(['create KitTaller'])) {
+        arr.push({ id: 'kit', label: 'Kit Taller / Importar Excel', icon: ArrowUpTrayIcon })
+    }
+    arr.push({ id: 'tallas', label: 'Editar tallas', icon: SquaresPlusIcon })
+    if (puede(['delete OrdenProduccion'])) {
+        arr.push({ id: 'delete', label: 'Eliminar', icon: TrashIcon })
+    }
+    return arr
+})
+
+const onAccionFila = (id: string, op: any) => {
+    if (id === 'edit') {
+        data.OrdenProducciono = op
+        data.editOpen = true
+    }
+    if (id === 'estado') abrirCambioEstado(op)
+    if (id === 'kit') abrirKitTaller(op)
+    if (id === 'tallas') abrirDistribucion(op)
+    if (id === 'delete') {
+        data.OrdenProducciono = op
+        data.deleteOpen = true
+    }
+}
+
+const tooltipProductos = (op: any) => {
+    const escapar = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const lineas = (op?.productos || []).map((p: any) =>
+        escapar(String(p.Titulo_Shopify || p.Codigo_interno || 'Producto #' + p.id)))
+    if (!lineas.length) {
+        return undefined
+    }
+    return { content: lineas.join('<br><br>'), html: true, delay: { show: 200, hide: 100 } }
 }
 
 const titulos = [
@@ -174,9 +207,6 @@ const titulos = [
                     <Delete v-if="can(['delete OrdenProduccion'])" :numberPermissions="props.numberPermissions"
                         :show="data.deleteOpen" @close="data.deleteOpen = false"
                         :OrdenProducciona="data.OrdenProducciono" :title="props.title" />
-
-                    <VerObservacion :show="data.observacionOpen" @close="data.observacionOpen = false"
-                        :title="props.title" :numeroOp="data.observacionOp" :observacion="data.observacionTexto" />
 
                     <DistribucionTallas :show="data.distribucionOpen" @close="data.distribucionOpen = false"
                         :title="props.title" :ordenId="data.distribucionOp?.id"
@@ -248,54 +278,18 @@ const titulos = [
                                         v-model="data.selectedId" />
                                 </td>
                                 <td v-if="props.numberPermissions && props.numberPermissions > 1"
-                                    class="whitespace-nowrap py-4 w-12 px-2 sm:py-3">
-                                    <div class="flex justify-center items-center">
-                                        <div class="rounded-md overflow-hidden">
-                                            <InfoButton v-show="can(['update OrdenProduccion'])" type="button"
-                                                @click="(data.editOpen = true), (data.OrdenProducciono = claseFromController)"
-                                                class="px-2 py-1.5 rounded-none"
-                                                v-tooltip="lang().t('app.tooltip.edit')">
-                                                <PencilIcon class="w-4 h-4" />
-                                            </InfoButton>
-                                            <InfoButton v-show="can(['update OrdenProduccion'])" type="button"
-                                                :thecolor="'blue'" @click="abrirCambioEstado(claseFromController)"
-                                                class="px-2 py-1.5 rounded-none"
-                                                v-tooltip="'Cambiar estado'">
-                                                <ArrowPathIcon class="w-4 h-4" />
-                                            </InfoButton>
-                                            <InfoButton v-show="can(['create KitTaller'])" type="button"
-                                                :thecolor="'green'"
-                                                @click="abrirKitTaller(claseFromController)"
-                                                class="px-2 py-1.5 rounded-none"
-                                                v-tooltip="'Ver kit / Importar Excel'">
-                                                <ArrowUpTrayIcon class="w-4 h-4" />
-                                            </InfoButton>
-                                            <!-- <InfoButton v-show="can(['update OrdenProduccion'])" type="button"
-                                                :thecolor="'blue'" @click="abrirKitTaller(claseFromController)"
-                                                class="px-2 py-1.5 rounded-none" v-tooltip="'Ver Kitaller'">
-                                                <ClipboardIcon class="w-4 h-4" />
-                                            </InfoButton> -->
-                                            <DangerButton v-show="can(['delete OrdenProduccion'])" type="button"
-                                                @click="(data.deleteOpen = true), (data.OrdenProducciono = claseFromController)"
-                                                class="px-2 py-1.5 rounded-none"
-                                                v-tooltip="lang().t('app.tooltip.delete')">
-                                                <TrashIcon class="w-4 h-4" />
-                                            </DangerButton>
-                                        </div>
-                                    </div>
+                                    class="whitespace-nowrap py-4 px-2 sm:py-3">
+                                    <FabAcciones :items="accionesFila" direccion="right"
+                                        @select="(id: string) => onAccionFila(id, claseFromController)" />
                                 </td>
                                 <td class="whitespace-nowrap py-4 px-2 sm:py-3 text-center">{{ ++indexu }}</td>
                                 <td v-for="titulo in titulos" :key="titulo.order"
                                     class="whitespace-nowrap py-4 px-2 sm:py-3">
-                                    <span v-if="titulo['order'] === 'observaciones'" class="flex items-center gap-2">
-                                        <span class="block max-w-[240px] truncate">{{
+                                    <span v-if="titulo['order'] === 'observaciones'">
+                                        <span class="block max-w-[240px] truncate"
+                                            v-tooltip="claseFromController[titulo['order']] ? { content: claseFromController[titulo['order']], delay: { show: 200, hide: 100 } } : undefined">{{
                                             claseFromController[titulo['order']]
                                             || '—' }}</span>
-                                        <InfoButton v-if="claseFromController[titulo['order']]" type="button"
-                                            @click="abrirObservacion(claseFromController)"
-                                            class="px-2 py-1.5 rounded-none" v-tooltip="lang().t('app.tooltip.ver')">
-                                            <EyeIcon class="w-4 h-4" />
-                                        </InfoButton>
                                     </span>
                                     <span v-else-if="titulo['type'] === 'text' || titulo['type'] === 'string'"> {{
                                         claseFromController[titulo['order']] }} </span>
@@ -312,15 +306,9 @@ const titulos = [
                                     </span>
                                 </td>
                                 <td class="whitespace-nowrap py-4 px-2 sm:py-3">
-                                    <span class="flex items-center gap-2">
-                                        <span
-                                            class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300">
-                                            {{ (claseFromController.distribuciones_por_tallas || []).length }} tallas
-                                        </span>
-                                        <InfoButton type="button" @click="abrirDistribucion(claseFromController)"
-                                            class="px-2 py-1.5 rounded-none" v-tooltip="lang().t('app.tooltip.ver')">
-                                            <EyeIcon class="w-4 h-4" />
-                                        </InfoButton>
+                                    <span
+                                        class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300">
+                                        {{ (claseFromController.distribuciones_por_tallas || []).length }} tallas
                                     </span>
                                 </td>
                                 <td class="whitespace-nowrap py-4 px-2 sm:py-3 max-w-[260px]">
@@ -330,7 +318,7 @@ const titulos = [
                                             {{ (claseFromController.productos || []).length }} productos
                                         </span>
                                         <span class="block max-w-[180px] truncate text-sm text-gray-600 dark:text-gray-300"
-                                            :title="claseFromController.productos_nombres">
+                                            v-tooltip="tooltipProductos(claseFromController)">
                                             {{ claseFromController.productos_nombres || '—' }}
                                         </span>
                                     </span>

@@ -105,7 +105,7 @@ const select = () => {
                     <PrimaryButton class="m-1 bg-indigo-600 hover:bg-indigo-700" @click="data.crearPermisosOpen = true">
                         Crear 4 permisos
                     </PrimaryButton>
-<CrearCuatroPermisos :show="data.crearPermisosOpen" modulo="materias_primas"
+                    <CrearCuatroPermisos :show="data.crearPermisosOpen" modulo="materiales"
                         @close="data.crearPermisosOpen = false" />
 
                     <Create :show="data.createOpen" @close="data.createOpen = false" :permissions="props.permissions"

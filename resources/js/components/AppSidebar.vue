@@ -106,6 +106,11 @@ const navGroups: NavGroup[] = [
                 href: '/Material',
                 icon: LayoutGrid,
             },
+            {
+                title: 'GrupoTalla',
+                href: '/GrupoTalla',
+                icon: LayoutGrid,
+            },
             //aquipuesSide
         ],
     },

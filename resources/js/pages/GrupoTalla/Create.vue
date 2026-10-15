@@ -17,15 +17,9 @@ const props = defineProps({
     show: Boolean,
     title: String,
     roles: Object,
-    titulos: {
-        type: Array,
-        default: [],
-    },
+    titulos: Object, //parametros de la clase principal
     losSelect: Object,
-    numberPermissions: {
-        type: Number,
-        default: 0,
-    },
+    numberPermissions: Number,
 })
 const emit = defineEmits(["close"]);
 
@@ -81,7 +75,7 @@ function ValidarVacios() {
 const create = () => {
     if (ValidarVacios()) {
         // console.log("🧈 debu pieza_id:", form.pieza_id);
-        form.post(route('materias_primas.store'), {
+        form.post(route('GrupoTalla.store'), {
             preserveScroll: true,
             onSuccess: () => {
                 emit("close")
@@ -108,32 +102,15 @@ const sexos = [{ label: 'Masculino', value: 0 }, { label: 'Femenino', value: 1 }
 
 <template>
     <section class="space-y-6">
-        <Modal :show="props.show" @close="emit('close')" :maxWidth="'xl3'">
+        <Modal :show="props.show" @close="emit('close')" :maxWidth="'xl4'">
             <form class="p-6" @submit.prevent="create">
                 <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100">
                     {{ lang().t('app.label.add') }} {{ props.title }}
                 </h2>
-                <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div v-for="(atributosform, indice) in printForm" :key="indice">
 
-                        <div v-if="atributosform.idd === 'unidad_medida'" class="">
-                            <InputLabel :for="atributosform.label"
-                                :value="lang().t('app.label')[atributosform.label] || atributosform.label" />
-                            <select
-                                :id="atributosform.idd"
-                                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 focus:border-indigo-500 dark:focus:border-indigo-600 focus:ring-indigo-500 dark:focus:ring-indigo-600 shadow-sm"
-                                v-model="form[atributosform.idd]"
-                                required
-                            >
-                                <option value="" disabled>Seleccione una opción</option>
-                                <option v-for="item in ((props.losSelect as any)?.unidad_medida || [])" :key="item.id" :value="item.nombre">
-                                    {{ item.nombre }}
-                                </option>
-                            </select>
-                            <InputError class="mt-2" :message="form.errors[atributosform.idd]" />
-                        </div>
-
-                        <div v-else-if="atributosform.type === 'foreign'" id="SelectVue" class="">
+                        <div v-if="atributosform.type === 'foreign'" id="SelectVue" class="">
                             <label name="labelSelectVue"> {{ atributosform.label }} </label>
                             <v-select :options="props.losSelect[0]" v-model="form[atributosform.idd]"
                                 :reduce="element => element.value" label="name"></v-select>
@@ -165,7 +142,7 @@ const sexos = [{ label: 'Masculino', value: 0 }, { label: 'Femenino', value: 1 }
                 </div>
                 <div class=" my-8 flex justify-end">
                     <SecondaryButton :disabled="form.processing" @click="emit('close')"> {{ lang().t('app.button.close')
-                    }}
+                        }}
                     </SecondaryButton>
                     <PrimaryButton class="ml-3" :class="{ 'opacity-25': form.processing }" :disabled="form.processing"
                         @click="create">

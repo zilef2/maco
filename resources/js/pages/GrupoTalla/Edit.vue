@@ -13,7 +13,7 @@ import "vue-select/dist/vue-select.css";
 const props = defineProps({
     show: Boolean,
     title: String,
-    materias_primasa: Object,
+    GrupoTallaa: Object,
     titulos: Object, //parametros de la clase principal
     losSelect: Object,
 
@@ -48,19 +48,19 @@ props.titulos.forEach(names => {
 watchEffect(() => {
     if (props.show) {
         // data.justNames.forEach(element => {
-        //     form[element] =  props.materias_primasa[element]
+        //     form[element] =  props.GrupoTallaa[element]
         // });
         form.errors = {}
         props.titulos.forEach(names => {
-            form[names['order']] = props.materias_primasa[names['order']]
+            form[names['order']] = props.GrupoTallaa[names['order']]
         });
 
-        // form.codigo = props.materias_primasa?.codigo
+        // form.codigo = props.GrupoTallaa?.codigo
     }
 })
 
 const update = () => {
-    form.put(route('materias_primas.update', props.materias_primasa?.id), {
+    form.put(route('GrupoTalla.update', props.GrupoTallaa?.id), {
         preserveScroll: true,
         onSuccess: () => {
             emit("close")
@@ -77,7 +77,7 @@ const update = () => {
 <template>
     <section class="space-y-6">
         <Modal :show="props.show" @close="emit('close')" :maxWidth="'xl4'">
-            <form class="p-6" @submit.prevent="update">
+            <form class="p-6" @submit.prevent="create">
                 <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100">
                     {{ lang().t('app.label.edit') }} {{ props.title }}
                 </h2>
@@ -95,24 +95,7 @@ const update = () => {
 
 
                     <div v-for="(atributosform, indice) in data.printForm" :key="indice">
-                        <div v-if="atributosform.idd === 'unidad_medida'" class="">
-                            <InputLabel :for="atributosform.label"
-                                :value="lang().t('app.label')[atributosform.label] || atributosform.label" />
-                            <select
-                                :id="atributosform.idd"
-                                class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 focus:border-indigo-500 dark:focus:border-indigo-600 focus:ring-indigo-500 dark:focus:ring-indigo-600 shadow-sm"
-                                v-model="form[atributosform.idd]"
-                                required
-                            >
-                                <option value="" disabled>Seleccione una opción</option>
-                                <option v-for="item in ((props.losSelect as any)?.unidad_medida || [])" :key="item.id" :value="item.nombre">
-                                    {{ item.nombre }}
-                                </option>
-                            </select>
-                            <InputError class="mt-2" :message="form.errors[atributosform.idd]" />
-                        </div>
-
-                        <div v-else-if="atributosform.type === 'foreign'" id="SelectVue" class="">
+                        <div v-if="atributosform.type === 'foreign'" id="SelectVue" class="">
                             <label name="labelSelectVue"> {{ atributosform.label }} </label>
                             <v-select :options="props.losSelect" v-model="form[atributosform.idd]"
                                 :reduce="element => element.value" label="label"></v-select>

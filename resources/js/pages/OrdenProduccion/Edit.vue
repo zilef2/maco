@@ -43,7 +43,6 @@ const grupoTallas = ref<number | null>(null);
 
 const form = useForm({
     numero_op: '',
-    producto_referencia_id: '',
     cantidad_planificada: '',
     fecha_creacion: '',
     fecha_prevista_envio_taller: '',
@@ -182,7 +181,6 @@ watchEffect(() => {
         form.errors = {};
         const op: any = props.OrdenProducciona ?? {};
         form.numero_op = op.numero_op ?? '';
-        form.producto_referencia_id = op.producto_referencia_id ?? '';
         form.cantidad_planificada = op.cantidad_planificada ?? '';
         form.fecha_creacion = String(op.fecha_creacion ?? '').substring(0, 10);
         form.fecha_prevista_envio_taller = String(op.fecha_prevista_envio_taller ?? '').substring(0, 10);
@@ -228,16 +226,6 @@ watchEffect(() => {
                     </div>
 
                     <div>
-                        <InputLabel for="producto_referencia_id" :value="lang().t('app.label.producto') || 'Producto'" />
-                        <v-select
-                            id="producto_referencia_id"
-                            class="mt-1 block w-full"
-                            :options="props.losSelect?.producto_referencia_id || []"
-                            label="name"
-                            :reduce="(item: any) => item.id"
-                            v-model="form.producto_referencia_id"
-                            placeholder="Buscar producto..."
-                        />
                         <button
                             type="button"
                             @click="abrirProductos"
@@ -258,7 +246,7 @@ watchEffect(() => {
                                 </button>
                             </span>
                         </div>
-                        <InputError class="mt-2" :message="form.errors.producto_referencia_id" />
+                        <InputError class="mt-2" :message="form.errors.productos" />
                     </div>
 
                     <div>

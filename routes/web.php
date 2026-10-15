@@ -71,6 +71,8 @@ Route::middleware('auth', 'verified')->group(function () {
 	Route::resource("/Distribucion_por_tallas", \App\Http\Controllers\Distribucion_por_tallasController::class);
 	Route::resource("/Material", \App\Http\Controllers\MaterialController::class);
 	Route::post("/Material/upload-excel", [\App\Http\Controllers\MaterialController::class, 'uploadExcel'])->name('Material.upload-excel');
+	Route::get('/Material/{id}/movimientos', [\App\Http\Controllers\MaterialController::class, 'historicoMovimientos'])->name('Material.movimientos');
+	Route::resource("/GrupoTalla", \App\Http\Controllers\GrupoTallaController::class);
 	//aquipues
 }); //fin verified
 

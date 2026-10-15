@@ -13,7 +13,7 @@ const props = defineProps({
     show: Boolean,
     modulo: {
         type: String,
-        default: 'materias_primas',
+        default: 'materiales',
     },
 });
 
@@ -24,7 +24,7 @@ const data = reactive({
 });
 
 const form = useForm({
-    modulo: props.modulo || 'materias_primas',
+    modulo: props.modulo || 'materiales',
     permissions: [] as string[],
 });
 
@@ -41,7 +41,7 @@ const getPermissionsList = (mod: string) => {
 
 watchEffect(() => {
     if (props.show) {
-        form.modulo = props.modulo || 'materias_primas';
+        form.modulo = props.modulo || 'materiales';
         form.permissions = getPermissionsList(form.modulo);
         data.multipleSelect = true;
         form.errors = {};
@@ -96,7 +96,7 @@ const create = () => {
                             v-model="form.modulo"
                             @input="onModuloInput"
                             required
-                            placeholder="Ej: materias_primas"
+                            placeholder="Ej: materiales"
                             :error="form.errors.modulo"
                         />
                         <InputError class="mt-2" :message="form.errors.modulo" />

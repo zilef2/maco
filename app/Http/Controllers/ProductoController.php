@@ -72,9 +72,10 @@ class ProductoController extends Controller {
         $Productos = Producto::query();
         if ($request->has('search')) {
             $Productos = $Productos->where(function ($query) use ($request) {
-                $query->where('nombre', 'LIKE', "%" . $request->search . "%")
-                    //                    ->orWhere('codigo', 'LIKE', "%" . $request->search . "%")
-                    //                    ->orWhere('identificacion', 'LIKE', "%" . $request->search . "%")
+                $query->where('Codigo_interno', 'LIKE', "%" . $request->search . "%")
+                    ->orWhere('ID_producto_Shopify', 'LIKE', "%" . $request->search . "%")
+                    ->orWhere('Categoria_original', 'LIKE', "%" . $request->search . "%")
+                    ->orWhere('Titulo_Shopify', 'LIKE', "%" . $request->search . "%")
                 ;
             });
         }
@@ -253,10 +254,32 @@ class ProductoController extends Controller {
 
         $filaEncabezados = array_shift($filas);
         $encabezado = [];
+        $encabezadosIgnorados = [];
+        $clavesAlias = array_keys($aliasColumnas);
+        usort($clavesAlias, fn ($a, $b) => strlen($b) - strlen($a));
+
         foreach ($filaEncabezados as $col => $titulo) {
             $clave = preg_replace('/[^a-z0-9]/', '', $normalizarTexto((string) $titulo));
+            if ($clave === '') {
+                continue;
+            }
             if (isset($aliasColumnas[$clave])) {
                 $encabezado[$col] = $aliasColumnas[$clave];
+                continue;
+            }
+            // Encabezado no exacto (ej: "Opciones tallas"): aceptar el alias mas largo
+            // que sea prefijo, para no ignorar columnas por variantes del nombre.
+            $mapeada = null;
+            foreach ($clavesAlias as $alias) {
+                if (str_starts_with($clave, $alias)) {
+                    $mapeada = $aliasColumnas[$alias];
+                    break;
+                }
+            }
+            if ($mapeada !== null) {
+                $encabezado[$col] = $mapeada;
+            } else {
+                $encabezadosIgnorados[] = trim((string) $titulo);
             }
         }
 
@@ -341,6 +364,19 @@ class ProductoController extends Controller {
                     Producto::where('Codigo_interno', $registro['Codigo_interno'])->update($registro);
                     $actualizados++;
                 } else {
+                    // Columnas NOT NULL sin default que el archivo puede no traer
+                    $registro += [
+                        'ID_producto_Shopify' => '',
+                        'Categoria_original'  => '',
+                        'Familia_normalizada' => '',
+                        'Control_de_variante' => '',
+                        'Opciones'            => '',
+                        'Estado'              => '',
+                        'Observaciones'       => '',
+                        'descripcion'         => '',
+                        'precio_predicho'     => 0,
+                        'precio_preventa'     => 0,
+                    ];
                     Producto::create($registro);
                     $creados++;
                 }
@@ -353,7 +389,10 @@ class ProductoController extends Controller {
         }
 
         Myhelp::EscribirEnLog($this, 'uploadExcel OK', "Creados: {$creados} | Actualizados: {$actualizados}");
-        return back()->with('success', "Importación completada: {$creados} creado(s), {$actualizados} actualizado(s).");
+        $avisoIgnoradas = empty($encabezadosIgnorados)
+            ? ''
+            : ' Columnas ignoradas (encabezado no reconocido): ' . implode(', ', $encabezadosIgnorados) . '.';
+        return back()->with('success', "Importación completada: {$creados} creado(s), {$actualizados} actualizado(s).{$avisoIgnoradas}");
     }
 
 }

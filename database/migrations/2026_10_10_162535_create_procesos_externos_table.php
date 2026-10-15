@@ -15,7 +15,7 @@ return new class extends Migration
             $table->id();
             $table->unsignedBigInteger('orden_produccion_id')->nullable();
             $table->string('etapa_componente')->nullable();
-            $table->unsignedBigInteger('material_origen_id')->nullable(); // FK a materias_primas
+            $table->unsignedBigInteger('material_origen_id')->nullable(); // FK a material
             $table->decimal('cantidad_salida')->nullable();
             $table->string('unidad_medida')->nullable();
             $table->string('bodega_origen')->nullable();
@@ -27,7 +27,7 @@ return new class extends Migration
             $table->text('resultado_observaciones')->nullable();
             $table->timestamps();
 
-            $table->foreign('material_origen_id')->references('id')->on('materias_primas')->nullOnDelete();
+            $table->foreign('material_origen_id')->references('id')->on('material')->nullOnDelete();
         });
     }
 
