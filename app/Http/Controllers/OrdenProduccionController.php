@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Models\EstadoOperacion;
 use App\Models\Producto;
 use App\Models\Taller;
+use App\Http\Requests\StoreOrdenProduccionRequest;
 use App\helpers\Myhelp;
 use App\helpers\MyModels;
 use Illuminate\Database\Eloquent\Builder;
@@ -51,7 +52,8 @@ class OrdenProduccionController extends Controller {
         });
 
         // Cache de los selects (productos, talleres, estados, usuarios, grupos, siguiente OP)
-        $losSelect = Cache::remember('op_selects', now()->addMinutes(30), fn () => $this->obtenerSelects());
+        // Sin cache: los talleres/estados pueden cambiar y el select debe reflejarlo al instante
+        $losSelect = $this->obtenerSelects();
 
         $perPage = $request->has('perPage') ? $request->perPage : 10;
         return Inertia::render($this->FromController . '/Index', [
@@ -115,15 +117,32 @@ class OrdenProduccionController extends Controller {
                 ];
             });
 
-        $productos = Producto::all(['id', 'Titulo_Shopify', 'Codigo_interno'])
+        $productos = Producto::with(['fichaTecnica.materiales.material', 'distribucionesPorTallas'])->get(['id', 'Titulo_Shopify', 'Codigo_interno', 'Opciones'])
             ->map(function ($producto) {
                 $nombre = $producto->Titulo_Shopify ?: ($producto->Codigo_interno ?: 'Producto #' . $producto->id);
+                $ficha = $producto->fichaTecnica->first();
                 return [
                     'id'    => $producto->id,
                     'value' => $producto->id,
                     'name'  => $nombre,
                     'label' => $nombre,
                     'title' => $nombre,
+                    'Opciones' => $producto->Opciones,
+                    'distribuciones_por_tallas' => $producto->distribucionesPorTallas->map(fn ($d) => [
+                        'id' => $d->id,
+                        'grupo' => $d->grupo,
+                        'talla' => $d->talla,
+                        'cantidad_planificada' => $d->cantidad_planificada,
+                    ])->values()->all(),
+                    'ficha' => $ficha ? ['nombre' => $ficha->nombre] : null,
+                    'ficha_materiales' => $ficha?->materiales->map(fn ($fila) => [
+                        'material_id'       => $fila->material_componente_id,
+                        'nombre'            => trim(($fila->material?->codigo_material ? $fila->material->codigo_material . ' — ' : '') . $fila->material?->nombre_base),
+                        'consumo_estandar'  => (float) $fila->consumo_estandar,
+                        'unidad_medida'     => $fila->unidad_medida,
+                        'costo_asociado_teorico' => (float) $fila->costo_asociado_teorico,
+                        'existencia_actual' => (float) ($fila->material?->existencia_actual ?? 0),
+                    ])->values()->all() ?? [],
                 ];
             });
 
@@ -242,12 +261,13 @@ class OrdenProduccionController extends Controller {
         return $paginated;
     }
 
-    public function store(Request $request): RedirectResponse {
+    public function store(StoreOrdenProduccionRequest $request): RedirectResponse {
         $permissions = Myhelp::EscribirEnLog($this, ' Begin STORE:OrdenProduccions');
         DB::beginTransaction();
 
         $data = $request->only(['numero_op', 'cantidad_planificada', 'fecha_creacion', 'fecha_prevista_envio_taller', 'taller_id', 'user_id', 'id_shopify_producto', 'observaciones']);
         $data['producto_referencia_id'] = $request->filled('producto_referencia_id') ? $request->input('producto_referencia_id') : null;
+        $data['fecha_prevista_envio_taller'] = ($data['fecha_prevista_envio_taller'] ?? '') === '' ? null : $data['fecha_prevista_envio_taller'];
 
         if (empty($data['user_id']) && $request->filled('responsable_id')) {
             $data['user_id'] = $request->input('responsable_id');
@@ -256,10 +276,10 @@ class OrdenProduccionController extends Controller {
         if (empty($data['fecha_creacion'])) {
             $data['fecha_creacion'] = now()->toDateString();
         }
-        $data['estado_op_id'] = EstadoOperacion::where('nombre', 'Borrador')->value('id');
+        $data['estado_op_id'] = EstadoOperacion::where('nombre', 'Preparación')->value('id');
         if (empty($data['numero_op'])) {
-            $maxOp = OrdenProduccion::selectRaw('MAX(CAST(numero_op AS UNSIGNED)) as max_op')->value('max_op');
-            $data['numero_op'] = ($maxOp && (int)$maxOp >= 100) ? ((int)$maxOp + 1) : 100;
+            $maxOp = OrdenProduccion::selectRaw("MAX(CAST(REPLACE(numero_op, 'OP-', '') AS UNSIGNED)) as max_op")->value('max_op');
+            $data['numero_op'] = 'OP-' . (($maxOp && (int)$maxOp >= 100) ? (int)$maxOp + 1 : 100);
         }
 
         $OrdenProduccion = new OrdenProduccion();
@@ -283,7 +303,25 @@ class OrdenProduccionController extends Controller {
             $OrdenProduccion->distribucionesPorTallas()->attach($nueva->id);
         }
 
-        $OrdenProduccion->productos()->sync(array_map('intval', $request->input('productos', [])));
+        $productosOp = array_map('intval', $request->input('productos', []));
+        $OrdenProduccion->productos()->sync($productosOp);
+
+        // Aviso de materiales insuficientes según la ficha técnica de cada producto
+        $faltantes = $this->faltantesDeMateriales(
+            $productosOp,
+            (int) ($data['cantidad_planificada'] ?? 0),
+            array_map('floatval', (array) $request->input('productos_cantidad', []))
+        );
+        if (!empty($faltantes)) {
+            $detalle = collect($faltantes)
+                ->map(fn ($f) => $f['nombre'] . ': faltan ' . round($f['faltante'], 2) . ' (necesita ' . round($f['necesita'], 2) . ', hay ' . round($f['hay'], 2) . ')')
+                ->implode(' | ');
+            app(\Alejo\Notificaciones\NotificacionesManager::class)->crear(
+                'OP ' . ($data['numero_op'] ?? $OrdenProduccion->id) . ': material insuficiente — ' . $detalle,
+                'alta',
+                $data['user_id'] ?? null
+            );
+        }
 
         DB::commit();
         $this->invalidarCache();
@@ -312,6 +350,7 @@ class OrdenProduccionController extends Controller {
 
         $data = $request->only(['numero_op', 'cantidad_planificada', 'fecha_creacion', 'fecha_prevista_envio_taller', 'taller_id', 'user_id', 'id_shopify_producto', 'observaciones']);
         $data['producto_referencia_id'] = $request->filled('producto_referencia_id') ? $request->input('producto_referencia_id') : null;
+        $data['fecha_prevista_envio_taller'] = ($data['fecha_prevista_envio_taller'] ?? '') === '' ? null : $data['fecha_prevista_envio_taller'];
 
         if (empty($data['user_id']) && $request->filled('responsable_id')) {
             $data['user_id'] = $request->input('responsable_id');
@@ -334,6 +373,48 @@ class OrdenProduccionController extends Controller {
         $identificador = $OrdenProduccion->numero_op ?? $OrdenProduccion->id;
         Myhelp::EscribirEnLog($this, 'UPDATE:OrdenProduccions EXITOSO', 'OrdenProduccion id:' . $OrdenProduccion->id . ' | ' . $identificador, false);
         return back()->with('success', __('app.label.updated_successfully2', ['nombre' => $identificador]));
+    }
+
+    /**
+     * Materiales cuya necesidad (consumo_estandar de la ficha × cantidad del producto)
+     * supera la existencia actual en inventario. Si no viene el mapa de cantidades por
+     * producto se usa la cantidad planificada total de la OP para cada producto.
+     */
+    private function faltantesDeMateriales(array $productoIds, int $cantidadPlanificada, array $cantidadesPorProducto = []): array {
+        if (empty($productoIds)) {
+            return [];
+        }
+
+        $necesidad = [];
+        $productos = Producto::with('fichaTecnica.materiales.material')->whereIn('id', $productoIds)->get();
+        foreach ($productos as $producto) {
+            $cantidad = array_key_exists($producto->id, $cantidadesPorProducto)
+                ? (float) $cantidadesPorProducto[$producto->id]
+                : ($cantidadesPorProducto ? 0 : $cantidadPlanificada);
+            if ($cantidad <= 0) {
+                continue;
+            }
+            $ficha = $producto->fichaTecnica->first();
+            if (!$ficha) {
+                continue;
+            }
+            foreach ($ficha->materiales as $fila) {
+                $id = $fila->material_componente_id;
+                if (!isset($necesidad[$id])) {
+                    $necesidad[$id] = [
+                        'nombre'   => trim(($fila->material?->codigo_material ? $fila->material->codigo_material . ' — ' : '') . $fila->material?->nombre_base),
+                        'necesita' => 0,
+                        'hay'      => (float) ($fila->material?->existencia_actual ?? 0),
+                    ];
+                }
+                $necesidad[$id]['necesita'] += (float) $fila->consumo_estandar * $cantidad;
+            }
+        }
+
+        return collect($necesidad)
+            ->map(fn ($fila) => $fila + ['faltante' => max(0, $fila['necesita'] - $fila['hay'])])
+            ->filter(fn ($fila) => $fila['faltante'] > 0)
+            ->values()->all();
     }
 
     /**

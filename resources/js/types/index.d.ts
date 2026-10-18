@@ -20,6 +20,7 @@ export interface NavItem {
 
 export interface NavGroup {
     label: string;
+    icon?: LucideIcon;
     items: NavItem[];
 }
 

@@ -10,14 +10,15 @@ import { reactive, ref, computed, watch } from 'vue';
 import pkg from 'lodash';
 
 import Pagination from '@/components/Pagination.vue';
-import { ChevronUpDownIcon, PencilIcon, TrashIcon, ArrowUpTrayIcon, ArrowPathIcon, SquaresPlusIcon } from '@heroicons/vue/24/solid';
+import { ChevronUpDownIcon, PencilIcon, TrashIcon, ArrowUpTrayIcon, ArrowPathIcon, SquaresPlusIcon, EllipsisVerticalIcon, ArrowDownTrayIcon } from '@heroicons/vue/24/solid';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import Create from '@/pages/OrdenProduccion/Create.vue';
 import Edit from '@/pages/OrdenProduccion/Edit.vue';
 import Delete from '@/pages/OrdenProduccion/Delete.vue';
 import DistribucionTallas from '@/pages/OrdenProduccion/DistribucionTallas.vue';
 import KitTallerOPModal from '@/pages/OrdenProduccion/KitTallerOPModal.vue';
 import CambiarEstadoModal from '@/pages/OrdenProduccion/CambiarEstadoModal.vue';
-import FabAcciones from '@/components/FabAcciones.vue';
+import SacarMaterialesModal from '@/pages/ProcesoExterno/SacarMaterialesModal.vue';
 
 import Checkbox from '@/components/Checkbox.vue';
 
@@ -65,6 +66,8 @@ const data = reactive({
     kitTallerOp: null as any,
     cambioEstadoOpen: false,
     cambioEstadoOp: null as any,
+    salidaOpen: false,
+    salidaOp: null as any,
     dataSet: (usePage().props as any)?.app?.perpage ?? defaultPerPage,
 })
 
@@ -128,29 +131,39 @@ const puede = (perms: string[]) => perms.some((p) => authCan[p])
 
 // Acciones de la fila agrupadas en el FAB (agregar aquí las futuras)
 const accionesFila = computed(() => {
-    const arr: Array<{ id: string; label: string; icon: any }> = []
+    const arr: Array<{ id: string; label: string; icon: any; visible?: (op: any) => boolean }> = []
     if (puede(['update OrdenProduccion'])) {
         arr.push({ id: 'edit', label: 'Editar', icon: PencilIcon })
-        arr.push({ id: 'estado', label: 'Cambiar estado', icon: ArrowPathIcon })
     }
     if (puede(['create KitTaller'])) {
         arr.push({ id: 'kit', label: 'Kit Taller / Importar Excel', icon: ArrowUpTrayIcon })
     }
     arr.push({ id: 'tallas', label: 'Editar tallas', icon: SquaresPlusIcon })
+    if (puede(['create ProcesoExterno'])) {
+        arr.push({
+            id: 'salida', label: 'Sacar materiales al taller', icon: ArrowDownTrayIcon,
+            visible: (op: any) => op?.estado_nombre === 'Lista para taller',
+        })
+    }
     if (puede(['delete OrdenProduccion'])) {
         arr.push({ id: 'delete', label: 'Eliminar', icon: TrashIcon })
     }
     return arr
 })
 
+const accionesVisibles = (op: any) => accionesFila.value.filter((a) => !a.visible || a.visible(op))
+
 const onAccionFila = (id: string, op: any) => {
     if (id === 'edit') {
         data.OrdenProducciono = op
         data.editOpen = true
     }
-    if (id === 'estado') abrirCambioEstado(op)
     if (id === 'kit') abrirKitTaller(op)
     if (id === 'tallas') abrirDistribucion(op)
+    if (id === 'salida') {
+        data.salidaOp = op
+        data.salidaOpen = true
+    }
     if (id === 'delete') {
         data.OrdenProducciono = op
         data.deleteOpen = true
@@ -220,6 +233,9 @@ const titulos = [
                     <CambiarEstadoModal :show="data.cambioEstadoOpen" @close="data.cambioEstadoOpen = false"
                         :title="props.title" :op="data.cambioEstadoOp"
                         :estados="props.losSelect?.estado_op_id || []" />
+
+                    <SacarMaterialesModal :show="data.salidaOpen" @close="data.salidaOpen = false"
+                        :op="data.salidaOp" />
                 </div>
             </div>
             <div class="relative bg-white dark:bg-gray-800 shadow sm:rounded-lg w-max min-w-full">
@@ -279,8 +295,33 @@ const titulos = [
                                 </td>
                                 <td v-if="props.numberPermissions && props.numberPermissions > 1"
                                     class="whitespace-nowrap py-4 px-2 sm:py-3">
-                                    <FabAcciones :items="accionesFila" direccion="right"
-                                        @select="(id: string) => onAccionFila(id, claseFromController)" />
+                                    <div class="flex items-center gap-1.5">
+                                        <button v-if="puede(['update OrdenProduccion'])" type="button"
+                                            @click="abrirCambioEstado(claseFromController)"
+                                            title="Cambiar estado"
+                                            class="inline-flex items-center gap-1.5 h-8 rounded-lg border border-gray-200 bg-white px-2 text-xs font-medium text-gray-600 shadow-sm transition hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white">
+                                            <ArrowPathIcon class="h-4 w-4" />
+                                            <span>Cambiar estado</span>
+                                        </button>
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger
+                                                class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 shadow-sm transition hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white"
+                                                title="Acciones">
+                                                <EllipsisVerticalIcon class="h-4 w-4" />
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent align="start" class="w-56 p-1">
+                                                <DropdownMenuItem
+                                                    v-for="accion in accionesVisibles(claseFromController)"
+                                                    :key="accion.id"
+                                                    @click="onAccionFila(accion.id, claseFromController)"
+                                                    :variant="accion.id === 'delete' ? 'destructive' : 'default'"
+                                                    class="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-xs font-medium">
+                                                    <component :is="accion.icon" class="h-4 w-4" />
+                                                    <span>{{ accion.label }}</span>
+                                                </DropdownMenuItem>
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
+                                    </div>
                                 </td>
                                 <td class="whitespace-nowrap py-4 px-2 sm:py-3 text-center">{{ ++indexu }}</td>
                                 <td v-for="titulo in titulos" :key="titulo.order"

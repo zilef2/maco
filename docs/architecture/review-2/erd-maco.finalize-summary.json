@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "ok": true,
+  "command": "finalize",
+  "status": "pass",
+  "type": "erd",
+  "quality": "standard",
+  "specification": {
+    "path": "c:\\laragon\\www\\maco\\docs\\architecture\\maco-db.erd.json",
+    "sha256": "9b6167e6a452c22b9796bc0efda51f213e0ae3f63c162fb56a8ac638437d3e4b",
+    "bytes": 13484
+  },
+  "artifact": {
+    "path": "c:\\laragon\\www\\maco\\docs\\architecture\\erd-maco.html",
+    "sha256": "25f2d8b9e8830247d848f3e0347fe446691cb7740bc6039b8da9049ff47e18ba",
+    "bytes": 887771
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "pass"
+  },
+  "diagnostics": [],
+  "diagnosticSummary": {
+    "total": 0,
+    "shown": 0,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "c:\\laragon\\www\\maco\\docs\\architecture\\review-2\\erd-maco.finalize.json",
+    "summaryReceipt": "c:\\laragon\\www\\maco\\docs\\architecture\\review-2\\erd-maco.finalize-summary.json",
+    "browserCheckReceipt": "c:\\laragon\\www\\maco\\docs\\architecture\\review-2\\erd-maco.browser-check.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.1.0",
+    "availableVersion": "3.1.0",
+    "releaseNotes": null,
+    "checkedAt": "2026-10-17T01:06:14.462Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 7132,
+  "visualReviewRecommendation": {
+    "action": "inspect-route-readability",
+    "signals": {
+      "routesOverSuggestedBends": 4,
+      "routesOverSuggestedStretch": 1
+    },
+    "reason": "Automated gates passed, but crossings or detours still need perceptual review before claiming visual quality.",
+    "affectedRoutes": {
+      "crossings": [],
+      "detours": [
+        {
+          "relationship": {
+            "id": "kit_material",
+            "from": "kit_tallers",
+            "to": "materials",
+            "label": "material kit",
+            "collectionIndex": 6,
+            "artifactIndex": 7
+          },
+          "bends": 4,
+          "stretch": 1.351
+        },
+        {
+          "relationship": {
+            "id": "proceso_proveedor",
+            "from": "proceso_externos",
+            "to": "proveedors",
+            "label": "taller externo",
+            "collectionIndex": 8,
+            "artifactIndex": 9
+          },
+          "bends": 4,
+          "stretch": 1.333
+        },
+        {
+          "relationship": {
+            "id": "proceso_material",
+            "from": "proceso_externos",
+            "to": "materials",
+            "label": "insumo",
+            "collectionIndex": 9,
+            "artifactIndex": 10
+          },
+          "bends": 4,
+          "stretch": 1.291
+        },
+        {
+          "relationship": {
+            "id": "ftp_producto",
+            "from": "ficha_tecnica_producto",
+            "to": "productos",
+            "label": "especifica",
+            "collectionIndex": 10,
+            "artifactIndex": 11
+          },
+          "bends": 3,
+          "stretch": 1.034
+        }
+      ],
+      "truncated": false
+    },
+    "repair": "Advisory only: this mode places or routes these relationships itself. Report them; do not remove relationships or meaning to reduce crossings."
+  }
+}

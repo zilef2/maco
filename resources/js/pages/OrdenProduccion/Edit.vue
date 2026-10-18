@@ -209,7 +209,7 @@ watchEffect(() => {
             <form class="p-6" @submit.prevent="update">
                 <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-6">
                     {{ lang().t('app.label.edit') }} {{ props.title }}
-                    --- {{ props.numberPermissions }}
+                    - {{ props.numberPermissions }}
                 </h2>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">

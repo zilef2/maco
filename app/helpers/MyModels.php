@@ -37,7 +37,6 @@ class MyModels {
 			'parametros',
 			
 			'Presupuesto',
-			'materias_primas',
 			'Producto',
 			'Talla',
 			'OrdenProduccion',

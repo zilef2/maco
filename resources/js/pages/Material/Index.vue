@@ -11,7 +11,7 @@ import DangerButton from '@/components/DangerButton.vue';
 import pkg from 'lodash';
 
 import Pagination from '@/components/Pagination.vue';
-import { ChevronUpDownIcon, PencilIcon, TrashIcon, ArrowUpTrayIcon, ArrowsRightLeftIcon, ClockIcon } from '@heroicons/vue/24/solid';
+import { ChevronUpDownIcon, PencilIcon, TrashIcon, ArrowUpTrayIcon, ArrowsRightLeftIcon, ClockIcon, CheckCircleIcon } from '@heroicons/vue/24/solid';
 import Create from '@/pages/Material/Create.vue';
 import Edit from '@/pages/Material/Edit.vue';
 import Delete from '@/pages/Material/Delete.vue';
@@ -47,6 +47,8 @@ const defaultPerPage = [
     { label: '50', value: 50 },
     { label: '100', value: 100 },
 ];
+
+const titulosVisibles = computed(() => props.titulos?.filter((t) => t.order !== 'unidad_inventario') ?? []);
 
 const data = reactive({
     params: {
@@ -205,7 +207,7 @@ const titulos = [
                                     Accion</th>
 
                                 <th class="px-2 py-4 text-center">#</th>
-                                <th v-for="titulo in titulos" :key="titulo.order" class="px-2 py-4 cursor-pointer"
+                                <th v-for="titulo in titulosVisibles" :key="titulo.order" class="px-2 py-4 cursor-pointer"
                                     v-on:click="order(titulo['order'])">
                                     <div class="flex justify-between items-center">
                                         <span>{{ lang().t('app.label.' + titulo['label']) }}</span>
@@ -258,19 +260,28 @@ const titulos = [
                                     </div>
                                 </td>
                                 <td class="whitespace-nowrap py-4 px-2 sm:py-3 text-center">{{ ++indexu }}</td>
-                                <td v-for="titulo in titulos" :key="titulo.order"
+                                <td v-for="titulo in titulosVisibles" :key="titulo.order"
                                     class="whitespace-nowrap py-4 px-2 sm:py-3">
-                                    <span v-if="titulo['type'] === 'text' || titulo['type'] === 'string'"> {{
+                                    <span v-if="titulo['order'] === 'existencia_actual'">
+                                        {{ zilef_nuber_format(claseFromController[titulo['order']], 0, false) }}
+                                        {{ claseFromController.unidad_inventario }}
+                                    </span>
+                                    <span v-else-if="['maneja_color', 'maneja_talla', 'maneja_otra_variante'].includes(titulo['order'])">
+                                        <CheckCircleIcon v-if="claseFromController[titulo['order']]"
+                                            class="w-5 h-5 text-emerald-500" />
+                                        <span v-else class="text-gray-300 dark:text-gray-600">—</span>
+                                    </span>
+                                    <span v-else-if="titulo['type'] === 'text' || titulo['type'] === 'string'"> {{
                                         claseFromController[titulo['order']] }} </span>
-                                    <span v-if="titulo['type'] === 'number'"> {{
+                                    <span v-else-if="titulo['type'] === 'number'"> {{
                                         zilef_nuber_format(claseFromController[titulo['order']], 0, false) }} </span>
-                                    <span v-if="titulo['type'] === 'dinero'"> {{
+                                    <span v-else-if="titulo['type'] === 'dinero'"> {{
                                         zilef_nuber_format(claseFromController[titulo['order']], 0, true) }} </span>
-                                    <span v-if="titulo['type'] === 'date'"> {{
+                                    <span v-else-if="titulo['type'] === 'date'"> {{
                                         formatDate(claseFromController[titulo['order']], false) }} </span>
-                                    <span v-if="titulo['type'] === 'datetime'"> {{
+                                    <span v-else-if="titulo['type'] === 'datetime'"> {{
                                         formatDate(claseFromController[titulo['order']], true) }} </span>
-                                    <span v-if="titulo['type'] === 'foreign'">
+                                    <span v-else-if="titulo['type'] === 'foreign'">
                                         {{ claseFromController?.[titulo?.['nameid']] ?? '' }}
                                     </span>
                                 </td>

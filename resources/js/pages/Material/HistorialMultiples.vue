@@ -63,7 +63,7 @@ watch(
 
 <template>
     <section class="space-y-6">
-        <Modal :show="props.show" @close="emit('close')" :maxWidth="'4xl'">
+        <Modal :show="props.show" @close="emit('close')" :maxWidth="'xl5'">
             <div class="p-6">
                 <div class="border-b border-gray-200 dark:border-gray-700 pb-3 mb-4">
                     <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100">

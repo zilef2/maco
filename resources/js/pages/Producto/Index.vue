@@ -11,11 +11,12 @@ import DangerButton from '@/components/DangerButton.vue';
 import pkg from 'lodash';
 
 import Pagination from '@/components/Pagination.vue';
-import { ChevronUpDownIcon, PencilIcon, TrashIcon, ArrowUpTrayIcon } from '@heroicons/vue/24/solid';
+import { ChevronUpDownIcon, PencilIcon, TrashIcon, ArrowUpTrayIcon, SquaresPlusIcon } from '@heroicons/vue/24/solid';
 import Create from '@/pages/Producto/Create.vue';
 import Edit from '@/pages/Producto/Edit.vue';
 import Delete from '@/pages/Producto/Delete.vue';
 import ImportarProductoModal from '@/pages/Producto/ImportarProductoModal.vue';
+import DistribucionTallas from '@/pages/Producto/DistribucionTallas.vue';
 
 import Checkbox from '@/components/Checkbox.vue';
 import InfoButton from '@/components/InfoButton.vue';
@@ -59,6 +60,8 @@ const data = reactive({
     editOpen: false,
     deleteOpen: false,
     importOpen: false,
+    distribucionOpen: false,
+    distribucionProducto: null as any,
     dataSet: (usePage().props as any)?.app?.perpage ?? defaultPerPage,
 })
 
@@ -86,6 +89,11 @@ const selectAll = (event: any) => {
     }
 }
 const select = () => data.multipleSelect = props.fromController?.data.length === data.selectedId.length;
+
+const abrirDistribucion = (producto: any) => {
+    data.distribucionProducto = producto ?? null
+    data.distribucionOpen = true
+}
 
 const titulos = [
     { order: 'Codigo_interno', label: 'Codigo_interno', type: 'string' ,default:'COD-001'},
@@ -137,6 +145,12 @@ const titulos = [
                     <Delete v-if="can(['delete Producto'])" :numberPermissions="props.numberPermissions"
                         :show="data.deleteOpen" @close="data.deleteOpen = false" :Productoa="data.Productoo"
                         :title="props.title" />
+
+                    <DistribucionTallas v-if="can(['update Producto'])" :show="data.distribucionOpen"
+                        @close="data.distribucionOpen = false" :title="props.title"
+                        :productoId="data.distribucionProducto?.id"
+                        :productoLabel="data.distribucionProducto?.Codigo_interno"
+                        :items="data.distribucionProducto?.distribuciones_por_tallas || []" />
                 </div>
             </div>
             <div class="relative bg-white dark:bg-gray-800 shadow sm:rounded-lg w-max min-w-full">
@@ -187,6 +201,12 @@ const titulos = [
                                                 class="px-2 py-1.5 rounded-none"
                                                 v-tooltip="lang().t('app.tooltip.edit')">
                                                 <PencilIcon class="w-4 h-4" />
+                                            </InfoButton>
+                                            <InfoButton v-show="can(['update Producto'])" type="button"
+                                                @click="abrirDistribucion(claseFromController)"
+                                                class="px-2 py-1.5 rounded-none"
+                                                v-tooltip="'Tallas'">
+                                                <SquaresPlusIcon class="w-4 h-4" />
                                             </InfoButton>
                                             <DangerButton v-show="can(['delete Producto'])" type="button"
                                                 @click="(data.deleteOpen = true), (data.Productoo = claseFromController)"

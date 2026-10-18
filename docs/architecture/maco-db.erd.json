@@ -1,0 +1,410 @@
+{
+  "schema_version": 1,
+  "diagram_type": "erd",
+  "meta": {
+    "title": "Diagrama Entidad-Relación - MACO ERP (Laravel & MySQL)",
+    "locale": "es",
+    "output": "docs/architecture/erd-maco.html",
+    "quality_profile": "standard",
+    "views": [
+      {
+        "id": "op_core",
+        "label": "Núcleo de Producción",
+        "focus": [
+          "orden_produccions",
+          "productos",
+          "orden_produccion_producto",
+          "tallers",
+          "users"
+        ],
+        "note": "Gestión central de órdenes de producción, asignación a talleres y relaciones con productos y usuarios."
+      },
+      {
+        "id": "bom_fichas",
+        "label": "Fichas Técnicas y Materiales (BOM)",
+        "focus": [
+          "ficha_tecnicas",
+          "ficha_tecnica_producto",
+          "ficha_tecnica_materiales",
+          "materials",
+          "material_movimientos"
+        ],
+        "note": "Estructura de consumo de materiales por producto e historial de inventario."
+      },
+      {
+        "id": "taller_logistica",
+        "label": "Taller y Operaciones Externas",
+        "focus": [
+          "orden_produccions",
+          "kit_tallers",
+          "proceso_externos",
+          "proveedors"
+        ],
+        "note": "Kits de materiales entregados al taller y procesos tercerizados con proveedores."
+      }
+    ]
+  },
+  "layout": {
+    "mode": "grid",
+    "gapX": 50,
+    "gapY": 36
+  },
+  "entities": [
+    {
+      "id": "users",
+      "label": "users",
+      "tag": "administracion",
+      "row": 0,
+      "col": 0,
+      "width": 260,
+      "attributes": [
+        { "name": "id", "type": "bigint unsigned", "key": "pk" },
+        { "name": "name", "type": "varchar(255)" },
+        { "name": "email", "type": "varchar(255)", "key": "uk" },
+        { "name": "password", "type": "varchar(255)" },
+        { "name": "created_at", "type": "timestamp" }
+      ]
+    },
+    {
+      "id": "tallers",
+      "label": "tallers",
+      "tag": "administracion",
+      "row": 1,
+      "col": 0,
+      "width": 260,
+      "attributes": [
+        { "name": "id", "type": "bigint unsigned", "key": "pk" },
+        { "name": "nombre", "type": "varchar(255)" },
+        { "name": "direccion", "type": "varchar(255)" },
+        { "name": "created_at", "type": "timestamp" }
+      ]
+    },
+    {
+      "id": "proveedors",
+      "label": "proveedors",
+      "tag": "administracion",
+      "row": 2,
+      "col": 0,
+      "width": 260,
+      "attributes": [
+        { "name": "id", "type": "bigint unsigned", "key": "pk" },
+        { "name": "nombre", "type": "varchar(255)" },
+        { "name": "categoria", "type": "varchar(255)" },
+        { "name": "celular1", "type": "bigint" },
+        { "name": "celular2", "type": "bigint" },
+        { "name": "created_at", "type": "timestamp" }
+      ]
+    },
+    {
+      "id": "orden_produccions",
+      "label": "orden_produccions",
+      "tag": "produccion",
+      "row": 0,
+      "col": 1,
+      "width": 310,
+      "attributes": [
+        { "name": "id", "type": "bigint unsigned", "key": "pk" },
+        { "name": "numero_op", "type": "varchar(255)" },
+        { "name": "cantidad_planificada", "type": "int" },
+        { "name": "fecha_creacion", "type": "date" },
+        { "name": "fecha_prevista_envio_taller", "type": "date" },
+        { "name": "producto_referencia_id", "type": "bigint unsigned", "key": "fk", "references": "productos.id" },
+        { "name": "taller_id", "type": "bigint unsigned", "key": "fk", "references": "tallers.id" },
+        { "name": "user_id", "type": "bigint unsigned", "key": "fk", "references": "users.id" },
+        { "name": "observaciones", "type": "text" },
+        { "name": "created_at", "type": "timestamp" }
+      ]
+    },
+    {
+      "id": "orden_produccion_producto",
+      "label": "orden_produccion_producto",
+      "tag": "produccion",
+      "row": 1,
+      "col": 1,
+      "width": 310,
+      "attributes": [
+        { "name": "id", "type": "bigint unsigned", "key": "pk" },
+        { "name": "orden_produccion_id", "type": "bigint unsigned", "key": "fk", "references": "orden_produccions.id" },
+        { "name": "producto_id", "type": "bigint unsigned", "key": "fk", "references": "productos.id" },
+        { "name": "created_at", "type": "timestamp" }
+      ]
+    },
+    {
+      "id": "productos",
+      "label": "productos",
+      "tag": "produccion",
+      "row": 2,
+      "col": 1,
+      "width": 310,
+      "attributes": [
+        { "name": "id", "type": "bigint unsigned", "key": "pk" },
+        { "name": "Codigo_interno", "type": "varchar(255)" },
+        { "name": "ID_producto_Shopify", "type": "varchar(255)" },
+        { "name": "Titulo_Shopify", "type": "varchar(255)" },
+        { "name": "Familia_normalizada", "type": "varchar(255)" },
+        { "name": "Estado", "type": "varchar(255)" },
+        { "name": "precio_preventa", "type": "int" },
+        { "name": "created_at", "type": "timestamp" }
+      ]
+    },
+    {
+      "id": "kit_tallers",
+      "label": "kit_tallers",
+      "tag": "operaciones",
+      "row": 0,
+      "col": 2,
+      "width": 295,
+      "attributes": [
+        { "name": "id", "type": "bigint unsigned", "key": "pk" },
+        { "name": "orden_produccion_id", "type": "bigint unsigned", "key": "fk", "references": "orden_produccions.id" },
+        { "name": "material_id", "type": "bigint unsigned", "key": "fk", "references": "materials.id" },
+        { "name": "cantidad_requerida", "type": "decimal(10,2)" },
+        { "name": "cantidad_disponible", "type": "decimal(10,2)" },
+        { "name": "listo", "type": "tinyint(1)" },
+        { "name": "created_at", "type": "timestamp" }
+      ]
+    },
+    {
+      "id": "proceso_externos",
+      "label": "proceso_externos",
+      "tag": "operaciones",
+      "row": 1,
+      "col": 2,
+      "width": 295,
+      "attributes": [
+        { "name": "id", "type": "bigint unsigned", "key": "pk" },
+        { "name": "orden_produccion_id", "type": "bigint unsigned", "key": "fk", "references": "orden_produccions.id" },
+        { "name": "material_origen_id", "type": "bigint unsigned", "key": "fk", "references": "materials.id" },
+        { "name": "proveedor_destino_id", "type": "bigint unsigned", "key": "fk", "references": "proveedors.id" },
+        { "name": "servicio_proceso", "type": "varchar(255)" },
+        { "name": "cantidad_salida", "type": "int" },
+        { "name": "fecha_salida", "type": "datetime" },
+        { "name": "fecha_prevista_regreso", "type": "date" },
+        { "name": "created_at", "type": "timestamp" }
+      ]
+    },
+    {
+      "id": "ficha_tecnica_producto",
+      "label": "ficha_tecnica_producto",
+      "tag": "fichas",
+      "row": 0,
+      "col": 3,
+      "width": 310,
+      "attributes": [
+        { "name": "id", "type": "bigint unsigned", "key": "pk" },
+        { "name": "ficha_tecnica_id", "type": "bigint unsigned", "key": "fk", "references": "ficha_tecnicas.id" },
+        { "name": "producto_id", "type": "bigint unsigned", "key": ["fk", "uk"], "references": "productos.id" },
+        { "name": "created_at", "type": "timestamp" }
+      ]
+    },
+    {
+      "id": "ficha_tecnicas",
+      "label": "ficha_tecnicas",
+      "tag": "fichas",
+      "row": 1,
+      "col": 3,
+      "width": 310,
+      "attributes": [
+        { "name": "id", "type": "bigint unsigned", "key": "pk" },
+        { "name": "nombre", "type": "varchar(255)" },
+        { "name": "created_at", "type": "timestamp" }
+      ]
+    },
+    {
+      "id": "ficha_tecnica_materiales",
+      "label": "ficha_tecnica_materiales",
+      "tag": "fichas",
+      "row": 2,
+      "col": 3,
+      "width": 310,
+      "attributes": [
+        { "name": "id", "type": "bigint unsigned", "key": "pk" },
+        { "name": "ficha_tecnica_id", "type": "bigint unsigned", "key": "fk", "references": "ficha_tecnicas.id" },
+        { "name": "material_componente_id", "type": "bigint unsigned", "key": "fk", "references": "materials.id" },
+        { "name": "consumo_estandar", "type": "decimal(62,2)" },
+        { "name": "costo_asociado_teorico", "type": "decimal(62,2)" },
+        { "name": "unidad_medida", "type": "varchar(255)" },
+        { "name": "created_at", "type": "timestamp" }
+      ]
+    },
+    {
+      "id": "materials",
+      "label": "materials",
+      "tag": "inventario",
+      "row": 0,
+      "col": 4,
+      "width": 280,
+      "attributes": [
+        { "name": "id", "type": "bigint unsigned", "key": "pk" },
+        { "name": "codigo_material", "type": "varchar(255)" },
+        { "name": "nombre_base", "type": "varchar(255)" },
+        { "name": "categoria", "type": "varchar(255)" },
+        { "name": "unidad_inventario", "type": "varchar(255)" },
+        { "name": "existencia_actual", "type": "decimal(12,2)" },
+        { "name": "estado", "type": "varchar(255)" },
+        { "name": "created_at", "type": "timestamp" }
+      ]
+    },
+    {
+      "id": "material_movimientos",
+      "label": "material_movimientos",
+      "tag": "inventario",
+      "row": 1,
+      "col": 4,
+      "width": 280,
+      "attributes": [
+        { "name": "id", "type": "bigint unsigned", "key": "pk" },
+        { "name": "material_id", "type": "bigint unsigned", "key": "fk", "references": "materials.id" },
+        { "name": "tipo_movimiento", "type": "varchar(255)" },
+        { "name": "cantidad", "type": "decimal(12,2)" },
+        { "name": "existencia_anterior", "type": "decimal(12,2)" },
+        { "name": "existencia_nueva", "type": "decimal(12,2)" },
+        { "name": "motivo", "type": "varchar(255)" },
+        { "name": "created_at", "type": "timestamp" }
+      ]
+    }
+  ],
+  "relationships": [
+    {
+      "id": "op_user",
+      "from": "orden_produccions",
+      "to": "users",
+      "label": "creado por",
+      "fromCardinality": "many",
+      "toCardinality": "one"
+    },
+    {
+      "id": "op_taller",
+      "from": "orden_produccions",
+      "to": "tallers",
+      "label": "asignado a",
+      "fromCardinality": "many",
+      "toCardinality": "one"
+    },
+    {
+      "id": "op_producto_ref",
+      "from": "orden_produccions",
+      "to": "productos",
+      "label": "referencia",
+      "fromCardinality": "many",
+      "fromOptional": true,
+      "toCardinality": "one"
+    },
+    {
+      "id": "opp_op",
+      "from": "orden_produccion_producto",
+      "to": "orden_produccions",
+      "label": "pertenece a",
+      "fromCardinality": "many",
+      "toCardinality": "one"
+    },
+    {
+      "id": "opp_producto",
+      "from": "orden_produccion_producto",
+      "to": "productos",
+      "label": "incluye",
+      "fromCardinality": "many",
+      "toCardinality": "one"
+    },
+    {
+      "id": "kit_op",
+      "from": "kit_tallers",
+      "to": "orden_produccions",
+      "label": "requerido para",
+      "fromCardinality": "many",
+      "toCardinality": "one"
+    },
+    {
+      "id": "kit_material",
+      "from": "kit_tallers",
+      "to": "materials",
+      "label": "material kit",
+      "fromCardinality": "many",
+      "toCardinality": "one"
+    },
+    {
+      "id": "proceso_op",
+      "from": "proceso_externos",
+      "to": "orden_produccions",
+      "label": "origen",
+      "fromCardinality": "many",
+      "toCardinality": "one"
+    },
+    {
+      "id": "proceso_proveedor",
+      "from": "proceso_externos",
+      "to": "proveedors",
+      "label": "taller externo",
+      "fromCardinality": "many",
+      "toCardinality": "one"
+    },
+    {
+      "id": "proceso_material",
+      "from": "proceso_externos",
+      "to": "materials",
+      "label": "insumo",
+      "fromCardinality": "many",
+      "toCardinality": "one"
+    },
+    {
+      "id": "ftp_producto",
+      "from": "ficha_tecnica_producto",
+      "to": "productos",
+      "label": "especifica",
+      "fromCardinality": "one",
+      "toCardinality": "one"
+    },
+    {
+      "id": "ftp_ficha",
+      "from": "ficha_tecnica_producto",
+      "to": "ficha_tecnicas",
+      "label": "asigna ficha",
+      "fromCardinality": "many",
+      "toCardinality": "one"
+    },
+    {
+      "id": "ftm_ficha",
+      "from": "ficha_tecnica_materiales",
+      "to": "ficha_tecnicas",
+      "label": "receta BOM",
+      "fromCardinality": "many",
+      "toCardinality": "one"
+    },
+    {
+      "id": "ftm_material",
+      "from": "ficha_tecnica_materiales",
+      "to": "materials",
+      "label": "componente",
+      "fromCardinality": "many",
+      "toCardinality": "one"
+    },
+    {
+      "id": "mov_material",
+      "from": "material_movimientos",
+      "to": "materials",
+      "label": "kardex",
+      "fromCardinality": "many",
+      "toCardinality": "one"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Llaves y Cardinalidad",
+      "items": [
+        "Todas las tablas principales utilizan llaves primarias id bigint unsigned auto-incrementales.",
+        "Las tablas pivote orden_produccion_producto y ficha_tecnica_materiales manejan relaciones N:M.",
+        "ficha_tecnica_producto restringe producto_id con índice UNIQUE para garantizar relación 1:1 efectiva por producto."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Módulos y Dominios",
+      "items": [
+        "Producción: orden_produccions es la entidad central con enlaces a talleres, usuarios y productos.",
+        "Catálogo y Fichas (BOM): Define la lista de materiales y consumos estándar por prenda.",
+        "Inventario y Operaciones: Control de existencias (materials, material_movimientos), kit de taller y procesos externos con maquiladores."
+      ]
+    }
+  ]
+}

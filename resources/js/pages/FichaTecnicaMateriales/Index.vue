@@ -8,6 +8,7 @@ import SelectInput from '@/components/SelectInput.vue';
 import { reactive, watch } from 'vue';
 
 import DangerButton from '@/components/DangerButton.vue';
+import InfoButton from '@/components/InfoButton.vue';
 import pkg from 'lodash';
 
 import Pagination from '@/components/Pagination.vue';
@@ -16,10 +17,7 @@ import Create from '@/pages/FichaTecnicaMateriales/Create.vue';
 import Edit from '@/pages/FichaTecnicaMateriales/Edit.vue';
 import Delete from '@/pages/FichaTecnicaMateriales/Delete.vue';
 
-import Checkbox from '@/components/Checkbox.vue';
-import InfoButton from '@/components/InfoButton.vue';
-
-import { formatDate, zilef_nuber_format } from '@/global.ts';
+import { zilef_nuber_format } from '@/global.ts';
 
 const { _, debounce, pickBy } = pkg
 const props = defineProps({
@@ -33,7 +31,6 @@ const props = defineProps({
 
     numberPermissions: Number,
     losSelect: Object,
-    titulos: Array,
 })
 
 const defaultPerPage = [
@@ -52,8 +49,6 @@ const data = reactive({
         perPage: props.perPage,
     },
     FichaTecnicaMaterialeso: null as any,
-    selectedId: [] as number[],
-    multipleSelect: false,
     createOpen: false,
     editOpen: false,
     deleteOpen: false,
@@ -73,33 +68,6 @@ watch(() => _.cloneDeep(data.params), debounce(() => {
         preserveScroll: true,
     })
 }, 150))
-
-const selectAll = (event: any) => {
-    if (event.target.checked === false) {
-        data.selectedId = []
-    } else {
-        props.fromController?.data.forEach((FichaTecnicaMateriales: any) => {
-            data.selectedId.push(FichaTecnicaMateriales.id)
-        })
-    }
-}
-const select = () => data.multipleSelect = props.fromController?.data.length === data.selectedId.length;
-
-const titulos = [
-    { order: 'producto_referencia_id', label: 'producto_referencia_id', type: 'foreign' },
-    { order: 'material_componente_id', label: 'material_componente_id', type: 'foreign' },
-    { order: 'aporta', label: 'aporta', type: 'string' },
-    { order: 'estado_al_llegar_ensamble', label: 'estado_al_llegar_ensamble', type: 'string' },
-    { order: 'unidad_medida', label: 'unidad_medida', type: 'string' },
-    { order: 'consumo_estandar', label: 'consumo_estandar', type: 'number' },
-    { order: 'costo_asociado', label: 'costo_asociado', type: 'dinero' },
-    { order: 'fecha_inicio_vigencia', label: 'fecha_inicio_vigencia', type: 'date' },
-    { order: 'id', label: 'id', type: 'string' },
-    { order: 'proceso_previo', label: 'proceso_previo', type: 'string' },
-    { order: 'observaciones', label: 'observaciones', type: 'text' },
-    { order: 'fecha_fin_vigencia', label: 'fecha_fin_vigencia', type: 'date' },
-];
-
 </script>
 
 <template>
@@ -116,10 +84,10 @@ const titulos = [
                     </PrimaryButton>
 
                     <Create v-if="can(['create FichaTecnicaMateriales'])" :numberPermissions="props.numberPermissions"
-                        :titulos="titulos" :show="data.createOpen" @close="data.createOpen = false" :title="props.title"
+                        :show="data.createOpen" @close="data.createOpen = false" :title="props.title"
                         :losSelect="props.losSelect" />
 
-                    <Edit v-if="can(['update FichaTecnicaMateriales'])" :titulos="titulos" :numberPermissions="props.numberPermissions"
+                    <Edit v-if="can(['update FichaTecnicaMateriales'])" :numberPermissions="props.numberPermissions"
                         :show="data.editOpen" @close="data.editOpen = false" :FichaTecnicaMaterialesa="data.FichaTecnicaMaterialeso"
                         :title="props.title" :losSelect="props.losSelect" />
 
@@ -141,44 +109,37 @@ const titulos = [
                     <table v-if="props.total && props.total > 0" class="w-full">
                         <thead class="uppercase text-sm border-t border-gray-200 dark:border-gray-700">
                             <tr class="dark:bg-gray-900/50 text-left">
-                                <th class="px-2 py-4 text-center">
-                                    <Checkbox v-model:checked="data.multipleSelect" @change="selectAll" />
-                                </th>
                                 <th v-if="props.numberPermissions && props.numberPermissions > 1" class="px-2 py-4">
                                     Accion</th>
 
                                 <th class="px-2 py-4 text-center">#</th>
-                                <th v-for="titulo in titulos" :key="titulo.order" class="px-2 py-4 cursor-pointer"
-                                    v-on:click="order(titulo['order'])">
+                                <th class="px-2 py-4 cursor-pointer" v-on:click="order('nombre')">
                                     <div class="flex justify-between items-center">
-                                        <span>{{ lang().t('app.label.' + titulo['label']) }}</span>
+                                        <span>{{ lang().t('app.label.nombre') }}</span>
                                         <ChevronUpDownIcon class="w-4 h-4" />
                                     </div>
                                 </th>
+                                <th class="px-2 py-4">{{ lang().t('app.label.productos_nombres') }}</th>
+                                <th class="px-2 py-4 text-center">{{ lang().t('app.label.materiales_count') }}</th>
+                                <th class="px-2 py-4 text-right">{{ lang().t('app.label.valor_total_ficha') }}</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <tr v-for="(claseFromController, indexu) in props.fromController?.data" :key="indexu"
+                            <tr v-for="(ficha, indexu) in props.fromController?.data" :key="ficha.id"
                                 class="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-200/30 hover:dark:bg-gray-900/20">
 
-                                <td class="whitespace-nowrap py-4 px-2 sm:py-3 text-center">
-                                    <input
-                                        class="rounded dark:bg-gray-900 border-gray-300 dark:border-gray-700 text-primary dark:text-primary shadow-sm focus:ring-primary/80 dark:focus:ring-primary dark:focus:ring-offset-gray-800 dark:checked:bg-primary dark:checked:border-primary"
-                                        type="checkbox" @change="select" :value="claseFromController.id"
-                                        v-model="data.selectedId" />
-                                </td>
                                 <td v-if="props.numberPermissions && props.numberPermissions > 1"
                                     class="whitespace-nowrap py-4 w-12 px-2 sm:py-3">
                                     <div class="flex justify-center items-center">
                                         <div class="rounded-md overflow-hidden">
                                             <InfoButton v-show="can(['update FichaTecnicaMateriales'])" type="button"
-                                                @click="(data.editOpen = true), (data.FichaTecnicaMaterialeso = claseFromController)"
+                                                @click="(data.editOpen = true), (data.FichaTecnicaMaterialeso = ficha)"
                                                 class="px-2 py-1.5 rounded-none"
                                                 v-tooltip="lang().t('app.tooltip.edit')">
                                                 <PencilIcon class="w-4 h-4" />
                                             </InfoButton>
                                             <DangerButton v-show="can(['delete FichaTecnicaMateriales'])" type="button"
-                                                @click="(data.deleteOpen = true), (data.FichaTecnicaMaterialeso = claseFromController)"
+                                                @click="(data.deleteOpen = true), (data.FichaTecnicaMaterialeso = ficha)"
                                                 class="px-2 py-1.5 rounded-none"
                                                 v-tooltip="lang().t('app.tooltip.delete')">
                                                 <TrashIcon class="w-4 h-4" />
@@ -187,30 +148,22 @@ const titulos = [
                                     </div>
                                 </td>
                                 <td class="whitespace-nowrap py-4 px-2 sm:py-3 text-center">{{ ++indexu }}</td>
-                                <td v-for="titulo in titulos" :key="titulo.order"
-                                    class="whitespace-nowrap py-4 px-2 sm:py-3">
-                                    <span v-if="titulo['type'] === 'text' || titulo['type'] === 'string'"> {{
-                                        claseFromController[titulo['order']] }} </span>
-                                    <span v-if="titulo['type'] === 'number'"> {{
-                                        zilef_nuber_format(claseFromController[titulo['order']], 0, false) }} </span>
-                                    <span v-if="titulo['type'] === 'dinero'"> {{
-                                        zilef_nuber_format(claseFromController[titulo['order']], 0, true) }} </span>
-                                    <span v-if="titulo['type'] === 'date'"> {{
-                                        formatDate(claseFromController[titulo['order']], false) }} </span>
-                                    <span v-if="titulo['type'] === 'datetime'"> {{
-                                        formatDate(claseFromController[titulo['order']], true) }} </span>
-                                    <span v-if="titulo['type'] === 'foreign'">
-                                        {{ claseFromController?.[titulo?.['nameid']] ?? '' }}
-                                    </span>
+                                <td class="whitespace-nowrap py-4 px-2 sm:py-3">{{ ficha.nombre }}</td>
+                                <td class="py-4 px-2 sm:py-3">
+                                    <span v-if="ficha.productos_nombres">{{ ficha.productos_nombres }}</span>
+                                    <span v-else class="text-gray-400">—</span>
                                 </td>
-
+                                <td class="whitespace-nowrap py-4 px-2 sm:py-3 text-center">{{ ficha.materiales_count }}</td>
+                                <td class="whitespace-nowrap py-4 px-2 sm:py-3 text-right">
+                                    {{ zilef_nuber_format(ficha.valor_total_ficha, 0, true) }}
+                                </td>
                             </tr>
                             <tr class="border-t border-gray-600">
                                 <td v-if="props.numberPermissions && props.numberPermissions > 1"
                                     class="whitespace-nowrap py-4 w-12 px-2 sm:py-3 text-center"> -
                                 </td>
                                 <td class="whitespace-nowrap py-4 px-2 sm:py-3 text-center"> Total: </td>
-                                <td class="whitespace-nowrap py-4 px-2 sm:py-3 text-center">
+                                <td class="whitespace-nowrap py-4 px-2 sm:py-3 text-center" colspan="4">
                                     {{ props.total }}
                                 </td>
                             </tr>

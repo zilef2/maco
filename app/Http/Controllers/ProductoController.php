@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Producto;
+use App\Models\Distribucion_por_tallas;
 use App\helpers\Myhelp;
 use App\helpers\MyModels;
 use Illuminate\Database\Eloquent\Builder;
@@ -27,9 +28,8 @@ class ProductoController extends Controller {
 
     public function index(Request $request) {
         $numberPermissions = MyModels::getPermissionToNumber(Myhelp::EscribirEnLog($this, ' Productos '));
-        $Productos = $this->Filtros($request)->get();
-        $listasDesplegables = $this->listaDesplegableService->getOptionsByCategoriaGrouped($this->FromController);
-
+        $Productos = $this->Filtros($request)->with('distribucionesPorTallas')->get();
+        $listasDesplegables = array_change_key_case($this->listaDesplegableService->getOptionsByCategoriaGrouped('producto'), CASE_LOWER);
 
         $perPage = $request->has('perPage') ? $request->perPage : 10;
         return Inertia::render($this->FromController . '/Index', [
@@ -42,9 +42,12 @@ class ProductoController extends Controller {
             'numberPermissions' => $numberPermissions,
             // 'losSelect'         => $this->losSelect(Producto::class, ' Producto','proveeNombre'),
              'losSelect'         => [
-                'Categoria_original' => $listasDesplegables['Categoria_original'] ?? [],
-            ],
-	        'titulos'           => Producto::getFillableWithTypes(),
+                 'Categoria_original'  => $listasDesplegables['categoria_original'] ?? [],
+                 'Familia_normalizada' => $listasDesplegables['familia_normalizada'] ?? [],
+                 'Control_de_variante' => $listasDesplegables['control_de_variante'] ?? [],
+                 'Opciones'            => $listasDesplegables['opciones'] ?? [],
+             ],
+ 	        'titulos'           => Producto::getFillableWithTypes(),
 
         ]);
     }
@@ -149,6 +152,46 @@ class ProductoController extends Controller {
         DB::commit();
         Myhelp::EscribirEnLog($this, 'UPDATE:Productos EXITOSO', 'Producto id:' . $Producto->id . ' | ' . $Producto->nombre, false);
         return back()->with('success', __('app.label.updated_successfully2', ['nombre' => $Producto->nombre]));
+    }
+
+    /**
+     * Sincroniza la distribución por tallas (plantilla) de un producto vía pivote:
+     * actualiza las filas que traen id (solo talla y cantidad planificada),
+     * crea+vincula las nuevas y desvincula (sin borrar) las que ya no vienen.
+     */
+    public function syncDistribucion(Request $request, $id): RedirectResponse {
+        $permissions = Myhelp::EscribirEnLog($this, ' Begin SYNC-DISTRIBUCION:Productos');
+        DB::beginTransaction();
+
+        $Producto = Producto::findOrFail($id);
+        $conservados = [];
+        foreach ($request->input('distribucion_tallas', []) as $talla) {
+            if (!empty($talla['id'])) {
+                $distribucion = Distribucion_por_tallas::find($talla['id']);
+                if ($distribucion) {
+                    $distribucion->update([
+                        'talla' => $talla['talla'] ?? $distribucion->talla,
+                        'cantidad_planificada' => (int) ($talla['cantidad_planificada'] ?? 0),
+                    ]);
+                    $conservados[] = $distribucion->id;
+                }
+                continue;
+            }
+            if (empty($talla['talla']) && empty($talla['cantidad_planificada'])) {
+                continue;
+            }
+            $nueva = Distribucion_por_tallas::create([
+                'grupo' => null,
+                'talla' => $talla['talla'] ?? null,
+                'cantidad_planificada' => (int) ($talla['cantidad_planificada'] ?? 0),
+            ]);
+            $conservados[] = $nueva->id;
+        }
+        $Producto->distribucionesPorTallas()->sync($conservados);
+
+        DB::commit();
+        Myhelp::EscribirEnLog($this, 'SYNC-DISTRIBUCION:Productos EXITOSO', 'Producto id:' . $Producto->id . ' | ' . $Producto->Codigo_interno, false);
+        return back()->with('success', __('app.label.updated_successfully2', ['nombre' => $Producto->Codigo_interno]));
     }
 
     /**

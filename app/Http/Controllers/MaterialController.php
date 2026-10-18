@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\Material;
+use App\Models\Proveedor;
+use App\Services\ListaDesplegableService;
 use App\helpers\Myhelp;
 use App\helpers\MyModels;
 use Illuminate\Database\Eloquent\Builder;
@@ -10,6 +12,7 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -24,7 +27,7 @@ class MaterialController extends Controller {
 
 
     //<editor-fold desc="Construc | filtro and dependencia">
-    public function __construct() {
+    public function __construct(protected ListaDesplegableService $listaDesplegableService) {
 //        $this->middleware('permission:create Material', ['only' => ['create', 'store']]);
 //        $this->middleware('permission:read Material', ['only' => ['index', 'show']]);
 //        $this->middleware('permission:update Material', ['only' => ['edit', 'update']]);
@@ -35,6 +38,20 @@ class MaterialController extends Controller {
     public function index(Request $request) {
         $numberPermissions = MyModels::getPermissionToNumber(Myhelp::EscribirEnLog($this, ' Materials '));
         $Materials = $this->Filtros($request)->get();
+
+        $listasDesplegables = $this->listaDesplegableService->getOptionsByCategoriaGrouped('material');
+        $proveedores = Proveedor::all(['id', 'nombre'])
+            ->map(function ($proveedor) {
+                return [
+                    'id'     => $proveedor->id,
+                    'value'  => $proveedor->id,
+                    'nombre' => $proveedor->nombre,
+                    'label'  => $proveedor->nombre,
+                    'name'   => $proveedor->nombre,
+                    'title'  => $proveedor->nombre,
+                ];
+            });
+
 //        $losSelect = $this->Dependencias();
 
 
@@ -47,7 +64,12 @@ class MaterialController extends Controller {
             'filters' => $request->all(['search', 'field', 'order']),
             'perPage' => (int)$perPage,
             'numberPermissions' => $numberPermissions,
-            'losSelect'         => $this->losSelect(Material::class, ' Material','proveeNombre'),
+            'losSelect'         => [
+                'unidad_inventario'         => $listasDesplegables['unidad_inventario'] ?? [],
+                'categoria'                 => $listasDesplegables['categoria'] ?? [],
+                'variante_atributo_sugerido' => $listasDesplegables['variante_atributo_sugerido'] ?? $listasDesplegables['variante'] ?? [],
+                'proveedor_habitual'        => $proveedores,
+            ],
 	        'titulos'           => Material::getFillableWithTypes(),
 
         ]);
@@ -125,6 +147,7 @@ class MaterialController extends Controller {
         $this->registrarMovimientoCreacion($Material);
 
         DB::commit();
+        Cache::forget('op_selects');
         Myhelp::EscribirEnLog($this, 'STORE:Materials EXITOSO', 'Material id:' . $Material->id . ' | ' . $Material->nombre, false);
         return back()->with('success', __('app.label.created_successfully', ['name' => $Material->nombre]));
     }
@@ -155,10 +178,15 @@ class MaterialController extends Controller {
         $Material = Material::findOrFail($id);
         $existenciaAnterior = (float) ($Material->existencia_actual ?? 0);
 //        $request->merge(['no_nada_id' => $request->no_nada['id']]);
-        $Material->update($request->except(['codigo_material', 'existencia_actual']));
+        $datos = $request->except(['codigo_material', 'existencia_actual', 'motivo', 'alterar_existencia']);
+        if ($request->boolean('alterar_existencia') && $request->has('existencia_actual')) {
+            $datos['existencia_actual'] = (float) $request->input('existencia_actual');
+        }
+        $Material->update($datos);
         $this->registrarMovimientoActualizacion($Material, $existenciaAnterior, $request->input('motivo'));
 
         DB::commit();
+        Cache::forget('op_selects');
         Myhelp::EscribirEnLog($this, 'UPDATE:Materials EXITOSO', 'Material id:' . $Material->id . ' | ' . $Material->nombre, false);
         return back()->with('success', __('app.label.updated_successfully2', ['nombre' => $Material->nombre]));
     }
@@ -175,6 +203,7 @@ class MaterialController extends Controller {
         $Material = Material::find($Materialid);
         $elnombre = $Material->nombre;
         $Material->delete();
+        Cache::forget('op_selects');
         Myhelp::EscribirEnLog($this, 'DELETE:Materials', 'Material id:' . $Material->id . ' | ' . $Material->nombre . ' borrado', false);
         return back()->with('success', __('app.label.deleted_successfully', ['name' => $elnombre]));
     }
@@ -182,6 +211,7 @@ class MaterialController extends Controller {
     public function destroyBulk(Request $request) {
         $Material = Material::whereIn('id', $request->id);
         $Material->delete();
+        Cache::forget('op_selects');
         return back()->with('success', __('app.label.deleted_successfully', ['name' => count($request->id) . ' ' . __('app.label.user')]));
     }
     //FIN : STORE - UPDATE - DELETE
@@ -358,14 +388,14 @@ class MaterialController extends Controller {
         try {
             foreach ($registros as $registro) {
                 if (isset($existentes[$registro['codigo_material']])) {
-                    Material::where('codigo_material', $registro['codigo_material'])->update($registro);
-                    $actualizados++;
+                    Material::where('codigo_material', $registro['codigo_material'])->update($registro);                    $actualizados++;
                 } else {
                     Material::create($registro);
                     $creados++;
                 }
             }
             DB::commit();
+            Cache::forget('op_selects');
         } catch (\Throwable $e) {
             DB::rollBack();
             Myhelp::EscribirEnLog($this, 'uploadExcel ERROR inserción', $e->getMessage());

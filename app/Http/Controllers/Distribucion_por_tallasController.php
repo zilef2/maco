@@ -33,13 +33,13 @@ class Distribucion_por_tallasController extends Controller {
         $Distribucion_por_tallass = $this->Filtros($request)->get();
 //        $losSelect = $this->Dependencias();
 
-
+        $titulo = str_replace('_', ' ', $this->FromController);
         $perPage = $request->has('perPage') ? $request->perPage : 10;
         return Inertia::render($this->FromController . '/Index', [
             'fromController' => $this->PerPageAndPaginate($request, $Distribucion_por_tallass),
             'total' => $Distribucion_por_tallass->count(),
-            'breadcrumbs' => [['label' => __('app.label.' . $this->FromController), 'href' => route($this->FromController . '.index')]],
-            'title' => __('app.label.' . $this->FromController),
+            'breadcrumbs' => [['label' => __('app.label.' . $titulo), 'href' => route($this->FromController . '.index')]],
+            'title' => __($titulo),
             'filters' => $request->all(['search', 'field', 'order']),
             'perPage' => (int)$perPage,
             'numberPermissions' => $numberPermissions,

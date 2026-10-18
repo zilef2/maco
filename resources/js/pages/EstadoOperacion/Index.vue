@@ -105,12 +105,12 @@ const titulos = [
         <div class="space-y-4">
             <div class="px-4 sm:px-0">
                 <div class="rounded-lg overflow-hidden w-fit">
-                    <PrimaryButton class="m-1" @click="data.createOpen = true" v-if="can(['create EstadoOperacion'])">
+                    <PrimaryButton class="m-1 align-top" @click="data.createOpen = true" v-if="can(['create EstadoOperacion'])">
                         {{ lang().t('app.button.add') }}
                     </PrimaryButton>
 
                     <PrimaryButton v-if="can(['create EstadoOperacion'])"
-                        class="m-1 bg-emerald-600 hover:bg-emerald-700 focus:ring-emerald-500"
+                        class="m-1 align-top bg-emerald-600 hover:bg-emerald-700 focus:ring-emerald-500"
                         @click="data.importOpen = true">
                         <ArrowUpTrayIcon class="w-4 h-4 mr-1 inline" />
                         Cargar Excel

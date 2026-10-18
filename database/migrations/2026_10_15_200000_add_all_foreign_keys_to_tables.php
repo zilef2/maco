@@ -9,7 +9,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('orden_produccions', function (Blueprint $table) {
-            $table->foreignId('producto_referencia_id')->after('numero_op')->constrained('productos');
+            // la UI de OP selecciona productos por pivote; la referencia es opcional
+            $table->foreignId('producto_referencia_id')->nullable()->after('numero_op')->constrained('productos');
             $table->foreignId('taller_id')->after('fecha_prevista_envio_taller')->constrained('tallers');
             $table->foreignId('estado_op_id')->after('taller_id')->constrained('estado_operacions');
             $table->foreignId('user_id')->after('estado_op_id')->constrained('users');
@@ -41,11 +42,6 @@ return new class extends Migration
             $table->foreignId('responsable_id')->after('orden_produccion_id')->constrained('users');
         });
 
-        Schema::table('ficha_tecnica_materiales', function (Blueprint $table) {
-            $table->foreignId('producto_referencia_id')->after('id')->constrained('productos');
-            $table->foreignId('material_componente_id')->after('producto_referencia_id')->constrained('materials');
-        });
-
         Schema::table('pendientes_produccions', function (Blueprint $table) {
             $table->foreignId('orden_produccion_id')->after('id')->constrained('orden_produccions');
         });
@@ -55,11 +51,6 @@ return new class extends Migration
     {
         Schema::table('pendientes_produccions', function (Blueprint $table) {
             $table->dropConstrainedForeignId('orden_produccion_id');
-        });
-
-        Schema::table('ficha_tecnica_materiales', function (Blueprint $table) {
-            $table->dropConstrainedForeignId('producto_referencia_id');
-            $table->dropConstrainedForeignId('material_componente_id');
         });
 
         Schema::table('cierre_orden_produccions', function (Blueprint $table) {

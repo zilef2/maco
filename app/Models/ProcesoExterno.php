@@ -13,11 +13,24 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 {
     /** @use HasFactory<\Database\Factories\ProcesoExternoFactory> */
     use HasFactory;
-    protected $fillable = ['orden_produccion_id', 'etapa_componente', 'material_origen_id', 'cantidad_salida', 'unidad_medida', 'bodega_origen', 'proveedor_destino_id', 'servicio_proceso', 'fecha_salida', 'fecha_prevista_regreso', 'resultado_observaciones', 'fecha_regreso_real'];
+    protected $fillable = [
+        'orden_produccion_id',
+        'etapa_componente',
+        'material_origen_id',
+        'cantidad_salida',
+        'unidad_medida',
+        'proveedor_destino_id',
+        'bodega_origen',
+        'servicio_proceso',
+         'fecha_salida',
+         'fecha_prevista_regreso',
+         'resultado_observaciones',
+         'fecha_regreso_real'
+    ];
 
     public function materialOrigen(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
-        return $this->belongsTo(materias_primas::class, 'material_origen_id');
+        return $this->belongsTo(Material::class, 'material_origen_id');
     }
 
     public function ordenProduccion(): \Illuminate\Database\Eloquent\Relations\BelongsTo

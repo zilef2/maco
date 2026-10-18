@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "finalize",
+  "status": "fail",
+  "type": "erd",
+  "quality": "standard",
+  "specification": {
+    "path": "c:\\laragon\\www\\maco\\docs\\architecture\\maco-db.erd.json",
+    "sha256": "aeb32991c12ee218cfae4bdfb89b7104d62850d3217107a9bdb8a92f2e8e5f41",
+    "bytes": 13479
+  },
+  "artifact": {
+    "path": "c:\\laragon\\www\\maco\\docs\\architecture\\erd-maco.html",
+    "sha256": "8c3b892e6c10150fc9511a6b9a9265212ceeca99ba260eca5485dd23c3392cda",
+    "bytes": 888567
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "fail"
+  },
+  "failedStage": "browser-check",
+  "diagnostics": [
+    {
+      "code": "viewer/projected-text-readability",
+      "severity": "error",
+      "message": "Projected context text is below the readability floor at 1440x900.",
+      "subject": {
+        "artifact": "c:\\laragon\\www\\maco\\docs\\architecture\\erd-maco.html",
+        "viewport": {
+          "width": 1440,
+          "height": 900,
+          "theme": "light"
+        }
+      },
+      "evidence": {
+        "text": "PK",
+        "detail": "context",
+        "owner": {
+          "kind": "node",
+          "id": "users"
+        },
+        "minimumProjectedNodeTextPx": 5.104930467762326,
+        "minimumRequiredNodeTextPx": 6
+      },
+      "supportedFixes": [
+        "increase projected node text to at least 6px at 1440x900, then rerun browser-check"
+      ]
+    },
+    {
+      "code": "viewer/projected-text-readability",
+      "severity": "error",
+      "message": "Projected context text is below the readability floor at 1600x1000.",
+      "subject": {
+        "artifact": "c:\\laragon\\www\\maco\\docs\\architecture\\erd-maco.html",
+        "viewport": {
+          "width": 1600,
+          "height": 1000,
+          "theme": "light"
+        }
+      },
+      "evidence": {
+        "text": "PK",
+        "detail": "context",
+        "owner": {
+          "kind": "node",
+          "id": "users"
+        },
+        "minimumProjectedNodeTextPx": 5.711757269279393,
+        "minimumRequiredNodeTextPx": 6
+      },
+      "supportedFixes": [
+        "increase projected node text to at least 6px at 1600x1000, then rerun browser-check"
+      ]
+    }
+  ],
+  "diagnosticSummary": {
+    "total": 2,
+    "shown": 2,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "C:\\laragon\\www\\maco\\docs\\architecture\\erd-maco.finalize.json",
+    "summaryReceipt": "C:\\laragon\\www\\maco\\docs\\architecture\\erd-maco.finalize-summary.json",
+    "browserCheckReceipt": "c:\\laragon\\www\\maco\\docs\\architecture\\erd-maco.browser-check.json"
+  },
+  "update": {
+    "status": "current",
+    "installedVersion": "3.1.0",
+    "availableVersion": "3.1.0",
+    "releaseNotes": null,
+    "checkedAt": "2026-10-17T01:06:14.462Z",
+    "source": "cache",
+    "noticeRequired": false,
+    "noticeText": null
+  },
+  "visualReview": "not-requested",
+  "durationMs": 8598
+}

@@ -2,52 +2,36 @@
 
 namespace App\Models;
 
-use Illuminate\Support\Facades\DB;
-
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-use Illuminate\Database\Eloquent\SoftDeletes;
-
-    class FichaTecnicaMateriales extends Model
+class FichaTecnicaMateriales extends Model
 {
     /** @use HasFactory<\Database\Factories\FichaTecnicaMaterialesFactory> */
     use HasFactory;
-    protected $fillable = ['producto_referencia_id', 'material_componente_id', 'aporta', 'estado_al_llegar_ensamble', 'unidad_medida', 'consumo_estandar', 'costo_asociado', 'fecha_inicio_vigencia', 'id', 'proceso_previo', 'observaciones', 'fecha_fin_vigencia'];
 
+    protected $fillable = [
+        'ficha_tecnica_id',
+        'material_componente_id',
+        'aporta',
+        'estado_al_llegar_ensamble',
+        'unidad_medida',
+        'consumo_estandar',
+        'costo_asociado_teorico',
+        'costo_asociado_real',
+        'fecha_inicio_vigencia',
+        'proceso_previo',
+        'observaciones',
+        'fecha_fin_vigencia',
+    ];
 
-
-    public static function getFillableWithTypes(): array
+    public function fichaTecnica()
     {
-        $table = (new static)->getTable();
-        $columns = DB::select("SHOW COLUMNS FROM {$table}");
+        return $this->belongsTo(FichaTecnica::class);
+    }
 
-        $fillable = (new static)->getFillable();
-        $result = [];
-
-        foreach ($columns as $column) {
-            if (! in_array($column->Field, $fillable) || $column->Field === 'id') {
-                continue;
-            }
-
-            $type = 'text';
-            if (str_contains($column->Type, 'foreign') || str_ends_with($column->Field, '_id')) {
-                $type = 'foreign';
-            } elseif (str_contains($column->Type, 'int')) {
-                $type = 'integer';
-            } elseif (str_contains($column->Type, 'decimal') || str_contains($column->Type, 'float')) {
-                $type = 'dinero';
-            } elseif (str_contains($column->Type, 'date') || str_contains($column->Type, 'datetime')) {
-                $type = 'date';
-            }
-
-            $result[] = [
-                'order' => $column->Field,
-                'label' => $column->Field,
-                'type' => $type,
-            ];
-        }
-
-        return $result;
+    public function material()
+    {
+        return $this->belongsTo(Material::class, 'material_componente_id');
     }
 }

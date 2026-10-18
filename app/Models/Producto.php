@@ -40,6 +40,16 @@ class Producto extends Model
         return $this->belongsToMany(OrdenProduccion::class, 'orden_produccion_producto')->withTimestamps();
     }
 
+    public function distribucionesPorTallas()
+    {
+        return $this->belongsToMany(Distribucion_por_tallas::class, 'distribucion_producto', 'producto_id', 'distribucion_por_talla_id')->withTimestamps();
+    }
+
+    public function fichaTecnica()
+    {
+        return $this->belongsToMany(FichaTecnica::class, 'ficha_tecnica_producto', 'producto_id', 'ficha_tecnica_id')->withTimestamps();
+    }
+
     public static function getFillableWithTypes(): array
     {
         $table = (new static)->getTable();

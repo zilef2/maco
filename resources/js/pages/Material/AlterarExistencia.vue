@@ -21,6 +21,7 @@ const emit = defineEmits(['close']);
 const form = useForm({
     existencia_actual: 0 as number,
     motivo: '',
+    alterar_existencia: 1,
 });
 
 watchEffect(() => {

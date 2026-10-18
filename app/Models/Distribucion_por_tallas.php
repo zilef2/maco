@@ -20,6 +20,11 @@ use Illuminate\Database\Eloquent\SoftDeletes;
         return $this->belongsToMany(OrdenProduccion::class, 'distribucion_orden_produccion', 'distribucion_por_talla_id', 'orden_produccion_id')->withTimestamps();
     }
 
+    public function productos()
+    {
+        return $this->belongsToMany(Producto::class, 'distribucion_producto', 'distribucion_por_talla_id', 'producto_id')->withTimestamps();
+    }
+
 
 
     public static function getFillableWithTypes(): array

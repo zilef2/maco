@@ -5,9 +5,9 @@ import Modal from '@/components/Modal.vue';
 import PrimaryButton from '@/components/PrimaryButton.vue';
 import SecondaryButton from '@/components/SecondaryButton.vue';
 import TextInput from '@/components/TextInput.vue';
-import { ClipboardDocumentListIcon, SwatchIcon } from '@heroicons/vue/24/solid';
-import { useForm } from '@inertiajs/vue3';
-import { onMounted, watchEffect } from 'vue';
+import { ClipboardDocumentListIcon, ExclamationTriangleIcon, SwatchIcon } from '@heroicons/vue/24/solid';
+import { useForm} from '@inertiajs/vue3';
+import { onMounted,computed, watchEffect } from 'vue';
 import '@vuepic/vue-datepicker/dist/main.css'
 import vSelect from "vue-select";
 import "vue-select/dist/vue-select.css";
@@ -44,9 +44,9 @@ onMounted(() => {
         form.maneja_color = false;
         form.maneja_talla = false;
         form.maneja_otra_variante = false;
-        form.estado = 'activo';
-        form.variante_atributo_sugerido = 'unidad genenerica ' + (valueRAn);
-        form.proveedor_habitual = 'unidad genenerica ' + (valueRAn);
+        form.estado = 1;
+        form.variante_atributo_sugerido = props.losSelect?.variante_atributo_sugerido?.[0]?.nombre ?? ('variante genenerica ' + (valueRAn));
+        form.proveedor_habitual = props.losSelect?.proveedor_habitual?.[0]?.nombre ?? ('proveedor genenerico ' + (valueRAn));
         form.observaciones = 'observaciones genenericas ' + (valueRAn);
 
         // form.hora_inicial = '0'+valueRAn+':00'//temp
@@ -68,6 +68,8 @@ props.titulos.forEach((names: any) => {
 const camposNormales = printForm.filter((campo) => campo.type !== 'boolean');
 const camposBooleanos = printForm.filter((campo) => campo.type === 'boolean');
 
+const hayProveedores = computed(() => (props.losSelect?.proveedor_habitual?.length || 0) > 0);
+
 const toggleBoolean = (campo: string) => {
     form[campo] = !form[campo];
 };
@@ -75,7 +77,9 @@ const toggleBoolean = (campo: string) => {
 function ValidarVacios() {
     let result = true
     printForm.forEach(element => {
-        if (!form[element.idd]) {
+        const valor = form[element.idd];
+        if (typeof valor === 'boolean') return; // los campos sí/no (maneja_color, etc.): false es válido
+        if (!valor) {
             console.log("=>(Create.vue:70) falta esto papa element.idd", element.idd);
             result = false
             return result
@@ -135,7 +139,77 @@ watchEffect(() => {
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
                             <div v-for="(atributosform, indice) in camposNormales" :key="indice">
 
-                                <div v-if="atributosform.type === 'foreign'" id="SelectVue">
+                                <!-- estado: toggle sí/no (se guarda 1/0) -->
+                                <div v-if="atributosform.idd === 'estado'" class="md:col-span-2">
+                                    <div role="switch" tabindex="0"
+                                        :aria-checked="form.estado == 1"
+                                        @click="form.estado = form.estado == 1 ? 0 : 1"
+                                        @keydown.space.prevent="form.estado = form.estado == 1 ? 0 : 1"
+                                        class="flex items-center justify-between gap-4 px-4 py-3 rounded-xl border cursor-pointer transition-colors"
+                                        :class="form.estado == 1
+                                            ? 'border-emerald-300 dark:border-emerald-700 bg-emerald-50/70 dark:bg-emerald-900/20'
+                                            : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/40 hover:border-gray-300 dark:hover:border-gray-600'">
+                                        <div>
+                                            <span class="block text-sm font-medium text-gray-800 dark:text-gray-200">
+                                                {{ lang().t('app.label')[atributosform.label] || atributosform.label }}
+                                            </span>
+                                            <span class="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                                {{ form.estado == 1 ? 'Sí — activo (se guarda como 1)' : 'No — inactivo (se guarda como 0)' }}
+                                            </span>
+                                        </div>
+                                        <span class="relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors duration-200"
+                                            :class="form.estado == 1 ? 'bg-emerald-600' : 'bg-gray-300 dark:bg-gray-600'">
+                                            <span class="inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform duration-200"
+                                                :class="form.estado == 1 ? 'translate-x-6' : 'translate-x-1'" />
+                                        </span>
+                                    </div>
+                                    <InputError class="mt-2" :message="form.errors.estado" />
+                                </div>
+
+                                <!-- proveedor habitual: seleccionable de la entidad Proveedor -->
+                                <div v-else-if="atributosform.idd === 'proveedor_habitual'">
+                                    <InputLabel :for="atributosform.label"
+                                        :value="lang().t('app.label')[atributosform.label] || atributosform.label" />
+                                    <v-select v-if="hayProveedores"
+                                        :id="atributosform.idd"
+                                        class="mt-1 block w-full"
+                                        :options="props.losSelect?.proveedor_habitual || []"
+                                        label="nombre"
+                                        :reduce="(item: any) => item.nombre"
+                                        v-model="form[atributosform.idd]"
+                                        :placeholder="atributosform.label"
+                                    />
+                                    <div v-else
+                                        class="mt-1 flex items-start gap-2 rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 px-3 py-2">
+                                        <ExclamationTriangleIcon class="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                                        <p class="text-xs text-amber-700 dark:text-amber-300">
+                                            No hay proveedores registrados. Registre al menos un proveedor antes de crear materiales.
+                                        </p>
+                                    </div>
+                                    <InputError class="mt-2" :message="form.errors[atributosform.idd]" />
+                                </div>
+
+                                <!-- selects desde parámetros (categoría: material) -->
+                                <div v-else-if="['unidad_inventario', 'categoria', 'variante_atributo_sugerido'].includes(atributosform.idd)">
+                                    <InputLabel :for="atributosform.label"
+                                        :value="lang().t('app.label')[atributosform.label] || atributosform.label" />
+                                    <v-select v-if="props.losSelect?.[atributosform.idd]?.length"
+                                        :id="atributosform.idd"
+                                        class="mt-1 block w-full"
+                                        :options="props.losSelect[atributosform.idd]"
+                                        label="nombre"
+                                        :reduce="(item: any) => item.nombre"
+                                        v-model="form[atributosform.idd]"
+                                        :placeholder="atributosform.label"
+                                    />
+                                    <p class="mt-1 text-xs text-red-300 dark:text-red-400" v-else>Falta configurar la subcategoria: {{ atributosform.label }}</p>
+                                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                        Se carga desde parámetros (categoría: material).
+                                    </p>
+                                    <InputError class="mt-2" :message="form.errors[atributosform.idd]" />
+                                </div>
+
+                                <div v-else-if="atributosform.type === 'foreign'" id="SelectVue">
                                     <label name="labelSelectVue"> {{ atributosform.label }} </label>
                                     <v-select :options="props.losSelect[0]" v-model="form[atributosform.idd]"
                                         :reduce="element => element.value" label="name"></v-select>
@@ -208,8 +282,8 @@ watchEffect(() => {
                     <SecondaryButton :disabled="form.processing" @click="emit('close')"> {{ lang().t('app.button.close')
                         }}
                     </SecondaryButton>
-                    <PrimaryButton class="ml-3" :class="{ 'opacity-25': form.processing }" :disabled="form.processing"
-                        @click="create">
+                    <PrimaryButton class="ml-3" :class="{ 'opacity-25': form.processing || !hayProveedores }"
+                        :disabled="form.processing || !hayProveedores" @click="create">
                         {{ lang().t('app.button.add') }} {{ form.processing ? '...' : '' }}
                     </PrimaryButton>
                 </div>

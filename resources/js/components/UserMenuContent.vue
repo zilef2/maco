@@ -3,7 +3,7 @@ import UserInfo from '@/components/UserInfo.vue';
 import { DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import type { User } from '@/types';
 import { Link } from '@inertiajs/vue3';
-import { LogOut, Settings } from 'lucide-vue-next';
+import { KeyRound, LogOut, Settings, Shield, SlidersHorizontal, Users } from 'lucide-vue-next';
 
 interface Props {
     user: User;
@@ -21,6 +21,12 @@ defineProps<Props>();
     <DropdownMenuSeparator />
     <DropdownMenuGroup>
         <DropdownMenuItem :as-child="true">
+            <Link class="block w-full" :href="route('user.index')" as="button">
+                <Users class="mr-2 h-4 w-4" />
+                Personas
+            </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem :as-child="true">
             <Link class="block w-full" :href="route('profile.edit')" as="button">
                 <Settings class="mr-2 h-4 w-4" />
                 Ajustes
@@ -28,19 +34,19 @@ defineProps<Props>();
         </DropdownMenuItem>
         <DropdownMenuItem :as-child="true" v-if="can(['issuperadmin'])">
             <Link class="block w-full" method="get" :href="route('Parametros.index')" as="button">
-                <Settings class="mr-2 h-4 w-4" />
+                <SlidersHorizontal class="mr-2 h-4 w-4" />
                 Parametros
             </Link>
         </DropdownMenuItem>
         <DropdownMenuItem :as-child="true" v-if="can(['issuperadmin'])">
             <Link class="block w-full" method="get" href="/role" as="button">
-                <Settings class="mr-2 h-4 w-4" />
+                <Shield class="mr-2 h-4 w-4" />
                 Roles
             </Link>
         </DropdownMenuItem>
         <DropdownMenuItem :as-child="true" v-if="can(['issuperadmin'])">
             <Link class="block w-full" method="get" href="/permission" as="button">
-                <Settings class="mr-2 h-4 w-4" />
+                <KeyRound class="mr-2 h-4 w-4" />
                 Permisos
             </Link>
         </DropdownMenuItem>

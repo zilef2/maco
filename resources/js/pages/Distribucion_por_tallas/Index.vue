@@ -103,9 +103,9 @@ const titulos = [
         <div class="space-y-4">
             <div class="px-4 sm:px-0">
                 <div class="rounded-lg overflow-hidden w-fit">
-                    <PrimaryButton class="m-1" @click="data.createOpen = true" v-if="can(['create Distribucion_por_tallas'])">
+                    <!-- <PrimaryButton class="m-1" @click="data.createOpen = true" v-if="can(['create Distribucion_por_tallas'])">
                         {{ lang().t('app.button.add') }}
-                    </PrimaryButton>
+                    </PrimaryButton> -->
 
                     <Create v-if="can(['create Distribucion_por_tallas'])" :numberPermissions="props.numberPermissions"
                         :titulos="titulos" :show="data.createOpen" @close="data.createOpen = false" :title="props.title"

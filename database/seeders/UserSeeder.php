@@ -22,7 +22,7 @@ class UserSeeder extends Seeder
         $superadmin = User::create([
             'name' => 'Superadmin',
             'email' => $theEmail,
-            'password' => bcrypt($genericPas.'0#*'.$genericPas), // 123_deeradmin00.+-*123_de
+            'password' => bcrypt($genericPas.'0#*'.$genericPas), // 123_deeradmin00.+-*123_de  
             'email_verified_at' => date('Y-m-d H:i'),
             'sexo' => $sexos[0],
 

@@ -51,7 +51,7 @@ watch(
 
 <template>
     <section class="space-y-6">
-        <Modal :show="props.show" @close="emit('close')" :maxWidth="'2xl'">
+        <Modal :show="props.show" @close="emit('close')" :maxWidth="'xl3'">
             <div class="p-6">
                 <div class="flex justify-between items-start border-b border-gray-200 dark:border-gray-700 pb-3 mb-4">
                     <div>
@@ -71,24 +71,31 @@ watch(
                 </div>
 
                 <div v-if="state.loading" class="py-12 text-center text-gray-500 dark:text-gray-400">
-                    <svg class="animate-spin h-8 w-8 mx-auto text-primary mb-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    <svg class="animate-spin h-8 w-8 mx-auto text-primary mb-3" xmlns="http://www.w3.org/2000/svg"
+                        fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4">
+                        </circle>
+                        <path class="opacity-75" fill="currentColor"
+                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z">
+                        </path>
                     </svg>
                     Cargando histórico de movimientos...
                 </div>
 
-                <div v-else-if="state.error" class="p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm">
+                <div v-else-if="state.error"
+                    class="p-4 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-lg text-sm">
                     {{ state.error }}
                 </div>
 
-                <div v-else-if="state.movimientos.length === 0" class="py-8 text-center text-gray-500 dark:text-gray-400 text-sm">
+                <div v-else-if="state.movimientos.length === 0"
+                    class="py-8 text-center text-gray-500 dark:text-gray-400 text-sm">
                     No se registran movimientos históricos para este material.
                 </div>
 
                 <div v-else class="overflow-x-auto max-h-96 scrollbar-table">
                     <table class="w-full text-sm text-left">
-                        <thead class="text-xs uppercase bg-gray-50 dark:bg-gray-700/50 text-gray-600 dark:text-gray-300 border-b dark:border-gray-700 sticky top-0">
+                        <thead
+                            class="text-xs uppercase bg-gray-50 dark:bg-gray-700/50 text-gray-600 dark:text-gray-300 border-b dark:border-gray-700 sticky top-0">
                             <tr>
                                 <th class="px-3 py-2.5">Fecha</th>
                                 <th class="px-3 py-2.5">Tipo</th>
@@ -99,50 +106,44 @@ watch(
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-100 dark:divide-gray-700">
-                            <tr
-                                v-for="mov in state.movimientos"
-                                :key="mov.id"
-                                class="hover:bg-gray-50 dark:hover:bg-gray-700/30"
-                            >
+                            <tr v-for="mov in state.movimientos" :key="mov.id"
+                                class="hover:bg-gray-50 dark:hover:bg-gray-700/30">
                                 <td class="px-3 py-2.5 whitespace-nowrap text-xs text-gray-600 dark:text-gray-400">
                                     {{ formatDate(mov.created_at, 'conLaHora') }}
                                 </td>
                                 <td class="px-3 py-2.5 whitespace-nowrap">
-                                    <span
-                                        class="px-2 py-0.5 text-xs font-semibold rounded-full capitalize"
-                                        :class="{
-                                            'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300': mov.tipo_movimiento === 'entrada' || (Number(mov.existencia_nueva) > Number(mov.existencia_anterior) && mov.tipo_movimiento !== 'salida'),
-                                            'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300': mov.tipo_movimiento === 'salida' || (Number(mov.existencia_nueva) < Number(mov.existencia_anterior) && mov.tipo_movimiento !== 'entrada'),
-                                            'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300': mov.tipo_movimiento === 'inicial',
-                                            'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300': mov.tipo_movimiento === 'ajuste',
-                                        }"
-                                    >
+                                    <span class="px-2 py-0.5 text-xs font-semibold rounded-full capitalize" :class="{
+                                        'bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-300': mov.tipo_movimiento === 'entrada' || (Number(mov.existencia_nueva) > Number(mov.existencia_anterior) && mov.tipo_movimiento !== 'salida'),
+                                        'bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300': mov.tipo_movimiento === 'salida' || (Number(mov.existencia_nueva) < Number(mov.existencia_anterior) && mov.tipo_movimiento !== 'entrada'),
+                                        'bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300': mov.tipo_movimiento === 'inicial',
+                                        'bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300': mov.tipo_movimiento === 'ajuste',
+                                    }">
                                         {{ mov.tipo_movimiento }}
                                     </span>
                                 </td>
                                 <td class="px-3 py-2.5 whitespace-nowrap text-center font-medium">
-                                    <span
-                                        v-if="Number(mov.existencia_nueva) > Number(mov.existencia_anterior)"
-                                        class="text-green-600 dark:text-green-400 font-semibold"
-                                    >
+                                    <span v-if="Number(mov.existencia_nueva) > Number(mov.existencia_anterior)"
+                                        class="text-green-600 dark:text-green-400 font-semibold">
                                         +{{ Number(mov.cantidad) }} (Aumentó)
                                     </span>
-                                    <span
-                                        v-else-if="Number(mov.existencia_nueva) < Number(mov.existencia_anterior)"
-                                        class="text-red-600 dark:text-red-400 font-semibold"
-                                    >
+                                    <span v-else-if="Number(mov.existencia_nueva) < Number(mov.existencia_anterior)"
+                                        class="text-red-600 dark:text-red-400 font-semibold">
                                         -{{ Number(mov.cantidad) }} (Disminuyó)
                                     </span>
                                     <span v-else class="text-gray-500 dark:text-gray-400">
                                         {{ Number(mov.cantidad) }}
                                     </span>
                                 </td>
-                                <td class="px-3 py-2.5 whitespace-nowrap text-center text-xs text-gray-600 dark:text-gray-300">
-                                    <span class="text-gray-400 dark:text-gray-500">{{ Number(mov.existencia_anterior) }}</span>
+                                <td
+                                    class="px-3 py-2.5 whitespace-nowrap text-center text-xs text-gray-600 dark:text-gray-300">
+                                    <span class="text-gray-400 dark:text-gray-500">{{ Number(mov.existencia_anterior)
+                                        }}</span>
                                     <span class="mx-1 font-bold">→</span>
-                                    <span class="font-semibold text-gray-900 dark:text-gray-100">{{ Number(mov.existencia_nueva) }}</span>
+                                    <span class="font-semibold text-gray-900 dark:text-gray-100">{{
+                                        Number(mov.existencia_nueva) }}</span>
                                 </td>
-                                <td class="px-3 py-2.5 text-xs text-gray-700 dark:text-gray-300 max-w-xs truncate" :title="mov.motivo || ''">
+                                <td class="px-3 py-2.5 text-xs text-gray-700 dark:text-gray-300 max-w-xs truncate"
+                                    :title="mov.motivo || ''">
                                     {{ mov.motivo || '-' }}
                                 </td>
                                 <td class="px-3 py-2.5 whitespace-nowrap text-xs text-gray-500 dark:text-gray-400">

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "b2fd97b6-829f-4494-a9b2-2f8a1c0d6b33",
+  "status": "current",
+  "command": "deliver",
+  "type": "erd",
+  "input": "c:\\laragon\\www\\maco\\docs\\architecture\\maco-db.erd.json",
+  "output": "C:\\laragon\\www\\maco\\docs\\architecture\\erd-maco.html",
+  "specification": {
+    "sha256": "9b6167e6a452c22b9796bc0efda51f213e0ae3f63c162fb56a8ac638437d3e4b",
+    "bytes": 13484
+  },
+  "artifact": {
+    "sha256": "25f2d8b9e8830247d848f3e0347fe446691cb7740bc6039b8da9049ff47e18ba",
+    "bytes": 887771
+  }
+}

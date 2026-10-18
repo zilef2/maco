@@ -10,19 +10,25 @@ import {
     Folder,
     LayoutDashboard,
     Users,
-    LayoutGrid,
-    ShoppingBag,
+    Boxes,
+    Shirt,
     ClipboardList,
     ArrowLeftRight,
-    PackageOpen,
-    BadgeCheck,
+    PackageCheck,
     CheckCircle2,
-    Activity,
-    BookText,
-    AlertCircle,
-    Boxes,
-    List,
+    Factory,
+    FileSpreadsheet,
+    Database,
+    Tag,
+    Truck,
+    SlidersHorizontal,
+    Clock,
+    Grid3x3,
     FileUp,
+    BookmarkCheck,
+    ShieldCheck,
+    Layers,
+    Settings,
 } from 'lucide-vue-next';
 import AppLogoMini from './AppLogoMini.vue';
 
@@ -38,7 +44,7 @@ const navGroups: NavGroup[] = [
             {
                 title: 'Producto',
                 href: '/Producto',
-                icon: ShoppingBag,
+                icon: Shirt,
             },
         ],
     },
@@ -61,79 +67,104 @@ const navGroups: NavGroup[] = [
 
 const navDropdown: NavGroup[] = [
     {
-        label: 'Operación',
+        label: 'Producción',
+        icon: Factory,
         items: [
-            {
-                title: 'EstadoOperacion',
-                href: '/EstadoOperacion',
-                icon: Activity,
-            },
-            {
-                title: 'RecepcionCalidad',
-                href: '/RecepcionCalidad',
-                icon: BadgeCheck,
-            },
-            {
-                title: 'PendientesProduccion',
-                href: '/PendientesProduccion',
-                icon: AlertCircle,
-            },
-            {
-                title: 'CierreOrdenProduccion',
-                href: '/CierreOrdenProduccion',
-                icon: CheckCircle2,
-            },
-            {
-                title: 'Distribucion por tallas',
-                href: '/Distribucion_por_tallas',
-                icon: List,
-            },
-        ],
-    },
-    {
-        label: 'Maestros',
-        items: [
-            {
-                title: 'Taller',
-                href: '/Taller',
-                icon: LayoutGrid,
-            },
-            {
-                title: 'KitTaller',
-                href: '/KitTaller',
-                icon: PackageOpen,
-            },
             {
                 title: 'ProcesoExterno',
                 href: '/ProcesoExterno',
                 icon: ArrowLeftRight,
             },
             {
-                title: 'GrupoTalla',
-                href: '/GrupoTalla',
-                icon: BookText,
+                title: 'RecepcionCalidad',
+                href: '/RecepcionCalidad',
+                icon: ShieldCheck,
+            },
+            {
+                title: 'CierreOrdenProduccion',
+                href: '/CierreOrdenProduccion',
+                icon: CheckCircle2,
+            },
+        ],
+    },
+    {
+        label: 'Kits',
+        icon: Layers,
+        items: [
+            {
+                title: 'KitTaller',
+                href: '/KitTaller',
+                icon: PackageCheck,
             },
             {
                 title: 'FichaTecnicaMateriales',
                 href: '/FichaTecnicaMateriales',
-                icon: BookText,
+                icon: FileSpreadsheet,
             },
+        ],
+    },
+    {
+        label: 'Listas',
+        icon: Database,
+        items: [
             {
-                title: 'Proveedor',
-                href: '/Proveedor',
-                icon: List,
+                title: 'Taller',
+                href: '/Taller',
+                icon: Building2,
             },
+
+            // {
+            //     title: 'GrupoTalla',
+            //     href: '/GrupoTalla',
+            //     icon: Tag,
+            // },
+
+
             //aquipuesSide
         ],
     },
     {
-        label: 'Sistema',
+        label: 'Referencias', //que no se pueden editar
+        icon: BookmarkCheck,
+        items: [
+            {
+                title: 'EstadoOperacion',
+                href: '/EstadoOperacion',
+                icon: SlidersHorizontal,
+            },
+            {
+                title: 'PendientesProduccion',
+                href: '/PendientesProduccion',
+                icon: Clock,
+            },
+            {
+                title: 'Distribucion por tallas',
+                href: '/Distribucion_por_tallas',
+                icon: Grid3x3,
+            },
+        ],
+    },
+    {
+        label: 'Personas',
+        icon: Users,
         items: [
             {
                 title: 'Usuarios',
                 href: '/user',
                 icon: Users,
             },
+            {
+                title: 'Proveedor',
+                href: '/Proveedor',
+                icon: Truck,
+            },
+        ],
+    },
+    {
+        label: 'Sistema',
+        icon: Settings,
+        items: [
+
             {
                 title: 'Importar Excel',
                 href: '/ImportarExcel',

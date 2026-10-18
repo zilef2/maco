@@ -5,7 +5,7 @@ import Breadcrumb from '@/components/Breadcrumb.vue';
 import TextInput from '@/components/TextInput.vue';
 import PrimaryButton from '@/components/PrimaryButton.vue';
 import SelectInput from '@/components/SelectInput.vue';
-import { reactive, watch } from 'vue';
+import { computed, reactive, watch } from 'vue';
 
 import DangerButton from '@/components/DangerButton.vue';
 import pkg from 'lodash';
@@ -86,13 +86,12 @@ const selectAll = (event: any) => {
 const select = () => data.multipleSelect = props.fromController?.data.length === data.selectedId.length;
 
 const titulos = [
-    { order: 'orden_produccion_id', label: 'orden_produccion_id', type: 'foreign' },
     { order: 'etapa_componente', label: 'etapa_componente', type: 'string' },
-    { order: 'material_origen_id', label: 'material_origen_id', type: 'foreign' },
+    { order: 'material_origen_id', label: 'material_origen_id', type: 'foreign', nameid: 'material_nombre' },
     { order: 'cantidad_salida', label: 'cantidad_salida', type: 'number' },
     { order: 'unidad_medida', label: 'unidad_medida', type: 'string' },
     { order: 'bodega_origen', label: 'bodega_origen', type: 'string' },
-    { order: 'proveedor_destino_id', label: 'proveedor_destino_id', type: 'foreign' },
+    { order: 'proveedor_destino_id', label: 'proveedor_destino_id', type: 'foreign', nameid: 'proveedor_nombre' },
     { order: 'servicio_proceso', label: 'servicio_proceso', type: 'string' },
     { order: 'fecha_salida', label: 'fecha_salida', type: 'datetime' },
     { order: 'fecha_prevista_regreso', label: 'fecha_prevista_regreso', type: 'date' },
@@ -100,6 +99,21 @@ const titulos = [
     { order: 'resultado_observaciones', label: 'resultado_observaciones', type: 'text' },
     { order: 'fecha_regreso_real', label: 'fecha_regreso_real', type: 'datetime' },
 ];
+
+// Agrupar los procesos externos por Orden de Producción (orden_numero)
+const grupos = computed(() => {
+    const map = new Map<string, any[]>();
+    (props.fromController?.data ?? []).forEach((pe: any) => {
+        const label = pe.orden_numero ?? 'Sin OP';
+        if (!map.has(label)) map.set(label, []);
+        map.get(label)!.push(pe);
+    });
+    return Array.from(map.entries()).map(([label, items]) => ({
+        label,
+        items,
+        materiales: new Set(items.map((i: any) => i.material_nombre).filter(Boolean)).size,
+    }));
+});
 
 </script>
 
@@ -159,8 +173,20 @@ const titulos = [
                             </tr>
                         </thead>
                         <tbody>
-                            <tr v-for="(claseFromController, indexu) in props.fromController?.data" :key="indexu"
-                                class="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-200/30 hover:dark:bg-gray-900/20">
+                            <template v-for="(grupo, gi) in grupos" :key="grupo.label">
+                                <tr class="border-t-2 border-gray-400 dark:border-gray-600 bg-gray-100/70 dark:bg-gray-900/60">
+                                    <td :colspan="titulos.length + 3" class="px-3 py-2">
+                                        <div class="flex items-center gap-3">
+                                            <span class="uppercase text-xs font-bold tracking-wide text-gray-600 dark:text-gray-300">{{ grupo.label }}</span>
+                                            <span
+                                                class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
+                                                {{ grupo.items.length }} materiales
+                                            </span>
+                                        </div>
+                                    </td>
+                                </tr>
+                                <tr v-for="(claseFromController, indexu) in grupo.items" :key="`${gi}-${claseFromController.id}`"
+                                    class="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-200/30 hover:dark:bg-gray-900/20">
 
                                 <td class="whitespace-nowrap py-4 px-2 sm:py-3 text-center">
                                     <input
@@ -206,6 +232,7 @@ const titulos = [
                                 </td>
 
                             </tr>
+                            </template>
                             <tr class="border-t border-gray-600">
                                 <td v-if="props.numberPermissions && props.numberPermissions > 1"
                                     class="whitespace-nowrap py-4 w-12 px-2 sm:py-3 text-center"> -
