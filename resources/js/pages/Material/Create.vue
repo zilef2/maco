@@ -7,7 +7,7 @@ import SecondaryButton from '@/components/SecondaryButton.vue';
 import TextInput from '@/components/TextInput.vue';
 import { ClipboardDocumentListIcon, ExclamationTriangleIcon, SwatchIcon } from '@heroicons/vue/24/solid';
 import { useForm} from '@inertiajs/vue3';
-import { onMounted,computed, watchEffect } from 'vue';
+import { onMounted, computed, ref, watchEffect } from 'vue';
 import '@vuepic/vue-datepicker/dist/main.css'
 import vSelect from "vue-select";
 import "vue-select/dist/vue-select.css";
@@ -74,18 +74,20 @@ const toggleBoolean = (campo: string) => {
     form[campo] = !form[campo];
 };
 
+const camposFaltantes = ref<string[]>([]);
+
 function ValidarVacios() {
-    let result = true
+    const faltantes: string[] = [];
     printForm.forEach(element => {
         const valor = form[element.idd];
         if (typeof valor === 'boolean') return; // los campos sí/no (maneja_color, etc.): false es válido
-        if (!valor) {
-            console.log("=>(Create.vue:70) falta esto papa element.idd", element.idd);
-            result = false
-            return result
+        // 0 es un valor válido (material_procesado, existencia_actual, estado); solo cuenta vacío real.
+        if (valor === '' || valor === null || valor === undefined) {
+            faltantes.push(element.idd);
         }
     });
-    return result
+    camposFaltantes.value = faltantes;
+    return faltantes.length === 0;
 }
 
 const create = () => {
@@ -100,14 +102,16 @@ const create = () => {
             onError: () => null,
             onFinish: () => null,
         })
-    } else {
-        console.log('Hay campos vacios')
     }
 }
 
 watchEffect(() => {
     if (props.show) {
         form.errors = {}
+        camposFaltantes.value = [];
+        if (form.material_procesado === '' || form.material_procesado == null) {
+            form.material_procesado = 0;
+        }
     }
 });
 </script>
@@ -166,7 +170,7 @@ watchEffect(() => {
                                     <InputError class="mt-2" :message="form.errors.estado" />
                                 </div>
 
-                                <!-- proveedor habitual: seleccionable de la entidad Proveedor -->
+                                <!-- proveedor habitual: seleccionable de la entidad Proveedor (FK) -->
                                 <div v-else-if="atributosform.idd === 'proveedor_habitual'">
                                     <InputLabel :for="atributosform.label"
                                         :value="lang().t('app.label')[atributosform.label] || atributosform.label" />
@@ -175,7 +179,7 @@ watchEffect(() => {
                                         class="mt-1 block w-full"
                                         :options="props.losSelect?.proveedor_habitual || []"
                                         label="nombre"
-                                        :reduce="(item: any) => item.nombre"
+                                        :reduce="(item: any) => item.id"
                                         v-model="form[atributosform.idd]"
                                         :placeholder="atributosform.label"
                                     />
@@ -186,6 +190,22 @@ watchEffect(() => {
                                             No hay proveedores registrados. Registre al menos un proveedor antes de crear materiales.
                                         </p>
                                     </div>
+                                    <InputError class="mt-2" :message="form.errors[atributosform.idd]" />
+                                </div>
+
+                                <!-- material procesado: 0/1 (por ahora; en el futuro más estados) -->
+                                <div v-else-if="atributosform.idd === 'material_procesado'">
+                                    <InputLabel :for="atributosform.label"
+                                        :value="lang().t('app.label')[atributosform.label] || atributosform.label" />
+                                    <select :id="atributosform.idd"
+                                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 focus:border-indigo-500 dark:focus:border-indigo-600 focus:ring-indigo-500 dark:focus:ring-indigo-600 shadow-sm"
+                                        v-model="form[atributosform.idd]">
+                                        <option :value="0">No procesado (0)</option>
+                                        <option :value="1">Procesado (1)</option>
+                                    </select>
+                                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                        0 = no procesado, 1 = procesado.
+                                    </p>
                                     <InputError class="mt-2" :message="form.errors[atributosform.idd]" />
                                 </div>
 
@@ -278,14 +298,21 @@ watchEffect(() => {
                 </div>
 
                 <!-- Pie -->
-                <div class="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3 bg-gray-50 dark:bg-gray-800/50 rounded-b-lg">
-                    <SecondaryButton :disabled="form.processing" @click="emit('close')"> {{ lang().t('app.button.close')
-                        }}
-                    </SecondaryButton>
-                    <PrimaryButton class="ml-3" :class="{ 'opacity-25': form.processing || !hayProveedores }"
-                        :disabled="form.processing || !hayProveedores" @click="create">
-                        {{ lang().t('app.button.add') }} {{ form.processing ? '...' : '' }}
-                    </PrimaryButton>
+                <div class="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between gap-3 bg-gray-50 dark:bg-gray-800/50 rounded-b-lg">
+                    <p v-if="camposFaltantes.length" class="flex items-center gap-1.5 text-sm text-red-600 dark:text-red-400">
+                        <ExclamationTriangleIcon class="w-4 h-4 shrink-0" />
+                        Campos faltantes: {{ camposFaltantes.join(', ') }}
+                    </p>
+                    <span v-else></span>
+                    <div class="flex gap-3">
+                        <SecondaryButton :disabled="form.processing" @click="emit('close')"> {{ lang().t('app.button.close')
+                            }}
+                        </SecondaryButton>
+                        <PrimaryButton class="ml-3" :class="{ 'opacity-25': form.processing || !hayProveedores }"
+                            :disabled="form.processing || !hayProveedores" @click="create">
+                            {{ lang().t('app.button.add') }} {{ form.processing ? '...' : '' }}
+                        </PrimaryButton>
+                    </div>
                 </div>
             </form>
         </Modal>

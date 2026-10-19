@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Models\Material;
+use App\Models\Proveedor;
 use Illuminate\Database\Seeder;
 
 class MaterialSeeder extends Seeder
@@ -26,17 +27,25 @@ class MaterialSeeder extends Seeder
         $unidades = ['Metros', 'Kilos', 'Unidades', 'Rollos', 'Yardas'];
         $estados = ['Activo', 'Activo', 'Activo', 'Inactivo', 'Descontinuado'];
         $variante = ['Color', 'Talla', 'Otro', null, null];
-        $proveedores = [
-            'Textiles del Norte', 'Importadora El Éxito', 'Distribuidora Andina', 'Comercializadora Sur',
-            'Telas & Hilos SAS', 'Proveedora Global', null,
-        ];
         $observaciones = [
             'Material de alta rotación.',
             'Requiere compra anticipada.',
             'Sujeto a variación de precio.',
             'Verificar disponibilidad antes de programar OP.',
-            null, null, null,
+            'Almacenar en lugar seco y ventilado.',
+            'Revisar lote al recibir.',
+            'No exponer a humedad prolongada.',
+            'Certificado de calidad disponible.',
+            'Mantener separado por color y lote.',
+            'Controlar merma en corte.',
+            'Proveedor único, considerar alternativa.',
+            'Consumo variable según temporada.',
+            'Revisar fecha de vencimiento del stock.',
+            'Material de uso transversal en varias fichas.',
+            'Solicitar muestra antes de compra grande.',
+            null, null, null, null,
         ];
+        $proveedores = Proveedor::pluck('id')->all();
 
         for ($i = 1; $i <= self::CANTIDAD; $i++) {
             Material::create([
@@ -44,13 +53,14 @@ class MaterialSeeder extends Seeder
                 'nombre_base'                => $bases[array_rand($bases)] . ' ' . $adj[array_rand($adj)],
                 'categoria'                  => $categorias[array_rand($categorias)],
                 'unidad_inventario'          => $unidades[array_rand($unidades)],
-                'existencia_actual'          => round(rand(0, 50) / 10, 1)*100,
+                'existencia_actual'          => round(rand(0, 50000) / 100, 2),
                 'maneja_color'               => (bool) random_int(0, 1),
                 'maneja_talla'               => (bool) random_int(0, 1),
                 'maneja_otra_variante'       => (bool) random_int(0, 1),
                 'estado'                     => $estados[array_rand($estados)],
                 'variante_atributo_sugerido' => $variante[array_rand($variante)],
-                'proveedor_habitual'         => $proveedores[array_rand($proveedores)],
+                'proveedor_habitual'         => $proveedores ? $proveedores[array_rand($proveedores)] : null,
+                'material_procesado'         => random_int(0, 1),
                 'observaciones'              => $observaciones[array_rand($observaciones)],
             ]);
         }

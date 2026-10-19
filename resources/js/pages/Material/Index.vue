@@ -11,7 +11,7 @@ import DangerButton from '@/components/DangerButton.vue';
 import pkg from 'lodash';
 
 import Pagination from '@/components/Pagination.vue';
-import { ChevronUpDownIcon, PencilIcon, TrashIcon, ArrowUpTrayIcon, ArrowsRightLeftIcon, ClockIcon, CheckCircleIcon } from '@heroicons/vue/24/solid';
+import { ChevronUpDownIcon, PencilIcon, TrashIcon, ArrowUpTrayIcon, ArrowsRightLeftIcon, ClockIcon, CheckCircleIcon, FunnelIcon } from '@heroicons/vue/24/solid';
 import Create from '@/pages/Material/Create.vue';
 import Edit from '@/pages/Material/Edit.vue';
 import Delete from '@/pages/Material/Delete.vue';
@@ -50,12 +50,42 @@ const defaultPerPage = [
 
 const titulosVisibles = computed(() => props.titulos?.filter((t) => t.order !== 'unidad_inventario') ?? []);
 
+// Un filtro por cada columna de la tabla.
+// tipo: 'texto' | 'numero' | 'booleano' | 'proveedor'
+const filtrosColumna = [
+    { campo: 'codigo_material', label: 'Código', tipo: 'texto' },
+    { campo: 'categoria', label: 'Categoría', tipo: 'texto' },
+    { campo: 'nombre_base', label: 'Nombre base', tipo: 'texto' },
+    { campo: 'unidad_inventario', label: 'Unidad', tipo: 'texto' },
+    { campo: 'existencia_actual', label: 'Existencia', tipo: 'numero' },
+    { campo: 'maneja_color', label: 'Maneja color', tipo: 'booleano' },
+    { campo: 'maneja_talla', label: 'Maneja talla', tipo: 'booleano' },
+    { campo: 'maneja_otra_variante', label: 'Otra variante', tipo: 'booleano' },
+    { campo: 'estado', label: 'Estado', tipo: 'texto' },
+    { campo: 'variante_atributo_sugerido', label: 'Variante', tipo: 'texto' },
+    { campo: 'proveedor_habitual', label: 'Proveedor', tipo: 'proveedor' },
+    { campo: 'material_procesado', label: 'Procesado', tipo: 'booleano' },
+    { campo: 'observaciones', label: 'Observaciones', tipo: 'texto' },
+];
+
+const opcionesBooleano = [
+    { value: '', label: 'Todos' },
+    { value: '1', label: 'Sí' },
+    { value: '0', label: 'No' },
+];
+
+const opcionesProveedor = computed(() => [
+    { value: '', label: 'Todos' },
+    ...(props.losSelect?.proveedor_habitual ?? []),
+]);
+
 const data = reactive({
     params: {
         search: props.filters?.search,
         field: props.filters?.field,
         order: props.filters?.order,
         perPage: props.perPage,
+        ...Object.fromEntries(filtrosColumna.map((f) => [f.campo, props.filters?.[f.campo] ?? ''])),
     },
     Materialo: null as any,
     selectedId: [] as number[],
@@ -68,6 +98,7 @@ const data = reactive({
     historialOpen: false,
     historialMultipleOpen: false,
     historialMateriales: [] as any[],
+    mostrarFiltros: true,
     dataSet: (usePage().props as any)?.app?.perpage ?? defaultPerPage,
 })
 
@@ -121,9 +152,20 @@ const titulos = [
     { order: 'maneja_otra_variante', label: 'maneja_otra_variante', type: 'boolean' },
     { order: 'estado', label: 'estado', type: 'string' },
     { order: 'variante_atributo_sugerido', label: 'variante_atributo_sugerido', type: 'string' },
-    { order: 'proveedor_habitual', label: 'proveedor_habitual', type: 'string' },
+    { order: 'proveedor_habitual', label: 'proveedor_habitual', type: 'foreign', nameid: 'proveedor_nombre' },
+    { order: 'material_procesado', label: 'material_procesado', type: 'integer' },
     { order: 'observaciones', label: 'observaciones', type: 'string' },
 ];
+
+const filtrosActivos = computed(
+    () => filtrosColumna.filter((f) => data.params[f.campo] !== '' && data.params[f.campo] != null).length
+);
+
+const limpiarFiltros = () => {
+    filtrosColumna.forEach((f) => {
+        data.params[f.campo] = '';
+    });
+};
 
 </script>
 
@@ -189,12 +231,41 @@ const titulos = [
             </div>
             <div class="relative bg-white dark:bg-gray-800 shadow sm:rounded-lg w-max min-w-full">
                 <div class="flex justify-between p-2">
-                    <div class="flex space-x-2">
+                    <div class="flex space-x-2 items-center">
                         <SelectInput v-model="data.params.perPage" :dataSet="data.dataSet" />
+                        <button type="button" @click="data.mostrarFiltros = !data.mostrarFiltros"
+                            class="inline-flex items-center gap-1 rounded-md border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700">
+                            <FunnelIcon class="w-4 h-4" />
+                            Filtros
+                            <span v-if="filtrosActivos"
+                                class="ml-1 inline-flex items-center rounded-full bg-primary px-2 py-0.5 text-xs font-semibold text-white">
+                                {{ filtrosActivos }}
+                            </span>
+                        </button>
+                        <button v-if="filtrosActivos" type="button" @click="limpiarFiltros"
+                            class="rounded-md px-3 py-1.5 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20">
+                            Limpiar
+                        </button>
                     </div>
                     <TextInput v-if="props.numberPermissions && props.numberPermissions > 1"
                         v-model="data.params.search" type="text" class="block w-4/6 md:w-3/6 lg:w-2/6 rounded-lg"
                         :placeholder="lang().t('app.placeholder.search')" />
+                </div>
+                <div v-if="data.mostrarFiltros"
+                    class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 px-2 pb-3 border-b border-gray-200 dark:border-gray-700">
+                    <div v-for="filtro in filtrosColumna" :key="filtro.campo" class="flex flex-col gap-1">
+                        <label class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ filtro.label }}</label>
+                        <SelectInput v-if="filtro.tipo === 'booleano'" v-model="data.params[filtro.campo]"
+                            :dataSet="opcionesBooleano"
+                            class="w-full text-sm rounded-md" />
+                        <SelectInput v-else-if="filtro.tipo === 'proveedor'" v-model="data.params[filtro.campo]"
+                            :dataSet="opcionesProveedor"
+                            class="w-full text-sm rounded-md" />
+                        <TextInput v-else :type="filtro.tipo === 'numero' ? 'number' : 'text'"
+                            v-model="data.params[filtro.campo]"
+                            class="w-full text-sm rounded-md block"
+                            :placeholder="filtro.label" />
+                    </div>
                 </div>
                 <div>
                     <table v-if="props.total && props.total > 0" class="w-full">
@@ -266,7 +337,7 @@ const titulos = [
                                         {{ zilef_nuber_format(claseFromController[titulo['order']], 0, false) }}
                                         {{ claseFromController.unidad_inventario }}
                                     </span>
-                                    <span v-else-if="['maneja_color', 'maneja_talla', 'maneja_otra_variante'].includes(titulo['order'])">
+                                    <span v-else-if="titulo['type'] === 'boolean' || ['maneja_color', 'maneja_talla', 'maneja_otra_variante', 'material_procesado'].includes(titulo['order'])">
                                         <CheckCircleIcon v-if="claseFromController[titulo['order']]"
                                             class="w-5 h-5 text-emerald-500" />
                                         <span v-else class="text-gray-300 dark:text-gray-600">—</span>

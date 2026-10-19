@@ -7,7 +7,7 @@ import SecondaryButton from '@/components/SecondaryButton.vue';
 import TextInput from '@/components/TextInput.vue';
 import { PencilSquareIcon, TrashIcon } from '@heroicons/vue/24/solid';
 import { useForm } from '@inertiajs/vue3';
-import { computed, reactive, ref, watch, watchEffect } from 'vue';
+import { computed, nextTick, reactive, ref, watch, watchEffect } from 'vue';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
 import DistribucionTallasEditor from '@/pages/OrdenProduccion/DistribucionTallasEditor.vue';
@@ -19,6 +19,7 @@ const props = defineProps({
     titulos: Object, //parametros de la clase principal
     losSelect: Object,
     numberPermissions: Number,
+    borrador: Object,
 });
 const emit = defineEmits(["close"]);
 
@@ -77,7 +78,8 @@ const cerrarModalDistribucionProducto = () => {
 const productosSel = reactive([] as Array<{ id: number; nombre: string; opciones: string[]; cantidad: string }>);
 const selIds = ref<number[]>([]);
 
-const opcionesProducto = computed(() => props.losSelect?.producto_referencia_id || []);
+// Solo productos con ficha técnica: sin ficha no hay requerimiento de materiales ni proceso.
+const opcionesProducto = computed(() => (props.losSelect?.producto_referencia_id || []).filter((p: any) => p.ficha));
 
 const distribucionPorProducto = (productoId: number) => {
     return distribucion.items.filter((i) => i.producto_id === productoId);
@@ -94,7 +96,7 @@ const resumenMateriales = computed(() => {
     const mapa = new Map<number, { material_id: number; nombre: string; necesita: number; hay: number; unidad: string }>();
     productosSel.forEach((p) => {
         const op: any = opcionesProducto.value.find((o: any) => o.id === p.id);
-        const cantidad = Number(p.cantidad) || 0;
+        const cantidad = totalCantidadDistribucionProducto(p.id);
         (op?.ficha_materiales || []).forEach((m: any) => {
             const actual = mapa.get(m.material_id) ?? {
                 material_id: m.material_id,
@@ -120,9 +122,9 @@ const productosSinFicha = computed(() =>
 const hayFaltantes = computed(() => resumenMateriales.value.some((m) => m.necesita > m.hay));
 
 const form = useForm({
+    id: null as number | null,
     numero_op: '',
     cantidad_planificada: '',
-    fecha_creacion: '',
     fecha_prevista_envio_taller: '',
     taller_id: '',
     user_id: '',
@@ -133,6 +135,9 @@ const form = useForm({
     productos: [] as number[],
     productos_cantidad: {} as Record<number, number>,
 });
+
+// Modo "continuar borrador": form.id guarda el id de la OP en Borrador a actualizar.
+const prefillBorrador = ref(false);
 
 const totalTallas = computed(() => {
     return distribucion.items.reduce((acc, i) => acc + (Number(i.cantidad_planificada) || 0), 0);
@@ -195,7 +200,10 @@ const sincronizarProductos = (ids: number[]) => {
             const opciones = parsearOpciones(op.Opciones);
             const previo = op.distribuciones_por_tallas || [];
             productosSel.push({ id, nombre: op.name, opciones, cantidad: '1' });
-            agregarTallasDeProducto(id, opciones, previo);
+            // Al continuar un borrador, las tallas se restauran del borrador, no de la plantilla del producto
+            if (!prefillBorrador.value) {
+                agregarTallasDeProducto(id, opciones, previo);
+            }
         }
     }
     for (let i = productosSel.length - 1; i >= 0; i--) {
@@ -224,6 +232,7 @@ const quitarProducto = (id: number) => {
 const closeModal = () => {
     emit("close");
     form.reset();
+    form.id = null;
     distribucion.items = [];
     grupoTallas.value = null;
     modalProductoDistribucion.show = false;
@@ -232,7 +241,7 @@ const closeModal = () => {
     selIds.value = [];
 };
 
-const create = () => {
+const prepararPayload = () => {
     form.grupo_tallas = grupoTallas.value;
     form.productos = [...selIds.value];
     form.cantidad_planificada = String(totalTallas.value);
@@ -243,40 +252,67 @@ const create = () => {
             talla: (item.talla ?? '').trim(),
             cantidad_planificada: Number(item.cantidad_planificada) || 0,
         }));
-    form.post(route('OrdenProduccion.store'), {
+};
+
+const create = () => {
+    prepararPayload();
+    const onSuccess = () => closeModal();
+    const onError = () => null;
+    // Si venimos de un borrador ("Terminar después"), se actualiza en vez de crear;
+    // el backend mueve la OP de Borrador a Preparación.
+    if (form.id) {
+        form.put(route('OrdenProduccion.update', form.id), { preserveScroll: true, onSuccess, onError });
+    } else {
+        form.post(route('OrdenProduccion.store'), { preserveScroll: true, onSuccess, onError });
+    }
+};
+
+// Guarda la orden con los datos actuales como Borrador y la deja recuperable.
+const terminarDespues = () => {
+    prepararPayload();
+    form.post(route('OrdenProduccion.borrador'), {
         preserveScroll: true,
-        onSuccess: () => {
-            closeModal();
-        },
+        onSuccess: () => closeModal(),
         onError: () => null,
-        onFinish: () => null,
     });
 };
 
 watchEffect(() => {
     if (props.show) {
         form.errors = {};
-        if (!form.numero_op) {
-            form.numero_op = `OP-${props.losSelect?.siguiente_numero_op ?? 100}`;
-        }
-        if (!form.fecha_creacion) {
-            const d = new Date();
-            d.setFullYear(d.getFullYear() - 1);
-            form.fecha_creacion = d.toISOString().split('T')[0];
+        const b: any = props.borrador;
+        if (b && b.id) {
+            // Modo continuar: restaurar el borrador
+            form.id = b.id;
+            form.numero_op = b.numero_op ?? '';
+            form.cantidad_planificada = b.cantidad_planificada != null ? String(b.cantidad_planificada) : '';
+            form.fecha_prevista_envio_taller = String(b.fecha_prevista_envio_taller ?? '').substring(0, 10);
+            form.taller_id = b.taller_id ?? '';
+            form.user_id = b.user_id ?? '';
+            form.id_shopify_producto = b.id_shopify_producto ?? '';
+            form.observaciones = b.observaciones ?? '';
+
+            prefillBorrador.value = true;
+            const tallas = (b.distribuciones_por_tallas || []) as any[];
+            distribucion.items = tallas.map((t) => ({
+                id: t.id,
+                grupo: t.grupo ?? null,
+                talla: t.talla ?? '',
+                cantidad_planificada: t.cantidad_planificada ?? 0,
+                producto_id: null,
+                _origen: 'manual',
+            }));
+            const conGrupo = tallas.find((t) => t.grupo != null);
+            grupoTallas.value = conGrupo ? conGrupo.grupo : null;
+            selIds.value = ((b.productos || []) as any[]).map((p) => p.id);
+            nextTick(() => { prefillBorrador.value = false; });
+        } else {
+            form.id = null;
+            if (!form.numero_op) {
+                form.numero_op = `OP-${props.losSelect?.siguiente_numero_op ?? 100}`;
+            }
         }
     }
-});
-
-const fechaMaxima = computed(() => {
-    const fecha = new Date();
-    fecha.setDate(fecha.getDate() + 10);
-
-    // Formato YYYY-MM-DD
-    const yyyy = fecha.getFullYear();
-    const mm = String(fecha.getMonth() + 1).padStart(2, '0');
-    const dd = String(fecha.getDate()).padStart(2, '0');
-
-    return `${yyyy}-${mm}-${dd}`;
 });
 </script>
 
@@ -285,7 +321,7 @@ const fechaMaxima = computed(() => {
         <Modal :show="props.show" @close="closeModal" :maxWidth="'xl6'">
             <form class="p-6" @submit.prevent="create">
                 <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-6">
-                    {{ lang().t('app.label.add') }} {{ props.title }}
+                    {{ form.id ? 'Continuar' : lang().t('app.label.add') }} {{ props.title }}
                 </h2>
 
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -296,17 +332,6 @@ const fechaMaxima = computed(() => {
                             v-model="form.numero_op" readonly required placeholder="OP-100" />
                         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Formato: OP-XXX (XXX es un número).</p>
                         <InputError class="mt-2" :message="form.errors.numero_op" />
-                    </div>
-
-                    <div>
-                        <InputLabel for="fecha_creacion"
-                            :value="lang().t('app.label.fecha_creacion') || 'Fecha Creación'" />
-                        <!-- :max="fechaMaxima" -->
-                        <TextInput id="fecha_creacion" type="date" class="mt-1 block w-full"
-                            v-model="form.fecha_creacion" required />
-                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Debe ser del {{ fechaMaxima }} o
-                            anterior.</p>
-                        <InputError class="mt-2" :message="form.errors.fecha_creacion" />
                     </div>
 
                     <div>
@@ -335,13 +360,6 @@ const fechaMaxima = computed(() => {
                         <InputError class="mt-2" :message="form.errors.user_id" />
                     </div>
 
-                    <div>
-                        <InputLabel for="id_shopify_producto"
-                            :value="lang().t('app.label.id_shopify_producto') || 'ID Shopify Producto'" />
-                        <TextInput id="id_shopify_producto" type="text" class="mt-1 block w-full"
-                            v-model="form.id_shopify_producto" placeholder="ID Shopify (opcional)" />
-                        <InputError class="mt-2" :message="form.errors.id_shopify_producto" />
-                    </div>
 
                     <div class="md:col-span-2">
                         <InputLabel for="observaciones"
@@ -373,6 +391,10 @@ const fechaMaxima = computed(() => {
                     <v-select multiple class="block w-full" :options="opcionesProducto" label="name"
                         :reduce="(item: any) => item.id" v-model="selIds"
                         placeholder="Buscar y seleccionar productos..." />
+
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        Solo se muestran los productos que tienen ficha técnica (los demás no generan requerimiento de materiales).
+                    </p>
 
                     <div v-if="productosSel.length" class="mt-3 overflow-x-auto">
                         <table class="w-full text-sm">
@@ -449,7 +471,7 @@ const fechaMaxima = computed(() => {
                     <div v-if="resumenMateriales.length"
                         class="mt-3 rounded-md border border-gray-200 dark:border-gray-700 p-3 bg-white dark:bg-gray-900/40">
                         <h4 class="text-xs font-semibold uppercase tracking-wide text-gray-600 dark:text-gray-300">
-                            Materiales requeridos (ficha técnica × cantidad)
+                            Materiales requeridos (consumo ficha × total de tallas)
                         </h4>
                         <table class="mt-2 w-full text-sm">
                             <thead>
@@ -568,13 +590,17 @@ const fechaMaxima = computed(() => {
                             <b class="text-gray-900 dark:text-gray-100">{{ totalTallas }}</b>
                         </span>
                     </div>
-                    <div class="flex items-center">
+                    <div class="flex flex-wrap items-center gap-3">
                         <SecondaryButton :disabled="form.processing" @click="closeModal">
                             {{ lang().t('app.button.close') }}
                         </SecondaryButton>
+                        <button type="button" @click="terminarDespues" :disabled="form.processing"
+                            class="ml-3 inline-flex items-center rounded-md border border-amber-400 bg-amber-50 px-4 py-2 text-xs font-semibold uppercase tracking-widest text-amber-700 transition hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2 disabled:opacity-50 dark:border-amber-500/60 dark:bg-amber-500/10 dark:text-amber-300 dark:hover:bg-amber-500/20">
+                            Terminar después
+                        </button>
                         <PrimaryButton class="ml-3" :class="{ 'opacity-25': form.processing || sinProductos }"
                             :disabled="form.processing || sinProductos" type="submit">
-                            {{ lang().t('app.button.add') }} {{ form.processing ? '...' : '' }}
+                            {{ form.id ? 'Guardar' : lang().t('app.button.add') }} {{ form.processing ? '...' : '' }}
                         </PrimaryButton>
                     </div>
                 </div>

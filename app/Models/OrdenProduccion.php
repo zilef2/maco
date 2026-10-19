@@ -13,7 +13,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 {
     /** @use HasFactory<\Database\Factories\OrdenProduccionFactory> */
     use HasFactory;
-    protected $fillable = ['numero_op', 'producto_referencia_id', 'cantidad_planificada', 'fecha_creacion', 'fecha_prevista_envio_taller', 'taller_id', 'estado_op_id', 'user_id', 'id_shopify_producto', 'observaciones'];
+    protected $fillable = ['numero_op', 'producto_referencia_id', 'cantidad_planificada', 'fecha_prevista_envio_taller', 'taller_id', 'estado_op_id', 'user_id', 'id_shopify_producto', 'observaciones'];
 
     public function productoReferencia()
     {

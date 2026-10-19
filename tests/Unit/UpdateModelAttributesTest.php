@@ -13,10 +13,12 @@ class UpdateModelAttributesTest extends TestCase
             ->assertExitCode(1);
     }
 
-    public function test_it_updates_configured_model(): void
+    public function test_it_rejects_a_real_model_that_is_not_allowlisted(): void
     {
+        // 'Talla' existe como modelo en la app, pero no está en el array $modelos
+        // del comando, por lo que el allow-list debe rechazarlo sin modificar archivos.
         $this->artisan('copy:attr', ['model' => 'Talla'])
-            ->expectsOutput('Actualizando atributos para el modelo: Talla')
-            ->assertExitCode(0);
+            ->expectsOutput("El modelo 'Talla' no está configurado en el array.")
+            ->assertExitCode(1);
     }
 }

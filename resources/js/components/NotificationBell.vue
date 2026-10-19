@@ -104,16 +104,16 @@ onUnmounted(() => {
 </script>
 
 <template>
-    <DropdownMenu>
+    <DropdownMenu v-if="state.notificaciones.length > 0">
         <DropdownMenuTrigger :as-child="true">
             <Button
                 variant="ghost"
                 size="sm"
-                class="relative h-9 w-9 p-0 text-muted-foreground hover:text-foreground cursor-pointer border border-sidebar-border/60 rounded-md"
+                class="relative h-9 w-9 p-0 text-muted-foreground hover:text-foreground cursor-pointer rounded-full border border-sidebar-border/60 hover:bg-accent transition-colors"
+                title="Notificaciones pendientes"
             >
                 <Bell class="h-4 w-4" />
                 <span
-                    v-if="state.notificaciones.length > 0"
                     class="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white shadow-xs"
                 >
                     {{ state.notificaciones.length > 9 ? '9+' : state.notificaciones.length }}

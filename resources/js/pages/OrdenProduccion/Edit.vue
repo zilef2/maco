@@ -8,6 +8,7 @@ import TextInput from '@/components/TextInput.vue';
 import { CalculatorIcon, ListBulletIcon, SquaresPlusIcon, TrashIcon, XMarkIcon } from '@heroicons/vue/24/solid';
 import { useForm } from '@inertiajs/vue3';
 import { computed, reactive, ref, watchEffect } from 'vue';
+import { formatDate } from '@/global.ts';
 import vSelect from "vue-select";
 import "vue-select/dist/vue-select.css";
 
@@ -39,12 +40,16 @@ const productos = reactive({
 
 const opcionesProducto = computed(() => props.losSelect?.producto_referencia_id || []);
 
+const fechaCreacionFormateada = computed(() => {
+    const fecha: any = (props.OrdenProducciona as any)?.created_at;
+    return fecha ? formatDate(fecha, false) : '';
+});
+
 const grupoTallas = ref<number | null>(null);
 
 const form = useForm({
     numero_op: '',
     cantidad_planificada: '',
-    fecha_creacion: '',
     fecha_prevista_envio_taller: '',
     taller_id: '',
     user_id: '',
@@ -182,7 +187,6 @@ watchEffect(() => {
         const op: any = props.OrdenProducciona ?? {};
         form.numero_op = op.numero_op ?? '';
         form.cantidad_planificada = op.cantidad_planificada ?? '';
-        form.fecha_creacion = String(op.fecha_creacion ?? '').substring(0, 10);
         form.fecha_prevista_envio_taller = String(op.fecha_prevista_envio_taller ?? '').substring(0, 10);
         form.taller_id = op.taller_id ?? '';
         form.user_id = op.user_id ?? '';
@@ -207,10 +211,16 @@ watchEffect(() => {
     <section class="space-y-6">
         <Modal :show="props.show" @close="closeModal" :maxWidth="'xl4'">
             <form class="p-6" @submit.prevent="update">
-                <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-6">
-                    {{ lang().t('app.label.edit') }} {{ props.title }}
-                    - {{ props.numberPermissions }}
-                </h2>
+                <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+                    <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100">
+                        {{ lang().t('app.label.edit') }} {{ props.title }}
+                        - {{ props.numberPermissions }}
+                    </h2>
+                    <span v-if="fechaCreacionFormateada"
+                        class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 border border-gray-200 dark:border-gray-700">
+                        Creada: {{ fechaCreacionFormateada }}
+                    </span>
+                </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
@@ -282,18 +292,6 @@ watchEffect(() => {
                             Distribución por tallas: {{ distribucion.items.length }} talla(s) · total {{ totalDistribucion }} — quedará asociada a esta orden.
                         </p>
                         <InputError class="mt-2" :message="form.errors.cantidad_planificada" />
-                    </div>
-
-                    <div>
-                        <InputLabel for="fecha_creacion" :value="lang().t('app.label.fecha_creacion') || 'Fecha Creación'" />
-                        <TextInput
-                            id="fecha_creacion"
-                            type="date"
-                            class="mt-1 block w-full"
-                            v-model="form.fecha_creacion"
-                            required
-                        />
-                        <InputError class="mt-2" :message="form.errors.fecha_creacion" />
                     </div>
 
                     <div>

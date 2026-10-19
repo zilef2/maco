@@ -1,0 +1,247 @@
+{
+  "schema_version": 3,
+  "diagram_type": "lifecycle",
+  "meta": {
+    "title": "Flujo General de Producción MACO",
+    "subtitle": "Ciclo de vida operativo desde Orden de Producción hasta Despacho",
+    "output": "docs/flujo_general/flujo_general.html",
+    "animation": "trace",
+    "visual_preset": "signal-flow",
+    "quality_profile": "showcase",
+    "legend": {
+      "mode": "auto",
+      "entries": {
+        "start": { "label": "Inicio OP" },
+        "active": { "label": "Proceso Interno / Ensamble" },
+        "external": { "label": "Taller / Proveedor Externo" },
+        "decision": { "label": "Control de Calidad" },
+        "waiting": { "label": "Reparación / Subsanación" },
+        "failure": { "label": "Baja / Pérdida Material" },
+        "success": { "label": "Aprobado / Despacho Final" }
+      }
+    }
+  },
+  "mainPath": [
+    "op_creada",
+    "materiales_verificados",
+    "sublimacion_tela",
+    "corte_correas",
+    "pedreria_correas",
+    "kit_consolidado",
+    "ensamble_taller",
+    "inspeccion_calidad",
+    "bodega_aprobados",
+    "despacho_comercial"
+  ],
+  "states": [
+    {
+      "id": "op_creada",
+      "type": "start",
+      "label": "1. Orden de Producción",
+      "sublabel": "Cantidad total y curvas por talla",
+      "tag": "Planificación",
+      "icon": "start"
+    },
+    {
+      "id": "materiales_verificados",
+      "type": "active",
+      "label": "2. Verificación Materiales",
+      "sublabel": "Disponibilidad en stock e insumos",
+      "tag": "Inventario",
+      "icon": "database"
+    },
+    {
+      "id": "sublimacion_tela",
+      "type": "external",
+      "label": "3-4. Tela y Capelladas",
+      "sublabel": "Embarretado, sublimación y corte gráfico",
+      "tag": "Proveedor Textil",
+      "icon": "external"
+    },
+    {
+      "id": "corte_correas",
+      "type": "external",
+      "label": "5-6. Corte de Correas",
+      "sublabel": "Corte de cuero en taller externo",
+      "tag": "Taller Corte",
+      "icon": "external"
+    },
+    {
+      "id": "pedreria_correas",
+      "type": "external",
+      "label": "7-8. Fijación Pedrería",
+      "sublabel": "Colocación sobre correas",
+      "tag": "Proveedor Pedrería",
+      "icon": "external"
+    },
+    {
+      "id": "kit_consolidado",
+      "type": "active",
+      "label": "9-12. Consolidación de Kit",
+      "sublabel": "Materiales + ficha técnica de ensamble",
+      "tag": "Preparación",
+      "icon": "briefcase"
+    },
+    {
+      "id": "ensamble_taller",
+      "type": "active",
+      "label": "13. Ensamble de Calzado",
+      "sublabel": "Montaje y armado completo en taller",
+      "tag": "Taller Ensamble",
+      "icon": "active"
+    },
+    {
+      "id": "inspeccion_calidad",
+      "type": "decision",
+      "label": "14. Revisión de Calidad",
+      "sublabel": "Inspección de producto terminado",
+      "tag": "Control Calidad",
+      "icon": "decision"
+    },
+    {
+      "id": "taller_reparacion",
+      "type": "waiting",
+      "label": "15. Taller Reparación",
+      "sublabel": "Corrección de producto con defecto menor",
+      "tag": "Reproceso",
+      "icon": "waiting"
+    },
+    {
+      "id": "baja_recuperacion",
+      "type": "failure",
+      "label": "16. Registro de Baja",
+      "sublabel": "No reparable: desguace y recuperación",
+      "tag": "Pérdida",
+      "icon": "failure"
+    },
+    {
+      "id": "bodega_aprobados",
+      "type": "success",
+      "label": "17. Recepción en Bodega",
+      "sublabel": "Pares conformes en bolsa plástica",
+      "tag": "Bodega Producto Terminado",
+      "icon": "database"
+    },
+    {
+      "id": "despacho_comercial",
+      "type": "success",
+      "label": "18. Despacho Comercial",
+      "sublabel": "Empaque de marca final y entrega cliente",
+      "tag": "Despachado",
+      "icon": "flag"
+    }
+  ],
+  "transitions": [
+    {
+      "id": "t1_plan_a_mat",
+      "from": "op_creada",
+      "to": "materiales_verificados",
+      "label": "Disponibilidad insumos",
+      "variant": "emphasis"
+    },
+    {
+      "id": "t2_mat_a_tela",
+      "from": "materiales_verificados",
+      "to": "sublimacion_tela",
+      "label": "Envío arte y lona",
+      "variant": "default"
+    },
+    {
+      "id": "t3_tela_a_corte",
+      "from": "sublimacion_tela",
+      "to": "corte_correas",
+      "label": "Envío cuero a taller",
+      "variant": "default"
+    },
+    {
+      "id": "t4_corte_a_pedreria",
+      "from": "corte_correas",
+      "to": "pedreria_correas",
+      "label": "Envío a pedrería",
+      "variant": "default"
+    },
+    {
+      "id": "t5_pedreria_a_kit",
+      "from": "pedreria_correas",
+      "to": "kit_consolidado",
+      "label": "Retorno partes listas",
+      "variant": "default"
+    },
+    {
+      "id": "t6_kit_a_ensamble",
+      "from": "kit_consolidado",
+      "to": "ensamble_taller",
+      "label": "Entrega kit + ficha",
+      "variant": "emphasis"
+    },
+    {
+      "id": "t7_ensamble_a_qc",
+      "from": "ensamble_taller",
+      "to": "inspeccion_calidad",
+      "label": "Lote montado",
+      "variant": "default"
+    },
+    {
+      "id": "t8_qc_aprobado",
+      "from": "inspeccion_calidad",
+      "to": "bodega_aprobados",
+      "label": "Aprobado (100%)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "t9_qc_defecto",
+      "from": "inspeccion_calidad",
+      "to": "taller_reparacion",
+      "label": "Defectuoso",
+      "variant": "default"
+    },
+    {
+      "id": "t10_reparacion_reingreso",
+      "from": "taller_reparacion",
+      "to": "inspeccion_calidad",
+      "label": "Reingreso reparado",
+      "variant": "default"
+    },
+    {
+      "id": "t11_no_reparable",
+      "from": "taller_reparacion",
+      "to": "baja_recuperacion",
+      "label": "Irreparable",
+      "variant": "security"
+    },
+    {
+      "id": "t12_bodega_a_despacho",
+      "from": "bodega_aprobados",
+      "to": "despacho_comercial",
+      "label": "Empaque comercial",
+      "variant": "emphasis"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "emerald",
+      "title": "Fase Previa y Subprocesos Externos",
+      "items": [
+        "Paso 1-2: Planificación por curva de tallas y verificación integral de stock.",
+        "Paso 3-4: Sublimación y corte gráfico de capelladas con proveedor textil.",
+        "Paso 5-8: Cadena de corte de cuero y posterior fijación de pedrería."
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Kit de Ensamble y Taller",
+      "items": [
+        "Paso 9-11: Consolidación de todos los componentes y ficha técnica visual.",
+        "Paso 12-13: Entrega del paquete completo al taller para ensamblado del calzado."
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Control de Calidad y Cierre",
+      "items": [
+        "Paso 14-16: Filtro de calidad; reproceso en taller o registro de baja con rescate de materiales.",
+        "Paso 17-18: Ingreso a bodega solo de pares conformes y embalaje comercial al despachar."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,259 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Flujo General de Producción MACO",
+    "subtitle": "Gestión operativa e industrial desde la Orden de Producción hasta el Despacho Comercial",
+    "animation": "trace",
+    "visual_preset": "signal-flow",
+    "quality_profile": "showcase",
+    "output": "docs/flujo_general/flujo_general.html"
+  },
+  "components": [
+    {
+      "id": "paso1_op",
+      "type": "frontend",
+      "label": "1. Crear OP",
+      "sublabel": "Curva tallas y volumen",
+      "pos": [40, 100],
+      "size": [155, 66],
+      "tag": "OrdenProduccion"
+    },
+    {
+      "id": "paso2_materiales",
+      "type": "database",
+      "label": "2. Verificar Stock",
+      "sublabel": "Disponibilidad materiales",
+      "pos": [260, 100],
+      "size": [155, 66],
+      "tag": "Inventario Insumos"
+    },
+    {
+      "id": "paso3_sublimacion",
+      "type": "external",
+      "label": "3-4. Sublimación",
+      "sublabel": "Embarretado y capelladas",
+      "pos": [480, 100],
+      "size": [155, 66],
+      "tag": "Proveedor Textil"
+    },
+    {
+      "id": "paso5_corte",
+      "type": "external",
+      "label": "5-6. Corte Correas",
+      "sublabel": "Envío y troquelado",
+      "pos": [700, 100],
+      "size": [155, 66],
+      "tag": "Taller de Corte"
+    },
+    {
+      "id": "paso7_pedreria",
+      "type": "external",
+      "label": "7-8. Fijar Pedrería",
+      "sublabel": "Aplicación sobre correas",
+      "pos": [920, 100],
+      "size": [155, 66],
+      "tag": "Proveedor Pedrería"
+    },
+    {
+      "id": "paso9_kit",
+      "type": "backend",
+      "label": "9-12. Kit Ensamble",
+      "sublabel": "Insumos + ficha técnica",
+      "pos": [920, 270],
+      "size": [155, 66],
+      "tag": "KitTaller"
+    },
+    {
+      "id": "paso13_ensamble",
+      "type": "backend",
+      "label": "13. Ensamble",
+      "sublabel": "Armado del calzado",
+      "pos": [700, 270],
+      "size": [155, 66],
+      "tag": "Taller Ensamble"
+    },
+    {
+      "id": "paso14_calidad",
+      "type": "security",
+      "label": "14. Revisión Calidad",
+      "sublabel": "Inspección producto",
+      "pos": [480, 270],
+      "size": [155, 66],
+      "tag": "RecepcionCalidad"
+    },
+    {
+      "id": "paso15_reparacion",
+      "type": "messagebus",
+      "label": "15. En Reparación",
+      "sublabel": "Subsanar defectos",
+      "pos": [480, 440],
+      "size": [155, 66],
+      "tag": "Reproceso Taller"
+    },
+    {
+      "id": "paso16_baja",
+      "type": "security",
+      "label": "16. Registrar Baja",
+      "sublabel": "Recuperar material",
+      "pos": [700, 440],
+      "size": [155, 66],
+      "tag": "No recuperable"
+    },
+    {
+      "id": "paso17_bodega",
+      "type": "database",
+      "label": "17. Bodega Aprobados",
+      "sublabel": "Bolsa plástica unitaria",
+      "pos": [260, 270],
+      "size": [155, 66],
+      "tag": "Stock Terminado"
+    },
+    {
+      "id": "paso18_despacho",
+      "type": "cloud",
+      "label": "18. Despacho Final",
+      "sublabel": "Empaque comercial",
+      "pos": [40, 270],
+      "size": [155, 66],
+      "tag": "Venta / Cliente"
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Fase 1: Alistamiento de Materiales y Satélites Externos",
+      "wraps": ["paso1_op", "paso2_materiales", "paso3_sublimacion", "paso5_corte", "paso7_pedreria"]
+    },
+    {
+      "kind": "region",
+      "label": "Fase 2: Consolidación, Armado y Control de Calidad",
+      "wraps": ["paso9_kit", "paso13_ensamble", "paso14_calidad", "paso17_bodega", "paso18_despacho"]
+    },
+    {
+      "kind": "security-group",
+      "label": "Gestión de No Conformidades y Recuperación",
+      "wraps": ["paso15_reparacion", "paso16_baja"]
+    }
+  ],
+  "connections": [
+    {
+      "id": "c1_op_a_mat",
+      "from": "paso1_op",
+      "to": "paso2_materiales",
+      "label": "verificar insumos",
+      "variant": "emphasis"
+    },
+    {
+      "id": "c2_mat_a_sub",
+      "from": "paso2_materiales",
+      "to": "paso3_sublimacion",
+      "label": "lona y gráfico",
+      "variant": "default"
+    },
+    {
+      "id": "c3_sub_a_corte",
+      "from": "paso3_sublimacion",
+      "to": "paso5_corte",
+      "label": "envío cuero",
+      "variant": "default"
+    },
+    {
+      "id": "c4_corte_a_pedreria",
+      "from": "paso5_corte",
+      "to": "paso7_pedreria",
+      "label": "correas cortadas",
+      "variant": "default"
+    },
+    {
+      "id": "c5_pedreria_a_kit",
+      "from": "paso7_pedreria",
+      "to": "paso9_kit",
+      "label": "correas listas",
+      "variant": "emphasis",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "c6_kit_a_ensamble",
+      "from": "paso9_kit",
+      "to": "paso13_ensamble",
+      "label": "kit + ficha técnica",
+      "variant": "emphasis"
+    },
+    {
+      "id": "c7_ensamble_a_qc",
+      "from": "paso13_ensamble",
+      "to": "paso14_calidad",
+      "label": "lote montado",
+      "variant": "default"
+    },
+    {
+      "id": "c8_qc_a_bodega",
+      "from": "paso14_calidad",
+      "to": "paso17_bodega",
+      "label": "aprobado (100%)",
+      "variant": "emphasis"
+    },
+    {
+      "id": "c9_bodega_a_despacho",
+      "from": "paso17_bodega",
+      "to": "paso18_despacho",
+      "label": "empaque de marca",
+      "variant": "emphasis"
+    },
+    {
+      "id": "c10_qc_a_reparacion",
+      "from": "paso14_calidad",
+      "to": "paso15_reparacion",
+      "label": "producto defectuoso",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "c11_reparacion_reingreso",
+      "from": "paso15_reparacion",
+      "to": "paso14_calidad",
+      "label": "reparado",
+      "variant": "dashed",
+      "fromSide": "left",
+      "toSide": "left",
+      "via": [[440, 473], [440, 303]]
+    },
+    {
+      "id": "c12_reparacion_a_baja",
+      "from": "paso15_reparacion",
+      "to": "paso16_baja",
+      "label": "irreparable",
+      "variant": "security"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Alistamiento y Procesos Satélites",
+      "items": [
+        "Paso 1-2: Planificación por tallas en la OP y comprobación total de insumos en bodega.",
+        "Paso 3-4: Sublimación de telas/lonas y envío de gráficos de capellada al proveedor textil.",
+        "Paso 5-8: Envío de cuero a taller para troquelado y paso a fijación de pedrería."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Consolidación de Kit y Ensamble",
+      "items": [
+        "Paso 9-12: Armado del kit integral de materiales e impresión de ficha técnica de ensamble con foto.",
+        "Paso 13: Entrega del paquete completo al taller de ensamble para la confección del calzado."
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Control de Calidad, Reparación y Despacho",
+      "items": [
+        "Paso 14-16: Auditoría de calidad: producto con falla menor va a reparación; irreparable registra baja y recupera materiales.",
+        "Paso 17-18: Ingreso en bodega solo de pares conformes empacados en bolsa plástica; empaque comercial al despacho."
+      ]
+    }
+  ]
+}

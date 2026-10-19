@@ -37,6 +37,7 @@ const props = defineProps({
     numberPermissions: Number,
     losSelect: Object,
     titulos: Array,
+    borradorUltimo: Object,
 })
 
 const defaultPerPage = [
@@ -58,6 +59,7 @@ const data = reactive({
     selectedId: [] as number[],
     multipleSelect: false,
     createOpen: false,
+    borradorCrear: null as any,
     editOpen: false,
     deleteOpen: false,
     distribucionOpen: false,
@@ -114,6 +116,16 @@ const select = () => data.multipleSelect = props.fromController?.data.length ===
 const abrirDistribucion = (op: any) => {
     data.distribucionOp = op ?? null
     data.distribucionOpen = true
+}
+
+const abrirNuevo = () => {
+    data.borradorCrear = null
+    data.createOpen = true
+}
+
+const abrirContinuarUltima = () => {
+    data.borradorCrear = props.borradorUltimo ?? null
+    data.createOpen = true
 }
 
 const abrirKitTaller = (op: any) => {
@@ -184,7 +196,6 @@ const titulos = [
     { order: 'numero_op', label: 'numero_op', type: 'string' },
     { order: 'producto_referencia_id', label: 'producto_referencia_id', type: 'foreign', nameid: 'producto_nombre' },
     { order: 'cantidad_planificada', label: 'cantidad_planificada', type: 'integer' },
-    { order: 'fecha_creacion', label: 'fecha_creacion', type: 'date' },
     { order: 'fecha_prevista_envio_taller', label: 'fecha_prevista_envio_taller', type: 'date' },
     { order: 'taller_id', label: 'taller_id', type: 'foreign', nameid: 'taller_nombre' },
     { order: 'estado_op_id', label: 'estado_op_id', type: 'foreign', nameid: 'estado_nombre' },
@@ -203,14 +214,21 @@ const titulos = [
         <Breadcrumb :title="title" :breadcrumbs="breadcrumbs" class="capitalize text-xl font-bold" />
         <div class="space-y-4">
             <div class="px-4 sm:px-0">
-                <div class="rounded-lg overflow-hidden w-fit">
-                    <PrimaryButton class="m-1" @click="data.createOpen = true" v-if="can(['create OrdenProduccion'])">
+                <div class="rounded-lg overflow-hidden w-fit flex items-center gap-1">
+                    <PrimaryButton class="m-1" @click="abrirNuevo" v-if="can(['create OrdenProduccion'])">
                         {{ lang().t('app.button.add') }}
                     </PrimaryButton>
 
+                    <button v-if="can(['create OrdenProduccion']) && props.borradorUltimo" type="button"
+                        @click="abrirContinuarUltima"
+                        class="m-1 inline-flex items-center gap-1.5 rounded-md border border-amber-400 bg-amber-50 px-4 py-2 text-xs font-semibold uppercase tracking-widest text-amber-700 transition hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2 dark:border-amber-500/60 dark:bg-amber-500/10 dark:text-amber-300 dark:hover:bg-amber-500/20">
+                        <ArrowPathIcon class="h-4 w-4" />
+                        Continuar última OP ({{ props.borradorUltimo.numero_op }})
+                    </button>
+
                     <Create v-if="can(['create OrdenProduccion'])" :numberPermissions="props.numberPermissions"
-                        :titulos="titulos" :show="data.createOpen" @close="data.createOpen = false" :title="props.title"
-                        :losSelect="props.losSelect" />
+                        :titulos="titulos" :show="data.createOpen" @close="data.createOpen = false; data.borradorCrear = null"
+                        :title="props.title" :losSelect="props.losSelect" :borrador="data.borradorCrear" />
 
                     <Edit v-if="can(['update OrdenProduccion'])" :titulos="titulos"
                         :numberPermissions="props.numberPermissions" :show="data.editOpen"
@@ -258,6 +276,7 @@ const titulos = [
                                     Accion</th>
 
                                 <th class="px-2 py-4 text-center">#</th>
+                                <th class="px-2 py-4">Fecha</th>
                                 <th v-for="titulo in titulos" :key="titulo.order" class="px-2 py-4 cursor-pointer"
                                     v-on:click="order(titulo['order'])">
                                     <div class="flex justify-between items-center">
@@ -272,7 +291,7 @@ const titulos = [
                         <tbody v-if="cargando">
                             <tr v-for="n in 8" :key="'skeleton-' + n"
                                 class="border-t border-gray-200 dark:border-gray-700">
-                                <td :colspan="titulos.length + 5" class="px-2 py-3">
+                                <td :colspan="titulos.length + 6" class="px-2 py-3">
                                     <div class="flex items-center gap-4">
                                         <div class="h-4 w-4 rounded bg-gray-200 dark:bg-gray-800 animate-pulse"></div>
                                         <div class="h-4 w-10 rounded bg-gray-200 dark:bg-gray-800 animate-pulse"></div>
@@ -324,6 +343,9 @@ const titulos = [
                                     </div>
                                 </td>
                                 <td class="whitespace-nowrap py-4 px-2 sm:py-3 text-center">{{ ++indexu }}</td>
+                                <td class="whitespace-nowrap py-4 px-2 sm:py-3">
+                                    {{ formatDate(claseFromController.created_at, false) }}
+                                </td>
                                 <td v-for="titulo in titulos" :key="titulo.order"
                                     class="whitespace-nowrap py-4 px-2 sm:py-3">
                                     <span v-if="titulo['order'] === 'observaciones'">

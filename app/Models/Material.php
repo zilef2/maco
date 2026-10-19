@@ -24,12 +24,25 @@ class Material extends Model
         'estado',
         'variante_atributo_sugerido',
         'proveedor_habitual',
+        'material_procesado',
         'observaciones'];
 
     public function movimientos(): HasMany
     {
         return $this->hasMany(MaterialMovimiento::class, 'material_id');
     }
+
+    public function proveedorHabitual()
+    {
+        return $this->belongsTo(Proveedor::class, 'proveedor_habitual');
+    }
+
+    protected static array $booleanFields = [
+        'maneja_color',
+        'maneja_talla',
+        'maneja_otra_variante',
+        'material_procesado',
+    ];
 
     public static function getFillableWithTypes(): array
     {
@@ -45,7 +58,9 @@ class Material extends Model
             }
 
             $type = 'text';
-            if (str_contains($column->Type, 'foreign') || str_ends_with($column->Field, '_id')) {
+            if (in_array($column->Field, static::$booleanFields)) {
+                $type = 'boolean';
+            } elseif (str_contains($column->Type, 'foreign') || str_ends_with($column->Field, '_id')) {
                 $type = 'foreign';
             } elseif (str_contains($column->Type, 'int')) {
                 $type = 'integer';
@@ -58,7 +73,7 @@ class Material extends Model
             $result[] = [
                 'order' => $column->Field,
                 'label' => $column->Field,
-                'type' => $type,
+                'type'  => $type,
             ];
         }
 

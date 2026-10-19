@@ -26,11 +26,9 @@ class StoreOrdenProduccionRequest extends FormRequest
             'productos' => ['required', 'array', 'min:1'],
             'productos.*' => ['integer', 'exists:productos,id'],
             'cantidad_planificada' => ['required', 'numeric', 'gt:0'],
-            'fecha_creacion' => ['required', 'date'],
             'fecha_prevista_envio_taller' => ['nullable', 'date'],
             'taller_id' => ['required', 'integer', 'exists:tallers,id'],
             'user_id' => ['required', 'integer', 'exists:users,id'],
-            'id_shopify_producto' => ['nullable', 'string'],
             'observaciones' => ['nullable', 'string'],
         ];
     }
@@ -48,8 +46,6 @@ class StoreOrdenProduccionRequest extends FormRequest
             'productos.*.exists' => 'Uno de los productos seleccionados no existe.',
             'cantidad_planificada.required' => 'La cantidad planificada es obligatoria.',
             'cantidad_planificada.gt' => 'La cantidad planificada debe ser mayor a cero.',
-            'fecha_creacion.required' => 'La fecha de creación es obligatoria.',
-            'fecha_creacion.before_or_equal' => 'La fecha de creación debe ser del 15 de octubre de 2025 o anterior.',
             'taller_id.required' => 'El taller es obligatorio.',
             'taller_id.exists' => 'El taller seleccionado no existe.',
             'user_id.required' => 'El responsable es obligatorio.',

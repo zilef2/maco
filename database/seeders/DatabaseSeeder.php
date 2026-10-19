@@ -24,7 +24,8 @@ class DatabaseSeeder extends Seeder
             MaterialSeeder::class,
             ProductoSeeder::class,
             FichaTecnicaMaterialesSeeder::class,
-            NotificacionSeeder::class,
+            // NotificacionSeeder::class,
+            TallerSeeder::class,
         ]);
     }
 }

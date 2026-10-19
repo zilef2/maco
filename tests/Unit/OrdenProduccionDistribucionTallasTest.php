@@ -20,7 +20,12 @@ class OrdenProduccionDistribucionTallasTest extends TestCase
         $producto = Producto::create([
             'Titulo_Shopify' => 'Camisa Lino Premium',
             'Codigo_interno' => 'CAM-001',
+            'ID_producto_Shopify' => 'SHOP-CAM-001',
+            'Categoria_original' => 'Camisas',
+            'Familia_normalizada' => 'Ropa',
+            'Control_de_variante' => 'Talla',
             'Opciones' => 'S, M, L',
+            'Estado' => 'activo',
         ]);
 
         $distribucionS = Distribucion_por_tallas::create([

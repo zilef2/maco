@@ -13,3 +13,11 @@ id shopify y observaciones son opcionales.
 quiere decir que solo puedes que modificar 5 archivos, el create.vue, el distribuciontallas, si necesitas crear 1 archivo(opcional), el request y controlador de php.
 
 ### ejecutado
+
+
+
+# 18 oct
+1. hay que agregar una columna a material. que diga es un material_procesado (que sea int) por ahora debe sorportar 0 y 1, pero en un futuro quizas pueda tener mas estados.
+2. a database\seeders\MaterialSeeder.php agraga mas observaciones genericas, y arregla el hecho que proveedores no es un string si no una llave foranea, se conecta con     class Proveedor extends Model
+
+3. en el index de material, debe existir un filtro por cada columna

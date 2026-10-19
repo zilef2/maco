@@ -37,7 +37,10 @@ class MaterialController extends Controller {
 
     public function index(Request $request) {
         $numberPermissions = MyModels::getPermissionToNumber(Myhelp::EscribirEnLog($this, ' Materials '));
-        $Materials = $this->Filtros($request)->get();
+        $Materials = $this->Filtros($request)->with('proveedorHabitual')->get()->map(function ($material) {
+            $material->proveedor_nombre = $material->proveedorHabitual?->nombre ?? null;
+            return $material;
+        });
 
         $listasDesplegables = $this->listaDesplegableService->getOptionsByCategoriaGrouped('material');
         $proveedores = Proveedor::all(['id', 'nombre'])
@@ -61,7 +64,7 @@ class MaterialController extends Controller {
             'total' => $Materials->count(),
             'breadcrumbs' => [['label' => __('app.label.' . $this->FromController), 'href' => route($this->FromController . '.index')]],
             'title' => __('app.label.' . $this->FromController),
-            'filters' => $request->all(['search', 'field', 'order']),
+            'filters' => $request->except(['perPage', 'page']),
             'perPage' => (int)$perPage,
             'numberPermissions' => $numberPermissions,
             'losSelect'         => [
@@ -98,11 +101,30 @@ class MaterialController extends Controller {
         $Materials = Material::query();
         if ($request->has('search')) {
             $Materials = $Materials->where(function ($query) use ($request) {
-                $query->where('nombre', 'LIKE', "%" . $request->search . "%")
-                    //                    ->orWhere('codigo', 'LIKE', "%" . $request->search . "%")
-                    //                    ->orWhere('identificacion', 'LIKE', "%" . $request->search . "%")
-                ;
+                $query->where('nombre_base', 'LIKE', "%" . $request->search . "%")
+                    ->orWhere('codigo_material', 'LIKE', "%" . $request->search . "%")
+                    ->orWhere('categoria', 'LIKE', "%" . $request->search . "%");
             });
+        }
+
+        // Filtros por columna: booleanos y llaves foráneas van por igualdad exacta;
+        // el resto (texto/número) se aplica como LIKE.
+        $columnasExactas = [
+            'maneja_color',
+            'maneja_talla',
+            'maneja_otra_variante',
+            'material_procesado',
+            'proveedor_habitual',
+        ];
+        foreach ($request->except(['search', 'field', 'order', 'perPage', 'page']) as $filtro => $valor) {
+            if ($valor === '' || $valor === null) {
+                continue;
+            }
+            if (in_array($filtro, $columnasExactas, true)) {
+                $Materials = $Materials->where($filtro, (int) $valor);
+            } else {
+                $Materials = $Materials->where($filtro, 'LIKE', "%{$valor}%");
+            }
         }
 
         if ($request->has(['field', 'order'])) {

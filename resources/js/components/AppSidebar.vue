@@ -52,11 +52,6 @@ const navGroups: NavGroup[] = [
         label: 'Orden Producción',
         items: [
             {
-                title: 'Dashboard',
-                href: '/dashboard',
-                icon: LayoutDashboard,
-            },
-            {
                 title: 'OrdenProduccion',
                 href: '/OrdenProduccion',
                 icon: ClipboardList,

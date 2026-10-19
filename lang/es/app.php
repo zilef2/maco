@@ -762,6 +762,7 @@ return [
 		'estado' => 'estado',
 		'variante_atributo_sugerido' => 'variante_atributo_sugerido',
 		'proveedor_habitual' => 'proveedor_habitual',
+		'material_procesado' => 'Procesado',
 		'observaciones' => 'observaciones',
 		'grupotalla' => 'Grupotalla',
 		'GrupoTalla' => 'GrupoTalla',

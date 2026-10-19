@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "receiptId": "c12b2b9e-b9d7-4694-bdba-17f73cb4368f",
+  "status": "current",
+  "command": "deliver",
+  "type": "architecture",
+  "input": "C:\\laragon\\www\\maco\\docs\\flujo_general\\flujo_general.architecture.json",
+  "output": "C:\\laragon\\www\\maco\\docs\\flujo_general\\flujo_general.html",
+  "specification": {
+    "sha256": "8ce78d579009079b7afd08477519393aa2a6d9250aa6468fd6429e58803945a4",
+    "bytes": 7136
+  },
+  "artifact": {
+    "sha256": "2cd5b80381bb9bdbfd5c0f4fac923e24f12bee205bb22331ff47199ba6f8cddd",
+    "bytes": 838582
+  }
+}

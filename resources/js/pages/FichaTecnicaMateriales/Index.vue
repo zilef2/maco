@@ -12,10 +12,11 @@ import InfoButton from '@/components/InfoButton.vue';
 import pkg from 'lodash';
 
 import Pagination from '@/components/Pagination.vue';
-import { ChevronUpDownIcon, PencilIcon, TrashIcon } from '@heroicons/vue/24/solid';
+import { ChevronUpDownIcon, PencilIcon, TrashIcon, EyeIcon } from '@heroicons/vue/24/solid';
 import Create from '@/pages/FichaTecnicaMateriales/Create.vue';
 import Edit from '@/pages/FichaTecnicaMateriales/Edit.vue';
 import Delete from '@/pages/FichaTecnicaMateriales/Delete.vue';
+import MaterialesModal from '@/pages/FichaTecnicaMateriales/MaterialesModal.vue';
 
 import { zilef_nuber_format } from '@/global.ts';
 
@@ -52,6 +53,8 @@ const data = reactive({
     createOpen: false,
     editOpen: false,
     deleteOpen: false,
+    materialesOpen: false,
+    fichaVisible: null as any,
     dataSet: (usePage().props as any)?.app?.perpage ?? defaultPerPage,
 })
 
@@ -94,6 +97,19 @@ watch(() => _.cloneDeep(data.params), debounce(() => {
                     <Delete v-if="can(['delete FichaTecnicaMateriales'])" :numberPermissions="props.numberPermissions"
                         :show="data.deleteOpen" @close="data.deleteOpen = false" :FichaTecnicaMaterialesa="data.FichaTecnicaMaterialeso"
                         :title="props.title" />
+
+                    <MaterialesModal :show="data.materialesOpen" @close="data.materialesOpen = false"
+                        :title="props.title" :ficha="data.fichaVisible" />
+                </div>
+            </div>
+            <div class="px-4 sm:px-0 flex justify-end">
+                <div class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm"
+                    :class="(props.losSelect?.productos_sin_ficha?.length || 0) > 0
+                        ? 'border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300'
+                        : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-300'">
+                    <span class="text-xs font-medium uppercase tracking-wide opacity-70">Sin ficha:</span>
+                    <span class="text-base font-bold">{{ props.losSelect?.productos_sin_ficha?.length ?? 0 }}</span>
+                    <span class="text-xs opacity-70">producto{{ (props.losSelect?.productos_sin_ficha?.length || 0) === 1 ? '' : 's' }}</span>
                 </div>
             </div>
             <div class="relative bg-white dark:bg-gray-800 shadow sm:rounded-lg w-max min-w-full">
@@ -153,7 +169,14 @@ watch(() => _.cloneDeep(data.params), debounce(() => {
                                     <span v-if="ficha.productos_nombres">{{ ficha.productos_nombres }}</span>
                                     <span v-else class="text-gray-400">—</span>
                                 </td>
-                                <td class="whitespace-nowrap py-4 px-2 sm:py-3 text-center">{{ ficha.materiales_count }}</td>
+                                <td class="whitespace-nowrap py-4 px-2 sm:py-3 text-center">
+                                    <button type="button" @click="(data.fichaVisible = ficha), (data.materialesOpen = true)"
+                                        class="inline-flex items-center gap-1.5 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300 px-2.5 py-1 text-xs font-medium hover:bg-blue-200 dark:hover:bg-blue-900/50 transition"
+                                        v-tooltip="'Ver materiales requeridos'">
+                                        <span>{{ ficha.materiales_count }}</span>
+                                        <EyeIcon class="w-4 h-4" />
+                                    </button>
+                                </td>
                                 <td class="whitespace-nowrap py-4 px-2 sm:py-3 text-right">
                                     {{ zilef_nuber_format(ficha.valor_total_ficha, 0, true) }}
                                 </td>

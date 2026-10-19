@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "browser-check",
+  "evidenceKind": "automated-browser",
+  "status": "fail",
+  "visualReview": "not-requested",
+  "provenance": "current",
+  "deliveryReceiptId": "7e74df96-e6fa-4ab4-bd4f-b8e809afeb76",
+  "artifact": {
+    "path": "C:\\laragon\\www\\maco\\docs\\flujo_general\\flujo_general.html",
+    "sha256": "2cd5b80381bb9bdbfd5c0f4fac923e24f12bee205bb22331ff47199ba6f8cddd",
+    "bytes": 838582
+  },
+  "state": {
+    "detail": "read",
+    "motion": "still"
+  },
+  "chrome": {
+    "status": "available",
+    "executable": "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+  },
+  "diagnostics": [
+    {
+      "code": "viewer/temp-cleanup-incomplete",
+      "severity": "error",
+      "message": "Browser cleanup could not safely finish; inspect the reported retained path.",
+      "subject": {
+        "artifact": "C:\\laragon\\www\\maco\\docs\\flujo_general\\flujo_general.html"
+      },
+      "evidence": {
+        "reason": "Temporary directory cleanup failed; retained path \"C:\\Users\\alejo\\AppData\\Local\\Temp\\archify-visual-check-profile-cTo0ot\": EBUSY: resource busy or locked, unlink 'C:\\Users\\alejo\\AppData\\Local\\Temp\\archify-visual-check-profile-cTo0ot\\Default\\Cache\\No_Vary_Search\\journal.baj'",
+        "retainedDirectory": "C:\\Users\\alejo\\AppData\\Local\\Temp\\archify-visual-check-profile-cTo0ot"
+      },
+      "supportedFixes": [
+        "resolve the reported process or filesystem failure; verify directory ownership before manual cleanup"
+      ]
+    }
+  ],
+  "containment": {
+    "status": "fail",
+    "policy": "fit-or-reader-declared-readable-vertical-scroll",
+    "viewports": []
+  },
+  "themeStates": {
+    "status": "fail",
+    "viewports": []
+  },
+  "readability": {
+    "status": "fail",
+    "minimumProjectedNodeTextPx": 6,
+    "viewports": []
+  },
+  "viewerChrome": {
+    "status": "fail",
+    "viewports": []
+  },
+  "captures": {
+    "status": "not-requested",
+    "screenshots": [],
+    "contactSheet": null
+  },
+  "sidecars": {
+    "receipt": "flujo_general.browser-check.json",
+    "files": []
+  },
+  "error": "Temporary directory cleanup failed; retained path \"C:\\Users\\alejo\\AppData\\Local\\Temp\\archify-visual-check-profile-cTo0ot\": EBUSY: resource busy or locked, unlink 'C:\\Users\\alejo\\AppData\\Local\\Temp\\archify-visual-check-profile-cTo0ot\\Default\\Cache\\No_Vary_Search\\journal.baj'"
+}

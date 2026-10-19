@@ -55,6 +55,7 @@ Route::middleware('auth', 'verified')->group(function () {
 	Route::resource("/OrdenProduccion", \App\Http\Controllers\OrdenProduccionController::class);
 	Route::put("/OrdenProduccion/{id}/distribucion", [\App\Http\Controllers\OrdenProduccionController::class, 'syncDistribucion'])->name('OrdenProduccion.distribucion');
 	Route::put("/OrdenProduccion/{id}/estado", [\App\Http\Controllers\OrdenProduccionController::class, 'cambiarEstado'])->name('OrdenProduccion.cambiarEstado');
+	Route::post("/OrdenProduccion/borrador", [\App\Http\Controllers\OrdenProduccionController::class, 'guardarBorrador'])->name('OrdenProduccion.borrador');
 	Route::get("/ProcesoExterno/materiales-op/{orden}", [\App\Http\Controllers\ProcesoExternoController::class, 'materialesOp'])->name('ProcesoExterno.materialesOp');
 	Route::post("/ProcesoExterno/salida-op", [\App\Http\Controllers\ProcesoExternoController::class, 'salidaOp'])->name('ProcesoExterno.salidaOp');
 	Route::resource("/ProcesoExterno", \App\Http\Controllers\ProcesoExternoController::class);

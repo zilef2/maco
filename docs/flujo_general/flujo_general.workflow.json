@@ -1,0 +1,296 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Flujo Operativo de Producción MACO",
+    "subtitle": "Ciclo completo de fabricación y control desde la OP hasta el despacho",
+    "animation": "trace",
+    "visual_preset": "signal-flow",
+    "quality_profile": "showcase",
+    "output": "docs/flujo_general/flujo_produccion.html"
+  },
+  "lanes": [
+    { "id": "satelites", "label": "Proveedores y Procesos Satélite" },
+    { "id": "planeacion", "label": "Planeación y Suministros" },
+    { "id": "taller", "label": "Taller de Ensamble" },
+    { "id": "calidad", "label": "Control de Calidad y Cierre" },
+    { "id": "despacho", "label": "Bodega y Despacho Comercial" },
+    { "id": "excepciones", "label": "Reproceso y Pérdidas", "variant": "exception" }
+  ],
+  "phases": [
+    { "id": "fase_insumos", "label": "1. Alistamiento e Insumos", "fromCol": 0, "toCol": 1 },
+    { "id": "fase_satelites", "label": "2. Subprocesos y Kit", "fromCol": 2, "toCol": 3, "variant": "emphasis" },
+    { "id": "fase_ensamble", "label": "3. Ensamble, Calidad y Entrega", "fromCol": 4, "toCol": 5, "variant": "dashed" }
+  ],
+  "groups": [
+    { "id": "satelites_grp", "label": "Preparación de componentes", "lane": "satelites", "fromCol": 1, "toCol": 3, "variant": "emphasis" },
+    { "id": "excepciones_grp", "label": "Tratamiento de no conformidades", "lane": "excepciones", "fromCol": 4, "toCol": 5, "variant": "security" }
+  ],
+  "mainPath": [
+    "op_creada",
+    "verif_materiales",
+    "sublimacion_capellada",
+    "corte_correas",
+    "pedreria_correas",
+    "kit_ensamble",
+    "ensamble_calzado",
+    "control_calidad",
+    "bodega_aprobados",
+    "despacho_final"
+  ],
+  "nodes": [
+    {
+      "id": "op_creada",
+      "lane": "planeacion",
+      "col": 0,
+      "type": "frontend",
+      "label": "1. Crear OP",
+      "sublabel": "Curva tallas y lote",
+      "tag": "OrdenProduccion",
+      "width": 136
+    },
+    {
+      "id": "verif_materiales",
+      "lane": "planeacion",
+      "col": 1,
+      "type": "database",
+      "label": "2. Stock Insumos",
+      "sublabel": "Disponibilidad materiales",
+      "tag": "Inventario",
+      "width": 136
+    },
+    {
+      "id": "sublimacion_capellada",
+      "lane": "satelites",
+      "col": 1,
+      "type": "external",
+      "label": "3-4. Sublimación",
+      "sublabel": "Lona y capelladas",
+      "tag": "Proveedor Textil",
+      "width": 136
+    },
+    {
+      "id": "corte_correas",
+      "lane": "satelites",
+      "col": 2,
+      "type": "external",
+      "label": "5-6. Corte Correas",
+      "sublabel": "Corte cuero en taller",
+      "tag": "Taller Corte",
+      "width": 136
+    },
+    {
+      "id": "pedreria_correas",
+      "lane": "satelites",
+      "col": 3,
+      "type": "external",
+      "label": "7-8. Pedrería",
+      "sublabel": "Fijación pedrería",
+      "tag": "Proveedor",
+      "width": 136
+    },
+    {
+      "id": "kit_ensamble",
+      "lane": "planeacion",
+      "col": 3,
+      "type": "backend",
+      "label": "9-12. Kit Ensamble",
+      "sublabel": "Materiales + ficha técnica",
+      "tag": "KitTaller",
+      "width": 136
+    },
+    {
+      "id": "ensamble_calzado",
+      "lane": "taller",
+      "col": 4,
+      "type": "backend",
+      "label": "13. Ensamble",
+      "sublabel": "Armado del calzado",
+      "tag": "Taller",
+      "width": 136
+    },
+    {
+      "id": "control_calidad",
+      "lane": "calidad",
+      "col": 4,
+      "type": "security",
+      "label": "14. Revisión Calidad",
+      "sublabel": "Inspección producto",
+      "tag": "RecepcionCalidad",
+      "width": 136
+    },
+    {
+      "id": "reparacion_taller",
+      "lane": "excepciones",
+      "col": 4,
+      "type": "messagebus",
+      "label": "15. En Reparación",
+      "sublabel": "Defecto subsanable",
+      "tag": "Reproceso",
+      "width": 136
+    },
+    {
+      "id": "baja_material",
+      "lane": "excepciones",
+      "col": 5,
+      "type": "security",
+      "label": "16. Registrar Baja",
+      "sublabel": "Recuperar material",
+      "tag": "No recuperable",
+      "width": 136
+    },
+    {
+      "id": "bodega_aprobados",
+      "lane": "despacho",
+      "col": 4,
+      "type": "database",
+      "label": "17. En Bodega",
+      "sublabel": "Pares conformes",
+      "tag": "Bolsa plástica",
+      "width": 136
+    },
+    {
+      "id": "despacho_final",
+      "lane": "despacho",
+      "col": 5,
+      "type": "cloud",
+      "label": "18. Despacho",
+      "sublabel": "Empaque comercial",
+      "tag": "Cliente Final",
+      "width": 136
+    }
+  ],
+  "edges": [
+    {
+      "id": "e_op_a_mat",
+      "from": "op_creada",
+      "to": "verif_materiales",
+      "variant": "emphasis"
+    },
+    {
+      "id": "e_mat_a_sub",
+      "from": "verif_materiales",
+      "to": "sublimacion_capellada",
+      "label": "arte gráfico",
+      "variant": "default",
+      "route": "drop",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "e_sub_a_corte",
+      "from": "sublimacion_capellada",
+      "to": "corte_correas",
+      "label": "envío cuero",
+      "variant": "default"
+    },
+    {
+      "id": "e_corte_a_ped",
+      "from": "corte_correas",
+      "to": "pedreria_correas",
+      "label": "correas cortadas",
+      "variant": "default"
+    },
+    {
+      "id": "e_ped_a_kit",
+      "from": "pedreria_correas",
+      "to": "kit_ensamble",
+      "label": "retorno partes",
+      "variant": "emphasis",
+      "route": "drop",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "e_kit_a_ens",
+      "from": "kit_ensamble",
+      "to": "ensamble_calzado",
+      "variant": "emphasis",
+      "route": "drop",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "e_ens_a_qc",
+      "from": "ensamble_calzado",
+      "to": "control_calidad",
+      "variant": "emphasis",
+      "route": "drop",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "e_qc_a_bodega",
+      "from": "control_calidad",
+      "to": "bodega_aprobados",
+      "label": "aprobados",
+      "variant": "emphasis",
+      "route": "drop",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "e_qc_a_rep",
+      "from": "control_calidad",
+      "to": "reparacion_taller",
+      "label": "defectuoso",
+      "variant": "security",
+      "route": "outside-right",
+      "fromSide": "right",
+      "toSide": "right"
+    },
+    {
+      "id": "e_rep_a_baja",
+      "from": "reparacion_taller",
+      "to": "baja_material",
+      "label": "irreparable",
+      "variant": "security",
+      "role": "error"
+    },
+    {
+      "id": "e_rep_reingreso",
+      "from": "reparacion_taller",
+      "to": "control_calidad",
+      "label": "reparado",
+      "variant": "dashed",
+      "role": "return",
+      "fromSide": "left",
+      "toSide": "left",
+      "route": "return-left"
+    },
+    {
+      "id": "e_bodega_a_desp",
+      "from": "bodega_aprobados",
+      "to": "despacho_final",
+      "label": "venta/orden",
+      "variant": "emphasis"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Alistamiento y Procesos Satélite",
+      "items": [
+        "1-2. Planificación de tallas en OP y verificación de existencias en bodega.",
+        "3-4. Envío de lonas y archivos de capellada para sublimación externa.",
+        "5-8. Circuito satélite: corte de cuero en taller y fijación de pedrería."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Consolidación de Kit y Ensamble",
+      "items": [
+        "9-12. Armado del kit integral de materiales e impresión de ficha técnica con imagen.",
+        "13. Entrega formal al taller para el ensamblado completo del calzado."
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Calidad, Reproceso y Despacho",
+      "items": [
+        "14-16. Recepción y control de calidad; reparación en taller o baja con recuperación.",
+        "17-18. Ingreso a bodega solo de pares conformes y empaque de marca al despachar."
+      ]
+    }
+  ]
+}

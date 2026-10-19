@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "ok": false,
+  "command": "finalize",
+  "status": "fail",
+  "type": "architecture",
+  "quality": "showcase",
+  "specification": {
+    "path": "C:\\laragon\\www\\maco\\docs\\flujo_general\\flujo_general.architecture.json",
+    "sha256": "8ce78d579009079b7afd08477519393aa2a6d9250aa6468fd6429e58803945a4",
+    "bytes": 7136
+  },
+  "artifact": {
+    "path": "C:\\laragon\\www\\maco\\docs\\flujo_general\\flujo_general.html",
+    "sha256": "2cd5b80381bb9bdbfd5c0f4fac923e24f12bee205bb22331ff47199ba6f8cddd",
+    "bytes": 838582
+  },
+  "gates": {
+    "validate": "pass",
+    "deliver": "pass",
+    "check": "pass",
+    "browser-check": "fail"
+  },
+  "failedStage": "browser-check",
+  "diagnostics": [
+    {
+      "code": "viewer/temp-cleanup-incomplete",
+      "severity": "error",
+      "message": "Browser cleanup could not safely finish; inspect the reported retained path.",
+      "subject": {
+        "artifact": "C:\\laragon\\www\\maco\\docs\\flujo_general\\flujo_general.html"
+      },
+      "evidence": {
+        "reason": "Temporary directory cleanup failed; retained path \"C:\\Users\\alejo\\AppData\\Local\\Temp\\archify-visual-check-profile-cTo0ot\": EBUSY: resource busy or locked, unlink 'C:\\Users\\alejo\\AppData\\Local\\Temp\\archify-visual-check-profile-cTo0ot\\Default\\Cache\\No_Vary_Search\\journal.baj'",
+        "retainedDirectory": "C:\\Users\\alejo\\AppData\\Local\\Temp\\archify-visual-check-profile-cTo0ot"
+      },
+      "supportedFixes": [
+        "resolve the reported process or filesystem failure; verify directory ownership before manual cleanup"
+      ]
+    }
+  ],
+  "diagnosticSummary": {
+    "total": 1,
+    "shown": 1,
+    "truncated": false
+  },
+  "evidence": {
+    "receipt": "C:\\laragon\\www\\maco\\docs\\flujo_general\\flujo_general.finalize.json",
+    "summaryReceipt": "C:\\laragon\\www\\maco\\docs\\flujo_general\\flujo_general.finalize-summary.json",
+    "browserCheckReceipt": "C:\\laragon\\www\\maco\\docs\\flujo_general\\flujo_general.browser-check.json"
+  },
+  "visualReview": "not-requested",
+  "durationMs": 14956
+}

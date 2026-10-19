@@ -25,7 +25,6 @@ class UserSeeder extends Seeder
             'password' => bcrypt($genericPas.'0#*'.$genericPas), // 123_deeradmin00.+-*123_de  
             'email_verified_at' => date('Y-m-d H:i'),
             'sexo' => $sexos[0],
-
         ]);
         $superadmin->assignRole('superadmin');
 
@@ -47,8 +46,9 @@ class UserSeeder extends Seeder
         }
 
         $nombresGenericos = [
-            'Alicia' => 777117711,
-            'Alejo' => 1234567890,
+            'Alicia' => 707117711,
+            'Jose' => 1034567890,
+            'Juancho' => 1034567891,
         ];
 
         $rolesUser = MyModels::CargosYModelos('soloNombresRoles');
@@ -56,14 +56,14 @@ class UserSeeder extends Seeder
         foreach ($rolesUser as $rol) {
             foreach ($nombresGenericos as $key => $value) {
                 $sexoRandom = (rand(0, 1));
-                $nombresRandom = (rand(1, count($rolesUser)));
                 $unUsuario = User::create([
-                    'name' => substr($key, $nombresRandom).' el '.$rol,
-                    'email' => $key.'@'.$rol.$key.'.com',
-                    'password' => bcrypt($genPa[0].' _ '.$rol), // 123_demco _ trabajador
+                    'name' => $key.' - '.$rol,
+                    'email' => $key.'@'.$rol.'.com',
+                    'password' => bcrypt($genPa[0].' _ '.$rol), // 135_d_ trabajador
                     'email_verified_at' => date('Y-m-d H:i'),
                     'sexo' => $sexos[$sexoRandom],
                     'celular' => $value * 2,
+                    'identificacion' => $value,
                 ]);
                 $unUsuario->assignRole($rol);
             }

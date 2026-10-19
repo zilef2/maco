@@ -32,40 +32,50 @@ class OrdenProduccionController extends Controller {
     public function index(Request $request) {
         $numberPermissions = MyModels::getPermissionToNumber(Myhelp::EscribirEnLog($this, ' OrdenProduccions '));
 
-        // Cache del listado: la clave incluye versión + filtros; se invalida al escribir
-        $filtros = $request->all(['search', 'field', 'order']);
-        $claveListado = 'op_index_' . $this->versionCache() . '_' . md5(json_encode($filtros));
-        $OrdenProduccions = Cache::remember($claveListado, now()->addMinutes(0), function () use ($request) {
-            return $this->Filtros($request)->get()->map(function ($op) {
-                $producto = $op->productoReferencia;
-                $op->producto_nombre = $producto
-                    ? ($producto->Titulo_Shopify ?: ($producto->Codigo_interno ?: 'Producto #' . $producto->id))
-                    : ($op->producto_referencia_id ? '#' . $op->producto_referencia_id : '');
-                $op->productos_nombres = $op->productos
-                    ->map(fn ($p) => $p->Titulo_Shopify ?: ($p->Codigo_interno ?: 'Producto #' . $p->id))
-                    ->implode(', ');
-                $op->taller_nombre = $op->taller?->nombre ?? ($op->taller_id ? '#' . $op->taller_id : '');
-                $op->estado_nombre = $op->estadoOp?->nombre ?? ($op->estado_op_id ? '#' . $op->estado_op_id : '');
-                $op->responsable_nombre = $op->responsable?->name ?? ($op->user_id ? '#' . $op->user_id : '');
-                return $op;
-            });
+        // Listado completo: la tabla filtra, ordena y pagina en el frontend.
+        // La clave solo depende de la versión, que se incrementa al escribir.
+        $claveListado = 'op_index_' . $this->versionCache();
+        $OrdenProduccions = Cache::remember($claveListado, now()->addMinutes(10), function () {
+            return OrdenProduccion::query()
+                ->with(['productoReferencia', 'taller', 'estadoOp', 'responsable', 'distribucionesPorTallas', 'productos'])
+                ->orderByDesc('updated_at')
+                ->get()
+                ->map(function ($op) {
+                    $producto = $op->productoReferencia;
+                    $op->producto_nombre = $producto
+                        ? ($producto->Titulo_Shopify ?: ($producto->Codigo_interno ?: 'Producto #' . $producto->id))
+                        : ($op->producto_referencia_id ? '#' . $op->producto_referencia_id : '');
+                    $op->productos_nombres = $op->productos
+                        ->map(fn ($p) => $p->Titulo_Shopify ?: ($p->Codigo_interno ?: 'Producto #' . $p->id))
+                        ->implode(', ');
+                    $op->taller_nombre = $op->taller?->nombre ?? ($op->taller_id ? '#' . $op->taller_id : '');
+                    $op->estado_nombre = $op->estadoOp?->nombre ?? ($op->estado_op_id ? '#' . $op->estado_op_id : '');
+                    $op->responsable_nombre = $op->responsable?->name ?? ($op->user_id ? '#' . $op->user_id : '');
+                    return $op;
+                })
+                ->values();
         });
 
-        // Cache de los selects (productos, talleres, estados, usuarios, grupos, siguiente OP)
-        // Sin cache: los talleres/estados pueden cambiar y el select debe reflejarlo al instante
+        // Selects para los formularios (productos, talleres, estados, usuarios, grupos, siguiente OP)
         $losSelect = $this->obtenerSelects();
 
-        $perPage = $request->has('perPage') ? $request->perPage : 10;
+        // Último borrador pendiente (guardado con "Terminar después") para el botón "Continuar última OP"
+        $borradorId = OrdenProduccion::where('estado_op_id', EstadoOperacion::where('nombre', 'Borrador')->value('id'))
+            ->latest('updated_at')->value('id');
+        $borradorUltimo = $borradorId
+            ? OrdenProduccion::with(['productos:id,Titulo_Shopify,Codigo_interno', 'distribucionesPorTallas'])->find($borradorId)
+            : null;
+
         return Inertia::render($this->FromController . '/Index', [
-            'fromController' => $this->PerPageAndPaginate($request, $OrdenProduccions),
+            'ordenes' => $OrdenProduccions,
             'total' => $OrdenProduccions->count(),
             'breadcrumbs' => [['label' => __('app.label.' . $this->FromController), 'href' => route($this->FromController . '.index')]],
             'title' => __('app.label.' . $this->FromController),
-            'filters' => $request->all(['search', 'field', 'order']),
-            'perPage' => (int)$perPage,
+            'perPage' => 10,
             'numberPermissions' => $numberPermissions,
             'losSelect'         => $losSelect,
 	        'titulos'           => OrdenProduccion::getFillableWithTypes(),
+            'borradorUltimo'    => $borradorUltimo,
 
         ]);
     }
@@ -265,7 +275,7 @@ class OrdenProduccionController extends Controller {
         $permissions = Myhelp::EscribirEnLog($this, ' Begin STORE:OrdenProduccions');
         DB::beginTransaction();
 
-        $data = $request->only(['numero_op', 'cantidad_planificada', 'fecha_creacion', 'fecha_prevista_envio_taller', 'taller_id', 'user_id', 'id_shopify_producto', 'observaciones']);
+        $data = $request->only(['numero_op', 'cantidad_planificada', 'fecha_prevista_envio_taller', 'taller_id', 'user_id', 'id_shopify_producto', 'observaciones']);
         $data['producto_referencia_id'] = $request->filled('producto_referencia_id') ? $request->input('producto_referencia_id') : null;
         $data['fecha_prevista_envio_taller'] = ($data['fecha_prevista_envio_taller'] ?? '') === '' ? null : $data['fecha_prevista_envio_taller'];
 
@@ -273,9 +283,6 @@ class OrdenProduccionController extends Controller {
             $data['user_id'] = $request->input('responsable_id');
         }
 
-        if (empty($data['fecha_creacion'])) {
-            $data['fecha_creacion'] = now()->toDateString();
-        }
         $data['estado_op_id'] = EstadoOperacion::where('nombre', 'Preparación')->value('id');
         if (empty($data['numero_op'])) {
             $maxOp = OrdenProduccion::selectRaw("MAX(CAST(REPLACE(numero_op, 'OP-', '') AS UNSIGNED)) as max_op")->value('max_op');
@@ -330,6 +337,73 @@ class OrdenProduccionController extends Controller {
         return back()->with('success', __('app.label.created_successfully', ['name' => $identificador]));
     }
 
+    /**
+     * Guarda la OP como Borrador ("Terminar después"): acepta datos parciales,
+     * crea la orden si no existe id y reutiliza el número OP del formulario.
+     */
+    public function guardarBorrador(Request $request): RedirectResponse {
+        $permissions = Myhelp::EscribirEnLog($this, ' Begin BORRADOR:OrdenProduccions');
+        $request->validate([
+            'id' => ['nullable', 'integer', 'exists:orden_produccions,id'],
+            'numero_op' => ['nullable', 'string', 'regex:/^OP-\d+$/'],
+            'cantidad_planificada' => ['nullable', 'numeric', 'min:0'],
+            'fecha_prevista_envio_taller' => ['nullable', 'date'],
+            'taller_id' => ['nullable', 'integer', 'exists:tallers,id'],
+            'user_id' => ['nullable', 'integer', 'exists:users,id'],
+            'id_shopify_producto' => ['nullable', 'string'],
+            'observaciones' => ['nullable', 'string'],
+            'productos' => ['nullable', 'array'],
+            'productos.*' => ['integer', 'exists:productos,id'],
+            'distribucion_tallas' => ['nullable', 'array'],
+            'distribucion_tallas.*.id' => ['nullable', 'integer'],
+            'distribucion_tallas.*.talla' => ['nullable', 'string', 'max:255'],
+            'distribucion_tallas.*.cantidad_planificada' => ['nullable', 'numeric', 'min:0'],
+        ]);
+
+        DB::beginTransaction();
+
+        $data = $request->only(['numero_op', 'cantidad_planificada', 'fecha_prevista_envio_taller', 'taller_id', 'user_id', 'id_shopify_producto', 'observaciones']);
+        $data = array_map(fn ($v) => $v === '' ? null : $v, $data);
+        $data['estado_op_id'] = EstadoOperacion::where('nombre', 'Borrador')->value('id');
+        if (empty($data['cantidad_planificada'])) {
+            $data['cantidad_planificada'] = 0;
+        }
+        if (empty($data['user_id']) && $request->filled('responsable_id')) {
+            $data['user_id'] = $request->input('responsable_id');
+        }
+        if (empty($data['user_id']) && $request->user()) {
+            $data['user_id'] = $request->user()->id;
+        }
+
+        $OrdenProduccion = $request->filled('id')
+            ? OrdenProduccion::findOrFail((int) $request->input('id'))
+            : new OrdenProduccion();
+
+        if (empty($data['numero_op'])) {
+            if (!$OrdenProduccion->exists) {
+                $maxOp = OrdenProduccion::selectRaw("MAX(CAST(REPLACE(numero_op, 'OP-', '') AS UNSIGNED)) as max_op")->value('max_op');
+                $data['numero_op'] = 'OP-' . (($maxOp && (int)$maxOp >= 100) ? (int)$maxOp + 1 : 100);
+            }
+        }
+
+        $OrdenProduccion->forceFill($data);
+        $OrdenProduccion->save();
+
+        if ($request->has('distribucion_tallas')) {
+            $this->sincronizarTallas($OrdenProduccion, $request->input('distribucion_tallas', []), true, $request->input('grupo_tallas'));
+        }
+
+        if ($request->has('productos')) {
+            $OrdenProduccion->productos()->sync(array_map('intval', (array) $request->input('productos', [])));
+        }
+
+        DB::commit();
+        $this->invalidarCache();
+        $identificador = $OrdenProduccion->numero_op ?? $OrdenProduccion->id;
+        Myhelp::EscribirEnLog($this, 'BORRADOR:OrdenProduccions EXITOSO', 'OrdenProduccion id:' . $OrdenProduccion->id . ' | ' . $identificador, false);
+        return back()->with('success', 'Borrador guardado: ' . $identificador . '. Puede continuarla desde el botón "Continuar última OP".');
+    }
+
     //! STORE - UPDATE - DELETE
     //! STORE functions
 
@@ -348,7 +422,7 @@ class OrdenProduccionController extends Controller {
         $permissions = Myhelp::EscribirEnLog($this, ' Begin UPDATE:OrdenProduccions');
         DB::beginTransaction();
 
-        $data = $request->only(['numero_op', 'cantidad_planificada', 'fecha_creacion', 'fecha_prevista_envio_taller', 'taller_id', 'user_id', 'id_shopify_producto', 'observaciones']);
+        $data = $request->only(['numero_op', 'cantidad_planificada', 'fecha_prevista_envio_taller', 'taller_id', 'user_id', 'id_shopify_producto', 'observaciones']);
         $data['producto_referencia_id'] = $request->filled('producto_referencia_id') ? $request->input('producto_referencia_id') : null;
         $data['fecha_prevista_envio_taller'] = ($data['fecha_prevista_envio_taller'] ?? '') === '' ? null : $data['fecha_prevista_envio_taller'];
 
@@ -356,9 +430,17 @@ class OrdenProduccionController extends Controller {
             $data['user_id'] = $request->input('responsable_id');
         }
         $OrdenProduccion = OrdenProduccion::findOrFail($id);
+        $eraBorrador = $OrdenProduccion->estadoOp?->nombre === 'Borrador';
 
         $OrdenProduccion->forceFill($data);
         $OrdenProduccion->save();
+
+        // Al continuar un borrador guardado con "Terminar después", la orden pasa a Preparación
+        if ($eraBorrador) {
+            $OrdenProduccion->forceFill([
+                'estado_op_id' => EstadoOperacion::where('nombre', 'Preparación')->value('id'),
+            ])->save();
+        }
 
         if ($request->has('distribucion_tallas')) {
             $this->sincronizarTallas($OrdenProduccion, $request->input('distribucion_tallas', []), true, $request->input('grupo_tallas'));

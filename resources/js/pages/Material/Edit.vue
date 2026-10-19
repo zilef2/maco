@@ -112,7 +112,39 @@ const update = () => {
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
                             <div v-for="(atributosform, indice) in camposNormales" :key="indice">
 
-                                <div v-if="atributosform.type === 'foreign'" id="SelectVue">
+                                <!-- proveedor habitual: FK hacia Proveedor -->
+                                <div v-if="atributosform.idd === 'proveedor_habitual'">
+                                    <InputLabel :for="atributosform.label"
+                                        :value="lang().t('app.label')[atributosform.label] || atributosform.label" />
+                                    <v-select :id="atributosform.idd"
+                                        class="mt-1 block w-full"
+                                        :options="props.losSelect?.proveedor_habitual || []"
+                                        label="nombre"
+                                        :reduce="(item: any) => item.id"
+                                        v-model="form[atributosform.idd]"
+                                        :placeholder="atributosform.label"
+                                        :disabled="esCampoBloqueado(atributosform.idd)" />
+                                    <InputError class="mt-2" :message="form.errors[atributosform.idd]" />
+                                </div>
+
+                                <!-- material procesado: 0/1 (por ahora; en el futuro más estados) -->
+                                <div v-else-if="atributosform.idd === 'material_procesado'">
+                                    <InputLabel :for="atributosform.label"
+                                        :value="lang().t('app.label')[atributosform.label] || atributosform.label" />
+                                    <select :id="atributosform.idd"
+                                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 focus:border-indigo-500 dark:focus:border-indigo-600 focus:ring-indigo-500 dark:focus:ring-indigo-600 shadow-sm"
+                                        v-model="form[atributosform.idd]"
+                                        :disabled="esCampoBloqueado(atributosform.idd)">
+                                        <option :value="0">No procesado (0)</option>
+                                        <option :value="1">Procesado (1)</option>
+                                    </select>
+                                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                        0 = no procesado, 1 = procesado.
+                                    </p>
+                                    <InputError class="mt-2" :message="form.errors[atributosform.idd]" />
+                                </div>
+
+                                <div v-else-if="atributosform.type === 'foreign'" id="SelectVue">
                                     <label name="labelSelectVue"> {{ lang().t('app.label')[atributosform.label] || atributosform.label }} </label>
                                     <v-select :options="props.losSelect[0]" v-model="form[atributosform.idd]"
                                         :reduce="element => element.value" label="name"
