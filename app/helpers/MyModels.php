@@ -41,7 +41,7 @@ class MyModels {
 			'Talla',
 			'OrdenProduccion',
 			'ProcesoExterno',
-			'KitTaller',
+			'KitProceso',
 			'RecepcionCalidad',
 			'CierreOrdenProduccion',
 			'EstadoOperacion',
@@ -52,6 +52,7 @@ class MyModels {
 			'Material',
 			'GrupoTalla',
 			'EstadoOpMaterial',
+			'EmpresaExterna',
 			//aquipues
 
 		];

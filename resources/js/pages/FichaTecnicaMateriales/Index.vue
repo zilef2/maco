@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
-import { Head, router, usePage } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import Breadcrumb from '@/components/Breadcrumb.vue';
 import TextInput from '@/components/TextInput.vue';
-import PrimaryButton from '@/components/PrimaryButton.vue';
 import SelectInput from '@/components/SelectInput.vue';
 import { reactive, watch } from 'vue';
 
@@ -12,8 +11,7 @@ import InfoButton from '@/components/InfoButton.vue';
 import pkg from 'lodash';
 
 import Pagination from '@/components/Pagination.vue';
-import { ChevronUpDownIcon, PencilIcon, TrashIcon, EyeIcon } from '@heroicons/vue/24/solid';
-import Create from '@/pages/FichaTecnicaMateriales/Create.vue';
+import { ChevronUpDownIcon, PencilIcon, TrashIcon, EyeIcon, PlusIcon } from '@heroicons/vue/24/solid';
 import Edit from '@/pages/FichaTecnicaMateriales/Edit.vue';
 import Delete from '@/pages/FichaTecnicaMateriales/Delete.vue';
 import MaterialesModal from '@/pages/FichaTecnicaMateriales/MaterialesModal.vue';
@@ -50,7 +48,6 @@ const data = reactive({
         perPage: props.perPage,
     },
     FichaTecnicaMaterialeso: null as any,
-    createOpen: false,
     editOpen: false,
     deleteOpen: false,
     materialesOpen: false,
@@ -82,14 +79,6 @@ watch(() => _.cloneDeep(data.params), debounce(() => {
         <div class="space-y-4">
             <div class="px-4 sm:px-0">
                 <div class="rounded-lg overflow-hidden w-fit">
-                    <PrimaryButton class="m-1" @click="data.createOpen = true" v-if="can(['create FichaTecnicaMateriales'])">
-                        {{ lang().t('app.button.add') }}
-                    </PrimaryButton>
-
-                    <Create v-if="can(['create FichaTecnicaMateriales'])" :numberPermissions="props.numberPermissions"
-                        :show="data.createOpen" @close="data.createOpen = false" :title="props.title"
-                        :losSelect="props.losSelect" />
-
                     <Edit v-if="can(['update FichaTecnicaMateriales'])" :numberPermissions="props.numberPermissions"
                         :show="data.editOpen" @close="data.editOpen = false" :FichaTecnicaMaterialesa="data.FichaTecnicaMaterialeso"
                         :title="props.title" :losSelect="props.losSelect" />
@@ -102,7 +91,15 @@ watch(() => _.cloneDeep(data.params), debounce(() => {
                         :title="props.title" :ficha="data.fichaVisible" />
                 </div>
             </div>
-            <div class="px-4 sm:px-0 flex justify-end">
+            <div class="px-4 sm:px-0 flex flex-wrap items-center justify-between gap-3">
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                    Las fichas técnicas se registran al crear un producto.
+                    <Link v-if="can(['create Producto'])" :href="route('Producto.index')"
+                        class="inline-flex items-center gap-1 font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300">
+                        <PlusIcon class="w-3.5 h-3.5" />
+                        Ir a Nuevo producto
+                    </Link>
+                </p>
                 <div class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm"
                     :class="(props.losSelect?.productos_sin_ficha?.length || 0) > 0
                         ? 'border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300'

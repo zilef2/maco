@@ -88,8 +88,8 @@ const navDropdown: NavGroup[] = [
         icon: Layers,
         items: [
             {
-                title: 'KitTaller',
-                href: '/KitTaller',
+                title: 'KitProceso',
+                href: '/KitProceso',
                 icon: PackageCheck,
             },
             {
@@ -119,6 +119,11 @@ const navDropdown: NavGroup[] = [
             {
 		title: 'EstadoOpMaterial',
 		href: '/EstadoOpMaterial',
+		icon: LayoutGrid,
+	},
+	{
+		title: 'EmpresaExterna',
+		href: '/EmpresaExterna',
 		icon: LayoutGrid,
 	},
 	//aquipuesSide

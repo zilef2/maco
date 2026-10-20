@@ -250,6 +250,19 @@ export function formatdinero(amount: any): string {
     const result = '$' + formatted.split('').reverse().join('');
     return isNegative ? '-' + result : result;
 }
+export function dineroANumero(valor: any): number {
+    const texto = (valor ?? '').toString().trim();
+    if (texto === '') return 0;
+
+    // Formato de la app: $1.500 / $1'500.000 (punto y comilla como separadores de miles).
+    if (/^\$?-?\d{1,3}(?:[.'’]\d{3})+$/.test(texto)) {
+        return parseInt(texto.replace(/[^0-9-]/g, ''), 10) || 0;
+    }
+
+    const num = parseFloat(texto.replace(/[^0-9.-]/g, ''));
+    return isNaN(num) ? 0 : num;
+}
+
 export function CalcularAvg(TheArray, NameValue = '', isTime = false) {
     if(!TheArray) return 0
     let sum: number

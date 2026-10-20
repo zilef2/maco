@@ -11,14 +11,14 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('distribucion_tallas', function (Blueprint $table) {
-            $table->id();
-            $table->string('talla');
-            $table->integer('cantidad_planificada');
-            $table->integer('cantidad_recibida_buena')->nullable();
-            $table->integer('cantidad_pendiente_reparacion')->nullable();
-            $table->timestamps();
-        });
+        // Schema::create('distribucion_tallas', function (Blueprint $table) {
+        //     $table->id();
+        //     $table->string('talla');
+        //     $table->integer('cantidad_planificada');
+        //     $table->integer('cantidad_recibida_buena')->nullable();
+        //     $table->integer('cantidad_pendiente_reparacion')->nullable();
+        //     $table->timestamps();
+        // });
     }
 
     /**
@@ -26,6 +26,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('distribucion_tallas');
+        // Schema::dropIfExists('distribucion_tallas');
     }
 };

@@ -49,8 +49,35 @@ const camposBooleanos = printForm.filter((campo) => campo.type === 'boolean');
 const camposBloqueados = ['codigo_material', 'existencia_actual'];
 const esCampoBloqueado = (campo: string) => camposBloqueados.includes(campo);
 
+const estadoActivo = (valor: any): boolean => {
+    const texto = String(valor ?? '').trim().toLowerCase();
+    return texto === 'activo' || texto === '1' || texto === 'true';
+};
+
+const toggleEstado = () => {
+    form.estado = estadoActivo(form.estado) ? 'Inactivo' : 'Activo';
+};
+
+const toggleActivo = (campo: string, valor: any): boolean => {
+    if (campo === 'material_procesado') {
+        return Number(valor) === 1;
+    }
+    return !!valor;
+};
+
 const toggleBoolean = (campo: string) => {
+    if (campo === 'material_procesado') {
+        form[campo] = Number(form[campo]) === 1 ? 0 : 1;
+        return;
+    }
     form[campo] = !form[campo];
+};
+
+const descripcionToggle = (campo: string, activo: boolean): string => {
+    if (campo === 'material_procesado') {
+        return activo ? 'Sí, este material es procesado' : 'No, este material no es procesado';
+    }
+    return activo ? 'Sí, este material lo maneja' : 'No aplica para este material';
 };
 
 watchEffect(() => {
@@ -59,6 +86,7 @@ watchEffect(() => {
         props.titulos.forEach(names => {
             form[names['order']] = props.Materiala[names['order']]
         });
+        form.estado = estadoActivo(form.estado) ? 'Activo' : 'Inactivo';
     }
 })
 
@@ -112,8 +140,35 @@ const update = () => {
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
                             <div v-for="(atributosform, indice) in camposNormales" :key="indice">
 
+                                <!-- estado: toggle Activo/Inactivo -->
+                                <div v-if="atributosform.idd === 'estado'" class="md:col-span-2">
+                                    <div role="switch" tabindex="0"
+                                        :aria-checked="estadoActivo(form.estado)"
+                                        @click="toggleEstado"
+                                        @keydown.space.prevent="toggleEstado"
+                                        class="flex items-center justify-between gap-4 px-4 py-3 rounded-xl border cursor-pointer transition-colors"
+                                        :class="estadoActivo(form.estado)
+                                            ? 'border-emerald-300 dark:border-emerald-700 bg-emerald-50/70 dark:bg-emerald-900/20'
+                                            : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/40 hover:border-gray-300 dark:hover:border-gray-600'">
+                                        <div>
+                                            <span class="block text-sm font-medium text-gray-800 dark:text-gray-200">
+                                                {{ lang().t('app.label')[atributosform.label] || atributosform.label }}
+                                            </span>
+                                            <span class="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                                {{ estadoActivo(form.estado) ? 'Activo' : 'Inactivo' }}
+                                            </span>
+                                        </div>
+                                        <span class="relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors duration-200"
+                                            :class="estadoActivo(form.estado) ? 'bg-emerald-600' : 'bg-gray-300 dark:bg-gray-600'">
+                                            <span class="inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform duration-200"
+                                                :class="estadoActivo(form.estado) ? 'translate-x-6' : 'translate-x-1'" />
+                                        </span>
+                                    </div>
+                                    <InputError class="mt-2" :message="form.errors.estado" />
+                                </div>
+
                                 <!-- proveedor habitual: FK hacia Proveedor -->
-                                <div v-if="atributosform.idd === 'proveedor_habitual'">
+                                <div v-else-if="atributosform.idd === 'proveedor_habitual'">
                                     <InputLabel :for="atributosform.label"
                                         :value="lang().t('app.label')[atributosform.label] || atributosform.label" />
                                     <v-select :id="atributosform.idd"
@@ -124,23 +179,6 @@ const update = () => {
                                         v-model="form[atributosform.idd]"
                                         :placeholder="atributosform.label"
                                         :disabled="esCampoBloqueado(atributosform.idd)" />
-                                    <InputError class="mt-2" :message="form.errors[atributosform.idd]" />
-                                </div>
-
-                                <!-- material procesado: 0/1 (por ahora; en el futuro más estados) -->
-                                <div v-else-if="atributosform.idd === 'material_procesado'">
-                                    <InputLabel :for="atributosform.label"
-                                        :value="lang().t('app.label')[atributosform.label] || atributosform.label" />
-                                    <select :id="atributosform.idd"
-                                        class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 focus:border-indigo-500 dark:focus:border-indigo-600 focus:ring-indigo-500 dark:focus:ring-indigo-600 shadow-sm"
-                                        v-model="form[atributosform.idd]"
-                                        :disabled="esCampoBloqueado(atributosform.idd)">
-                                        <option :value="0">No procesado (0)</option>
-                                        <option :value="1">Procesado (1)</option>
-                                    </select>
-                                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                                        0 = no procesado, 1 = procesado.
-                                    </p>
                                     <InputError class="mt-2" :message="form.errors[atributosform.idd]" />
                                 </div>
 
@@ -178,23 +216,23 @@ const update = () => {
                         </div>
                     </div>
 
-                    <!-- Variantes del material (una sola columna, toggles grandes) -->
+                    <!-- Atributos del material (una sola columna, toggles grandes) -->
                     <div v-if="camposBooleanos.length">
                         <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-1.5 mb-1">
                             <SwatchIcon class="w-4 h-4 text-gray-400 dark:text-gray-500" />
-                            Variantes del material
+                            Atributos del material
                         </h3>
                         <p class="text-xs text-gray-400 dark:text-gray-500 mb-3 pl-6">
-                            Activa los atributos por los cuales se controlan las variantes de este material.
+                            Activa los atributos que aplican a este material.
                         </p>
                         <div class="space-y-2 max-w-2xl">
                             <div v-for="atributosform in camposBooleanos" :key="atributosform.idd"
                                 role="switch" tabindex="0"
-                                :aria-checked="!!form[atributosform.idd]"
+                                :aria-checked="toggleActivo(atributosform.idd, form[atributosform.idd])"
                                 @click="toggleBoolean(atributosform.idd)"
                                 @keydown.space.prevent="toggleBoolean(atributosform.idd)"
                                 class="flex items-center justify-between gap-4 px-4 py-3 rounded-xl border cursor-pointer transition-colors"
-                                :class="form[atributosform.idd]
+                                :class="toggleActivo(atributosform.idd, form[atributosform.idd])
                                     ? 'border-indigo-300 dark:border-indigo-700 bg-indigo-50/70 dark:bg-indigo-900/20'
                                     : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/40 hover:border-gray-300 dark:hover:border-gray-600'">
                                 <div>
@@ -202,14 +240,14 @@ const update = () => {
                                         {{ lang().t('app.label')[atributosform.label] || atributosform.label }}
                                     </span>
                                     <span class="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                                        {{ form[atributosform.idd] ? 'Sí, este material lo maneja' : 'No aplica para este material' }}
+                                        {{ descripcionToggle(atributosform.idd, toggleActivo(atributosform.idd, form[atributosform.idd])) }}
                                     </span>
                                     <InputError class="mt-1" :message="form.errors[atributosform.idd]" />
                                 </div>
                                 <span class="relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors duration-200"
-                                    :class="form[atributosform.idd] ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-gray-600'">
+                                    :class="toggleActivo(atributosform.idd, form[atributosform.idd]) ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-gray-600'">
                                     <span class="inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform duration-200"
-                                        :class="form[atributosform.idd] ? 'translate-x-6' : 'translate-x-1'" />
+                                        :class="toggleActivo(atributosform.idd, form[atributosform.idd]) ? 'translate-x-6' : 'translate-x-1'" />
                                 </span>
                             </div>
                         </div>

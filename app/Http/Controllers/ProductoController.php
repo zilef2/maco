@@ -6,11 +6,14 @@ use App\Models\Producto;
 use App\Models\Distribucion_por_tallas;
 use App\helpers\Myhelp;
 use App\helpers\MyModels;
+use App\Services\FichaTecnicaService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -22,7 +25,10 @@ class ProductoController extends Controller {
 
 
     //<editor-fold desc="Construc | filtro and dependencia">
-    public function __construct( protected \App\Services\ListaDesplegableService $listaDesplegableService ) {
+    public function __construct(
+        protected \App\Services\ListaDesplegableService $listaDesplegableService,
+        protected FichaTecnicaService $fichaTecnicaService
+    ) {
         $this->thisAtributos = (new Producto())->getFillable(); //not using
     }
 
@@ -30,6 +36,8 @@ class ProductoController extends Controller {
         $numberPermissions = MyModels::getPermissionToNumber(Myhelp::EscribirEnLog($this, ' Productos '));
         $Productos = $this->Filtros($request)->with('distribucionesPorTallas')->get();
         $listasDesplegables = array_change_key_case($this->listaDesplegableService->getOptionsByCategoriaGrouped('producto'), CASE_LOWER);
+        // Opciones para registrar la ficha técnica dentro de "Nuevo producto".
+        $fichaOpciones = $this->fichaTecnicaService->opcionesMateriales();
 
         $perPage = $request->has('perPage') ? $request->perPage : 10;
         return Inertia::render($this->FromController . '/Index', [
@@ -46,6 +54,8 @@ class ProductoController extends Controller {
                  'Familia_normalizada' => $listasDesplegables['familia_normalizada'] ?? [],
                  'Control_de_variante' => $listasDesplegables['control_de_variante'] ?? [],
                  'Opciones'            => $listasDesplegables['opciones'] ?? [],
+                 'materiales'          => $fichaOpciones['materiales'],
+                 'unidad_medida'       => $fichaOpciones['unidad_medida'],
              ],
  	        'titulos'           => Producto::getFillableWithTypes(),
 
@@ -118,14 +128,63 @@ class ProductoController extends Controller {
 
     public function store(Request $request): RedirectResponse {
         $permissions = Myhelp::EscribirEnLog($this, ' Begin STORE:Productos');
-        DB::beginTransaction();
-//        $no_nada = $request->no_nada['id'];
-//        $request->merge(['no_nada_id' => $request->no_nada['id']]);
-        $Producto = Producto::create($request->all());
 
-        DB::commit();
-        Myhelp::EscribirEnLog($this, 'STORE:Productos EXITOSO', 'Producto id:' . $Producto->id . ' | ' . $Producto->nombre, false);
-        return back()->with('success', __('app.label.created_successfully', ['name' => $Producto->nombre]));
+        $datos = $request->validate([
+            'Codigo_interno'       => ['required', 'string', 'max:255'],
+            'Titulo_Shopify'       => ['required', 'string', 'max:255'],
+            'ID_producto_Shopify'  => ['nullable', 'string', 'max:255'],
+            'Categoria_original'   => ['nullable', 'string', 'max:255'],
+            'Familia_normalizada'  => ['nullable', 'string', 'max:255'],
+            'Control_de_variante'  => ['nullable', 'string', 'max:255'],
+            'Opciones'             => ['nullable', 'string', 'max:255'],
+            'Estado'               => ['nullable', 'integer', 'in:0,1'],
+            'Observaciones'        => ['nullable', 'string', 'max:255'],
+            'descripcion'          => ['nullable', 'string', 'max:5000'],
+            'precio_predicho'      => ['nullable', 'numeric', 'min:0'],
+            'precio_preventa'      => ['nullable', 'numeric', 'min:0'],
+            // Ficha técnica (opcional): se registra junto al producto.
+            'materiales'           => ['nullable', 'array'],
+            'materiales.*.material_componente_id' => ['required', 'integer', 'exists:materials,id'],
+            'materiales.*.consumo_estandar'       => ['required', 'numeric', 'min:0'],
+            'materiales.*.unidad_medida'          => ['nullable', 'string', 'max:255'],
+            'materiales.*.costo_asociado_teorico' => ['nullable', 'numeric', 'min:0'],
+        ]);
+
+        $materiales = collect($datos['materiales'] ?? [])
+            ->filter(fn ($fila) => !empty($fila['material_componente_id']))
+            ->values()
+            ->all();
+        unset($datos['materiales']);
+
+        // La tabla productos exige estas columnas: si el formulario las deja vacías
+        // se guardan como cadena vacía (el "vacío" de negocio), no como null.
+        foreach (['ID_producto_Shopify', 'Categoria_original', 'Familia_normalizada', 'Control_de_variante', 'Opciones'] as $campo) {
+            $datos[$campo] = (string) ($datos[$campo] ?? '');
+        }
+        $datos['Estado'] = ($datos['Estado'] ?? '') === '' ? 1 : (int) $datos['Estado'];
+        foreach (['precio_predicho', 'precio_preventa'] as $campo) {
+            if (($datos[$campo] ?? null) === '') {
+                $datos[$campo] = null;
+            }
+        }
+
+        $Producto = DB::transaction(function () use ($datos, $materiales) {
+            $Producto = Producto::create(Arr::only($datos, (new Producto())->getFillable()));
+
+            if (!empty($materiales)) {
+                $this->fichaTecnicaService->guardar([
+                    'nombre'     => trim(($datos['Titulo_Shopify'] ?? '') ?: ($datos['Codigo_interno'] ?? '')),
+                    'productos'  => [$Producto->id],
+                    'materiales' => $materiales,
+                ]);
+            }
+
+            return $Producto;
+        });
+
+        Cache::forget('op_selects');
+        Myhelp::EscribirEnLog($this, 'STORE:Productos EXITOSO', 'Producto id:' . $Producto->id . ' | ' . $Producto->Codigo_interno, false);
+        return back()->with('success', __('app.label.created_successfully', ['name' => $Producto->Codigo_interno]));
     }
 
     //! STORE - UPDATE - DELETE
@@ -182,6 +241,7 @@ class ProductoController extends Controller {
             }
             $nueva = Distribucion_por_tallas::create([
                 'grupo' => null,
+                'producto_id' => $Producto->id,
                 'talla' => $talla['talla'] ?? null,
                 'cantidad_planificada' => (int) ($talla['cantidad_planificada'] ?? 0),
             ]);

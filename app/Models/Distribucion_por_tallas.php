@@ -13,7 +13,15 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 {
     /** @use HasFactory<\Database\Factories\DistribucionPorTallasFactory> */
     use HasFactory;
-    protected $fillable = ['grupo', 'talla', 'cantidad_planificada', 'cantidad_recibida_buena', 'cantidad_pendiente_reparacion'];
+    protected $fillable = ['grupo', 'producto_id', 'talla', 'cantidad_planificada', 'cantidad_recibida_buena', 'cantidad_pendiente_reparacion'];
+
+    /**
+     * Producto al que pertenece esta talla dentro de una OP.
+     */
+    public function producto()
+    {
+        return $this->belongsTo(Producto::class, 'producto_id');
+    }
 
     public function ordenesProduccion()
     {

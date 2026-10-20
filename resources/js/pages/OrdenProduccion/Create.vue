@@ -127,10 +127,12 @@ const form = useForm({
     cantidad_planificada: '',
     fecha_prevista_envio_taller: '',
     taller_id: '',
+    tipo: 'taller',
+    empresa_externa_id: '',
     user_id: '',
     id_shopify_producto: '',
     observaciones: '',
-    distribucion_tallas: [] as Array<{ id?: number; talla: string; cantidad_planificada: number }>,
+    distribucion_tallas: [] as Array<{ id?: number; producto_id?: number | null; talla: string; cantidad_planificada: number }>,
     grupo_tallas: null as number | null,
     productos: [] as number[],
     productos_cantidad: {} as Record<number, number>,
@@ -138,6 +140,15 @@ const form = useForm({
 
 // Modo "continuar borrador": form.id guarda el id de la OP en Borrador a actualizar.
 const prefillBorrador = ref(false);
+
+// Al cambiar el tipo se limpia el campo que deja de aplicar
+watch(() => form.tipo, (nuevoTipo) => {
+    if (nuevoTipo === 'externa') {
+        form.taller_id = '';
+    } else {
+        form.empresa_externa_id = '';
+    }
+});
 
 const totalTallas = computed(() => {
     return distribucion.items.reduce((acc, i) => acc + (Number(i.cantidad_planificada) || 0), 0);
@@ -244,11 +255,17 @@ const closeModal = () => {
 const prepararPayload = () => {
     form.grupo_tallas = grupoTallas.value;
     form.productos = [...selIds.value];
+    // La cantidad de cada producto sale de su distribución de tallas; el
+    // backend la usa para generar el kit de proceso material por material.
+    form.productos_cantidad = Object.fromEntries(
+        productosSel.map((p: any) => [p.id, totalCantidadDistribucionProducto(p.id)])
+    );
     form.cantidad_planificada = String(totalTallas.value);
     form.distribucion_tallas = distribucion.items
         .filter((item) => (item.talla && item.talla.trim() !== '') || Number(item.cantidad_planificada) > 0)
         .map((item) => ({
             ...(item.id ? { id: item.id } : {}),
+            producto_id: item.producto_id ?? null,
             talla: (item.talla ?? '').trim(),
             cantidad_planificada: Number(item.cantidad_planificada) || 0,
         }));
@@ -288,6 +305,8 @@ watchEffect(() => {
             form.cantidad_planificada = b.cantidad_planificada != null ? String(b.cantidad_planificada) : '';
             form.fecha_prevista_envio_taller = String(b.fecha_prevista_envio_taller ?? '').substring(0, 10);
             form.taller_id = b.taller_id ?? '';
+            form.tipo = b.tipo === 'externa' ? 'externa' : 'taller';
+            form.empresa_externa_id = b.empresa_externa_id ?? '';
             form.user_id = b.user_id ?? '';
             form.id_shopify_producto = b.id_shopify_producto ?? '';
             form.observaciones = b.observaciones ?? '';
@@ -299,7 +318,7 @@ watchEffect(() => {
                 grupo: t.grupo ?? null,
                 talla: t.talla ?? '',
                 cantidad_planificada: t.cantidad_planificada ?? 0,
-                producto_id: null,
+                producto_id: t.producto_id ?? null,
                 _origen: 'manual',
             }));
             const conGrupo = tallas.find((t) => t.grupo != null);
@@ -314,6 +333,37 @@ watchEffect(() => {
         }
     }
 });
+
+const aleatorioDe = (lista: any[]): any => {
+    const opciones = (lista || []).filter((o: any) => o && o.id !== undefined && o.id !== null && o.id !== '');
+    return opciones.length ? opciones[Math.floor(Math.random() * opciones.length)].id : '';
+};
+
+// Solo superadmin (numberPermissions > 99): el formulario llega con los
+// selects resueltos al azar para poder probar sin diligenciarlo a mano.
+const aplicarSeleccionAleatoria = () => {
+    const seleccion: any = props.losSelect || {};
+    const empresas = seleccion.empresa_externa_id || [];
+    const usaExterna = empresas.length > 0 && Math.random() < 0.5;
+
+    form.tipo = usaExterna ? 'externa' : 'taller';
+    form.taller_id = usaExterna ? '' : aleatorioDe(seleccion.taller_id || []);
+    form.empresa_externa_id = usaExterna ? aleatorioDe(empresas) : '';
+    form.user_id = aleatorioDe(seleccion.user_id || seleccion.responsable_id || []);
+
+    const productos = opcionesProducto.value || [];
+    if (productos.length) {
+        const producto = productos[Math.floor(Math.random() * productos.length)];
+        selIds.value = [producto.id];
+    }
+};
+
+watch(() => props.show, (visible) => {
+    if (!visible) return;
+    if ((props.borrador as any)?.id) return; // continuar un borrador no se altera
+    if (Number(props.numberPermissions ?? 0) <= 99) return;
+    aplicarSeleccionAleatoria();
+}, { flush: 'post' });
 </script>
 
 <template>
@@ -344,11 +394,48 @@ watchEffect(() => {
                     </div>
 
                     <div>
+                        <InputLabel for="tipo" value="Tipo" />
+                        <div class="mt-1 grid grid-cols-2 gap-2">
+                            <button type="button" @click="form.tipo = 'taller'"
+                                :class="[
+                                    'h-10 rounded-md border text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500',
+                                    form.tipo === 'taller'
+                                        ? 'border-indigo-600 bg-indigo-600 text-white shadow-sm'
+                                        : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:border-gray-600',
+                                ]"
+                                :aria-pressed="form.tipo === 'taller'">
+                                Taller
+                            </button>
+                            <button type="button" @click="form.tipo = 'externa'"
+                                :class="[
+                                    'h-10 rounded-md border text-sm font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500',
+                                    form.tipo === 'externa'
+                                        ? 'border-indigo-600 bg-indigo-600 text-white shadow-sm'
+                                        : 'border-gray-300 bg-white text-gray-700 hover:border-gray-400 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 dark:hover:border-gray-600',
+                                ]"
+                                :aria-pressed="form.tipo === 'externa'">
+                                Externa
+                            </button>
+                        </div>
+                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Si es externa, selecciona la empresa; si es de taller, selecciona el taller.</p>
+                        <InputError class="mt-2" :message="form.errors.tipo" />
+                    </div>
+
+                    <div v-if="form.tipo !== 'externa'">
                         <InputLabel for="taller_id" :value="lang().t('app.label.taller') || 'Taller'" />
                         <v-select id="taller_id" class="mt-1 block w-full" :options="props.losSelect?.taller_id || []"
                             label="name" :reduce="(item: any) => item.id" v-model="form.taller_id"
                             placeholder="Seleccione un taller..." required />
                         <InputError class="mt-2" :message="form.errors.taller_id" />
+                    </div>
+
+                    <div v-else>
+                        <InputLabel for="empresa_externa_id" value="Empresa externa" />
+                        <v-select id="empresa_externa_id" class="mt-1 block w-full"
+                            :options="props.losSelect?.empresa_externa_id || []" label="name"
+                            :reduce="(item: any) => item.id" v-model="form.empresa_externa_id"
+                            placeholder="Seleccione una empresa externa..." />
+                        <InputError class="mt-2" :message="form.errors.empresa_externa_id" />
                     </div>
 
                     <div>

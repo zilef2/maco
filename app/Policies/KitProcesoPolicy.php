@@ -2,11 +2,11 @@
 
 namespace App\Policies;
 
-use App\Models\KitTaller;
+use App\Models\KitProceso;
 use App\Models\User;
 use Illuminate\Auth\Access\Response;
 
-class KitTallerPolicy
+class KitProcesoPolicy
 {
     /**
      * Determine whether the user can view any models.
@@ -19,7 +19,7 @@ class KitTallerPolicy
     /**
      * Determine whether the user can view the model.
      */
-    public function view(User $user, KitTaller $kitTaller): bool
+    public function view(User $user, KitProceso $kitProceso): bool
     {
         return false;
     }
@@ -35,7 +35,7 @@ class KitTallerPolicy
     /**
      * Determine whether the user can update the model.
      */
-    public function update(User $user, KitTaller $kitTaller): bool
+    public function update(User $user, KitProceso $kitProceso): bool
     {
         return false;
     }
@@ -43,7 +43,7 @@ class KitTallerPolicy
     /**
      * Determine whether the user can delete the model.
      */
-    public function delete(User $user, KitTaller $kitTaller): bool
+    public function delete(User $user, KitProceso $kitProceso): bool
     {
         return false;
     }
@@ -51,7 +51,7 @@ class KitTallerPolicy
     /**
      * Determine whether the user can restore the model.
      */
-    public function restore(User $user, KitTaller $kitTaller): bool
+    public function restore(User $user, KitProceso $kitProceso): bool
     {
         return false;
     }
@@ -59,7 +59,7 @@ class KitTallerPolicy
     /**
      * Determine whether the user can permanently delete the model.
      */
-    public function forceDelete(User $user, KitTaller $kitTaller): bool
+    public function forceDelete(User $user, KitProceso $kitProceso): bool
     {
         return false;
     }

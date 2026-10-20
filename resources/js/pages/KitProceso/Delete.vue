@@ -7,7 +7,7 @@ import { useForm } from '@inertiajs/vue3';
 const props = defineProps({
     show: Boolean,
     title: String,
-    KitTallera: Object,
+    KitProcesoa: Object,
 })
 
 const emit = defineEmits(["close"]);
@@ -15,7 +15,7 @@ const emit = defineEmits(["close"]);
 const form = useForm({});
 
 const destory = () => {
-    form.delete(route('KitTaller.destroy', props.KitTallera?.id), {
+    form.delete(route('KitProceso.destroy', props.KitProcesoa?.id), {
         preserveScroll: true,
         onSuccess: () => {
             emit("close")
@@ -36,7 +36,10 @@ const destory = () => {
                     {{ lang().t('app.label.delete') }} {{ props.title }}
                 </h2>
                 <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                    {{ lang().t('app.label.delete_confirm') }} <b>{{ props.KitTallera?.name }}</b>?
+                    ¿Eliminar el kit de
+                    <b>{{ props.KitProcesoa?.material_nombre || 'este material' }}</b>
+                    de la orden
+                    <b>{{ props.KitProcesoa?.orden_produccion_numero || 'seleccionada' }}</b>?
                 </p>
                 <div class="mt-6 flex justify-end">
                     <SecondaryButton :disabled="form.processing" @click="emit('close')"> {{ lang().t('app.button.close')

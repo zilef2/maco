@@ -80,16 +80,30 @@ const normalizar = (valor: any): string =>
         .replace(/\s+/g, ' ')
         .trim();
 
+const ESTADOS_MATERIAL = ['Activo', 'Inactivo'] as const;
+type EstadoMaterial = (typeof ESTADOS_MATERIAL)[number];
+
+/** Unifica cualquier valor histórico a los dos estados permitidos. */
+const estadoNormalizado = (valor: any): EstadoMaterial => {
+    const texto = normalizar(valor);
+    return texto === 'activo' || texto === '1' || texto === 'true' || texto === 'si'
+        ? 'Activo'
+        : 'Inactivo';
+};
+
+const estaProcesado = (valor: any): boolean => Number(valor) === 1;
+
 const preparadas = computed(() =>
     filas.value.map((m: any) => ({
         ...m,
+        _estado: estadoNormalizado(m.estado),
         _busqueda: normalizar(
             [
                 m.codigo_material,
                 m.nombre_base,
                 m.categoria,
                 m.unidad_inventario,
-                m.estado,
+                estadoNormalizado(m.estado),
                 m.variante_atributo_sugerido,
                 m.proveedor_nombre,
                 m.observaciones,
@@ -133,7 +147,17 @@ const categoriasDisponibles = computed(() => opcionesDe('categoria'));
 const unidadesDisponibles = computed(() => opcionesDe('unidad_inventario'));
 const variantesDisponibles = computed(() => opcionesDe('variante_atributo_sugerido'));
 
-const estadosDisponibles = computed(() => opcionesDe('estado'));
+const estadosDisponibles = computed(() => {
+    const conteos: Record<EstadoMaterial, number> = { Activo: 0, Inactivo: 0 };
+    baseFiltrada.value.forEach((m: any) => {
+        conteos[m._estado as EstadoMaterial]++;
+    });
+
+    return ESTADOS_MATERIAL.map((estado) => ({
+        value: estado,
+        count: conteos[estado],
+    }));
+});
 
 const proveedoresDisponibles = computed(() => {
     const mapa = new Map<number, string>();
@@ -149,7 +173,7 @@ const proveedoresDisponibles = computed(() => {
 
 const filtradas = computed(() =>
     baseFiltrada.value.filter((m: any) => {
-        if (estadoFiltro.value !== 'todos' && normalizar(m.estado) !== normalizar(estadoFiltro.value)) {
+        if (estadoFiltro.value !== 'todos' && m._estado !== estadoFiltro.value) {
             return false;
         }
         if (unidadFiltro.value !== 'todos' && normalizar(m.unidad_inventario) !== normalizar(unidadFiltro.value)) {
@@ -331,6 +355,7 @@ const columnas = [
     { key: 'material', label: 'Material', sortable: true, align: 'left', headerClass: 'min-w-[200px]', cellClass: 'min-w-[200px]' },
     { key: 'existencia_actual', label: 'Existencia', sortable: true, align: 'right', headerClass: 'w-[120px]', cellClass: 'w-[120px]' },
     { key: 'estado', label: 'Estado', sortable: true, align: 'left', headerClass: 'min-w-[130px]', cellClass: 'min-w-[130px]' },
+    { key: 'material_procesado', label: 'Procesado', sortable: true, align: 'left', headerClass: 'min-w-[110px]', cellClass: 'min-w-[110px]' },
     { key: 'proveedor', label: 'Proveedor', sortable: true, align: 'left', headerClass: 'hidden min-w-[140px] md:table-cell', cellClass: 'hidden min-w-[140px] md:table-cell' },
     { key: 'variante_atributo_sugerido', label: 'Variante', sortable: true, align: 'left', headerClass: 'hidden min-w-[120px] xl:table-cell', cellClass: 'hidden min-w-[120px] xl:table-cell' },
     { key: 'variantes', label: 'Maneja', sortable: false, align: 'left', headerClass: 'hidden min-w-[120px] lg:table-cell', cellClass: 'hidden min-w-[120px] lg:table-cell' },
@@ -433,7 +458,7 @@ const titulos = [
     { order: 'estado', label: 'estado', type: 'string' },
     { order: 'variante_atributo_sugerido', label: 'variante_atributo_sugerido', type: 'string' },
     { order: 'proveedor_habitual', label: 'proveedor_habitual', type: 'foreign', nameid: 'proveedor_nombre' },
-    { order: 'material_procesado', label: 'material_procesado', type: 'integer' },
+    { order: 'material_procesado', label: 'material_procesado', type: 'boolean' },
     { order: 'observaciones', label: 'observaciones', type: 'string' },
 ];
 </script>
@@ -675,7 +700,7 @@ const titulos = [
 
                 <!-- Tabla -->
                 <div class="mat-scroll max-h-[68vh] overflow-auto overscroll-contain">
-                    <table class="w-full min-w-[960px] border-collapse text-sm">
+                    <table class="w-full min-w-[1080px] border-collapse text-sm">
                         <thead>
                             <tr>
                                 <th scope="col" class="w-10 bg-muted px-2 py-2.5 text-center">
@@ -794,10 +819,26 @@ const titulos = [
                                 <td class="px-3 py-3 align-top">
                                     <span
                                         class="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium"
-                                        :class="estiloEstado(material.estado).badge"
+                                        :class="estiloEstado(material._estado).badge"
                                     >
-                                        <span class="h-1.5 w-1.5 rounded-full" :class="estiloEstado(material.estado).dot"></span>
-                                        {{ material.estado || 'Sin estado' }}
+                                        <span class="h-1.5 w-1.5 rounded-full" :class="estiloEstado(material._estado).dot"></span>
+                                        {{ material._estado }}
+                                    </span>
+                                </td>
+
+                                <!-- Procesado -->
+                                <td class="px-3 py-3 align-top">
+                                    <span
+                                        class="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium"
+                                        :class="estaProcesado(material.material_procesado)
+                                            ? 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-300'
+                                            : 'border-border bg-muted text-muted-foreground'"
+                                    >
+                                        <span
+                                            class="h-1.5 w-1.5 rounded-full"
+                                            :class="estaProcesado(material.material_procesado) ? 'bg-violet-500' : 'bg-muted-foreground/50'"
+                                        ></span>
+                                        {{ estaProcesado(material.material_procesado) ? 'Sí' : 'No' }}
                                     </span>
                                 </td>
 
@@ -817,8 +858,7 @@ const titulos = [
                                         <span v-if="material.maneja_color" class="inline-flex min-w-5 items-center justify-center rounded border border-border bg-muted/60 px-1 py-0.5 text-[10px] font-semibold text-muted-foreground" title="Maneja color">C</span>
                                         <span v-if="material.maneja_talla" class="inline-flex min-w-5 items-center justify-center rounded border border-border bg-muted/60 px-1 py-0.5 text-[10px] font-semibold text-muted-foreground" title="Maneja talla">T</span>
                                         <span v-if="material.maneja_otra_variante" class="inline-flex min-w-5 items-center justify-center rounded border border-border bg-muted/60 px-1 py-0.5 text-[10px] font-semibold text-muted-foreground" title="Maneja otra variante">V</span>
-                                        <span v-if="material.material_procesado" class="inline-flex min-w-5 items-center justify-center rounded border border-violet-200 bg-violet-50 px-1 py-0.5 text-[10px] font-semibold text-violet-700 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-300" title="Procesado">P</span>
-                                        <span v-if="!(material.maneja_color || material.maneja_talla || material.maneja_otra_variante || material.material_procesado)" class="text-xs text-muted-foreground">—</span>
+                                        <span v-if="!(material.maneja_color || material.maneja_talla || material.maneja_otra_variante)" class="text-xs text-muted-foreground">—</span>
                                     </div>
                                 </td>
 

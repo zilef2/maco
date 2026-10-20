@@ -27,7 +27,7 @@ const cargar = async () => {
     cargando.value = true;
     try {
         const respuesta = await fetch(
-            route('KitTaller.por-orden', { id: props.ordenProduccion?.id }),
+            route('KitProceso.por-orden', { id: props.ordenProduccion?.id }),
             {
                 headers: {
                     'X-Requested-With': 'XMLHttpRequest',
@@ -54,11 +54,12 @@ const COLUMNAS_REQUERIDAS = [
     'Estado requerido',
     'Unidad',
     'Cantidad requerida',
-    'Cantidad disponible',
     'Cantidad preparada',
-    'Falta',
-    '¿Listo? (SI/NO)',
     'Observaciones',
+];
+
+const COLUMNAS_OPCIONALES = [
+    'Proveedor (nombre exacto o id)',
 ];
 
 const form = useForm({
@@ -120,7 +121,7 @@ async function subirExcel() {
 
     form.orden_produccion_id = props.ordenProduccion?.id ?? null;
 
-    form.post(route('KitTaller.upload-excel'), {
+    form.post(route('KitProceso.upload-excel'), {
         preserveScroll: true,
         onSuccess: () => {
             limpiarInput();
@@ -156,7 +157,7 @@ watch(() => props.show, (visible) => {
             <div class="flex items-start justify-between mb-4">
                 <div>
                     <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100">
-                        KitTaller
+                        KitProceso
                     </h2>
                     <p class="text-sm text-gray-600 dark:text-gray-400">
                         Orden de producción:
@@ -198,6 +199,7 @@ watch(() => props.show, (visible) => {
                             <th class="px-2 py-2">#</th>
                             <th class="px-2 py-2">Material</th>
                             <th class="px-2 py-2">Estado requerido</th>
+                            <th class="px-2 py-2">Proveedor</th>
                             <th class="px-2 py-2">Unidad</th>
                             <th class="px-2 py-2 text-right">Cant. requerida</th>
                             <th class="px-2 py-2 text-center">Listo</th>
@@ -215,6 +217,7 @@ watch(() => props.show, (visible) => {
                                 {{ [fila.material_codigo, fila.material_nombre].filter(Boolean).join(' — ') || '—' }}
                             </td>
                             <td class="px-2 py-2 whitespace-nowrap">{{ fila.estado_requerido ?? '—' }}</td>
+                            <td class="px-2 py-2 whitespace-nowrap">{{ fila.proveedor_nombre ?? '—' }}</td>
                             <td class="px-2 py-2 whitespace-nowrap">{{ fila.unidad ?? '—' }}</td>
                             <td class="px-2 py-2 text-right">{{ formatear(fila.cantidad_requerida) }}</td>
                             <td class="px-2 py-2 text-center">
@@ -240,10 +243,10 @@ watch(() => props.show, (visible) => {
             </div>
 
             <!-- ── Carga de Excel (parte inferior) ───────────── -->
-            <div v-if="can(['create KitTaller'])"
+            <div v-if="can(['create KitProceso'])"
                 class="mt-6 border-t border-gray-200 dark:border-gray-700 pt-5">
                 <h3 class="font-semibold text-gray-800 dark:text-gray-100 mb-3">
-                    Importar KitTaller desde Excel
+                    Importar KitProceso desde Excel
                 </h3>
 
                 <div v-if="excelError"
@@ -290,9 +293,16 @@ watch(() => props.show, (visible) => {
                     <ul class="mt-2 list-decimal ml-5 space-y-0.5 text-gray-600 dark:text-gray-300">
                         <li v-for="col in COLUMNAS_REQUERIDAS" :key="col">{{ col }}</li>
                     </ul>
+                    <p class="mt-3 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                        Opcional
+                    </p>
+                    <ul class="mt-1 list-decimal ml-5 space-y-0.5 text-gray-600 dark:text-gray-300">
+                        <li v-for="col in COLUMNAS_OPCIONALES" :key="col">{{ col }}</li>
+                    </ul>
                     <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                        El material se identifica por su código (codigo_material / código). La columna ¿Listo? admite
-                        SI / NO en mayúsculas o minúsculas.
+                        El material se identifica por su código (codigo_material / código). La cantidad disponible
+                        se toma del inventario del material, y el faltante y el listo se calculan automáticamente
+                        (si vienen en el archivo, se ignoran).
                     </p>
                 </details>
             </div>

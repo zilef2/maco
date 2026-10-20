@@ -17,9 +17,9 @@ class EstadoOperacionSeeder extends Seeder
             ['nombre' => 'Esperando materiales', 'cuando_aplica' => 'Falta comprar o recibir algún componente',                     'puede_pasar_a' => 'Preparación / Lista para taller', 'regla_clave' => 'No debe enviarse al taller.'],
             ['nombre' => 'Procesos externos', 'cuando_aplica' => 'Hay material en embarretado, sublimación, corte, pedrería, etc.', 'puede_pasar_a' => 'Preparación / Lista para taller', 'regla_clave' => 'El material continúa siendo propiedad de Macondas.'],
             ['nombre' => 'Lista para taller', 'cuando_aplica' => 'Kit completo + ficha de ensamble lista',                          'puede_pasar_a' => 'En taller', 'regla_clave' => 'El sistema debe validar que no haya faltantes.'],
-            ['nombre' => 'En taller', 'cuando_aplica' => 'Kit Recibido por taller y ensamble iniciado',                             'puede_pasar_a' => 'Recibiendo / Pendiente / Terminada', 'regla_clave' => 'Registrar fecha de entrega y taller.'],
-            ['nombre' => 'Recibiendo', 'cuando_aplica' => 'Se recibieron algunos pares aprobados pero la OP no está completa',        'puede_pasar_a' => 'Pendiente / Terminada', 'regla_clave' => 'Solo lo aprobado entra a inventario.'],
-            ['nombre' => 'Pendiente', 'cuando_aplica' => 'Uno o más pares quedaron en taller para corrección',                      'puede_pasar_a' => 'Terminada / Recibiendo', 'regla_clave' => 'No ingresan al inventario disponible.'],
+            ['nombre' => 'En taller', 'cuando_aplica' => 'Kit Recibido por taller y ensamble iniciado',                             'puede_pasar_a' => 'Recibiendo / Pendiente / Cerrada', 'regla_clave' => 'Registrar fecha de entrega y taller.'],
+            ['nombre' => 'Recibiendo', 'cuando_aplica' => 'Se recibieron algunos pares aprobados pero la OP no está completa',        'puede_pasar_a' => 'Pendiente / Cerrada', 'regla_clave' => 'Solo lo aprobado entra a inventario.'],
+            ['nombre' => 'Pendiente', 'cuando_aplica' => 'Uno o más pares quedaron en taller para corrección',                      'puede_pasar_a' => 'Cerrada / Recibiendo', 'regla_clave' => 'No ingresan al inventario disponible.'],
             ['nombre' => 'Cerrada', 'cuando_aplica' => 'OP conciliada y costo final registrado',                                    'puede_pasar_a' => null, 'regla_clave' => 'No permitir editar movimientos sin procedimiento de ajuste.'],
         ];
         // $estados = [

@@ -100,6 +100,10 @@ const titulos = [
     { order: 'fecha_fin_revision', label: 'fecha_fin_revision', type: 'datetime' },
 ];
 
+// Las cantidades de calidad nacen en blanco: se muestran como "—" hasta revisarse.
+const valorNumerico = (valor: any) =>
+    valor === null || valor === undefined || valor === '' ? '—' : zilef_nuber_format(valor, 0, false);
+
 </script>
 
 <template>
@@ -192,7 +196,7 @@ const titulos = [
                                     <span v-if="titulo['type'] === 'text' || titulo['type'] === 'string'"> {{
                                         claseFromController[titulo['order']] }} </span>
                                     <span v-if="titulo['type'] === 'number'"> {{
-                                        zilef_nuber_format(claseFromController[titulo['order']], 0, false) }} </span>
+                                        valorNumerico(claseFromController[titulo['order']]) }} </span>
                                     <span v-if="titulo['type'] === 'dinero'"> {{
                                         zilef_nuber_format(claseFromController[titulo['order']], 0, true) }} </span>
                                     <span v-if="titulo['type'] === 'date'"> {{

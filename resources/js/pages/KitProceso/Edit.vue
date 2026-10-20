@@ -1,144 +1,337 @@
 <script setup lang="ts">
 import InputError from '@/components/InputError.vue';
-import InputLabel from '@/components/InputLabel.vue';
 import Modal from '@/components/Modal.vue';
 import PrimaryButton from '@/components/PrimaryButton.vue';
 import SecondaryButton from '@/components/SecondaryButton.vue';
-import TextInput from '@/components/TextInput.vue';
-import { useForm } from '@inertiajs/vue3';
-import { onMounted, reactive, watchEffect } from 'vue';
-import "vue-select/dist/vue-select.css";
-
+import { Link, useForm } from '@inertiajs/vue3';
+import { computed, ref, watch } from 'vue';
+import { CheckBadgeIcon, ExclamationTriangleIcon, XMarkIcon } from '@heroicons/vue/24/solid';
 
 const props = defineProps({
     show: Boolean,
     title: String,
-    KitTallera: Object,
-    titulos: Object, //parametros de la clase principal
-    losSelect: Object,
+    KitProcesoa: Object,
+    proveedores: { type: Array, default: () => [] },
+    estadosRequeridos: { type: Array, default: () => [] },
+});
 
-})
+const emit = defineEmits(['close']);
 
-const emit = defineEmits(["close"]);
-const data = reactive({
-    printForm: []
-})
+const cargando = ref(false);
+const errorCarga = ref<string | null>(null);
+const orden = ref<any>(null);
 
-//very usefull
-const justNames = props.titulos.map(names => names['order'])
-const form = useForm({ ...Object.fromEntries(justNames.map(field => [field, ''])) });
-onMounted(() => {
-    if (props.numberPermissions > 9) {
-        const valueRAn = Math.floor(Math.random() * 9 + 1)
-        form.nombre = 'admin orden trabajo ' + (valueRAn);
-        form.codigo = (valueRAn);
-        // form.hora_inicial = '0'+valueRAn+':00'//temp
-        // form.fecha = '2023-06-01'
+const form = useForm({
+    filas: [] as any[],
+});
+
+const opId = computed(() => (props.KitProcesoa as any)?.orden_produccion_id ?? orden.value?.id ?? null);
+const opNumero = computed(
+    () => orden.value?.numero_op || (props.KitProcesoa as any)?.orden_produccion_numero || 'la OP',
+);
+
+const formatear = (valor: any) => {
+    if (valor === null || valor === undefined || valor === '') return '—';
+    return Number(valor).toFixed(2);
+};
+
+const faltaDe = (fila: any) => {
+    const disponible = Number(fila.cantidad_disponible) || 0;
+    const preparada = Number(fila.cantidad_preparada) || 0;
+    return disponible - preparada;
+};
+
+const estaListo = (fila: any) => {
+    const requerida = Number(fila.cantidad_requerida) || 0;
+    const preparada = Number(fila.cantidad_preparada) || 0;
+    return requerida > 0 && preparada >= requerida;
+};
+
+const total = computed(() => form.filas.length);
+const listos = computed(() => form.filas.filter((fila: any) => estaListo(fila)).length);
+const completo = computed(() => total.value > 0 && listos.value === total.value);
+const progreso = computed(() => (total.value > 0 ? Math.round((listos.value / total.value) * 100) : 0));
+
+const faltanDatos = computed(() =>
+    form.filas.some(
+        (fila: any) => String(fila.estado_requerido ?? '').trim() === '' || !fila.proveedor_id,
+    ),
+);
+
+const cargar = async () => {
+    if (!opId.value) {
+        errorCarga.value = 'No se pudo identificar la orden de producción del kit.';
+        return;
     }
-    // data.printForm.length -= 1 //dependex
-});
 
-props.titulos.forEach(names => {
-    data.printForm.push({
-        idd: names['order'], label: names['label'], type: names['type']
-        , value: form[names['order']]
-    })
-});
+    cargando.value = true;
+    errorCarga.value = null;
 
-watchEffect(() => {
-    if (props.show) {
-        // data.justNames.forEach(element => {
-        //     form[element] =  props.KitTallera[element]
-        // });
-        form.errors = {}
-        props.titulos.forEach(names => {
-            form[names['order']] = props.KitTallera[names['order']]
+    try {
+        const respuesta = await fetch(route('KitProceso.por-orden', { id: opId.value }), {
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                Accept: 'application/json',
+            },
+            credentials: 'same-origin',
         });
 
-        // form.codigo = props.KitTallera?.codigo
+        if (!respuesta.ok) {
+            throw new Error('No se pudo cargar la lista de kits de la orden.');
+        }
+
+        const payload = await respuesta.json();
+        orden.value = payload.orden ?? null;
+
+        form.filas = (payload.kits ?? []).map((kit: any) => ({
+            id: kit.id,
+            material_codigo: kit.material_codigo,
+            material_nombre: kit.material_nombre,
+            unidad: kit.unidad,
+            cantidad_requerida: kit.cantidad_requerida,
+            cantidad_disponible: kit.cantidad_disponible,
+            cantidad_preparada: kit.cantidad_preparada ?? '',
+            estado_requerido: kit.estado_requerido ?? '',
+            proveedor_id: kit.proveedor_id ?? null,
+            observaciones: kit.observaciones ?? '',
+        }));
+
+        form.clearErrors();
+    } catch (error: any) {
+        errorCarga.value = error?.message ?? 'Error al cargar los kits.';
+    } finally {
+        cargando.value = false;
     }
-})
+};
+
+watch(
+    () => props.show,
+    (visible) => {
+        if (visible) {
+            cargar();
+        } else {
+            form.reset();
+            form.clearErrors();
+            orden.value = null;
+            errorCarga.value = null;
+        }
+    },
+);
+
+watch(
+    () => props.KitProcesoa,
+    () => {
+        if (props.show) {
+            cargar();
+        }
+    },
+);
 
 const update = () => {
-    form.put(route('KitTaller.update', props.KitTallera?.id), {
+    if (!opId.value) return;
+
+    form.put(route('KitProceso.update-por-orden', { id: opId.value }), {
         preserveScroll: true,
         onSuccess: () => {
-            emit("close")
-            form.reset()
+            emit('close');
         },
         onError: () => null,
-        onFinish: () => null,
-    })
-}
-// const sexos = [ { label: 'Masculino', value: 'Masculino' }, { label: 'Femenino', value: 'Femenino' } ];
-
+    });
+};
 </script>
 
 <template>
     <section class="space-y-6">
-        <Modal :show="props.show" @close="emit('close')" :maxWidth="'xl4'">
-            <form class="p-6" @submit.prevent="create">
-                <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100">
-                    {{ lang().t('app.label.edit') }} {{ props.title }}
-                </h2>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-
-
-                    <!--                    <div id="SelectVue" class="">-->
-                    <!--                        <label name="labelSelectVue2"> Centro de costo </label>-->
-                    <!--                        <v-select :options="props.losSelect[0]"-->
-                    <!--                                  v-model="form.centro_costo_id"-->
-                    <!--                                  label="name"-->
-                    <!--                        ></v-select>-->
-                    <!--                    </div>-->
-
-
-
-                    <div v-for="(atributosform, indice) in data.printForm" :key="indice">
-                        <div v-if="atributosform.type === 'foreign'" id="SelectVue" class="">
-                            <label name="labelSelectVue"> {{ atributosform.label }} </label>
-                            <v-select :options="props.losSelect" v-model="form[atributosform.idd]"
-                                :reduce="element => element.value" label="label"></v-select>
-                            <InputError class="mt-2" :message="form.errors[atributosform.idd]" />
+        <Modal :show="props.show" @close="emit('close')" :maxWidth="'xl6'">
+            <form class="p-6" @submit.prevent="update">
+                <div class="flex items-start justify-between gap-4">
+                    <div class="min-w-0">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                                Completar kits de {{ opNumero }}
+                            </h2>
+                            <span
+                                class="inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide"
+                                :class="completo
+                                    ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300'
+                                    : 'bg-amber-100 text-amber-800 dark:bg-amber-400/15 dark:text-amber-200'">
+                                {{ listos }} / {{ total }} listos
+                            </span>
                         </div>
-
-                        <div v-else-if="atributosform.type === 'time'" id="SelectVue">
-                            <InputLabel :for="atributosform.label"
-                                :value="lang().t('app.label')[atributosform.label]" />
-                            <TextInput :id="atributosform.idd" :type="atributosform.type" class="mt-1 block w-full"
-                                v-model="form[atributosform.idd]" required :placeholder="atributosform.label"
-                                :error="form.errors[atributosform.idd]" step="3600" />
-                            <InputError class="mt-2" :message="form.errors[atributosform.idd]" />
-                        </div>
-                        <div v-else class="">
-                            <InputLabel :for="atributosform.label"
-                                :value="lang().t('app.label')[atributosform.label]" />
-                            <TextInput :id="atributosform.idd" :type="atributosform.type" class="mt-1 block w-full"
-                                v-model="form[atributosform.idd]" required :placeholder="atributosform.label"
-                                :error="form.errors[atributosform.idd]" />
-                            <InputError class="mt-2" :message="form.errors[atributosform.idd]" />
-                        </div>
+                        <p class="mt-1 max-w-2xl text-sm text-gray-500 dark:text-gray-400">
+                            Esta es la lista completa de materiales de la OP. Completa el estado requerido,
+                            el proveedor y la cantidad preparada de cada fila.
+                        </p>
                     </div>
-
+                    <button type="button" @click="emit('close')"
+                        class="rounded-md p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-200"
+                        aria-label="Cerrar">
+                        <XMarkIcon class="h-5 w-5" />
+                    </button>
                 </div>
-                <div class=" my-8 flex justify-end">
-                    <SecondaryButton :disabled="form.processing" @click="emit('close')"> {{ lang().t('app.button.close')
-                        }}
+
+                <div class="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-gray-100 dark:bg-gray-700">
+                    <div class="h-full rounded-full transition-all duration-300"
+                        :class="completo ? 'bg-emerald-500' : 'bg-amber-400'" :style="{ width: `${progreso}%` }" />
+                </div>
+
+                <div v-if="cargando" class="flex items-center justify-center gap-3 py-16 text-sm text-gray-500 dark:text-gray-400">
+                    <span
+                        class="h-5 w-5 animate-spin rounded-full border-2 border-gray-300 border-t-indigo-600 dark:border-gray-600 dark:border-t-indigo-400" />
+                    Cargando los materiales de la OP…
+                </div>
+
+                <div v-else-if="errorCarga"
+                    class="mt-6 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+                    <ExclamationTriangleIcon class="mt-0.5 h-4 w-4 shrink-0" />
+                    <div>
+                        <p class="font-semibold">No se pudo abrir el kit</p>
+                        <p>{{ errorCarga }}</p>
+                        <button type="button" @click="cargar"
+                            class="mt-2 font-semibold underline underline-offset-2">
+                            Intentar de nuevo
+                        </button>
+                    </div>
+                </div>
+
+                <div v-else-if="form.filas.length === 0"
+                    class="mt-6 rounded-xl border border-dashed border-gray-300 px-6 py-12 text-center text-sm text-gray-500 dark:border-gray-600 dark:text-gray-400">
+                    Esta orden no tiene materiales de kit registrados.
+                </div>
+
+                <div v-else class="mt-5 overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
+                    <table class="w-full min-w-[1050px] text-sm">
+                        <thead
+                            class="bg-gray-50/80 text-[11px] font-semibold uppercase tracking-[0.08em] text-gray-500 dark:bg-gray-900/40 dark:text-gray-400">
+                            <tr class="text-left">
+                                <th class="px-3 py-3">Material</th>
+                                <th class="px-3 py-3 text-right">Requerida</th>
+                                <th class="px-3 py-3 text-right">Disponible</th>
+                                <th class="px-3 py-3 text-right">Preparada</th>
+                                <th class="px-3 py-3 text-right">Falta</th>
+                                <th class="bg-amber-50/70 px-3 py-3 dark:bg-amber-500/[0.06]">
+                                    Estado requerido <span class="text-amber-500">*</span>
+                                </th>
+                                <th class="bg-amber-50/70 px-3 py-3 dark:bg-amber-500/[0.06]">
+                                    Proveedor <span class="text-amber-500">*</span>
+                                </th>
+                                <th class="px-3 py-3 text-center">Listo</th>
+                            </tr>
+                        </thead>
+
+                        <tbody>
+                            <tr v-for="(fila, index) in form.filas" :key="fila.id"
+                                class="border-t border-gray-100 align-middle dark:border-gray-700/60">
+                                <td class="px-3 py-2.5">
+                                    <div class="min-w-[11rem] max-w-[16rem]">
+                                        <p class="font-medium text-gray-900 dark:text-gray-100">
+                                            {{ fila.material_nombre || '—' }}
+                                        </p>
+                                        <p v-if="fila.material_codigo" class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                                            {{ fila.material_codigo }}
+                                        </p>
+                                    </div>
+                                </td>
+
+                                <td class="px-3 py-2.5 text-right tabular-nums whitespace-nowrap text-gray-700 dark:text-gray-200">
+                                    {{ formatear(fila.cantidad_requerida) }}
+                                    <span v-if="fila.unidad" class="ml-1 text-xs text-gray-500 dark:text-gray-400">
+                                        {{ fila.unidad }}
+                                    </span>
+                                </td>
+
+                                <td class="px-3 py-2.5 text-right tabular-nums whitespace-nowrap">
+                                    <span class="text-gray-700 dark:text-gray-200">{{ formatear(fila.cantidad_disponible) }}</span>
+                                    <p class="text-[10px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                                        Inventario
+                                    </p>
+                                </td>
+
+                                <td class="px-3 py-2.5 text-right">
+                                    <input v-model="fila.cantidad_preparada" type="number" min="0" step="0.01"
+                                        class="w-24 rounded-md border-gray-300 bg-white py-1.5 text-right text-sm tabular-nums shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
+                                        placeholder="0.00" />
+                                    <InputError class="mt-1 text-left" :message="form.errors[`filas.${index}.cantidad_preparada`]" />
+                                </td>
+
+                                <td class="px-3 py-2.5 text-right tabular-nums whitespace-nowrap">
+                                    <span
+                                        :class="faltaDe(fila) < 0
+                                            ? 'font-semibold text-red-600 dark:text-red-400'
+                                            : 'text-gray-700 dark:text-gray-200'">
+                                        {{ formatear(faltaDe(fila)) }}
+                                    </span>
+                                </td>
+
+                                <td class="bg-amber-50/30 px-3 py-2.5 dark:bg-amber-500/[0.03]">
+                                    <input v-model="fila.estado_requerido" type="text"
+                                        list="kit-estados-requeridos" autocomplete="off"
+                                        class="w-full min-w-[9rem] rounded-md border-gray-300 bg-white py-1.5 text-sm shadow-sm placeholder:text-gray-400 focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:placeholder:text-gray-500"
+                                        placeholder="Ej. Materia prima" />
+                                    <InputError class="mt-1" :message="form.errors[`filas.${index}.estado_requerido`]" />
+                                </td>
+
+                                <td class="bg-amber-50/30 px-3 py-2.5 dark:bg-amber-500/[0.03]">
+                                    <select v-model="fila.proveedor_id"
+                                        class="w-full min-w-[10rem] rounded-md border-gray-300 bg-white py-1.5 text-sm shadow-sm focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200">
+                                        <option :value="null">Selecciona…</option>
+                                        <option v-for="proveedor in props.proveedores" :key="proveedor.id"
+                                            :value="proveedor.id">
+                                            {{ proveedor.nombre }}
+                                        </option>
+                                    </select>
+                                    <InputError class="mt-1" :message="form.errors[`filas.${index}.proveedor_id`]" />
+                                </td>
+
+                                <td class="px-3 py-2.5 text-center">
+                                    <span
+                                        class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide"
+                                        :class="estaListo(fila)
+                                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300'
+                                            : 'bg-gray-100 text-gray-500 dark:bg-gray-700/50 dark:text-gray-400'">
+                                        <CheckBadgeIcon v-if="estaListo(fila)" class="h-3.5 w-3.5" />
+                                        {{ estaListo(fila) ? 'Listo' : 'Pendiente' }}
+                                    </span>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <datalist id="kit-estados-requeridos">
+                    <option v-for="estado in props.estadosRequeridos" :key="estado" :value="estado" />
+                </datalist>
+
+                <div v-if="props.proveedores.length === 0"
+                    class="mt-4 rounded-lg border border-amber-200 bg-amber-50/70 p-3 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100">
+                    No hay proveedores registrados.
+                    <Link :href="route('Proveedor.index')" class="font-semibold underline underline-offset-2">
+                        Crear un proveedor
+                    </Link>
+                    antes de completar los kits.
+                </div>
+
+                <div class="mt-5 flex flex-col gap-3 rounded-lg bg-gray-50 px-4 py-3 text-xs text-gray-500 dark:bg-gray-900/30 dark:text-gray-400 sm:flex-row sm:items-center sm:justify-between">
+                    <p class="max-w-2xl">
+                        <b class="text-gray-700 dark:text-gray-200">Disponible</b> es la existencia del material en inventario.
+                        <b class="text-gray-700 dark:text-gray-200">Falta</b> = disponible − preparada.
+                        El kit queda <b class="text-gray-700 dark:text-gray-200">listo</b> cuando la cantidad preparada cubre la requerida.
+                    </p>
+                    <p v-if="faltanDatos" class="shrink-0 font-semibold text-amber-700 dark:text-amber-300">
+                        Completa estado y proveedor en todas las filas.
+                    </p>
+                </div>
+
+                <div class="mt-6 flex justify-end">
+                    <SecondaryButton type="button" :disabled="form.processing" @click="emit('close')">
+                        Cancelar
                     </SecondaryButton>
-                    <PrimaryButton class="ml-3" :class="{ 'opacity-25': form.processing }" :disabled="form.processing"
-                        @click="update">
-                        {{ form.processing ? lang().t('app.button.save') + '...' : lang().t('app.button.save') }}
+                    <PrimaryButton class="ml-3" :class="{ 'opacity-25': form.processing }"
+                        :disabled="form.processing || form.filas.length === 0 || faltanDatos">
+                        {{ form.processing ? 'Guardando…' : 'Guardar cambios' }}
                     </PrimaryButton>
                 </div>
             </form>
         </Modal>
     </section>
 </template>
-
-<style>
-[name="labelSelectVue"],
-[name="labelSelectVue"] {
-    /* font-size: 22px; */
-    font-weight: 600;
-}
-</style>

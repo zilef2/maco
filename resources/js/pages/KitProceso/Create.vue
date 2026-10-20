@@ -75,7 +75,7 @@ function ValidarVacios() {
 const create = () => {
     if (ValidarVacios()) {
         // console.log("🧈 debu pieza_id:", form.pieza_id);
-        form.post(route('KitTaller.store'), {
+        form.post(route('KitProceso.store'), {
             preserveScroll: true,
             onSuccess: () => {
                 emit("close")

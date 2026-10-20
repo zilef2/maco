@@ -50,13 +50,14 @@ class CopyUserPages extends Command
         // Cada entrada: [ 'NombreModelo', 'required' => [...], 'optional' => [...] ]
         return [
             [
-                'EstadoOpMaterial',
+                'EmpresaExterna',
                 'required' => [
                     'nombre' => 'string',
-                    'valor' => 'string',
+                    'actividad' => 'string',
                 ],
                 'optional' => [
-                    'pasa_a' => 'string',
+                    'direccion' => 'string',
+                    'numero_contacto' => 'string',
                 ],
             ],
         ];

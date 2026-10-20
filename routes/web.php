@@ -59,9 +59,10 @@ Route::middleware('auth', 'verified')->group(function () {
 	Route::get("/ProcesoExterno/materiales-op/{orden}", [\App\Http\Controllers\ProcesoExternoController::class, 'materialesOp'])->name('ProcesoExterno.materialesOp');
 	Route::post("/ProcesoExterno/salida-op", [\App\Http\Controllers\ProcesoExternoController::class, 'salidaOp'])->name('ProcesoExterno.salidaOp');
 	Route::resource("/ProcesoExterno", \App\Http\Controllers\ProcesoExternoController::class);
-	Route::resource("/KitTaller", \App\Http\Controllers\KitTallerController::class);
-	Route::post("/KitTaller/upload-excel", [\App\Http\Controllers\KitTallerController::class, 'uploadExcel'])->name('KitTaller.upload-excel');
-	Route::get("/KitTaller/por-orden/{id}", [\App\Http\Controllers\KitTallerController::class, 'porOrden'])->name('KitTaller.por-orden');
+	Route::resource("/KitProceso", \App\Http\Controllers\KitProcesoController::class);
+	Route::post("/KitProceso/upload-excel", [\App\Http\Controllers\KitProcesoController::class, 'uploadExcel'])->name('KitProceso.upload-excel');
+	Route::get("/KitProceso/por-orden/{id}", [\App\Http\Controllers\KitProcesoController::class, 'porOrden'])->name('KitProceso.por-orden');
+	Route::put("/KitProceso/por-orden/{id}", [\App\Http\Controllers\KitProcesoController::class, 'updatePorOrden'])->name('KitProceso.update-por-orden');
 	Route::resource("/RecepcionCalidad", \App\Http\Controllers\RecepcionCalidadController::class);
 	Route::resource("/CierreOrdenProduccion", \App\Http\Controllers\CierreOrdenProduccionController::class);
 	Route::resource("/EstadoOperacion", \App\Http\Controllers\EstadoOperacionController::class);
@@ -69,14 +70,18 @@ Route::middleware('auth', 'verified')->group(function () {
 	Route::resource("/FichaTecnicaMateriales", \App\Http\Controllers\FichaTecnicaMaterialesController::class);
 	Route::resource("/PendientesProduccion", \App\Http\Controllers\PendientesProduccionController::class);
 	Route::resource("/Taller", \App\Http\Controllers\TallerController::class);
+	Route::post("/Taller/upload-excel", [\App\Http\Controllers\TallerController::class, 'uploadExcel'])->name('Taller.upload-excel');
 	Route::resource("/Proveedor", \App\Http\Controllers\ProveedorController::class);
+	Route::post("/Proveedor/upload-excel", [\App\Http\Controllers\ProveedorController::class, 'uploadExcel'])->name('Proveedor.upload-excel');
 	Route::resource("/Distribucion_por_tallas", \App\Http\Controllers\Distribucion_por_tallasController::class);
 	Route::resource("/Material", \App\Http\Controllers\MaterialController::class);
 	Route::post("/Material/upload-excel", [\App\Http\Controllers\MaterialController::class, 'uploadExcel'])->name('Material.upload-excel');
 	Route::get('/Material/{id}/movimientos', [\App\Http\Controllers\MaterialController::class, 'historicoMovimientos'])->name('Material.movimientos');
 	Route::resource("/GrupoTalla", \App\Http\Controllers\GrupoTallaController::class);
 	Route::get("/ImportarExcel", [\App\Http\Controllers\ImportarExcelController::class, 'index'])->name('ImportarExcel.index');
+	Route::post("/ImportarExcel/entidad", [\App\Http\Controllers\ImportarExcelController::class, 'toggleEntidad'])->name('ImportarExcel.toggleEntidad');
 	Route::resource("/EstadoOpMaterial", \App\Http\Controllers\EstadoOpMaterialController::class);
+	Route::resource("/EmpresaExterna", \App\Http\Controllers\EmpresaExternaController::class);
 	//aquipues
 }); //fin verified
 

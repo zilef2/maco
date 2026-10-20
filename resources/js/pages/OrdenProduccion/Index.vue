@@ -9,8 +9,9 @@ import Create from '@/pages/OrdenProduccion/Create.vue';
 import Edit from '@/pages/OrdenProduccion/Edit.vue';
 import Delete from '@/pages/OrdenProduccion/Delete.vue';
 import DistribucionTallas from '@/pages/OrdenProduccion/DistribucionTallas.vue';
-import KitTallerOPModal from '@/pages/OrdenProduccion/KitTallerOPModal.vue';
+import KitProcesoOPModal from '@/pages/OrdenProduccion/KitProcesoOPModal.vue';
 import CambiarEstadoModal from '@/pages/OrdenProduccion/CambiarEstadoModal.vue';
+import DetalleEstadoModal from '@/pages/OrdenProduccion/DetalleEstadoModal.vue';
 import SacarMaterialesModal from '@/pages/ProcesoExterno/SacarMaterialesModal.vue';
 
 import {
@@ -59,6 +60,7 @@ const filas = computed<any[]>(() => (props.ordenes as any[]) ?? []);
 
 const busqueda = ref('');
 const estadoFiltro = ref<number | 'todos'>('todos');
+const responsableFiltro = ref<number | 'todos'>('todos');
 const tallerFiltro = ref<number | 'todos'>('todos');
 const sortKey = ref('numero_op');
 const sortDir = ref<'asc' | 'desc'>('desc');
@@ -76,17 +78,13 @@ const normalizar = (valor: any): string =>
 const preparadas = computed(() =>
     filas.value.map((op: any) => ({
         ...op,
+        // La búsqueda libre solo cubre código de orden y nombres de producto;
+        // estado y responsable tienen su propio filtro.
         _busqueda: normalizar(
             [
                 op.numero_op,
                 op.producto_nombre,
                 op.productos_nombres,
-                op.taller_nombre,
-                op.estado_nombre,
-                op.responsable_nombre,
-                op.id_shopify_producto,
-                op.observaciones,
-                (op.distribuciones_por_tallas || []).map((t: any) => t.talla).join(' '),
             ].join(' '),
         ),
     })),
@@ -95,6 +93,9 @@ const preparadas = computed(() =>
 const baseFiltrada = computed(() =>
     preparadas.value.filter((op: any) => {
         if (busqueda.value.trim() && !op._busqueda.includes(normalizar(busqueda.value))) {
+            return false;
+        }
+        if (responsableFiltro.value !== 'todos' && Number(op.user_id) !== Number(responsableFiltro.value)) {
             return false;
         }
         if (tallerFiltro.value !== 'todos' && Number(op.taller_id) !== Number(tallerFiltro.value)) {
@@ -109,13 +110,34 @@ const estadosDisponibles = computed(() => {
     const ordenMap = new Map<number, number>();
     orden.forEach((e: any, i: number) => ordenMap.set(Number(e.id), i));
 
-    const grupos = new Map<number, { id: number; nombre: string; count: number }>();
+    // Conteos dentro del alcance actual (búsqueda, responsable y taller).
+    const conteos = new Map<number, number>();
     baseFiltrada.value.forEach((op: any) => {
-        const id = Number(op.estado_op_id);
-        if (!grupos.has(id)) {
-            grupos.set(id, { id, nombre: op.estado_nombre || `Estado #${id}`, count: 0 });
-        }
-        grupos.get(id)!.count++;
+        // Un OP en coexistencia ("Esperando materiales" + "Procesos externos")
+        // cuenta bajo ambos estados.
+        [op.estado_op_id, op.estado_op_secundario_id].forEach((rawId: any) => {
+            const id = Number(rawId);
+            if (!id) return;
+            conteos.set(id, (conteos.get(id) ?? 0) + 1);
+        });
+    });
+
+    // Las opciones se arman con todas las órdenes para que la lista no cambie
+    // de tamaño al mover los demás filtros.
+    const grupos = new Map<number, { id: number; nombre: string; count: number }>();
+    filas.value.forEach((op: any) => {
+        [op.estado_op_id, op.estado_op_secundario_id].forEach((rawId: any) => {
+            const id = Number(rawId);
+            if (!id || grupos.has(id)) return;
+            grupos.set(id, {
+                id,
+                nombre: (String(rawId) === String(op.estado_op_id) ? op.estado_nombre : op.estado_secundario_nombre) || `Estado #${id}`,
+                count: 0,
+            });
+        });
+    });
+    grupos.forEach((grupo) => {
+        grupo.count = conteos.get(grupo.id) ?? 0;
     });
 
     return Array.from(grupos.values()).sort((a, b) => {
@@ -126,9 +148,12 @@ const estadosDisponibles = computed(() => {
 });
 
 const filtradas = computed(() =>
-    baseFiltrada.value.filter(
-        (op: any) => estadoFiltro.value === 'todos' || Number(op.estado_op_id) === Number(estadoFiltro.value),
-    ),
+    baseFiltrada.value.filter((op: any) => {
+        if (estadoFiltro.value === 'todos') return true;
+        // Coincide con el estado principal o con el secundario (coexistencia).
+        return Number(op.estado_op_id) === Number(estadoFiltro.value)
+            || Number(op.estado_op_secundario_id) === Number(estadoFiltro.value);
+    }),
 );
 
 const talleresDisponibles = computed(() => {
@@ -143,6 +168,18 @@ const talleresDisponibles = computed(() => {
         .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
 });
 
+const responsablesDisponibles = computed(() => {
+    const mapa = new Map<number, string>();
+    filas.value.forEach((op: any) => {
+        if (op.user_id) {
+            mapa.set(Number(op.user_id), op.responsable_nombre || `Usuario #${op.user_id}`);
+        }
+    });
+    return Array.from(mapa.entries())
+        .map(([id, nombre]) => ({ id, nombre }))
+        .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+});
+
 const collator = new Intl.Collator('es', { numeric: true, sensitivity: 'base' });
 
 const valorOrden = (op: any, key: string): any => {
@@ -150,7 +187,7 @@ const valorOrden = (op: any, key: string): any => {
         case 'producto':
             return op.producto_nombre ?? '';
         case 'taller':
-            return op.taller_nombre ?? '';
+            return (op.taller_nombre || op.empresa_externa_nombre) ?? '';
         case 'estado':
             return op.estado_nombre ?? '';
         case 'responsable':
@@ -199,7 +236,7 @@ const paginasVisibles = computed<Array<number | '...'>>(() => {
     const actual = paginaActual.value;
     const ventana = 5;
     let inicio = Math.max(1, actual - 2);
-    let fin = Math.min(total, inicio + ventana - 1);
+    const fin = Math.min(total, inicio + ventana - 1);
     inicio = Math.max(1, fin - ventana + 1);
 
     const salida: Array<number | '...'> = [];
@@ -234,16 +271,20 @@ const ariaSort = (key: string): 'ascending' | 'descending' | 'none' =>
     sortKey.value !== key ? 'none' : sortDir.value === 'asc' ? 'ascending' : 'descending';
 
 const hayFiltros = computed(
-    () => busqueda.value.trim() !== '' || estadoFiltro.value !== 'todos' || tallerFiltro.value !== 'todos',
+    () => busqueda.value.trim() !== ''
+        || estadoFiltro.value !== 'todos'
+        || responsableFiltro.value !== 'todos'
+        || tallerFiltro.value !== 'todos',
 );
 
 const limpiarFiltros = () => {
     busqueda.value = '';
     estadoFiltro.value = 'todos';
+    responsableFiltro.value = 'todos';
     tallerFiltro.value = 'todos';
 };
 
-watch([busqueda, estadoFiltro, tallerFiltro, porPagina], () => {
+watch([busqueda, estadoFiltro, responsableFiltro, tallerFiltro, porPagina], () => {
     pagina.value = 1;
 });
 
@@ -279,8 +320,8 @@ const ESTADO_ESTILOS: Record<string, { dot: string; badge: string }> = {
         badge: 'border-cyan-200 bg-cyan-50 text-cyan-800 dark:border-cyan-500/30 dark:bg-cyan-500/10 dark:text-cyan-300',
     },
     recibiendo: {
-        dot: 'bg-indigo-500',
-        badge: 'border-indigo-200 bg-indigo-50 text-indigo-800 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300',
+        dot: 'bg-yellow-400',
+        badge: 'border-yellow-300 bg-yellow-50 text-yellow-800 dark:border-yellow-500/30 dark:bg-yellow-400/10 dark:text-yellow-300',
     },
     pendiente: {
         dot: 'bg-rose-500',
@@ -302,22 +343,20 @@ const estiloEstado = (nombre: string) =>
         badge: 'border-border bg-muted text-muted-foreground',
     };
 
-const chipClass = (activo: boolean) => [
-    'inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
-    activo
-        ? 'border-foreground/15 bg-foreground text-background shadow-sm'
-        : 'border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground',
-];
+// Estados que muestran información adicional al hacer clic. El resto
+// (Borrador, Procesos externos, Lista para taller, En taller, Pendiente,
+// Cerrada) no tiene detalle y su vínculo queda deshabilitado.
+const ESTADOS_CON_DETALLE = ['Preparación', 'Esperando materiales', 'Recibiendo'];
+const estadoConDetalle = (nombre: string | null | undefined) =>
+    ESTADOS_CON_DETALLE.includes(String(nombre ?? ''));
 
 const columnas = [
     { key: 'numero_op', label: 'Orden', sortable: true, align: 'left', headerClass: 'min-w-[130px]', cellClass: 'min-w-[130px]' },
     { key: 'producto', label: 'Producto', sortable: true, align: 'left', headerClass: 'min-w-[200px]', cellClass: 'min-w-[200px]' },
     { key: 'cantidad_planificada', label: 'Cantidad', sortable: true, align: 'right', headerClass: 'w-[100px]', cellClass: 'w-[100px]' },
-    { key: 'taller', label: 'Taller', sortable: true, align: 'left', headerClass: 'hidden min-w-[140px] md:table-cell', cellClass: 'hidden min-w-[140px] md:table-cell' },
+    { key: 'taller', label: 'Envío taller', sortable: true, align: 'left', headerClass: 'hidden min-w-[150px] md:table-cell', cellClass: 'hidden min-w-[150px] md:table-cell' },
     { key: 'estado', label: 'Estado', sortable: true, align: 'left', headerClass: 'min-w-[150px]', cellClass: 'min-w-[150px]' },
     { key: 'responsable', label: 'Responsable', sortable: true, align: 'left', headerClass: 'hidden min-w-[120px] lg:table-cell', cellClass: 'hidden min-w-[120px] lg:table-cell' },
-    { key: 'fecha_prevista_envio_taller', label: 'Envío taller', sortable: true, align: 'left', headerClass: 'hidden min-w-[110px] xl:table-cell', cellClass: 'hidden min-w-[110px] xl:table-cell' },
-    { key: 'id_shopify_producto', label: 'Shopify', sortable: true, align: 'left', headerClass: 'hidden min-w-[130px] 2xl:table-cell', cellClass: 'hidden min-w-[130px] 2xl:table-cell' },
     { key: 'observaciones', label: 'Observaciones', sortable: false, align: 'left', headerClass: 'hidden min-w-[200px] 2xl:table-cell', cellClass: 'hidden min-w-[200px] 2xl:table-cell' },
 ] as const;
 
@@ -334,10 +373,12 @@ const data = reactive({
     ordenEditando: null as any,
     distribucionOpen: false,
     distribucionOp: null as any,
-    kitTallerOpen: false,
-    kitTallerOp: null as any,
+    kitProcesoOpen: false,
+    kitProcesoOp: null as any,
     cambioEstadoOpen: false,
     cambioEstadoOp: null as any,
+    detalleEstadoOpen: false,
+    detalleEstadoOp: null as any,
     salidaOpen: false,
     salidaOp: null as any,
 });
@@ -357,9 +398,9 @@ const abrirDistribucion = (op: any) => {
     data.distribucionOpen = true;
 };
 
-const abrirKitTaller = (op: any) => {
-    data.kitTallerOp = op ?? null;
-    data.kitTallerOpen = true;
+const abrirKitProceso = (op: any) => {
+    data.kitProcesoOp = op ?? null;
+    data.kitProcesoOpen = true;
 };
 
 const abrirCambioEstado = (op: any) => {
@@ -367,12 +408,18 @@ const abrirCambioEstado = (op: any) => {
     data.cambioEstadoOpen = true;
 };
 
+const abrirDetalleEstado = (op: any) => {
+    if (!estadoConDetalle(op?.estado_nombre)) return;
+    data.detalleEstadoOp = op ?? null;
+    data.detalleEstadoOpen = true;
+};
+
 const accionesFila = computed(() => {
     const arr: Array<{ id: string; label: string; icon: any; visible?: (op: any) => boolean }> = [];
     if (puede(['update OrdenProduccion'])) {
         arr.push({ id: 'edit', label: 'Editar', icon: PencilIcon });
     }
-    if (puede(['create KitTaller'])) {
+    if (puede(['create KitProceso'])) {
         arr.push({ id: 'kit', label: 'Kit taller / Importar Excel', icon: ArrowUpTrayIcon });
     }
     arr.push({ id: 'tallas', label: 'Editar tallas', icon: SquaresPlusIcon });
@@ -397,12 +444,12 @@ const onAccionFila = (id: string, op: any) => {
         data.editOpen = true;
         data.deleteOpen = false;
         data.distribucionOpen = false;
-        data.kitTallerOpen = false;
+        data.kitProcesoOpen = false;
         data.cambioEstadoOpen = false;
         data.salidaOpen = false;
         data.ordenEditando = op;
     }
-    if (id === 'kit') abrirKitTaller(op);
+    if (id === 'kit') abrirKitProceso(op);
     if (id === 'tallas') abrirDistribucion(op);
     if (id === 'salida') {
         data.salidaOp = op;
@@ -540,8 +587,8 @@ const titulos = [
                             <input
                                 v-model="busqueda"
                                 type="search"
-                                aria-label="Buscar órdenes"
-                                placeholder="Buscar OP, producto, taller, estado, responsable…"
+                                aria-label="Buscar por código de orden o producto"
+                                placeholder="Buscar por código de OP o producto…"
                                 class="h-9 w-full rounded-md border border-input bg-background pl-9 pr-9 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30"
                             />
                             <button
@@ -554,6 +601,28 @@ const titulos = [
                                 <XMarkIcon class="h-3.5 w-3.5" />
                             </button>
                         </div>
+
+                        <select
+                            v-model="estadoFiltro"
+                            aria-label="Filtrar por estado"
+                            class="h-9 max-w-[190px] rounded-md border border-input bg-background px-2 text-sm text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30"
+                        >
+                            <option value="todos">Todos los estados</option>
+                            <option v-for="estado in estadosDisponibles" :key="estado.id" :value="estado.id">
+                                {{ estado.nombre }} ({{ estado.count }})
+                            </option>
+                        </select>
+
+                        <select
+                            v-model="responsableFiltro"
+                            aria-label="Filtrar por responsable"
+                            class="h-9 max-w-[190px] rounded-md border border-input bg-background px-2 text-sm text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30"
+                        >
+                            <option value="todos">Todos los responsables</option>
+                            <option v-for="responsable in responsablesDisponibles" :key="responsable.id" :value="responsable.id">
+                                {{ responsable.nombre }}
+                            </option>
+                        </select>
 
                         <select
                             v-model="tallerFiltro"
@@ -582,31 +651,6 @@ const titulos = [
                         >
                             <XMarkIcon class="h-3.5 w-3.5" />
                             Limpiar
-                        </button>
-                    </div>
-
-                    <!-- Filtro por estado con conteos -->
-                    <div class="op-scroll flex items-center gap-1.5 overflow-x-auto pb-0.5" role="group" aria-label="Filtrar por estado">
-                        <button
-                            type="button"
-                            @click="estadoFiltro = 'todos'"
-                            :aria-pressed="estadoFiltro === 'todos'"
-                            :class="chipClass(estadoFiltro === 'todos')"
-                        >
-                            Todos
-                            <span class="tabular-nums opacity-70">{{ baseFiltrada.length }}</span>
-                        </button>
-                        <button
-                            v-for="estado in estadosDisponibles"
-                            :key="estado.id"
-                            type="button"
-                            @click="estadoFiltro = estado.id"
-                            :aria-pressed="estadoFiltro === estado.id"
-                            :class="chipClass(estadoFiltro === estado.id)"
-                        >
-                            <span class="h-1.5 w-1.5 rounded-full" :class="estiloEstado(estado.nombre).dot"></span>
-                            {{ estado.nombre }}
-                            <span class="tabular-nums opacity-70">{{ estado.count }}</span>
                         </button>
                     </div>
                 </div>
@@ -717,37 +761,52 @@ const titulos = [
                                     </div>
                                 </td>
 
-                                <!-- Taller -->
+                                <!-- Envío taller: taller o proceso externo seleccionado -->
                                 <td class="hidden px-3 py-3 align-top md:table-cell">
-                                    <span class="text-sm text-foreground">{{ op.taller_nombre || '—' }}</span>
+                                    <div class="flex flex-col gap-0.5">
+                                        <span class="text-sm text-foreground">{{ op.taller_nombre || op.empresa_externa_nombre || '—' }}</span>
+                                        <span v-if="op.tipo === 'externa'" class="text-[10px] font-medium uppercase tracking-wide text-violet-600 dark:text-violet-300">Proceso externo</span>
+                                        <span v-if="op.fecha_prevista_envio_taller" class="text-[11px] tabular-nums text-muted-foreground">
+                                            {{ formatDate(op.fecha_prevista_envio_taller) }}
+                                        </span>
+                                    </div>
                                 </td>
 
                                 <!-- Estado -->
                                 <td class="px-3 py-3 align-top">
+                                    <button
+                                        v-if="estadoConDetalle(op.estado_nombre)"
+                                        type="button"
+                                        @click="abrirDetalleEstado(op)"
+                                        title="Ver detalle del estado"
+                                        aria-haspopup="dialog"
+                                        class="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium transition hover:brightness-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background dark:hover:brightness-110"
+                                        :class="estiloEstado(op.estado_nombre).badge"
+                                    >
+                                        <span class="h-1.5 w-1.5 rounded-full" :class="estiloEstado(op.estado_nombre).dot"></span>
+                                        {{ op.estado_nombre || 'Sin estado' }}
+                                        <ChevronRightIcon class="h-3 w-3 opacity-60" />
+                                    </button>
                                     <span
+                                        v-else
                                         class="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium"
                                         :class="estiloEstado(op.estado_nombre).badge"
                                     >
                                         <span class="h-1.5 w-1.5 rounded-full" :class="estiloEstado(op.estado_nombre).dot"></span>
                                         {{ op.estado_nombre || 'Sin estado' }}
                                     </span>
+                                    <span
+                                        v-if="op.estado_secundario_nombre"
+                                        class="mt-1 block w-fit rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-violet-700 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-300"
+                                        title="Estado simultáneo (única coexistencia permitida)"
+                                    >
+                                        + {{ op.estado_secundario_nombre }}
+                                    </span>
                                 </td>
 
                                 <!-- Responsable -->
                                 <td class="hidden px-3 py-3 align-top lg:table-cell">
                                     <span class="text-sm text-foreground">{{ op.responsable_nombre || '—' }}</span>
-                                </td>
-
-                                <!-- Envío taller -->
-                                <td class="hidden px-3 py-3 align-top xl:table-cell">
-                                    <span class="text-sm tabular-nums text-foreground">
-                                        {{ op.fecha_prevista_envio_taller ? formatDate(op.fecha_prevista_envio_taller) : '—' }}
-                                    </span>
-                                </td>
-
-                                <!-- Shopify -->
-                                <td class="hidden px-3 py-3 align-top 2xl:table-cell">
-                                    <span class="font-mono text-[11px] text-muted-foreground">{{ op.id_shopify_producto || '—' }}</span>
                                 </td>
 
                                 <!-- Observaciones -->
@@ -959,10 +1018,10 @@ const titulos = [
             :canEdit="can(['update OrdenProduccion'])"
         />
 
-        <KitTallerOPModal
-            :show="data.kitTallerOpen"
-            @close="data.kitTallerOpen = false"
-            :ordenProduccion="data.kitTallerOp"
+        <KitProcesoOPModal
+            :show="data.kitProcesoOpen"
+            @close="data.kitProcesoOpen = false"
+            :ordenProduccion="data.kitProcesoOp"
         />
 
         <CambiarEstadoModal
@@ -971,6 +1030,12 @@ const titulos = [
             :title="props.title"
             :op="data.cambioEstadoOp"
             :estados="(props.losSelect as any)?.estado_op_id || []"
+        />
+
+        <DetalleEstadoModal
+            :show="data.detalleEstadoOpen"
+            @close="data.detalleEstadoOpen = false"
+            :op="data.detalleEstadoOp"
         />
 
         <SacarMaterialesModal :show="data.salidaOpen" @close="data.salidaOpen = false" :op="data.salidaOp" />

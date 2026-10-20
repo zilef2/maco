@@ -2,13 +2,13 @@
 
 namespace Database\Factories;
 
-use App\Models\KitTaller;
+use App\Models\KitProceso;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
- * @extends Factory<KitTaller>
+ * @extends Factory<KitProceso>
  */
-class KitTallerFactory extends Factory
+class KitProcesoFactory extends Factory
 {
     /**
      * Define the model's default state.

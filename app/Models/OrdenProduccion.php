@@ -13,10 +13,13 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 {
     /** @use HasFactory<\Database\Factories\OrdenProduccionFactory> */
     use HasFactory;
-    protected $fillable = ['numero_op', 'producto_referencia_id', 'cantidad_planificada', 'fecha_prevista_envio_taller', 'taller_id', 'estado_op_id', 'estado_op_material_id', 'externa', 'user_id', 'id_shopify_producto', 'observaciones'];
+    protected $fillable = ['numero_op', 'producto_referencia_id', 'cantidad_planificada', 'fecha_prevista_envio_taller', 'taller_id', 'tipo', 'empresa_externa_id', 'estado_op_id', 'estado_op_secundario_id', 'estado_op_material_id', 'externa', 'user_id', 'id_shopify_producto', 'observaciones'];
 
     protected $casts = [
         'externa' => 'boolean',
+        'empresa_externa_id' => 'integer',
+        'estado_op_secundario_id' => 'integer',
+        'recepcion_desde' => 'datetime',
     ];
 
     /**
@@ -48,9 +51,19 @@ use Illuminate\Database\Eloquent\SoftDeletes;
         return $this->belongsTo(Taller::class, 'taller_id');
     }
 
+    public function empresaExterna()
+    {
+        return $this->belongsTo(EmpresaExterna::class, 'empresa_externa_id');
+    }
+
     public function estadoOp()
     {
         return $this->belongsTo(EstadoOperacion::class, 'estado_op_id');
+    }
+
+    public function estadoOpSecundario()
+    {
+        return $this->belongsTo(EstadoOperacion::class, 'estado_op_secundario_id');
     }
 
     public function responsable()
@@ -66,6 +79,22 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     public function distribucionesPorTallas()
     {
         return $this->belongsToMany(Distribucion_por_tallas::class, 'distribucion_orden_produccion', 'orden_produccion_id', 'distribucion_por_talla_id')->withTimestamps();
+    }
+
+    /**
+     * Recepciones de calidad registradas para la OP (una por producto + talla).
+     */
+    public function recepcionesCalidad()
+    {
+        return $this->hasMany(RecepcionCalidad::class, 'orden_produccion_id');
+    }
+
+    /**
+     * Kits de materiales generados desde la ficha técnica de los productos.
+     */
+    public function kitProcesos()
+    {
+        return $this->hasMany(KitProceso::class, 'orden_produccion_id');
     }
 
 

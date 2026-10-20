@@ -28,9 +28,9 @@ return new class extends Migration
             $table->foreignId('material_id')->after('orden_produccion_id')->constrained('materials');
         });
 
-        Schema::table('distribucion_tallas', function (Blueprint $table) {
-            $table->foreignId('orden_produccion_id')->after('id')->constrained('orden_produccions');
-        });
+        // Schema::table('distribucion_tallas', function (Blueprint $table) {
+        //     $table->foreignId('orden_produccion_id')->after('id')->constrained('orden_produccions');
+        // });
 
         Schema::table('recepcion_calidads', function (Blueprint $table) {
             $table->foreignId('orden_produccion_id')->after('id')->constrained('orden_produccions');
@@ -63,9 +63,9 @@ return new class extends Migration
             $table->dropConstrainedForeignId('producto_referencia_id');
         });
 
-        Schema::table('distribucion_tallas', function (Blueprint $table) {
-            $table->dropConstrainedForeignId('orden_produccion_id');
-        });
+        // Schema::table('distribucion_tallas', function (Blueprint $table) {
+        //     $table->dropConstrainedForeignId('orden_produccion_id');
+        // });
 
         Schema::table('kit_tallers', function (Blueprint $table) {
             $table->dropConstrainedForeignId('orden_produccion_id');

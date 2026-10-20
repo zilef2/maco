@@ -5,7 +5,9 @@ import Modal from '@/components/Modal.vue';
 import PrimaryButton from '@/components/PrimaryButton.vue';
 import SecondaryButton from '@/components/SecondaryButton.vue';
 import TextInput from '@/components/TextInput.vue';
-import { CheckCircleIcon, ClipboardDocumentListIcon, DocumentTextIcon, ShoppingBagIcon } from '@heroicons/vue/24/solid';
+import EditorMateriales from '@/pages/FichaTecnicaMateriales/EditorMateriales.vue';
+import { dineroANumero } from '@/global.ts';
+import { CheckCircleIcon, ClipboardDocumentListIcon, CubeIcon, DocumentTextIcon, ShoppingBagIcon } from '@heroicons/vue/24/solid';
 import { useForm } from '@inertiajs/vue3';
 import { computed, watchEffect } from 'vue';
 import vSelect from 'vue-select';
@@ -57,6 +59,7 @@ const form = useForm({
     descripcion: '',
     precio_predicho: '' as string | number,
     precio_preventa: '' as string | number,
+    materiales: [] as any[],
 });
 
 const toggleEstado = () => {
@@ -70,15 +73,26 @@ const create = () => {
         });
         return;
     }
-    form.post(route('Producto.store'), {
-        preserveScroll: true,
-        onSuccess: () => {
-            emit("close")
-            form.reset()
-        },
-        onError: () => null,
-        onFinish: () => null,
-    })
+    form
+        .transform((datos) => ({
+            ...datos,
+            materiales: datos.materiales
+                .filter((fila: any) => fila.material_componente_id)
+                .map((fila: any) => ({
+                    ...fila,
+                    consumo_estandar: dineroANumero(fila.consumo_estandar),
+                    costo_asociado_teorico: dineroANumero(fila.costo_asociado_teorico),
+                })),
+        }))
+        .post(route('Producto.store'), {
+            preserveScroll: true,
+            onSuccess: () => {
+                emit('close');
+                form.reset();
+            },
+            onError: () => null,
+            onFinish: () => null,
+        });
 };
 
 watchEffect(() => {
@@ -147,6 +161,7 @@ watchEffect(() => {
                                     label="nombre"
                                     v-model="form.Familia_normalizada"
                                     placeholder="Seleccione familia"
+                                    append-to-body
                                     class="mt-1 block w-full"
                                 />
                                 <p v-else class="mt-1 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs font-medium text-amber-800 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
@@ -217,6 +232,19 @@ watchEffect(() => {
                                 <InputError class="mt-2" :message="form.errors.Opciones" />
                             </div>
                         </div>
+                    </div>
+
+                    <!-- Ficha técnica de materiales -->
+                    <div>
+                        <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
+                            <CubeIcon class="w-4 h-4 text-gray-400 dark:text-gray-500" />
+                            Ficha técnica de materiales
+                        </h3>
+                        <p class="mt-1 mb-3 pl-6 text-xs text-gray-400 dark:text-gray-500">
+                            Opcional. Los materiales se guardan en la ficha técnica de este producto.
+                        </p>
+                        <EditorMateriales v-model="form.materiales" :opciones="props.losSelect" :errors="form.errors" />
+                        <InputError class="mt-2" :message="form.errors.materiales" />
                     </div>
 
                     <!-- Estado -->

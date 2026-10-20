@@ -3,6 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\Taller;
+use App\Jobs\ImportarTalleresJob;
+use App\Services\ExcelTalleresService;
+use App\Services\ImportacionExcelNotificador;
 use App\helpers\Myhelp;
 use App\helpers\MyModels;
 use Illuminate\Database\Eloquent\Builder;
@@ -172,5 +175,80 @@ class TallerController extends Controller {
         return back()->with('success', __('app.label.deleted_successfully', ['name' => count($request->id) . ' ' . __('app.label.user')]));
     }
     //FIN : STORE - UPDATE - DELETE
+
+    /**
+     * Carga masiva de talleres desde Excel.
+     *
+     * Valida de forma síncrona (tamaño, escaneo de seguridad, columnas y
+     * filas) y solo si todo está correcto encola el job que inserta en la BD
+     * y envía los correos.
+     */
+    public function uploadExcel(
+        Request $request,
+        ExcelTalleresService $excel,
+        ImportacionExcelNotificador $notificador,
+    ): RedirectResponse {
+        Myhelp::EscribirEnLog($this, 'uploadExcel: inicio');
+
+        $request->validate([
+            'archivo' => ['required', 'file', 'max:10240', 'mimes:xlsx'],
+        ], [
+            'archivo.required' => 'Selecciona un archivo .xlsx.',
+            'archivo.file' => 'El archivo no es válido.',
+            'archivo.max' => 'El archivo supera el tamaño máximo de 10 MB.',
+            'archivo.mimes' => 'Solo se permiten archivos .xlsx.',
+        ]);
+
+        $archivo = $request->file('archivo');
+        $usuario = $request->user();
+        $nombreArchivo = $archivo->getClientOriginalName();
+        $rutaRelativa = null;
+
+        try {
+            if (strtolower($archivo->getClientOriginalExtension()) !== 'xlsx') {
+                throw new \RuntimeException('Solo se permiten archivos con extensión .xlsx.');
+            }
+
+            // 1. Escaneo de seguridad del contenedor XLSX.
+            $problemas = $excel->escanearSeguridad($archivo->getRealPath());
+            if (!empty($problemas)) {
+                throw new \RuntimeException(implode(' | ', $problemas));
+            }
+
+            // 2. Fila 1 = títulos; el resto datos. Valida "nombre" y "direccion".
+            $excel->leerRegistros($archivo->getRealPath());
+
+            // 3. Todo válido: guardar y encolar la importación.
+            $rutaRelativa = $archivo->store('imports/talleres', 'local');
+            if (!$rutaRelativa) {
+                throw new \RuntimeException('No se pudo guardar el archivo para su procesamiento.');
+            }
+
+            ImportarTalleresJob::dispatch(
+                $rutaRelativa,
+                $nombreArchivo,
+                $usuario?->email,
+                $usuario?->name,
+                $usuario?->id,
+            );
+
+            Myhelp::EscribirEnLog($this, 'uploadExcel ENCOLADO', $nombreArchivo);
+
+            return back()->with(
+                'success',
+                'Archivo validado correctamente. La importación se está procesando; '
+                . 'en breve podrás ver la información actualizada.'
+            );
+        } catch (\Throwable $e) {
+            if ($rutaRelativa) {
+                \Illuminate\Support\Facades\Storage::disk('local')->delete($rutaRelativa);
+            }
+
+            $notificador->fallo($usuario?->email, $usuario?->name, $nombreArchivo, 'talleres', $e);
+            Myhelp::EscribirEnLog($this, 'uploadExcel ERROR', $e->getMessage());
+
+            return back()->with('error', 'No se importó nada: ' . $e->getMessage());
+        }
+    }
 
 }
