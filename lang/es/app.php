@@ -393,6 +393,11 @@ return [
 		'proveedor_habitual' => 'Proveedor habitual',
 		'grupotalla' => 'Grupo de talla',
 		'GrupoTalla' => 'Grupo de talla',
+		'estadoopmaterial' => 'Estadoopmaterial',
+		'EstadoOpMaterial' => 'EstadoOpMaterial',
+		'nombre' => 'nombre',
+		'valor' => 'valor',
+		'pasa_a' => 'pasa_a',
 		//aquipues
 	    
     ],
@@ -768,6 +773,11 @@ return [
 		'GrupoTalla' => 'GrupoTalla',
 		'nombre' => 'nombre',
 		'valor' => 'valor',
+		'estadoopmaterial' => 'Estadoopmaterial',
+		'EstadoOpMaterial' => 'EstadoOpMaterial',
+		'nombre' => 'nombre',
+		'valor' => 'valor',
+		'pasa_a' => 'pasa_a',
 		//aquipues
     ],
 ];

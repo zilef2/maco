@@ -7,6 +7,7 @@ use App\Models\GrupoTalla;
 use App\Models\OrdenProduccion;
 use App\Models\User;
 use App\Models\EstadoOperacion;
+use App\Models\EstadoOpMaterial;
 use App\Models\Producto;
 use App\Models\Taller;
 use App\Http\Requests\StoreOrdenProduccionRequest;
@@ -19,6 +20,7 @@ use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
 class OrdenProduccionController extends Controller {
@@ -156,8 +158,18 @@ class OrdenProduccionController extends Controller {
                 ];
             });
 
-        $maxOp = OrdenProduccion::selectRaw('MAX(CAST(numero_op AS UNSIGNED)) as max_op')->value('max_op');
-        $siguienteNumeroOp = ($maxOp && (int)$maxOp >= 100) ? ((int)$maxOp + 1) : 100;
+        $siguienteNumeroOp = (int) str_replace('OP-', '', OrdenProduccion::siguienteNumeroOp());
+
+        $estadosMateriales = EstadoOpMaterial::all(['id', 'nombre'])
+            ->map(function ($estado) {
+                return [
+                    'id'    => $estado->id,
+                    'value' => $estado->id,
+                    'name'  => $estado->nombre,
+                    'label' => $estado->nombre,
+                    'title' => $estado->nombre,
+                ];
+            });
 
         $talleres = Taller::all(['id', 'nombre'])
             ->map(function ($taller) {
@@ -209,6 +221,7 @@ class OrdenProduccionController extends Controller {
             'producto_id'            => $productos,
             'taller_id'              => $talleres,
             'grupos_tallas'          => $gruposTallas,
+            'estado_op_material_id'  => $estadosMateriales,
             'siguiente_numero_op'    => $siguienteNumeroOp,
         ];
     }
@@ -275,19 +288,20 @@ class OrdenProduccionController extends Controller {
         $permissions = Myhelp::EscribirEnLog($this, ' Begin STORE:OrdenProduccions');
         DB::beginTransaction();
 
-        $data = $request->only(['numero_op', 'cantidad_planificada', 'fecha_prevista_envio_taller', 'taller_id', 'user_id', 'id_shopify_producto', 'observaciones']);
+        $data = $request->only(['cantidad_planificada', 'fecha_prevista_envio_taller', 'taller_id', 'user_id', 'id_shopify_producto', 'observaciones', 'estado_op_material_id', 'externa']);
         $data['producto_referencia_id'] = $request->filled('producto_referencia_id') ? $request->input('producto_referencia_id') : null;
         $data['fecha_prevista_envio_taller'] = ($data['fecha_prevista_envio_taller'] ?? '') === '' ? null : $data['fecha_prevista_envio_taller'];
+        $data['estado_op_material_id'] = ($data['estado_op_material_id'] ?? '') === '' ? null : $data['estado_op_material_id'];
 
         if (empty($data['user_id']) && $request->filled('responsable_id')) {
             $data['user_id'] = $request->input('responsable_id');
         }
 
         $data['estado_op_id'] = EstadoOperacion::where('nombre', 'Preparación')->value('id');
-        if (empty($data['numero_op'])) {
-            $maxOp = OrdenProduccion::selectRaw("MAX(CAST(REPLACE(numero_op, 'OP-', '') AS UNSIGNED)) as max_op")->value('max_op');
-            $data['numero_op'] = 'OP-' . (($maxOp && (int)$maxOp >= 100) ? (int)$maxOp + 1 : 100);
-        }
+
+        // El número de OP se calcula siempre en el servidor a partir del mayor
+        // registrado (+1) para impedir que dos OP compartan el mismo código.
+        $data['numero_op'] = OrdenProduccion::siguienteNumeroOp();
 
         $OrdenProduccion = new OrdenProduccion();
         $OrdenProduccion->forceFill($data);
@@ -339,7 +353,7 @@ class OrdenProduccionController extends Controller {
 
     /**
      * Guarda la OP como Borrador ("Terminar después"): acepta datos parciales,
-     * crea la orden si no existe id y reutiliza el número OP del formulario.
+     * crea la orden si no existe id (con el número OP calculado en el servidor).
      */
     public function guardarBorrador(Request $request): RedirectResponse {
         $permissions = Myhelp::EscribirEnLog($this, ' Begin BORRADOR:OrdenProduccions');
@@ -352,6 +366,8 @@ class OrdenProduccionController extends Controller {
             'user_id' => ['nullable', 'integer', 'exists:users,id'],
             'id_shopify_producto' => ['nullable', 'string'],
             'observaciones' => ['nullable', 'string'],
+            'estado_op_material_id' => ['nullable', 'integer', 'exists:estado_op_materials,id'],
+            'externa' => ['nullable', 'boolean'],
             'productos' => ['nullable', 'array'],
             'productos.*' => ['integer', 'exists:productos,id'],
             'distribucion_tallas' => ['nullable', 'array'],
@@ -362,7 +378,7 @@ class OrdenProduccionController extends Controller {
 
         DB::beginTransaction();
 
-        $data = $request->only(['numero_op', 'cantidad_planificada', 'fecha_prevista_envio_taller', 'taller_id', 'user_id', 'id_shopify_producto', 'observaciones']);
+        $data = $request->only(['numero_op', 'cantidad_planificada', 'fecha_prevista_envio_taller', 'taller_id', 'user_id', 'id_shopify_producto', 'observaciones', 'estado_op_material_id', 'externa']);
         $data = array_map(fn ($v) => $v === '' ? null : $v, $data);
         $data['estado_op_id'] = EstadoOperacion::where('nombre', 'Borrador')->value('id');
         if (empty($data['cantidad_planificada'])) {
@@ -379,11 +395,15 @@ class OrdenProduccionController extends Controller {
             ? OrdenProduccion::findOrFail((int) $request->input('id'))
             : new OrdenProduccion();
 
-        if (empty($data['numero_op'])) {
-            if (!$OrdenProduccion->exists) {
-                $maxOp = OrdenProduccion::selectRaw("MAX(CAST(REPLACE(numero_op, 'OP-', '') AS UNSIGNED)) as max_op")->value('max_op');
-                $data['numero_op'] = 'OP-' . (($maxOp && (int)$maxOp >= 100) ? (int)$maxOp + 1 : 100);
-            }
+        if (!$OrdenProduccion->exists) {
+            // OP nueva: el número se calcula en el servidor (mayor registrado + 1)
+            // y no se confía en el valor del formulario, para no repetir códigos.
+            $data['numero_op'] = OrdenProduccion::siguienteNumeroOp();
+        } elseif (!empty($data['numero_op'])
+            && $data['numero_op'] !== $OrdenProduccion->numero_op
+            && OrdenProduccion::where('numero_op', $data['numero_op'])->whereKeyNot($OrdenProduccion->id)->exists()) {
+            DB::rollBack();
+            return back()->withErrors(['numero_op' => 'Ya existe una OP con el número ' . $data['numero_op'] . '.']);
         }
 
         $OrdenProduccion->forceFill($data);
@@ -422,14 +442,23 @@ class OrdenProduccionController extends Controller {
         $permissions = Myhelp::EscribirEnLog($this, ' Begin UPDATE:OrdenProduccions');
         DB::beginTransaction();
 
-        $data = $request->only(['numero_op', 'cantidad_planificada', 'fecha_prevista_envio_taller', 'taller_id', 'user_id', 'id_shopify_producto', 'observaciones']);
+        $data = $request->only(['numero_op', 'cantidad_planificada', 'fecha_prevista_envio_taller', 'taller_id', 'user_id', 'id_shopify_producto', 'observaciones', 'estado_op_material_id', 'externa']);
         $data['producto_referencia_id'] = $request->filled('producto_referencia_id') ? $request->input('producto_referencia_id') : null;
         $data['fecha_prevista_envio_taller'] = ($data['fecha_prevista_envio_taller'] ?? '') === '' ? null : $data['fecha_prevista_envio_taller'];
+        $data['estado_op_material_id'] = ($data['estado_op_material_id'] ?? '') === '' ? null : $data['estado_op_material_id'];
 
         if (empty($data['user_id']) && $request->filled('responsable_id')) {
             $data['user_id'] = $request->input('responsable_id');
         }
         $OrdenProduccion = OrdenProduccion::findOrFail($id);
+
+        if (!empty($data['numero_op'])
+            && $data['numero_op'] !== $OrdenProduccion->numero_op
+            && OrdenProduccion::where('numero_op', $data['numero_op'])->whereKeyNot($OrdenProduccion->id)->exists()) {
+            DB::rollBack();
+            return back()->withErrors(['numero_op' => 'Ya existe una OP con el número ' . $data['numero_op'] . '.']);
+        }
+
         $eraBorrador = $OrdenProduccion->estadoOp?->nombre === 'Borrador';
 
         $OrdenProduccion->forceFill($data);

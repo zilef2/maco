@@ -29,6 +29,8 @@ class StoreOrdenProduccionRequest extends FormRequest
             'fecha_prevista_envio_taller' => ['nullable', 'date'],
             'taller_id' => ['required', 'integer', 'exists:tallers,id'],
             'user_id' => ['required', 'integer', 'exists:users,id'],
+            'estado_op_material_id' => ['nullable', 'integer', 'exists:estado_op_materials,id'],
+            'externa' => ['nullable', 'boolean'],
             'observaciones' => ['nullable', 'string'],
         ];
     }
@@ -50,6 +52,8 @@ class StoreOrdenProduccionRequest extends FormRequest
             'taller_id.exists' => 'El taller seleccionado no existe.',
             'user_id.required' => 'El responsable es obligatorio.',
             'user_id.exists' => 'El responsable seleccionado no existe.',
+            'estado_op_material_id.exists' => 'El estado de materiales seleccionado no existe.',
+            'externa.boolean' => 'El campo externa debe ser verdadero o falso.',
         ];
     }
 }

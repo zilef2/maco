@@ -13,7 +13,25 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 {
     /** @use HasFactory<\Database\Factories\OrdenProduccionFactory> */
     use HasFactory;
-    protected $fillable = ['numero_op', 'producto_referencia_id', 'cantidad_planificada', 'fecha_prevista_envio_taller', 'taller_id', 'estado_op_id', 'user_id', 'id_shopify_producto', 'observaciones'];
+    protected $fillable = ['numero_op', 'producto_referencia_id', 'cantidad_planificada', 'fecha_prevista_envio_taller', 'taller_id', 'estado_op_id', 'estado_op_material_id', 'externa', 'user_id', 'id_shopify_producto', 'observaciones'];
+
+    protected $casts = [
+        'externa' => 'boolean',
+    ];
+
+    /**
+     * Siguiente número de OP disponible: toma el mayor `numero_op` registrado
+     * (formato OP-XXX) y le suma uno. Nunca baja de OP-100 ni repite un número.
+     */
+    public static function siguienteNumeroOp(): string
+    {
+        $maxOp = static::query()
+            ->where('numero_op', 'like', 'OP-%')
+            ->selectRaw("MAX(CAST(REPLACE(numero_op, 'OP-', '') AS UNSIGNED)) as max_op")
+            ->value('max_op');
+
+        return 'OP-' . max(100, ((int) $maxOp) + 1);
+    }
 
     public function productoReferencia()
     {
@@ -38,6 +56,11 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     public function responsable()
     {
         return $this->belongsTo(User::class, 'user_id');
+    }
+
+    public function estadoOpMaterial()
+    {
+        return $this->belongsTo(EstadoOpMaterial::class, 'estado_op_material_id');
     }
 
     public function distribucionesPorTallas()

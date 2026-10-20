@@ -1,17 +1,10 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
-import { Head, router, usePage } from '@inertiajs/vue3';
-import Breadcrumb from '@/components/Breadcrumb.vue';
-import TextInput from '@/components/TextInput.vue';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import PrimaryButton from '@/components/PrimaryButton.vue';
-import SelectInput from '@/components/SelectInput.vue';
-import { reactive, ref, computed, watch } from 'vue';
-
-import pkg from 'lodash';
-
-import Pagination from '@/components/Pagination.vue';
-import { ChevronUpDownIcon, PencilIcon, TrashIcon, ArrowUpTrayIcon, ArrowPathIcon, SquaresPlusIcon, EllipsisVerticalIcon, ArrowDownTrayIcon } from '@heroicons/vue/24/solid';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { computed, reactive, ref, watch } from 'vue';
+
 import Create from '@/pages/OrdenProduccion/Create.vue';
 import Edit from '@/pages/OrdenProduccion/Edit.vue';
 import Delete from '@/pages/OrdenProduccion/Delete.vue';
@@ -20,48 +13,325 @@ import KitTallerOPModal from '@/pages/OrdenProduccion/KitTallerOPModal.vue';
 import CambiarEstadoModal from '@/pages/OrdenProduccion/CambiarEstadoModal.vue';
 import SacarMaterialesModal from '@/pages/ProcesoExterno/SacarMaterialesModal.vue';
 
-import Checkbox from '@/components/Checkbox.vue';
+import {
+    ArrowDownTrayIcon,
+    ArrowPathIcon,
+    ArrowUpTrayIcon,
+    ArrowUturnLeftIcon,
+    ChevronDoubleLeftIcon,
+    ChevronDoubleRightIcon,
+    ChevronDownIcon,
+    ChevronLeftIcon,
+    ChevronRightIcon,
+    ChevronUpDownIcon,
+    ChevronUpIcon,
+    ClipboardDocumentListIcon,
+    EllipsisVerticalIcon,
+    FunnelIcon,
+    MagnifyingGlassIcon,
+    PencilIcon,
+    PlusIcon,
+    SquaresPlusIcon,
+    TrashIcon,
+    XMarkIcon,
+} from '@heroicons/vue/24/solid';
 
 import { formatDate, zilef_nuber_format } from '@/global.ts';
 
-const { _, debounce, pickBy } = pkg
 const props = defineProps({
-    fromController: Object,
+    ordenes: { type: Array as () => any[], default: () => [] },
     total: Number,
-    filters: Object,
-    breadcrumbs: Object,
+    breadcrumbs: Array as () => Array<{ label?: string; href?: string }>,
     perPage: Number,
-
     title: String,
-
     numberPermissions: Number,
     losSelect: Object,
-    titulos: Array,
     borradorUltimo: Object,
-})
+});
 
-const defaultPerPage = [
-    { label: '5', value: 5 },
-    { label: '10', value: 10 },
-    { label: '25', value: 25 },
-    { label: '50', value: 50 },
-    { label: '100', value: 100 },
+/* --------------------------------------------------------------------------
+ * Tabla 100% en cliente: los datos llegan una sola vez y aquí se buscan,
+ * filtran, ordenan y paginan sin volver al backend. Solo las acciones de
+ * cada fila (editar, estado, tallas, kit, salida, eliminar) hablan con él.
+ * ------------------------------------------------------------------------ */
+
+const filas = computed<any[]>(() => (props.ordenes as any[]) ?? []);
+
+const busqueda = ref('');
+const estadoFiltro = ref<number | 'todos'>('todos');
+const tallerFiltro = ref<number | 'todos'>('todos');
+const sortKey = ref('numero_op');
+const sortDir = ref<'asc' | 'desc'>('desc');
+const porPagina = ref<number>(props.perPage ?? 10);
+const pagina = ref(1);
+
+const normalizar = (valor: any): string =>
+    String(valor ?? '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .trim();
+
+const preparadas = computed(() =>
+    filas.value.map((op: any) => ({
+        ...op,
+        _busqueda: normalizar(
+            [
+                op.numero_op,
+                op.producto_nombre,
+                op.productos_nombres,
+                op.taller_nombre,
+                op.estado_nombre,
+                op.responsable_nombre,
+                op.id_shopify_producto,
+                op.observaciones,
+                (op.distribuciones_por_tallas || []).map((t: any) => t.talla).join(' '),
+            ].join(' '),
+        ),
+    })),
+);
+
+const baseFiltrada = computed(() =>
+    preparadas.value.filter((op: any) => {
+        if (busqueda.value.trim() && !op._busqueda.includes(normalizar(busqueda.value))) {
+            return false;
+        }
+        if (tallerFiltro.value !== 'todos' && Number(op.taller_id) !== Number(tallerFiltro.value)) {
+            return false;
+        }
+        return true;
+    }),
+);
+
+const estadosDisponibles = computed(() => {
+    const orden = ((props.losSelect as any)?.estado_op_id ?? []) as any[];
+    const ordenMap = new Map<number, number>();
+    orden.forEach((e: any, i: number) => ordenMap.set(Number(e.id), i));
+
+    const grupos = new Map<number, { id: number; nombre: string; count: number }>();
+    baseFiltrada.value.forEach((op: any) => {
+        const id = Number(op.estado_op_id);
+        if (!grupos.has(id)) {
+            grupos.set(id, { id, nombre: op.estado_nombre || `Estado #${id}`, count: 0 });
+        }
+        grupos.get(id)!.count++;
+    });
+
+    return Array.from(grupos.values()).sort((a, b) => {
+        const oa = ordenMap.has(a.id) ? ordenMap.get(a.id)! : 999;
+        const ob = ordenMap.has(b.id) ? ordenMap.get(b.id)! : 999;
+        return oa - ob || a.nombre.localeCompare(b.nombre, 'es');
+    });
+});
+
+const filtradas = computed(() =>
+    baseFiltrada.value.filter(
+        (op: any) => estadoFiltro.value === 'todos' || Number(op.estado_op_id) === Number(estadoFiltro.value),
+    ),
+);
+
+const talleresDisponibles = computed(() => {
+    const mapa = new Map<number, string>();
+    filas.value.forEach((op: any) => {
+        if (op.taller_id) {
+            mapa.set(Number(op.taller_id), op.taller_nombre || `Taller #${op.taller_id}`);
+        }
+    });
+    return Array.from(mapa.entries())
+        .map(([id, nombre]) => ({ id, nombre }))
+        .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+});
+
+const collator = new Intl.Collator('es', { numeric: true, sensitivity: 'base' });
+
+const valorOrden = (op: any, key: string): any => {
+    switch (key) {
+        case 'producto':
+            return op.producto_nombre ?? '';
+        case 'taller':
+            return op.taller_nombre ?? '';
+        case 'estado':
+            return op.estado_nombre ?? '';
+        case 'responsable':
+            return op.responsable_nombre ?? '';
+        default:
+            return op[key];
+    }
+};
+
+const ordenadas = computed(() => {
+    const dir = sortDir.value === 'asc' ? 1 : -1;
+    const key = sortKey.value;
+
+    return [...filtradas.value].sort((a: any, b: any) => {
+        const va = valorOrden(a, key);
+        const vb = valorOrden(b, key);
+        const nuloA = va === null || va === undefined || va === '';
+        const nuloB = vb === null || vb === undefined || vb === '';
+
+        if (nuloA && nuloB) return 0;
+        if (nuloA) return 1;
+        if (nuloB) return -1;
+        if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
+        return collator.compare(String(va), String(vb)) * dir;
+    });
+});
+
+const totalFiltrado = computed(() => ordenadas.value.length);
+const paginas = computed(() => Math.max(1, Math.ceil(totalFiltrado.value / porPagina.value)));
+const paginaActual = computed(() => Math.min(pagina.value, paginas.value));
+
+const rango = computed(() => {
+    if (!totalFiltrado.value) return { desde: 0, hasta: 0 };
+    const desde = (paginaActual.value - 1) * porPagina.value + 1;
+    const hasta = Math.min(paginaActual.value * porPagina.value, totalFiltrado.value);
+    return { desde, hasta };
+});
+
+const visibles = computed(() => {
+    const inicio = (paginaActual.value - 1) * porPagina.value;
+    return ordenadas.value.slice(inicio, inicio + porPagina.value);
+});
+
+const paginasVisibles = computed<Array<number | '...'>>(() => {
+    const total = paginas.value;
+    const actual = paginaActual.value;
+    const ventana = 5;
+    let inicio = Math.max(1, actual - 2);
+    let fin = Math.min(total, inicio + ventana - 1);
+    inicio = Math.max(1, fin - ventana + 1);
+
+    const salida: Array<number | '...'> = [];
+    if (inicio > 1) {
+        salida.push(1);
+        if (inicio > 2) salida.push('...');
+    }
+    for (let i = inicio; i <= fin; i++) salida.push(i);
+    if (fin < total) {
+        if (fin < total - 1) salida.push('...');
+        salida.push(total);
+    }
+    return salida;
+});
+
+const cambiarPagina = (p: number) => {
+    pagina.value = Math.min(Math.max(1, p), paginas.value);
+};
+
+const ordenarPor = (key: string) => {
+    if (sortKey.value === key) {
+        sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc';
+    } else {
+        sortKey.value = key;
+        sortDir.value = 'asc';
+    }
+    pagina.value = 1;
+};
+
+const indicador = (key: string) => (sortKey.value === key ? sortDir.value : null);
+const ariaSort = (key: string): 'ascending' | 'descending' | 'none' =>
+    sortKey.value !== key ? 'none' : sortDir.value === 'asc' ? 'ascending' : 'descending';
+
+const hayFiltros = computed(
+    () => busqueda.value.trim() !== '' || estadoFiltro.value !== 'todos' || tallerFiltro.value !== 'todos',
+);
+
+const limpiarFiltros = () => {
+    busqueda.value = '';
+    estadoFiltro.value = 'todos';
+    tallerFiltro.value = 'todos';
+};
+
+watch([busqueda, estadoFiltro, tallerFiltro, porPagina], () => {
+    pagina.value = 1;
+});
+
+watch(paginas, (n) => {
+    if (pagina.value > n) pagina.value = n;
+});
+
+/* ------------------------------- Estilos -------------------------------- */
+
+const ESTADO_ESTILOS: Record<string, { dot: string; badge: string }> = {
+    borrador: {
+        dot: 'bg-amber-500',
+        badge: 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300',
+    },
+    preparacion: {
+        dot: 'bg-blue-500',
+        badge: 'border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300',
+    },
+    esperando_materiales: {
+        dot: 'bg-orange-500',
+        badge: 'border-orange-200 bg-orange-50 text-orange-800 dark:border-orange-500/30 dark:bg-orange-500/10 dark:text-orange-300',
+    },
+    procesos_externos: {
+        dot: 'bg-violet-500',
+        badge: 'border-violet-200 bg-violet-50 text-violet-800 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-300',
+    },
+    lista_para_taller: {
+        dot: 'bg-emerald-500',
+        badge: 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300',
+    },
+    en_taller: {
+        dot: 'bg-cyan-500',
+        badge: 'border-cyan-200 bg-cyan-50 text-cyan-800 dark:border-cyan-500/30 dark:bg-cyan-500/10 dark:text-cyan-300',
+    },
+    recibiendo: {
+        dot: 'bg-indigo-500',
+        badge: 'border-indigo-200 bg-indigo-50 text-indigo-800 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300',
+    },
+    pendiente: {
+        dot: 'bg-rose-500',
+        badge: 'border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300',
+    },
+    terminada: {
+        dot: 'bg-green-500',
+        badge: 'border-green-200 bg-green-50 text-green-800 dark:border-green-500/30 dark:bg-green-500/10 dark:text-green-300',
+    },
+    cerrada: {
+        dot: 'bg-slate-400',
+        badge: 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-500/30 dark:bg-slate-500/10 dark:text-slate-300',
+    },
+};
+
+const estiloEstado = (nombre: string) =>
+    ESTADO_ESTILOS[normalizar(nombre).replace(/\s+/g, '_')] ?? {
+        dot: 'bg-muted-foreground/50',
+        badge: 'border-border bg-muted text-muted-foreground',
+    };
+
+const chipClass = (activo: boolean) => [
+    'inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+    activo
+        ? 'border-foreground/15 bg-foreground text-background shadow-sm'
+        : 'border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground',
 ];
 
+const columnas = [
+    { key: 'numero_op', label: 'Orden', sortable: true, align: 'left', headerClass: 'min-w-[130px]', cellClass: 'min-w-[130px]' },
+    { key: 'producto', label: 'Producto', sortable: true, align: 'left', headerClass: 'min-w-[200px]', cellClass: 'min-w-[200px]' },
+    { key: 'cantidad_planificada', label: 'Cantidad', sortable: true, align: 'right', headerClass: 'w-[100px]', cellClass: 'w-[100px]' },
+    { key: 'taller', label: 'Taller', sortable: true, align: 'left', headerClass: 'hidden min-w-[140px] md:table-cell', cellClass: 'hidden min-w-[140px] md:table-cell' },
+    { key: 'estado', label: 'Estado', sortable: true, align: 'left', headerClass: 'min-w-[150px]', cellClass: 'min-w-[150px]' },
+    { key: 'responsable', label: 'Responsable', sortable: true, align: 'left', headerClass: 'hidden min-w-[120px] lg:table-cell', cellClass: 'hidden min-w-[120px] lg:table-cell' },
+    { key: 'fecha_prevista_envio_taller', label: 'Envío taller', sortable: true, align: 'left', headerClass: 'hidden min-w-[110px] xl:table-cell', cellClass: 'hidden min-w-[110px] xl:table-cell' },
+    { key: 'id_shopify_producto', label: 'Shopify', sortable: true, align: 'left', headerClass: 'hidden min-w-[130px] 2xl:table-cell', cellClass: 'hidden min-w-[130px] 2xl:table-cell' },
+    { key: 'observaciones', label: 'Observaciones', sortable: false, align: 'left', headerClass: 'hidden min-w-[200px] 2xl:table-cell', cellClass: 'hidden min-w-[200px] 2xl:table-cell' },
+] as const;
+
+/* ------------------------------- Acciones ------------------------------- */
+
+const authCan = ((usePage().props as any)?.auth?.can ?? {}) as Record<string, boolean>;
+const puede = (perms: string[]) => perms.some((p) => authCan[p]);
+
 const data = reactive({
-    params: {
-        search: props.filters?.search,
-        field: props.filters?.field,
-        order: props.filters?.order,
-        perPage: props.perPage,
-    },
-    OrdenProducciono: null as any,
-    selectedId: [] as number[],
-    multipleSelect: false,
     createOpen: false,
     borradorCrear: null as any,
     editOpen: false,
     deleteOpen: false,
+    ordenEditando: null as any,
     distribucionOpen: false,
     distribucionOp: null as any,
     kitTallerOpen: false,
@@ -70,128 +340,108 @@ const data = reactive({
     cambioEstadoOp: null as any,
     salidaOpen: false,
     salidaOp: null as any,
-    dataSet: (usePage().props as any)?.app?.perpage ?? defaultPerPage,
-})
-
-const order = (field: string) => {
-    data.params.field = field
-    data.params.order = data.params.order === "asc" ? "desc" : "asc"
-}
-
-// Skeleton: se muestra mientras Inertia vuelve a pedir datos de ESTA misma página
-// (buscar, paginar, crear/editar con redirección back), no en navegaciones a otras rutas.
-const cargando = ref(false)
-const rutaIndex = new URL(String(route('OrdenProduccion.index')), window.location.origin).pathname
-router.on('start', (event) => {
-    const url = event.detail.visit.url
-    const pathname = url instanceof URL ? url.pathname : new URL(String(url), window.location.origin).pathname
-    if (pathname === rutaIndex) {
-        cargando.value = true
-    }
-})
-router.on('finish', () => {
-    cargando.value = false
-})
-
-watch(() => _.cloneDeep(data.params), debounce(() => {
-    const params = pickBy(data.params)
-    router.get(route("OrdenProduccion.index"), params, {
-        replace: true,
-        preserveState: true,
-        preserveScroll: true,
-    })
-}, 150))
-
-const selectAll = (event: any) => {
-    if (event.target.checked === false) {
-        data.selectedId = []
-    } else {
-        props.fromController?.data.forEach((OrdenProduccion: any) => {
-            data.selectedId.push(OrdenProduccion.id)
-        })
-    }
-}
-const select = () => data.multipleSelect = props.fromController?.data.length === data.selectedId.length;
-
-const abrirDistribucion = (op: any) => {
-    data.distribucionOp = op ?? null
-    data.distribucionOpen = true
-}
+});
 
 const abrirNuevo = () => {
-    data.borradorCrear = null
-    data.createOpen = true
-}
+    data.borradorCrear = null;
+    data.createOpen = true;
+};
 
 const abrirContinuarUltima = () => {
-    data.borradorCrear = props.borradorUltimo ?? null
-    data.createOpen = true
-}
+    data.borradorCrear = props.borradorUltimo ?? null;
+    data.createOpen = true;
+};
+
+const abrirDistribucion = (op: any) => {
+    data.distribucionOp = op ?? null;
+    data.distribucionOpen = true;
+};
 
 const abrirKitTaller = (op: any) => {
-    data.kitTallerOp = op ?? null
-    data.kitTallerOpen = true
-}
+    data.kitTallerOp = op ?? null;
+    data.kitTallerOpen = true;
+};
 
 const abrirCambioEstado = (op: any) => {
-    data.cambioEstadoOp = op ?? null
-    data.cambioEstadoOpen = true
-}
+    data.cambioEstadoOp = op ?? null;
+    data.cambioEstadoOpen = true;
+};
 
-const authCan = (usePage().props as any)?.auth?.can ?? {}
-const puede = (perms: string[]) => perms.some((p) => authCan[p])
-
-// Acciones de la fila agrupadas en el FAB (agregar aquí las futuras)
 const accionesFila = computed(() => {
-    const arr: Array<{ id: string; label: string; icon: any; visible?: (op: any) => boolean }> = []
+    const arr: Array<{ id: string; label: string; icon: any; visible?: (op: any) => boolean }> = [];
     if (puede(['update OrdenProduccion'])) {
-        arr.push({ id: 'edit', label: 'Editar', icon: PencilIcon })
+        arr.push({ id: 'edit', label: 'Editar', icon: PencilIcon });
     }
     if (puede(['create KitTaller'])) {
-        arr.push({ id: 'kit', label: 'Kit Taller / Importar Excel', icon: ArrowUpTrayIcon })
+        arr.push({ id: 'kit', label: 'Kit taller / Importar Excel', icon: ArrowUpTrayIcon });
     }
-    arr.push({ id: 'tallas', label: 'Editar tallas', icon: SquaresPlusIcon })
+    arr.push({ id: 'tallas', label: 'Editar tallas', icon: SquaresPlusIcon });
     if (puede(['create ProcesoExterno'])) {
         arr.push({
-            id: 'salida', label: 'Sacar materiales al taller', icon: ArrowDownTrayIcon,
+            id: 'salida',
+            label: 'Sacar materiales al taller',
+            icon: ArrowDownTrayIcon,
             visible: (op: any) => op?.estado_nombre === 'Lista para taller',
-        })
+        });
     }
     if (puede(['delete OrdenProduccion'])) {
-        arr.push({ id: 'delete', label: 'Eliminar', icon: TrashIcon })
+        arr.push({ id: 'delete', label: 'Eliminar', icon: TrashIcon });
     }
-    return arr
-})
+    return arr;
+});
 
-const accionesVisibles = (op: any) => accionesFila.value.filter((a) => !a.visible || a.visible(op))
+const accionesVisibles = (op: any) => accionesFila.value.filter((a) => !a.visible || a.visible(op));
 
 const onAccionFila = (id: string, op: any) => {
     if (id === 'edit') {
-        data.OrdenProducciono = op
-        data.editOpen = true
+        data.editOpen = true;
+        data.deleteOpen = false;
+        data.distribucionOpen = false;
+        data.kitTallerOpen = false;
+        data.cambioEstadoOpen = false;
+        data.salidaOpen = false;
+        data.ordenEditando = op;
     }
-    if (id === 'kit') abrirKitTaller(op)
-    if (id === 'tallas') abrirDistribucion(op)
+    if (id === 'kit') abrirKitTaller(op);
+    if (id === 'tallas') abrirDistribucion(op);
     if (id === 'salida') {
-        data.salidaOp = op
-        data.salidaOpen = true
+        data.salidaOp = op;
+        data.salidaOpen = true;
     }
     if (id === 'delete') {
-        data.OrdenProducciono = op
-        data.deleteOpen = true
+        data.ordenEditando = op;
+        data.deleteOpen = true;
     }
-}
+};
 
 const tooltipProductos = (op: any) => {
-    const escapar = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    const escapar = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const lineas = (op?.productos || []).map((p: any) =>
-        escapar(String(p.Titulo_Shopify || p.Codigo_interno || 'Producto #' + p.id)))
-    if (!lineas.length) {
-        return undefined
-    }
-    return { content: lineas.join('<br><br>'), html: true, delay: { show: 200, hide: 100 } }
-}
+        escapar(String(p.Titulo_Shopify || p.Codigo_interno || 'Producto #' + p.id)),
+    );
+    if (!lineas.length) return undefined;
+    return { content: lineas.join('<br><br>'), html: true, delay: { show: 200, hide: 100 } };
+};
 
+/* -------------------------- Carga / recarga ----------------------------- */
+
+const cargando = ref(false);
+const rutaIndex = new URL(String(route('OrdenProduccion.index')), window.location.origin).pathname;
+
+router.on('start', (event) => {
+    const url = event.detail.visit.url;
+    const pathname = url instanceof URL ? url.pathname : new URL(String(url), window.location.origin).pathname;
+    if (pathname === rutaIndex) cargando.value = true;
+});
+router.on('finish', () => {
+    cargando.value = false;
+});
+
+const recargar = () => {
+    router.reload({ only: ['ordenes', 'total', 'borradorUltimo', 'losSelect'], preserveScroll: true });
+};
+
+/* Títulos para los modales de crear/editar (mismo contrato de antes). */
 const titulos = [
     { order: 'numero_op', label: 'numero_op', type: 'string' },
     { order: 'producto_referencia_id', label: 'producto_referencia_id', type: 'foreign', nameid: 'producto_nombre' },
@@ -203,138 +453,348 @@ const titulos = [
     { order: 'id_shopify_producto', label: 'id_shopify_producto', type: 'string' },
     { order: 'observaciones', label: 'observaciones', type: 'text' },
 ];
-
 </script>
 
 <template>
-
     <Head :title="props.title" />
 
     <AppLayout>
-        <Breadcrumb :title="title" :breadcrumbs="breadcrumbs" class="capitalize text-xl font-bold" />
-        <div class="space-y-4">
-            <div class="px-4 sm:px-0">
-                <div class="rounded-lg overflow-hidden w-fit flex items-center gap-1">
-                    <PrimaryButton class="m-1" @click="abrirNuevo" v-if="can(['create OrdenProduccion'])">
-                        {{ lang().t('app.button.add') }}
-                    </PrimaryButton>
+        <div class="flex flex-col gap-4 p-4 sm:p-6">
+            <!-- Encabezado -->
+            <div class="flex flex-col gap-3">
+                <nav class="flex items-center gap-1.5 text-xs text-muted-foreground" aria-label="Ruta de navegación">
+                    <Link
+                        :href="route('dashboard')"
+                        class="rounded-sm transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    >
+                        Dashboard
+                    </Link>
+                    <template v-for="(miga, i) in (props.breadcrumbs || [])" :key="i">
+                        <ChevronRightIcon class="h-3 w-3 opacity-60" />
+                        <Link
+                            v-if="miga.href"
+                            :href="miga.href"
+                            class="rounded-sm transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                            {{ miga.label }}
+                        </Link>
+                        <span v-else class="font-medium text-foreground">{{ miga.label }}</span>
+                    </template>
+                </nav>
 
-                    <button v-if="can(['create OrdenProduccion']) && props.borradorUltimo" type="button"
-                        @click="abrirContinuarUltima"
-                        class="m-1 inline-flex items-center gap-1.5 rounded-md border border-amber-400 bg-amber-50 px-4 py-2 text-xs font-semibold uppercase tracking-widest text-amber-700 transition hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-400 focus:ring-offset-2 dark:border-amber-500/60 dark:bg-amber-500/10 dark:text-amber-300 dark:hover:bg-amber-500/20">
-                        <ArrowPathIcon class="h-4 w-4" />
-                        Continuar última OP ({{ props.borradorUltimo.numero_op }})
-                    </button>
+                <div class="flex flex-wrap items-end justify-between gap-3">
+                    <div class="min-w-0">
+                        <h1 class="text-2xl font-semibold tracking-tight text-foreground">Órdenes de producción</h1>
+                        <p class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground" role="status" aria-live="polite">
+                            <span class="tabular-nums">
+                                <span class="font-medium text-foreground">{{ totalFiltrado }}</span>
+                                de {{ filas.length }} órdenes
+                            </span>
+                            <span
+                                v-if="hayFiltros"
+                                class="inline-flex items-center gap-1 rounded-full border border-border bg-muted/60 px-2 py-0.5 text-[11px] font-medium text-foreground"
+                            >
+                                <FunnelIcon class="h-3 w-3" />
+                                Filtros activos
+                            </span>
+                        </p>
+                    </div>
 
-                    <Create v-if="can(['create OrdenProduccion'])" :numberPermissions="props.numberPermissions"
-                        :titulos="titulos" :show="data.createOpen" @close="data.createOpen = false; data.borradorCrear = null"
-                        :title="props.title" :losSelect="props.losSelect" :borrador="data.borradorCrear" />
+                    <div class="flex flex-wrap items-center gap-2">
+                        <button
+                            type="button"
+                            @click="recargar"
+                            :disabled="cargando"
+                            title="Actualizar datos"
+                            aria-label="Actualizar datos"
+                            class="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50"
+                        >
+                            <ArrowPathIcon class="h-4 w-4" :class="{ 'animate-spin': cargando }" />
+                        </button>
 
-                    <Edit v-if="can(['update OrdenProduccion'])" :titulos="titulos"
-                        :numberPermissions="props.numberPermissions" :show="data.editOpen"
-                        @close="data.editOpen = false" :OrdenProducciona="data.OrdenProducciono" :title="props.title"
-                        :losSelect="props.losSelect" />
+                        <button
+                            v-if="can(['create OrdenProduccion']) && props.borradorUltimo"
+                            type="button"
+                            @click="abrirContinuarUltima"
+                            class="inline-flex h-9 items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-3 text-xs font-semibold text-amber-800 shadow-sm transition hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-background dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300 dark:hover:bg-amber-500/20"
+                        >
+                            <ArrowUturnLeftIcon class="h-4 w-4" />
+                            Continuar OP {{ (props.borradorUltimo as any)?.numero_op }}
+                        </button>
 
-                    <Delete v-if="can(['delete OrdenProduccion'])" :numberPermissions="props.numberPermissions"
-                        :show="data.deleteOpen" @close="data.deleteOpen = false"
-                        :OrdenProducciona="data.OrdenProducciono" :title="props.title" />
-
-                    <DistribucionTallas :show="data.distribucionOpen" @close="data.distribucionOpen = false"
-                        :title="props.title" :ordenId="data.distribucionOp?.id"
-                        :numeroOp="data.distribucionOp?.numero_op"
-                        :items="data.distribucionOp?.distribuciones_por_tallas || []"
-                        :canEdit="can(['update OrdenProduccion'])" />
-
-                    <KitTallerOPModal :show="data.kitTallerOpen" @close="data.kitTallerOpen = false"
-                        :ordenProduccion="data.kitTallerOp" :title="props.title" />
-
-                    <CambiarEstadoModal :show="data.cambioEstadoOpen" @close="data.cambioEstadoOpen = false"
-                        :title="props.title" :op="data.cambioEstadoOp"
-                        :estados="props.losSelect?.estado_op_id || []" />
-
-                    <SacarMaterialesModal :show="data.salidaOpen" @close="data.salidaOpen = false"
-                        :op="data.salidaOp" />
+                        <PrimaryButton v-if="can(['create OrdenProduccion'])" type="button" class="h-9" @click="abrirNuevo">
+                            <PlusIcon class="mr-1.5 h-4 w-4" />
+                            Nueva orden
+                        </PrimaryButton>
+                    </div>
                 </div>
             </div>
-            <div class="relative bg-white dark:bg-gray-800 shadow sm:rounded-lg w-max min-w-full">
-                <div class="flex justify-between p-2">
-                    <div class="flex space-x-2">
-                        <SelectInput v-model="data.params.perPage" :dataSet="data.dataSet" />
-                    </div>
-                    <TextInput v-if="props.numberPermissions && props.numberPermissions > 1"
-                        v-model="data.params.search" type="text" class="block w-4/6 md:w-3/6 lg:w-2/6 rounded-lg"
-                        :placeholder="lang().t('app.placeholder.search')" />
-                </div>
-                <div>
-                    <table v-if="props.total && props.total > 0" class="w-full">
-                        <thead class="uppercase text-sm border-t border-gray-200 dark:border-gray-700">
-                            <tr class="dark:bg-gray-900/50 text-left">
-                                <th class="px-2 py-4 text-center">
-                                    <Checkbox v-model:checked="data.multipleSelect" @change="selectAll" />
-                                </th>
-                                <th v-if="props.numberPermissions && props.numberPermissions > 1" class="px-2 py-4">
-                                    Accion</th>
 
-                                <th class="px-2 py-4 text-center">#</th>
-                                <th class="px-2 py-4">Fecha</th>
-                                <th v-for="titulo in titulos" :key="titulo.order" class="px-2 py-4 cursor-pointer"
-                                    v-on:click="order(titulo['order'])">
-                                    <div class="flex justify-between items-center">
-                                        <span>{{ lang().t('app.label.' + titulo['label']) }}</span>
-                                        <ChevronUpDownIcon class="w-4 h-4" />
-                                    </div>
+            <!-- Superficie principal: barra de filtros + tabla + paginación -->
+            <div class="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+                <!-- Barra de filtros -->
+                <div class="flex flex-col gap-2.5 border-b border-border p-3">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <div class="relative min-w-[220px] flex-1">
+                            <MagnifyingGlassIcon class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                            <input
+                                v-model="busqueda"
+                                type="search"
+                                aria-label="Buscar órdenes"
+                                placeholder="Buscar OP, producto, taller, estado, responsable…"
+                                class="h-9 w-full rounded-md border border-input bg-background pl-9 pr-9 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30"
+                            />
+                            <button
+                                v-if="busqueda"
+                                type="button"
+                                @click="busqueda = ''"
+                                aria-label="Limpiar búsqueda"
+                                class="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                                <XMarkIcon class="h-3.5 w-3.5" />
+                            </button>
+                        </div>
+
+                        <select
+                            v-model="tallerFiltro"
+                            aria-label="Filtrar por taller"
+                            class="h-9 max-w-[190px] rounded-md border border-input bg-background px-2 text-sm text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30"
+                        >
+                            <option value="todos">Todos los talleres</option>
+                            <option v-for="taller in talleresDisponibles" :key="taller.id" :value="taller.id">
+                                {{ taller.nombre }}
+                            </option>
+                        </select>
+
+                        <select
+                            v-model.number="porPagina"
+                            aria-label="Filas por página"
+                            class="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30"
+                        >
+                            <option v-for="n in [10, 25, 50, 100]" :key="n" :value="n">{{ n }} / página</option>
+                        </select>
+
+                        <button
+                            v-if="hayFiltros"
+                            type="button"
+                            @click="limpiarFiltros"
+                            class="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-card px-3 text-xs font-medium text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                        >
+                            <XMarkIcon class="h-3.5 w-3.5" />
+                            Limpiar
+                        </button>
+                    </div>
+
+                    <!-- Filtro por estado con conteos -->
+                    <div class="op-scroll flex items-center gap-1.5 overflow-x-auto pb-0.5" role="group" aria-label="Filtrar por estado">
+                        <button
+                            type="button"
+                            @click="estadoFiltro = 'todos'"
+                            :aria-pressed="estadoFiltro === 'todos'"
+                            :class="chipClass(estadoFiltro === 'todos')"
+                        >
+                            Todos
+                            <span class="tabular-nums opacity-70">{{ baseFiltrada.length }}</span>
+                        </button>
+                        <button
+                            v-for="estado in estadosDisponibles"
+                            :key="estado.id"
+                            type="button"
+                            @click="estadoFiltro = estado.id"
+                            :aria-pressed="estadoFiltro === estado.id"
+                            :class="chipClass(estadoFiltro === estado.id)"
+                        >
+                            <span class="h-1.5 w-1.5 rounded-full" :class="estiloEstado(estado.nombre).dot"></span>
+                            {{ estado.nombre }}
+                            <span class="tabular-nums opacity-70">{{ estado.count }}</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Tabla -->
+                <div class="op-scroll max-h-[68vh] overflow-auto overscroll-contain">
+                    <table class="w-full min-w-[960px] border-collapse text-sm">
+                        <thead>
+                            <tr>
+                                <th
+                                    v-for="col in columnas"
+                                    :key="col.key"
+                                    scope="col"
+                                    :aria-sort="col.sortable ? ariaSort(col.key) : undefined"
+                                    :class="[
+                                        'bg-muted px-3 py-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground',
+                                        col.align === 'right' ? 'text-right' : 'text-left',
+                                        col.headerClass,
+                                    ]"
+                                >
+                                    <button
+                                        v-if="col.sortable"
+                                        type="button"
+                                        @click="ordenarPor(col.key)"
+                                        :class="[
+                                            'group/sort inline-flex items-center gap-1 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+                                            col.align === 'right' ? 'w-full justify-end' : '',
+                                        ]"
+                                    >
+                                        <span>{{ col.label }}</span>
+                                        <span class="text-muted-foreground/60 transition-colors group-hover/sort:text-foreground">
+                                            <ChevronUpIcon v-if="indicador(col.key) === 'asc'" class="h-3 w-3" />
+                                            <ChevronDownIcon v-else-if="indicador(col.key) === 'desc'" class="h-3 w-3" />
+                                            <ChevronUpDownIcon v-else class="h-3 w-3 opacity-0 transition-opacity group-hover/sort:opacity-100" />
+                                        </span>
+                                    </button>
+                                    <span v-else>{{ col.label }}</span>
                                 </th>
-                                <th class="px-2 py-4">Tallas</th>
-                                <th class="px-2 py-4">Productos</th>
+
+                                <th
+                                    scope="col"
+                                    class="sticky right-0 z-30 w-[104px] border-l border-border bg-muted px-2 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground"
+                                >
+                                    Acciones
+                                </th>
                             </tr>
                         </thead>
+
+                        <!-- Cargando -->
                         <tbody v-if="cargando">
-                            <tr v-for="n in 8" :key="'skeleton-' + n"
-                                class="border-t border-gray-200 dark:border-gray-700">
-                                <td :colspan="titulos.length + 6" class="px-2 py-3">
+                            <tr v-for="n in 8" :key="'skeleton-' + n" class="border-b border-border/60">
+                                <td :colspan="columnas.length + 1" class="px-4 py-3">
                                     <div class="flex items-center gap-4">
-                                        <div class="h-4 w-4 rounded bg-gray-200 dark:bg-gray-800 animate-pulse"></div>
-                                        <div class="h-4 w-10 rounded bg-gray-200 dark:bg-gray-800 animate-pulse"></div>
-                                        <div class="h-4 flex-1 rounded bg-gray-200 dark:bg-gray-800 animate-pulse"></div>
-                                        <div class="h-4 w-20 rounded bg-gray-200 dark:bg-gray-800 animate-pulse"></div>
-                                        <div class="h-4 w-16 rounded bg-gray-200 dark:bg-gray-800 animate-pulse"></div>
+                                        <div class="h-3.5 w-16 animate-pulse rounded bg-muted"></div>
+                                        <div class="h-3.5 w-44 animate-pulse rounded bg-muted"></div>
+                                        <div class="h-3.5 flex-1 animate-pulse rounded bg-muted"></div>
+                                        <div class="h-3.5 w-24 animate-pulse rounded bg-muted"></div>
                                     </div>
                                 </td>
                             </tr>
                         </tbody>
-                        <tbody v-else>
-                            <tr v-for="(claseFromController, indexu) in props.fromController?.data" :key="indexu"
-                                class="border-t border-gray-200 dark:border-gray-700 hover:bg-gray-200/30 hover:dark:bg-gray-900/20">
 
-                                <td class="whitespace-nowrap py-4 px-2 sm:py-3 text-center">
-                                    <input
-                                        class="rounded dark:bg-gray-900 border-gray-300 dark:border-gray-700 text-primary dark:text-primary shadow-sm focus:ring-primary/80 dark:focus:ring-primary dark:focus:ring-offset-gray-800 dark:checked:bg-primary dark:checked:border-primary"
-                                        type="checkbox" @change="select" :value="claseFromController.id"
-                                        v-model="data.selectedId" />
+                        <!-- Filas -->
+                        <tbody v-else-if="visibles.length" :key="paginaActual" class="op-page">
+                            <tr
+                                v-for="op in visibles"
+                                :key="op.id"
+                                class="group border-b border-border/60 transition-colors last:border-0 hover:bg-muted/40"
+                            >
+                                <!-- Orden -->
+                                <td class="px-3 py-3 align-top">
+                                    <div class="flex flex-col gap-0.5">
+                                        <span class="font-semibold tabular-nums tracking-tight text-foreground">
+                                            {{ op.numero_op || '—' }}
+                                        </span>
+                                        <span class="text-[11px] text-muted-foreground">
+                                            {{ op.created_at ? 'Creada ' + formatDate(op.created_at) : 'Sin fecha' }}
+                                        </span>
+                                    </div>
                                 </td>
-                                <td v-if="props.numberPermissions && props.numberPermissions > 1"
-                                    class="whitespace-nowrap py-4 px-2 sm:py-3">
-                                    <div class="flex items-center gap-1.5">
-                                        <button v-if="puede(['update OrdenProduccion'])" type="button"
-                                            @click="abrirCambioEstado(claseFromController)"
+
+                                <!-- Producto -->
+                                <td class="px-3 py-3 align-top">
+                                    <div class="flex max-w-[220px] flex-col gap-0.5">
+                                        <span class="truncate font-medium text-foreground" :title="op.producto_nombre">
+                                            {{ op.producto_nombre || 'Sin producto de referencia' }}
+                                        </span>
+                                        <span class="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                                            <span class="inline-flex min-w-4 items-center justify-center rounded-full border border-border bg-muted/60 px-1.5 py-0.5 font-medium tabular-nums">
+                                                {{ (op.productos || []).length }}
+                                            </span>
+                                            <span class="truncate" v-tooltip="tooltipProductos(op)">
+                                                {{ op.productos_nombres || 'Sin productos asociados' }}
+                                            </span>
+                                        </span>
+                                    </div>
+                                </td>
+
+                                <!-- Cantidad -->
+                                <td class="px-3 py-3 text-right align-top">
+                                    <div class="flex flex-col items-end gap-0.5">
+                                        <span class="font-semibold tabular-nums text-foreground">
+                                            {{ zilef_nuber_format(op.cantidad_planificada, 0, false) }}
+                                        </span>
+                                        <span class="text-[11px] tabular-nums text-muted-foreground">
+                                            {{ (op.distribuciones_por_tallas || []).length }} tallas
+                                        </span>
+                                    </div>
+                                </td>
+
+                                <!-- Taller -->
+                                <td class="hidden px-3 py-3 align-top md:table-cell">
+                                    <span class="text-sm text-foreground">{{ op.taller_nombre || '—' }}</span>
+                                </td>
+
+                                <!-- Estado -->
+                                <td class="px-3 py-3 align-top">
+                                    <span
+                                        class="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium"
+                                        :class="estiloEstado(op.estado_nombre).badge"
+                                    >
+                                        <span class="h-1.5 w-1.5 rounded-full" :class="estiloEstado(op.estado_nombre).dot"></span>
+                                        {{ op.estado_nombre || 'Sin estado' }}
+                                    </span>
+                                </td>
+
+                                <!-- Responsable -->
+                                <td class="hidden px-3 py-3 align-top lg:table-cell">
+                                    <span class="text-sm text-foreground">{{ op.responsable_nombre || '—' }}</span>
+                                </td>
+
+                                <!-- Envío taller -->
+                                <td class="hidden px-3 py-3 align-top xl:table-cell">
+                                    <span class="text-sm tabular-nums text-foreground">
+                                        {{ op.fecha_prevista_envio_taller ? formatDate(op.fecha_prevista_envio_taller) : '—' }}
+                                    </span>
+                                </td>
+
+                                <!-- Shopify -->
+                                <td class="hidden px-3 py-3 align-top 2xl:table-cell">
+                                    <span class="font-mono text-[11px] text-muted-foreground">{{ op.id_shopify_producto || '—' }}</span>
+                                </td>
+
+                                <!-- Observaciones -->
+                                <td class="hidden px-3 py-3 align-top 2xl:table-cell">
+                                    <span
+                                        v-if="op.observaciones"
+                                        v-tooltip="{ content: op.observaciones, delay: { show: 200, hide: 100 } }"
+                                        class="block max-w-[220px] truncate text-xs text-muted-foreground"
+                                    >
+                                        {{ op.observaciones }}
+                                    </span>
+                                    <span v-else class="text-xs text-muted-foreground">—</span>
+                                </td>
+
+                                <!-- Acciones -->
+                                <td
+                                    class="sticky right-0 z-10 w-[104px] border-l border-border/60 bg-card px-2 py-2 align-middle shadow-[-8px_0_16px_-16px_rgba(0,0,0,0.35)] transition-colors group-hover:bg-muted/40"
+                                >
+                                    <div class="flex items-center justify-end gap-1">
+                                        <button
+                                            v-if="puede(['update OrdenProduccion'])"
+                                            type="button"
+                                            @click="abrirCambioEstado(op)"
                                             title="Cambiar estado"
-                                            class="inline-flex items-center gap-1.5 h-8 rounded-lg border border-gray-200 bg-white px-2 text-xs font-medium text-gray-600 shadow-sm transition hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white">
-                                            <ArrowPathIcon class="h-4 w-4" />
-                                            <span>Cambiar estado</span>
+                                            aria-label="Cambiar estado"
+                                            class="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                                        >
+                                            <ArrowPathIcon class="h-3.5 w-3.5" />
                                         </button>
+
                                         <DropdownMenu>
                                             <DropdownMenuTrigger
-                                                class="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-600 shadow-sm transition hover:bg-gray-100 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-primary dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 dark:hover:text-white"
-                                                title="Acciones">
+                                                type="button"
+                                                title="Más acciones"
+                                                aria-label="Más acciones"
+                                                class="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                                            >
                                                 <EllipsisVerticalIcon class="h-4 w-4" />
                                             </DropdownMenuTrigger>
-                                            <DropdownMenuContent align="start" class="w-56 p-1">
+                                            <DropdownMenuContent align="end" class="w-60 p-1">
                                                 <DropdownMenuItem
-                                                    v-for="accion in accionesVisibles(claseFromController)"
+                                                    v-for="accion in accionesVisibles(op)"
                                                     :key="accion.id"
-                                                    @click="onAccionFila(accion.id, claseFromController)"
+                                                    @click="onAccionFila(accion.id, op)"
                                                     :variant="accion.id === 'delete' ? 'destructive' : 'default'"
-                                                    class="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-xs font-medium">
+                                                    class="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-xs font-medium"
+                                                >
                                                     <component :is="accion.icon" class="h-4 w-4" />
                                                     <span>{{ accion.label }}</span>
                                                 </DropdownMenuItem>
@@ -342,70 +802,221 @@ const titulos = [
                                         </DropdownMenu>
                                     </div>
                                 </td>
-                                <td class="whitespace-nowrap py-4 px-2 sm:py-3 text-center">{{ ++indexu }}</td>
-                                <td class="whitespace-nowrap py-4 px-2 sm:py-3">
-                                    {{ formatDate(claseFromController.created_at, false) }}
-                                </td>
-                                <td v-for="titulo in titulos" :key="titulo.order"
-                                    class="whitespace-nowrap py-4 px-2 sm:py-3">
-                                    <span v-if="titulo['order'] === 'observaciones'">
-                                        <span class="block max-w-[240px] truncate"
-                                            v-tooltip="claseFromController[titulo['order']] ? { content: claseFromController[titulo['order']], delay: { show: 200, hide: 100 } } : undefined">{{
-                                            claseFromController[titulo['order']]
-                                            || '—' }}</span>
-                                    </span>
-                                    <span v-else-if="titulo['type'] === 'text' || titulo['type'] === 'string'"> {{
-                                        claseFromController[titulo['order']] }} </span>
-                                    <span v-if="titulo['type'] === 'number' || titulo['type'] === 'integer'"> {{
-                                        zilef_nuber_format(claseFromController[titulo['order']], 0, false) }} </span>
-                                    <span v-if="titulo['type'] === 'dinero'"> {{
-                                        zilef_nuber_format(claseFromController[titulo['order']], 0, true) }} </span>
-                                    <span v-if="titulo['type'] === 'date'"> {{
-                                        formatDate(claseFromController[titulo['order']], false) }} </span>
-                                    <span v-if="titulo['type'] === 'datetime'"> {{
-                                        formatDate(claseFromController[titulo['order']], true) }} </span>
-                                    <span v-if="titulo['type'] === 'foreign'">
-                                        {{ claseFromController?.[titulo?.['nameid']] ?? '' }}
-                                    </span>
-                                </td>
-                                <td class="whitespace-nowrap py-4 px-2 sm:py-3">
-                                    <span
-                                        class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300">
-                                        {{ (claseFromController.distribuciones_por_tallas || []).length }} tallas
-                                    </span>
-                                </td>
-                                <td class="whitespace-nowrap py-4 px-2 sm:py-3 max-w-[260px]">
-                                    <span class="flex items-center gap-2">
-                                        <span
-                                            class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
-                                            {{ (claseFromController.productos || []).length }} productos
-                                        </span>
-                                        <span class="block max-w-[180px] truncate text-sm text-gray-600 dark:text-gray-300"
-                                            v-tooltip="tooltipProductos(claseFromController)">
-                                            {{ claseFromController.productos_nombres || '—' }}
-                                        </span>
-                                    </span>
-                                </td>
-
                             </tr>
-                            <tr class="border-t border-gray-600">
-                                <td v-if="props.numberPermissions && props.numberPermissions > 1"
-                                    class="whitespace-nowrap py-4 w-12 px-2 sm:py-3 text-center"> -
-                                </td>
-                                <td class="whitespace-nowrap py-4 px-2 sm:py-3 text-center"> Total: </td>
-                                <td class="whitespace-nowrap py-4 px-2 sm:py-3 text-center">
-                                    {{ props.total }}
+                        </tbody>
+
+                        <!-- Sin resultados -->
+                        <tbody v-else>
+                            <tr>
+                                <td :colspan="columnas.length + 1" class="px-6 py-16">
+                                    <div class="mx-auto flex max-w-sm flex-col items-center text-center">
+                                        <div class="flex h-12 w-12 items-center justify-center rounded-full border border-border bg-muted/60">
+                                            <FunnelIcon v-if="hayFiltros" class="h-5 w-5 text-muted-foreground" />
+                                            <ClipboardDocumentListIcon v-else class="h-5 w-5 text-muted-foreground" />
+                                        </div>
+                                        <h3 class="mt-4 text-sm font-semibold text-foreground">
+                                            {{ hayFiltros ? 'No hay órdenes que coincidan' : 'Aún no hay órdenes de producción' }}
+                                        </h3>
+                                        <p class="mt-1 text-sm text-muted-foreground">
+                                            {{
+                                                hayFiltros
+                                                    ? 'Ajusta la búsqueda o limpia los filtros para ver más resultados.'
+                                                    : 'Crea la primera orden para empezar a planificar la producción.'
+                                            }}
+                                        </p>
+                                        <button
+                                            v-if="hayFiltros"
+                                            type="button"
+                                            @click="limpiarFiltros"
+                                            class="mt-4 inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                                        >
+                                            <XMarkIcon class="h-3.5 w-3.5" />
+                                            Limpiar filtros
+                                        </button>
+                                        <PrimaryButton v-else-if="can(['create OrdenProduccion'])" type="button" class="mt-4" @click="abrirNuevo">
+                                            <PlusIcon class="mr-1.5 h-4 w-4" />
+                                            Crear la primera orden
+                                        </PrimaryButton>
+                                    </div>
                                 </td>
                             </tr>
                         </tbody>
                     </table>
-                    <h2 v-else class="text-center text-xl my-8">Sin Registros</h2>
                 </div>
-                <div v-if="props.total && props.total > 0"
-                    class="flex justify-between items-center p-2 border-t border-gray-200 dark:border-gray-700">
-                    <Pagination :links="props.fromController" :filters="data.params" />
-                </div>
+
+                <!-- Paginación -->
+                <footer
+                    v-if="!cargando && totalFiltrado > 0"
+                    class="flex flex-wrap items-center justify-between gap-3 border-t border-border bg-card px-3 py-2.5 sm:px-4"
+                >
+                    <p class="text-xs text-muted-foreground" role="status" aria-live="polite">
+                        Mostrando
+                        <span class="font-medium tabular-nums text-foreground">{{ rango.desde }}–{{ rango.hasta }}</span>
+                        de
+                        <span class="font-medium tabular-nums text-foreground">{{ totalFiltrado }}</span>
+                    </p>
+
+                    <nav class="flex items-center gap-1" aria-label="Paginación">
+                        <button
+                            type="button"
+                            @click="cambiarPagina(1)"
+                            :disabled="paginaActual === 1"
+                            aria-label="Primera página"
+                            class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40"
+                        >
+                            <ChevronDoubleLeftIcon class="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                            type="button"
+                            @click="cambiarPagina(paginaActual - 1)"
+                            :disabled="paginaActual === 1"
+                            aria-label="Página anterior"
+                            class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40"
+                        >
+                            <ChevronLeftIcon class="h-4 w-4" />
+                        </button>
+
+                        <template v-for="(p, i) in paginasVisibles" :key="i">
+                            <span v-if="p === '...'" class="px-1 text-xs text-muted-foreground">…</span>
+                            <button
+                                v-else
+                                type="button"
+                                @click="cambiarPagina(Number(p))"
+                                :aria-current="p === paginaActual ? 'page' : undefined"
+                                :class="[
+                                    'inline-flex h-8 min-w-8 items-center justify-center rounded-md px-2 text-xs font-medium tabular-nums transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                                    p === paginaActual
+                                        ? 'bg-foreground text-background shadow-sm'
+                                        : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                                ]"
+                            >
+                                {{ p }}
+                            </button>
+                        </template>
+
+                        <button
+                            type="button"
+                            @click="cambiarPagina(paginaActual + 1)"
+                            :disabled="paginaActual === paginas"
+                            aria-label="Página siguiente"
+                            class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40"
+                        >
+                            <ChevronRightIcon class="h-4 w-4" />
+                        </button>
+                        <button
+                            type="button"
+                            @click="cambiarPagina(paginas)"
+                            :disabled="paginaActual === paginas"
+                            aria-label="Última página"
+                            class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40"
+                        >
+                            <ChevronDoubleRightIcon class="h-3.5 w-3.5" />
+                        </button>
+                    </nav>
+                </footer>
             </div>
         </div>
+
+        <!-- Modales (acciones que sí hablan con el backend) -->
+        <Create
+            v-if="can(['create OrdenProduccion'])"
+            :numberPermissions="props.numberPermissions"
+            :titulos="titulos"
+            :show="data.createOpen"
+            @close="data.createOpen = false; data.borradorCrear = null"
+            :title="props.title"
+            :losSelect="props.losSelect"
+            :borrador="data.borradorCrear"
+        />
+
+        <Edit
+            v-if="can(['update OrdenProduccion'])"
+            :titulos="titulos"
+            :numberPermissions="props.numberPermissions"
+            :show="data.editOpen"
+            @close="data.editOpen = false"
+            :OrdenProducciona="(data as any).ordenEditando"
+            :title="props.title"
+            :losSelect="props.losSelect"
+        />
+
+        <Delete
+            v-if="can(['delete OrdenProduccion'])"
+            :numberPermissions="props.numberPermissions"
+            :show="data.deleteOpen"
+            @close="data.deleteOpen = false"
+            :OrdenProducciona="(data as any).ordenEditando"
+            :title="props.title"
+        />
+
+        <DistribucionTallas
+            :show="data.distribucionOpen"
+            @close="data.distribucionOpen = false"
+            :title="props.title"
+            :ordenId="data.distribucionOp?.id"
+            :numeroOp="data.distribucionOp?.numero_op"
+            :items="data.distribucionOp?.distribuciones_por_tallas || []"
+            :canEdit="can(['update OrdenProduccion'])"
+        />
+
+        <KitTallerOPModal
+            :show="data.kitTallerOpen"
+            @close="data.kitTallerOpen = false"
+            :ordenProduccion="data.kitTallerOp"
+        />
+
+        <CambiarEstadoModal
+            :show="data.cambioEstadoOpen"
+            @close="data.cambioEstadoOpen = false"
+            :title="props.title"
+            :op="data.cambioEstadoOp"
+            :estados="(props.losSelect as any)?.estado_op_id || []"
+        />
+
+        <SacarMaterialesModal :show="data.salidaOpen" @close="data.salidaOpen = false" :op="data.salidaOp" />
     </AppLayout>
 </template>
+
+<style scoped>
+@keyframes op-page-in {
+    from {
+        opacity: 0;
+        transform: translateY(3px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.op-page {
+    animation: op-page-in 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.op-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+}
+
+.op-scroll::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+.op-scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.op-scroll::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border: 3px solid transparent;
+    border-radius: 9999px;
+    background-clip: content-box;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .op-page {
+        animation: none;
+    }
+}
+</style>

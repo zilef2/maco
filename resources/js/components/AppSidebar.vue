@@ -2,13 +2,14 @@
 import NavFooter from '@/components/NavFooter.vue';
 import NavMain from '@/components/NavMain.vue';
 import NavUser from '@/components/NavUser.vue';
-import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
+import { Sidebar, SidebarContent, SidebarFooter , SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { type NavGroup } from '@/types';
 import { Link } from '@inertiajs/vue3';
 import {
     Building2,
     Folder,
     LayoutDashboard,
+    LayoutGrid,
     Users,
     Boxes,
     Shirt,
@@ -115,7 +116,12 @@ const navDropdown: NavGroup[] = [
             // },
 
 
-            //aquipuesSide
+            {
+		title: 'EstadoOpMaterial',
+		href: '/EstadoOpMaterial',
+		icon: LayoutGrid,
+	},
+	//aquipuesSide
         ],
     },
     {

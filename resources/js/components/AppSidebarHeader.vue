@@ -23,9 +23,9 @@ withDefaults(
             <template v-if="breadcrumbs.length > 0">
                 <Breadcrumbs :breadcrumbs="breadcrumbs" />
             </template>
+            <NotificationBell />
         </div>
         <div class="ml-auto flex items-center gap-2">
-            <NotificationBell />
             <LanguageSelector />
         </div>
     </header>

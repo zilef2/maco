@@ -7,11 +7,9 @@ use App\Models\Proveedor;
 use App\Services\ListaDesplegableService;
 use App\helpers\Myhelp;
 use App\helpers\MyModels;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -37,9 +35,20 @@ class MaterialController extends Controller {
 
     public function index(Request $request) {
         $numberPermissions = MyModels::getPermissionToNumber(Myhelp::EscribirEnLog($this, ' Materials '));
-        $Materials = $this->Filtros($request)->with('proveedorHabitual')->get()->map(function ($material) {
-            $material->proveedor_nombre = $material->proveedorHabitual?->nombre ?? null;
-            return $material;
+
+        // Listado completo: la tabla filtra, ordena y pagina en el frontend.
+        // La clave solo depende de la versión, que se incrementa al escribir.
+        $claveListado = 'material_index_' . $this->versionCache();
+        $Materiales = Cache::remember($claveListado, now()->addMinutes(10), function () {
+            return Material::query()
+                ->with('proveedorHabitual')
+                ->orderByDesc('updated_at')
+                ->get()
+                ->map(function ($material) {
+                    $material->proveedor_nombre = $material->proveedorHabitual?->nombre ?? null;
+                    return $material;
+                })
+                ->values();
         });
 
         $listasDesplegables = $this->listaDesplegableService->getOptionsByCategoriaGrouped('material');
@@ -55,17 +64,12 @@ class MaterialController extends Controller {
                 ];
             });
 
-//        $losSelect = $this->Dependencias();
-
-
-        $perPage = $request->has('perPage') ? $request->perPage : 10;
         return Inertia::render($this->FromController . '/Index', [
-            'fromController' => $this->PerPageAndPaginate($request, $Materials),
-            'total' => $Materials->count(),
+            'materiales' => $Materiales,
+            'total' => $Materiales->count(),
             'breadcrumbs' => [['label' => __('app.label.' . $this->FromController), 'href' => route($this->FromController . '.index')]],
             'title' => __('app.label.' . $this->FromController),
-            'filters' => $request->except(['perPage', 'page']),
-            'perPage' => (int)$perPage,
+            'perPage' => 10,
             'numberPermissions' => $numberPermissions,
             'losSelect'         => [
                 'unidad_inventario'         => $listasDesplegables['unidad_inventario'] ?? [],
@@ -76,6 +80,20 @@ class MaterialController extends Controller {
 	        'titulos'           => Material::getFillableWithTypes(),
 
         ]);
+    }
+
+    /**
+     * Versión del cache del listado: al incrementarse, todas las claves
+     * anteriores dejan de usarse y se reconstruyen con datos frescos.
+     */
+    private function versionCache(): int {
+        Cache::add('material_index_version', 1, now()->addDays(7));
+        return (int) Cache::get('material_index_version', 1);
+    }
+
+    private function invalidarCache(): void {
+        Cache::increment('material_index_version');
+        Cache::forget('op_selects');
     }
 
 	public function losSelect(string $modelClass, string $label, string $displayField = 'nombre'): array {
@@ -97,68 +115,7 @@ class MaterialController extends Controller {
 			$label => Myhelp::NEW_turnInSelectID($modelCollection, $label.' ', $displayField),
 		];
 	}
-    public function Filtros($request): Builder {
-        $Materials = Material::query();
-        if ($request->has('search')) {
-            $Materials = $Materials->where(function ($query) use ($request) {
-                $query->where('nombre_base', 'LIKE', "%" . $request->search . "%")
-                    ->orWhere('codigo_material', 'LIKE', "%" . $request->search . "%")
-                    ->orWhere('categoria', 'LIKE', "%" . $request->search . "%");
-            });
-        }
-
-        // Filtros por columna: booleanos y llaves foráneas van por igualdad exacta;
-        // el resto (texto/número) se aplica como LIKE.
-        $columnasExactas = [
-            'maneja_color',
-            'maneja_talla',
-            'maneja_otra_variante',
-            'material_procesado',
-            'proveedor_habitual',
-        ];
-        foreach ($request->except(['search', 'field', 'order', 'perPage', 'page']) as $filtro => $valor) {
-            if ($valor === '' || $valor === null) {
-                continue;
-            }
-            if (in_array($filtro, $columnasExactas, true)) {
-                $Materials = $Materials->where($filtro, (int) $valor);
-            } else {
-                $Materials = $Materials->where($filtro, 'LIKE', "%{$valor}%");
-            }
-        }
-
-        if ($request->has(['field', 'order'])) {
-            $Materials = $Materials->orderBy($request->field, $request->order);
-        } else
-            $Materials = $Materials->orderBy('updated_at', 'DESC');
-        return $Materials;
-    }
-
-//    public function Dependencias()
-//    {
-//        $no_nadasSelect = No_nada::all('id','nombre as name')->toArray();
-//        array_unshift($no_nadasSelect,["name"=>"Seleccione un no_nada",'id'=>0]);
-
-//        $ejemploSelec = CentroCosto::all('id', 'nombre as name')->toArray();
-//        array_unshift($ejemploSelec, ["name" => "Seleccione un ejemploSelec", 'id' => 0]);
-//        return [$no_nadasSelect];
-//        return [$no_nadasSelect,$ejemploSelec];
-//    }
-
     //</editor-fold>
-
-    public function PerPageAndPaginate($request, $Materials) {
-        $perPage = $request->has('perPage') ? $request->perPage : 10;
-        $page = request('page', 1); // Current page number
-        $paginated = new LengthAwarePaginator(
-            $Materials->forPage($page, $perPage),
-            $Materials->count(),
-            $perPage,
-            $page,
-            ['path' => request()->url()]
-        );
-        return $paginated;
-    }
 
     public function store(Request $request): RedirectResponse {
         $permissions = Myhelp::EscribirEnLog($this, ' Begin STORE:Materials');
@@ -169,7 +126,7 @@ class MaterialController extends Controller {
         $this->registrarMovimientoCreacion($Material);
 
         DB::commit();
-        Cache::forget('op_selects');
+        $this->invalidarCache();
         Myhelp::EscribirEnLog($this, 'STORE:Materials EXITOSO', 'Material id:' . $Material->id . ' | ' . $Material->nombre, false);
         return back()->with('success', __('app.label.created_successfully', ['name' => $Material->nombre]));
     }
@@ -208,7 +165,7 @@ class MaterialController extends Controller {
         $this->registrarMovimientoActualizacion($Material, $existenciaAnterior, $request->input('motivo'));
 
         DB::commit();
-        Cache::forget('op_selects');
+        $this->invalidarCache();
         Myhelp::EscribirEnLog($this, 'UPDATE:Materials EXITOSO', 'Material id:' . $Material->id . ' | ' . $Material->nombre, false);
         return back()->with('success', __('app.label.updated_successfully2', ['nombre' => $Material->nombre]));
     }
@@ -225,7 +182,7 @@ class MaterialController extends Controller {
         $Material = Material::find($Materialid);
         $elnombre = $Material->nombre;
         $Material->delete();
-        Cache::forget('op_selects');
+        $this->invalidarCache();
         Myhelp::EscribirEnLog($this, 'DELETE:Materials', 'Material id:' . $Material->id . ' | ' . $Material->nombre . ' borrado', false);
         return back()->with('success', __('app.label.deleted_successfully', ['name' => $elnombre]));
     }
@@ -233,7 +190,7 @@ class MaterialController extends Controller {
     public function destroyBulk(Request $request) {
         $Material = Material::whereIn('id', $request->id);
         $Material->delete();
-        Cache::forget('op_selects');
+        $this->invalidarCache();
         return back()->with('success', __('app.label.deleted_successfully', ['name' => count($request->id) . ' ' . __('app.label.user')]));
     }
     //FIN : STORE - UPDATE - DELETE
@@ -417,7 +374,7 @@ class MaterialController extends Controller {
                 }
             }
             DB::commit();
-            Cache::forget('op_selects');
+            $this->invalidarCache();
         } catch (\Throwable $e) {
             DB::rollBack();
             Myhelp::EscribirEnLog($this, 'uploadExcel ERROR inserción', $e->getMessage());

@@ -76,6 +76,7 @@ Route::middleware('auth', 'verified')->group(function () {
 	Route::get('/Material/{id}/movimientos', [\App\Http\Controllers\MaterialController::class, 'historicoMovimientos'])->name('Material.movimientos');
 	Route::resource("/GrupoTalla", \App\Http\Controllers\GrupoTallaController::class);
 	Route::get("/ImportarExcel", [\App\Http\Controllers\ImportarExcelController::class, 'index'])->name('ImportarExcel.index');
+	Route::resource("/EstadoOpMaterial", \App\Http\Controllers\EstadoOpMaterialController::class);
 	//aquipues
 }); //fin verified
 
