@@ -48,6 +48,7 @@ const props = defineProps({
     numberPermissions: Number,
     losSelect: Object,
     borradorUltimo: Object,
+    mostrarRestaMateriales: { type: Boolean, default: false },
 });
 
 /* --------------------------------------------------------------------------
@@ -343,6 +344,88 @@ const estiloEstado = (nombre: string) =>
         badge: 'border-border bg-muted text-muted-foreground',
     };
 
+// Qué pasa y quién interviene en cada estado (Borrador no se explica: es una
+// OP sin confirmar y no genera trabajo para nadie).
+const GUIA_ESTADOS: Record<string, { area: string; texto: string }> = {
+    preparacion: {
+        area: 'Planeación',
+        texto: 'revisa la ficha técnica y reúne los materiales del kit; el taller todavía no interviene.',
+    },
+    esperando_materiales: {
+        area: 'Compras y bodega',
+        texto: 'consiguen el material que falta; la OP no puede pasar al taller hasta completar el kit.',
+    },
+    procesos_externos: {
+        area: 'Proveedor externo',
+        texto: 'transforma el material (sublimación, corte, pedrería…); el material sigue siendo de Macondas.',
+    },
+    lista_para_taller: {
+        area: 'Bodega',
+        texto: 'entrega el kit completo y la ficha de ensamble al taller asignado.',
+    },
+    en_taller: {
+        area: 'Taller de ensamble',
+        texto: 'recibe el kit y arma la OP; al entrar se descuenta el material del inventario.',
+    },
+    recibiendo: {
+        area: 'Control de calidad',
+        texto: 'recibe los pares y registra cuántos quedan aprobados, en reparación y no recuperables.',
+    },
+    pendiente: {
+        area: 'Taller y calidad',
+        texto: 'corrigen los pares en reparación; la OP espera esa corrección para poder cerrarse.',
+    },
+    cerrada: {
+        area: 'Administración',
+        texto: 'concilia sobrantes, mermas y costo real final. La OP ya no cambia de estado.',
+    },
+};
+
+// Entidades del dominio que se resaltan en azul dentro de la guía.
+const ENTIDADES = [
+    'ficha de ensamble',
+    'ficha técnica',
+    'costo real final',
+    'proveedor externo',
+    'materiales',
+    'inventario',
+    'sobrantes',
+    'material',
+    'mermas',
+    'taller',
+    'pares',
+    'kit',
+    'OP',
+].sort((a, b) => b.length - a.length);
+
+const segmentosEntidades = (texto: string) => {
+    const patron = new RegExp(`\\b(${ENTIDADES.join('|')})\\b`, 'giu');
+    return String(texto ?? '')
+        .split(patron)
+        .filter((parte) => parte !== '')
+        .map((parte) => ({
+            texto: parte,
+            entidad: ENTIDADES.some((entidad) => entidad.toLowerCase() === parte.toLowerCase()),
+        }));
+};
+
+const guiaEstados = computed(() =>
+    (((props.losSelect as any)?.estado_op_id ?? []) as any[])
+        .filter((estado: any) => normalizar(estado.name) !== 'borrador')
+        .map((estado: any) => {
+            const clave = normalizar(estado.name).replace(/\s+/g, '_');
+            const guia = GUIA_ESTADOS[clave];
+            const texto = guia?.texto ?? estado.regla_clave ?? '';
+            return {
+                id: estado.id,
+                nombre: estado.name,
+                area: guia?.area ?? 'Equipo',
+                texto,
+                partes: segmentosEntidades(texto),
+            };
+        })
+);
+
 // Estados que muestran información adicional al hacer clic. El resto
 // (Borrador, Procesos externos, Lista para taller, En taller, Pendiente,
 // Cerrada) no tiene detalle y su vínculo queda deshabilitado.
@@ -576,6 +659,45 @@ const titulos = [
                     </div>
                 </div>
             </div>
+
+            <!-- Guía de estados: qué pasa y quién interviene -->
+            <section class="rounded-xl border border-border bg-card shadow-sm">
+                <details open class="group">
+                    <summary
+                        class="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden"
+                    >
+                        <div class="min-w-0">
+                            <h2 class="text-sm font-semibold text-foreground">Qué pasa en cada estado</h2>
+                            <p class="mt-0.5 text-xs text-muted-foreground">
+                                Quién interviene y qué se espera de la orden en cada paso del proceso.
+                            </p>
+                        </div>
+                        <ChevronDownIcon
+                            class="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180"
+                        />
+                    </summary>
+
+                    <dl class="grid gap-x-4 gap-y-3 border-t border-border px-4 py-3 sm:grid-cols-2 xl:grid-cols-4">
+                        <div v-for="estado in guiaEstados" :key="estado.id" class="flex gap-2.5">
+                            <span class="mt-1.5 h-2 w-2 shrink-0 rounded-full" :class="estiloEstado(estado.nombre).dot"></span>
+                            <div class="min-w-0">
+                                <dt class="text-sm font-medium text-foreground">{{ estado.nombre }}</dt>
+                                <dd class="mt-0.5 text-xs leading-relaxed text-muted-foreground">
+                                    <span class="font-medium text-foreground/80">{{ estado.area }}</span>
+                                    —
+                                    <template v-for="(parte, indice) in estado.partes" :key="indice">
+                                        <span
+                                            v-if="parte.entidad"
+                                            class="font-bold text-blue-600 dark:text-blue-400"
+                                        >{{ parte.texto }}</span>
+                                        <span v-else>{{ parte.texto }}</span>
+                                    </template>
+                                </dd>
+                            </div>
+                        </div>
+                    </dl>
+                </details>
+            </section>
 
             <!-- Superficie principal: barra de filtros + tabla + paginación -->
             <div class="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
@@ -1030,6 +1152,8 @@ const titulos = [
             :title="props.title"
             :op="data.cambioEstadoOp"
             :estados="(props.losSelect as any)?.estado_op_id || []"
+            :proveedores="(props.losSelect as any)?.proveedor_destino_id || []"
+            :mostrarRestaMateriales="props.mostrarRestaMateriales"
         />
 
         <DetalleEstadoModal

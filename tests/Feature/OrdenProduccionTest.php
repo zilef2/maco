@@ -10,6 +10,8 @@ use App\Models\KitProceso;
 use App\Models\Material;
 use App\Models\OrdenProduccion;
 use App\Models\Producto;
+use App\Models\ProcesoExterno;
+use App\Models\Proveedor;
 use App\Models\RecepcionCalidad;
 use App\Models\Role;
 use App\Models\Taller;
@@ -254,6 +256,234 @@ class OrdenProduccionTest extends TestCase
     }
 
     /**
+     * Una OP con pares en reparación no puede pasar a "Cerrada".
+     */
+    public function test_no_se_puede_cerrar_la_op_con_pares_en_reparacion(): void
+    {
+        [$user, $op, $estados, $tallaS, $tallaM] = $this->contextoRecepcion('Recibiendo');
+
+        $response = $this->actingAs($user)->put(route('OrdenProduccion.cambiarEstado', $op->id), [
+            'estado_op_id' => $estados['Cerrada']->id,
+            'recepciones' => [
+                ['distribucion_id' => $tallaS->id, 'cantidad_aprobada' => 1, 'cantidad_en_reparacion' => 1, 'cantidad_no_recuperable' => 0],
+                ['distribucion_id' => $tallaM->id, 'cantidad_aprobada' => 2, 'cantidad_en_reparacion' => 0, 'cantidad_no_recuperable' => 0],
+            ],
+        ]);
+
+        $response->assertSessionHasErrors('estado_op_id');
+        $this->assertSame($estados['Recibiendo']->id, (int) $op->fresh()->estado_op_id);
+    }
+
+    /**
+     * Tampoco puede cerrarse desde otro estado si quedan reparaciones
+     * guardadas de la recepción anterior.
+     */
+    public function test_no_se_puede_cerrar_la_op_desde_pendiente_si_quedan_reparaciones(): void
+    {
+        [$user, $op, $estados] = $this->contextoRecepcion('Pendiente');
+
+        RecepcionCalidad::create([
+            'orden_produccion_id' => $op->id,
+            'producto_referencia_id' => $op->producto_referencia_id,
+            'talla' => 'S',
+            'cantidad_esperada' => 2,
+            'cantidad_recibida' => 2,
+            'cantidad_aprobada' => 1,
+            'cantidad_en_reparacion' => 1,
+            'cantidad_no_recuperable' => 0,
+            'fecha_recepcion' => now(),
+        ]);
+
+        $response = $this->actingAs($user)->put(route('OrdenProduccion.cambiarEstado', $op->id), [
+            'estado_op_id' => $estados['Cerrada']->id,
+        ]);
+
+        $response->assertSessionHasErrors('estado_op_id');
+        $this->assertSame($estados['Pendiente']->id, (int) $op->fresh()->estado_op_id);
+    }
+
+    /**
+     * Sin pares en reparación el cierre sí está permitido.
+     */
+    public function test_se_puede_cerrar_la_op_cuando_no_quedan_pares_en_reparacion(): void
+    {
+        [$user, $op, $estados, $tallaS, $tallaM] = $this->contextoRecepcion('Recibiendo');
+
+        $response = $this->actingAs($user)->put(route('OrdenProduccion.cambiarEstado', $op->id), [
+            'estado_op_id' => $estados['Cerrada']->id,
+            'recepciones' => [
+                ['distribucion_id' => $tallaS->id, 'cantidad_aprobada' => 2, 'cantidad_en_reparacion' => 0, 'cantidad_no_recuperable' => 0],
+                ['distribucion_id' => $tallaM->id, 'cantidad_aprobada' => 2, 'cantidad_en_reparacion' => 0, 'cantidad_no_recuperable' => 0],
+            ],
+            'cierre' => [
+                'materiales_sobrantes' => 0,
+                'perdidas_mermas' => 0,
+                'costo_real_final' => 100,
+            ],
+        ]);
+
+        $response->assertSessionHasNoErrors();
+        $op->refresh();
+        $this->assertSame($estados['Cerrada']->id, (int) $op->estado_op_id);
+        $this->assertNull($op->recepcion_desde);
+    }
+
+    /**
+     * Al entrar a "Procesos externos" se registra en proceso_externos cada
+     * material del kit de la OP, con la fecha de salida actual.
+     */
+    public function test_al_pasar_a_procesos_externos_registra_los_materiales_del_kit(): void
+    {
+        [$user, $op, $estados] = $this->contextoRecepcion('Preparación');
+
+        $material = Material::create([
+            'codigo_material' => 'MAT-EXT-001',
+            'categoria' => 'Tela',
+            'nombre_base' => 'Tela para proceso externo',
+            'unidad_inventario' => 'm',
+            'estado' => 'Activo',
+            'existencia_actual' => 20,
+        ]);
+
+        KitProceso::create([
+            'orden_produccion_id' => $op->id,
+            'material_id' => $material->id,
+            'unidad' => 'm',
+            'cantidad_requerida' => 5.5,
+            'cantidad_disponible' => 20,
+            'cantidad_preparada' => 0,
+        ]);
+
+        $proveedor = Proveedor::create(['nombre' => 'Bordados de prueba', 'categoria' => 'Prueba']);
+
+        $response = $this->actingAs($user)->put(route('OrdenProduccion.cambiarEstado', $op->id), [
+            'estado_op_id' => $estados['Procesos externos']->id,
+            'proceso_externo' => [
+                'proveedor_destino_id' => $proveedor->id,
+                'etapa_componente' => 'Bordado',
+                'fecha_prevista_regreso' => '2026-11-05',
+                'items' => [
+                    [
+                        'material_origen_id' => $material->id,
+                        'cantidad_salida' => 5.5,
+                        'unidad_medida' => 'm',
+                    ],
+                ],
+            ],
+        ]);
+
+        $response->assertSessionHasNoErrors();
+
+        $op->refresh();
+        $this->assertSame($estados['Procesos externos']->id, (int) $op->estado_op_id);
+
+        $proceso = ProcesoExterno::where('orden_produccion_id', $op->id)->firstOrFail();
+        $this->assertSame($material->id, (int) $proceso->material_origen_id);
+        $this->assertSame($proveedor->id, (int) $proceso->proveedor_destino_id);
+        $this->assertSame('Bordado', $proceso->etapa_componente);
+        $this->assertSame(5.5, $proceso->cantidad_salida);
+        $this->assertSame('m', $proceso->unidad_medida);
+        $this->assertSame('2026-11-05', $proceso->fecha_prevista_regreso->toDateString());
+        $this->assertNotNull($proceso->fecha_salida);
+    }
+
+    /**
+     * No se puede entrar a "Procesos externos" sin registrar el proveedor y
+     * los materiales que salen.
+     */
+    public function test_no_pasa_a_procesos_externos_sin_registrar_materiales(): void
+    {
+        [$user, $op, $estados] = $this->contextoRecepcion('Preparación');
+
+        $response = $this->actingAs($user)->put(route('OrdenProduccion.cambiarEstado', $op->id), [
+            'estado_op_id' => $estados['Procesos externos']->id,
+        ]);
+
+        $response->assertSessionHasErrors('proceso_externo');
+        $this->assertSame($estados['Preparación']->id, (int) $op->fresh()->estado_op_id);
+        $this->assertDatabaseCount('proceso_externos', 0);
+    }
+
+    /**
+     * Al pasar a "Lista para taller" se pregunta y guarda la fecha real de
+     * regreso de los procesos externos pendientes.
+     */
+    public function test_lista_para_taller_registra_la_fecha_real_de_regreso(): void
+    {
+        [$user, $op, $estados] = $this->contextoRecepcion('Procesos externos');
+
+        $material = Material::create([
+            'codigo_material' => 'MAT-EXT-002',
+            'categoria' => 'Tela',
+            'nombre_base' => 'Tela que regresa',
+            'unidad_inventario' => 'm',
+            'estado' => 'Activo',
+            'existencia_actual' => 10,
+        ]);
+
+        $proveedor = Proveedor::create(['nombre' => 'Bordados de prueba', 'categoria' => 'Prueba']);
+
+        $proceso = ProcesoExterno::create([
+            'orden_produccion_id' => $op->id,
+            'etapa_componente' => 'Bordado',
+            'material_origen_id' => $material->id,
+            'cantidad_salida' => 2,
+            'unidad_medida' => 'm',
+            'proveedor_destino_id' => $proveedor->id,
+            'fecha_salida' => now()->subDays(3),
+            'fecha_prevista_regreso' => now()->addDay()->toDateString(),
+        ]);
+
+        $response = $this->actingAs($user)->put(route('OrdenProduccion.cambiarEstado', $op->id), [
+            'estado_op_id' => $estados['Lista para taller']->id,
+            'fecha_regreso_real' => '2026-11-02',
+        ]);
+
+        $response->assertSessionHasNoErrors();
+
+        $op->refresh();
+        $this->assertSame($estados['Lista para taller']->id, (int) $op->estado_op_id);
+        $this->assertSame('2026-11-02', $proceso->fresh()->fecha_regreso_real->toDateString());
+    }
+
+    /**
+     * Con procesos externos pendientes no se puede pasar a "Lista para taller"
+     * sin indicar la fecha real de regreso.
+     */
+    public function test_no_pasa_a_lista_para_taller_sin_fecha_de_regreso(): void
+    {
+        [$user, $op, $estados] = $this->contextoRecepcion('Procesos externos');
+
+        $material = Material::create([
+            'codigo_material' => 'MAT-EXT-003',
+            'categoria' => 'Tela',
+            'nombre_base' => 'Tela pendiente',
+            'unidad_inventario' => 'm',
+            'estado' => 'Activo',
+            'existencia_actual' => 10,
+        ]);
+
+        $proveedor = Proveedor::create(['nombre' => 'Bordados de prueba', 'categoria' => 'Prueba']);
+
+        ProcesoExterno::create([
+            'orden_produccion_id' => $op->id,
+            'etapa_componente' => 'Bordado',
+            'material_origen_id' => $material->id,
+            'cantidad_salida' => 2,
+            'unidad_medida' => 'm',
+            'proveedor_destino_id' => $proveedor->id,
+            'fecha_salida' => now()->subDays(3),
+        ]);
+
+        $response = $this->actingAs($user)->put(route('OrdenProduccion.cambiarEstado', $op->id), [
+            'estado_op_id' => $estados['Lista para taller']->id,
+        ]);
+
+        $response->assertSessionHasErrors('fecha_regreso_real');
+        $this->assertSame($estados['Procesos externos']->id, (int) $op->fresh()->estado_op_id);
+    }
+
+    /**
      * Contexto mínimo para probar la recepción de calidad: estados del flujo,
      * una OP con dos tallas y su producto.
      *
@@ -270,7 +500,10 @@ class OrdenProduccionTest extends TestCase
         $user->assignRole($rol);
 
         $definiciones = [
-            'Preparación' => 'Esperando materiales / Lista para taller',
+            'Preparación' => 'Esperando materiales / Procesos externos / Lista para taller',
+            'Esperando materiales' => 'Preparación / Lista para taller',
+            'Procesos externos' => 'Lista para taller / Preparación',
+            'Lista para taller' => 'En taller / Recibiendo',
             'En taller' => 'Recibiendo / Pendiente / Cerrada',
             'Recibiendo' => 'Pendiente / Cerrada',
             'Pendiente' => 'Cerrada / Recibiendo',

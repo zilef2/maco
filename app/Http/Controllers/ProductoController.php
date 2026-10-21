@@ -23,6 +23,9 @@ class ProductoController extends Controller {
     public array $thisAtributos;
     public string $FromController = 'Producto';
 
+    /** Controles de variante que no usan opciones ni tallas. */
+    private const CONTROLES_SIN_TALLA = ['Sin talla', 'Sin talla / sin color', 'Sin color'];
+
 
     //<editor-fold desc="Construc | filtro and dependencia">
     public function __construct(
@@ -34,7 +37,31 @@ class ProductoController extends Controller {
 
     public function index(Request $request) {
         $numberPermissions = MyModels::getPermissionToNumber(Myhelp::EscribirEnLog($this, ' Productos '));
-        $Productos = $this->Filtros($request)->with('distribucionesPorTallas')->get();
+        // Fichas con sus materiales y OPs que impiden editarlas.
+        $bloqueos = $this->fichaTecnicaService->bloqueosPorProducto();
+        $Productos = $this->Filtros($request)
+            ->with(['distribucionesPorTallas', 'fichaTecnica.materiales'])
+            ->get()
+            ->map(function ($producto) use ($bloqueos) {
+                $ficha = $producto->fichaTecnica->first();
+                $bloqueo = $bloqueos[$producto->id] ?? [];
+
+                $producto->ficha_id = $ficha?->id;
+                $producto->ficha_materiales = $ficha
+                    ? $ficha->materiales->map(fn ($material) => [
+                        'material_componente_id' => $material->material_componente_id,
+                        'consumo_estandar'       => (float) $material->consumo_estandar,
+                        'unidad_medida'          => $material->unidad_medida,
+                        'costo_asociado_teorico' => (float) $material->costo_asociado_teorico,
+                    ])->values()->all()
+                    : [];
+                $producto->ficha_bloqueada = !empty($bloqueo);
+                $producto->ficha_bloqueo_detalle = collect($bloqueo)
+                    ->map(fn ($estado, $numeroOp) => $numeroOp . ' (' . $estado . ')')
+                    ->implode(', ');
+
+                return $producto;
+            });
         $listasDesplegables = array_change_key_case($this->listaDesplegableService->getOptionsByCategoriaGrouped('producto'), CASE_LOWER);
         // Opciones para registrar la ficha técnica dentro de "Nuevo producto".
         $fichaOpciones = $this->fichaTecnicaService->opcionesMateriales();
@@ -129,32 +156,22 @@ class ProductoController extends Controller {
     public function store(Request $request): RedirectResponse {
         $permissions = Myhelp::EscribirEnLog($this, ' Begin STORE:Productos');
 
-        $datos = $request->validate([
-            'Codigo_interno'       => ['required', 'string', 'max:255'],
-            'Titulo_Shopify'       => ['required', 'string', 'max:255'],
-            'ID_producto_Shopify'  => ['nullable', 'string', 'max:255'],
-            'Categoria_original'   => ['nullable', 'string', 'max:255'],
-            'Familia_normalizada'  => ['nullable', 'string', 'max:255'],
-            'Control_de_variante'  => ['nullable', 'string', 'max:255'],
-            'Opciones'             => ['nullable', 'string', 'max:255'],
-            'Estado'               => ['nullable', 'integer', 'in:0,1'],
-            'Observaciones'        => ['nullable', 'string', 'max:255'],
-            'descripcion'          => ['nullable', 'string', 'max:5000'],
-            'precio_predicho'      => ['nullable', 'numeric', 'min:0'],
-            'precio_preventa'      => ['nullable', 'numeric', 'min:0'],
-            // Ficha técnica (opcional): se registra junto al producto.
-            'materiales'           => ['nullable', 'array'],
-            'materiales.*.material_componente_id' => ['required', 'integer', 'exists:materials,id'],
-            'materiales.*.consumo_estandar'       => ['required', 'numeric', 'min:0'],
-            'materiales.*.unidad_medida'          => ['nullable', 'string', 'max:255'],
-            'materiales.*.costo_asociado_teorico' => ['nullable', 'numeric', 'min:0'],
-        ]);
+        $datos = $request->validate($this->reglasProducto());
 
         $materiales = collect($datos['materiales'] ?? [])
             ->filter(fn ($fila) => !empty($fila['material_componente_id']))
             ->values()
             ->all();
         unset($datos['materiales']);
+
+        $tallas = $this->normalizarTallas($datos['tallas'] ?? []);
+        unset($datos['tallas']);
+
+        // Un control "sin talla" no tiene opciones: se guarda vacío sin tallas derivadas.
+        if (in_array(trim((string) ($datos['Control_de_variante'] ?? '')), self::CONTROLES_SIN_TALLA, true)) {
+            $datos['Opciones'] = '';
+            $tallas = [];
+        }
 
         // La tabla productos exige estas columnas: si el formulario las deja vacías
         // se guardan como cadena vacía (el "vacío" de negocio), no como null.
@@ -168,8 +185,10 @@ class ProductoController extends Controller {
             }
         }
 
-        $Producto = DB::transaction(function () use ($datos, $materiales) {
+        $Producto = DB::transaction(function () use ($datos, $materiales, $tallas) {
             $Producto = Producto::create(Arr::only($datos, (new Producto())->getFillable()));
+
+            $this->sincronizarDistribucionesPorTalla($Producto, $tallas);
 
             if (!empty($materiales)) {
                 $this->fichaTecnicaService->guardar([
@@ -203,14 +222,134 @@ class ProductoController extends Controller {
 
     public function update(Request $request, $id): RedirectResponse {
         $permissions = Myhelp::EscribirEnLog($this, ' Begin UPDATE:Productos');
-        DB::beginTransaction();
-        $Producto = Producto::findOrFail($id);
-//        $request->merge(['no_nada_id' => $request->no_nada['id']]);
-        $Producto->update($request->all());
 
-        DB::commit();
-        Myhelp::EscribirEnLog($this, 'UPDATE:Productos EXITOSO', 'Producto id:' . $Producto->id . ' | ' . $Producto->nombre, false);
-        return back()->with('success', __('app.label.updated_successfully2', ['nombre' => $Producto->nombre]));
+        $datos = $request->validate($this->reglasProducto());
+        $Producto = Producto::findOrFail($id);
+
+        $materiales = collect($datos['materiales'] ?? [])
+            ->filter(fn ($fila) => !empty($fila['material_componente_id']))
+            ->values()
+            ->all();
+        unset($datos['materiales']);
+
+        // El formulario de edición envía siempre las tallas derivadas del control de variante.
+        $editaTallas = $request->has('tallas');
+        $tallas = $this->normalizarTallas($datos['tallas'] ?? []);
+        unset($datos['tallas']);
+
+        if (in_array(trim((string) ($datos['Control_de_variante'] ?? '')), self::CONTROLES_SIN_TALLA, true)) {
+            $datos['Opciones'] = '';
+            $tallas = [];
+        }
+
+        // La tabla productos exige estas columnas: si el formulario las deja vacías
+        // se guardan como cadena vacía (el "vacío" de negocio), no como null.
+        foreach (['ID_producto_Shopify', 'Categoria_original', 'Familia_normalizada', 'Control_de_variante', 'Opciones'] as $campo) {
+            $datos[$campo] = (string) ($datos[$campo] ?? '');
+        }
+        $datos['Estado'] = ($datos['Estado'] ?? '') === '' ? 1 : (int) $datos['Estado'];
+        foreach (['precio_predicho', 'precio_preventa'] as $campo) {
+            if (($datos[$campo] ?? null) === '') {
+                $datos[$campo] = null;
+            }
+        }
+
+        DB::transaction(function () use ($Producto, $datos, $materiales, $editaTallas, $tallas) {
+            $Producto->update(Arr::only($datos, (new Producto())->getFillable()));
+
+            if ($editaTallas) {
+                $this->sincronizarDistribucionesPorTalla($Producto, $tallas);
+            }
+
+            // La ficha solo se toca si el formulario envía materiales; el servicio
+            // bloquea la edición cuando el producto está en una OP activa.
+            if (!empty($materiales)) {
+                $ficha = $Producto->fichaTecnica()->first();
+                $this->fichaTecnicaService->guardar([
+                    'nombre'     => $ficha?->nombre ?: trim(($datos['Titulo_Shopify'] ?? '') ?: ($datos['Codigo_interno'] ?? '')),
+                    'productos'  => [$Producto->id],
+                    'materiales' => $materiales,
+                ], $ficha);
+            }
+        });
+
+        Cache::forget('op_selects');
+        Myhelp::EscribirEnLog($this, 'UPDATE:Productos EXITOSO', 'Producto id:' . $Producto->id . ' | ' . $Producto->Codigo_interno, false);
+        return back()->with('success', __('app.label.updated_successfully2', ['nombre' => $Producto->Codigo_interno]));
+    }
+
+    /**
+     * Reglas de validación del producto, compartidas por alta y edición.
+     */
+    private function reglasProducto(): array {
+        return [
+            'Codigo_interno'       => ['required', 'string', 'max:255'],
+            'Titulo_Shopify'       => ['required', 'string', 'max:255'],
+            'ID_producto_Shopify'  => ['nullable', 'string', 'max:255'],
+            'Categoria_original'   => ['nullable', 'string', 'max:255'],
+            'Familia_normalizada'  => ['nullable', 'string', 'max:255'],
+            'Control_de_variante'  => ['nullable', 'string', 'max:255'],
+            'Opciones'             => ['nullable', 'string', 'max:255'],
+            'Estado'               => ['nullable', 'integer', 'in:0,1'],
+            'Observaciones'        => ['nullable', 'string', 'max:255'],
+            'descripcion'          => ['nullable', 'string', 'max:5000'],
+            'precio_predicho'      => ['nullable', 'numeric', 'min:0'],
+            'precio_preventa'      => ['nullable', 'numeric', 'min:0'],
+            // Ficha técnica (opcional): se registra junto al producto.
+            'materiales'           => ['nullable', 'array'],
+            'materiales.*.material_componente_id' => ['required', 'integer', 'exists:materials,id'],
+            'materiales.*.consumo_estandar'       => ['required', 'numeric', 'min:0'],
+            'materiales.*.unidad_medida'          => ['nullable', 'string', 'max:255'],
+            'materiales.*.costo_asociado_teorico' => ['nullable', 'numeric', 'min:0'],
+            // Tallas derivadas del control de variante (alta y edición).
+            'tallas'               => ['nullable', 'array', 'max:50'],
+            'tallas.*'             => ['required', 'string', 'max:20'],
+        ];
+    }
+
+    /**
+     * Tallas recibidas del formulario, saneadas y sin duplicados.
+     *
+     * @param  mixed  $tallas
+     * @return array<int, string>
+     */
+    private function normalizarTallas($tallas): array {
+        return collect(is_array($tallas) ? $tallas : [])
+            ->map(fn ($talla) => trim((string) $talla))
+            ->filter(fn ($talla) => $talla !== '')
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Materializa las tallas del control de variante como filas de
+     * distribucion_por_tallas y las vincula al producto por el pivote.
+     * Reutiliza la fila que ya tiene esa talla (conserva su cantidad planificada),
+     * crea las que faltan y desvincula, sin borrar, las que ya no aplican.
+     *
+     * @param  array<int, string>  $tallas
+     */
+    private function sincronizarDistribucionesPorTalla(Producto $Producto, array $tallas): void {
+        $registradas = $Producto->distribucionesPorTallas()
+            ->get()
+            ->keyBy(fn ($distribucion) => trim((string) $distribucion->talla));
+
+        $ids = array_map(function (string $talla) use ($registradas, $Producto) {
+            $existente = $registradas->get($talla);
+            if ($existente) {
+                return $existente->id;
+            }
+
+            return Distribucion_por_tallas::create([
+                'grupo' => null,
+                'producto_id' => $Producto->id,
+                'talla' => $talla,
+                'cantidad_planificada' => 0,
+            ])->id;
+        }, $tallas);
+
+        $Producto->distribucionesPorTallas()->sync($ids);
     }
 
     /**

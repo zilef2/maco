@@ -88,14 +88,24 @@ const navDropdown: NavGroup[] = [
         icon: Layers,
         items: [
             {
-                title: 'KitProceso',
-                href: '/KitProceso',
-                icon: PackageCheck,
-            },
-            {
                 title: 'FichaTecnicaMateriales',
                 href: '/FichaTecnicaMateriales',
                 icon: FileSpreadsheet,
+            },
+            {
+                title: 'FichaEnsamble',
+                href: '/FichaEnsamble',
+                icon: FileSpreadsheet,
+            },
+            {
+                title: 'FichaEnsambleMaterial',
+                href: '/FichaEnsambleMaterial',
+                icon: FileSpreadsheet,
+            },
+            {
+                title: 'KitProceso',
+                href: '/KitProceso',
+                icon: PackageCheck,
             },
         ],
     },
@@ -126,6 +136,16 @@ const navDropdown: NavGroup[] = [
 		href: '/EmpresaExterna',
 		icon: LayoutGrid,
 	},
+	{
+		title: 'Merma',
+		href: '/Merma',
+		icon: LayoutGrid,
+	},
+	{
+		title: 'FichaEnsamble',
+		href: '/FichaEnsamble',
+		icon: LayoutGrid,
+	},
 	//aquipuesSide
         ],
     },
@@ -138,11 +158,11 @@ const navDropdown: NavGroup[] = [
                 href: '/EstadoOperacion',
                 icon: SlidersHorizontal,
             },
-            {
-                title: 'PendientesProduccion',
-                href: '/PendientesProduccion',
-                icon: Clock,
-            },
+            // {
+            //     title: 'PendientesProduccion',
+            //     href: '/PendientesProduccion',
+            //     icon: Clock,
+            // },
             {
                 title: 'Distribucion por tallas',
                 href: '/Distribucion_por_tallas',

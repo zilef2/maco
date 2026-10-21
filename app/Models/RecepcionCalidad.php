@@ -28,6 +28,16 @@ use Illuminate\Database\Eloquent\SoftDeletes;
         'fecha_fin_revision'
     ];
 
+    public function ordenProduccion()
+    {
+        return $this->belongsTo(OrdenProduccion::class, 'orden_produccion_id');
+    }
+
+    public function productoReferencia()
+    {
+        return $this->belongsTo(Producto::class, 'producto_referencia_id');
+    }
+
     /**
      * Genera una recepción por cada talla recibida de la OP.
      *
@@ -65,8 +75,6 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
         return $generadas;
     }
-
-
 
     public static function getFillableWithTypes(): array
     {

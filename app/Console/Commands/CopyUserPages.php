@@ -49,18 +49,40 @@ class CopyUserPages extends Command
         // Tipos válidos: string text number dinero date datetime boolean foreign json
         // Cada entrada: [ 'NombreModelo', 'required' => [...], 'optional' => [...] ]
         return [
-            [
-                'EmpresaExterna',
-                'required' => [
-                    'nombre' => 'string',
-                    'actividad' => 'string',
-                ],
-                'optional' => [
-                    'direccion' => 'string',
-                    'numero_contacto' => 'string',
-                ],
-            ],
-        ];
+    [
+        'FichaEnsamble',
+        'required' => [
+            // Cabecera Ficha de Ensamble
+            'orden_produccion_id'    => 'foreign', // OP vinculada
+            'producto_referencia_id' => 'foreign', // Producto / referencia (ej. Colibrí Esmeralda)
+            'taller_id'              => 'foreign', // Taller que realizará el ensamble
+            'cantidad_total'         => 'number',  // Cantidad total planificada
+            'fecha_entrega'          => 'date',    // Fecha de entrega al taller
+        ],
+        'optional' => [
+            'coleccion'              => 'string',  // Colección a la que pertenece la referencia
+            'imagen_referencia_url'  => 'string',  // Fotografía de referencia del producto terminado
+            'instrucciones_especiales' => 'text',  // Instrucciones o notas de ensamble para el taller
+        ],
+    ],
+    [
+        'FichaEnsambleMaterial',
+        'required' => [
+            // Listado de materiales entregados
+            'ficha_ensamble_id'      => 'foreign', // Ficha de ensamble padre
+            'material_id'            => 'foreign', // Material / componente (Cuero, Capelladas, Sesgo, etc.)
+            'cantidad'               => 'number',  // Cantidad requerida/entregada
+            'unidad_medida'          => 'string',  // Unidad (pie, unidad, metro, par)
+            'aporta'                 => 'string',  // Quién lo aporta (ej: 'Macondas', 'Taller')
+        ],
+        'optional' => [
+            'variante_especificacion'=> 'string',  // Variante o especificación técnica
+            'proceso_previo'         => 'string',  // Proceso previo (ej: 'Embarretado + sublimación', 'Corte + pedrería')
+            'verificado'             => 'boolean', // Checkbox de comprobación/verificación
+            'observaciones'          => 'text',    // Observaciones particulares del ítem
+        ],
+    ],
+];
     }
 
     private function allAttributes(): array
@@ -755,53 +777,36 @@ class CopyUserPages extends Command
                 }
             }
 
-            if (! str_contains($modelContent, 'use Illuminate\Support\Facades\DB;')) {
+            // El tipo de los fillable se resuelve con el trait compartido.
+            // Si el modelo todavía tiene el método antiguo, se elimina.
+            $modelContent = preg_replace(
+                '/\n\s*public static function getFillableWithTypes\(\): array\s*\{.*?return \$result;\s*\}\s*/s',
+                '',
+                $modelContent
+            );
+
+            // Si el método era el último, el cierre de la clase queda pegado.
+            $modelContent = preg_replace('/([^\n])\}\s*$/', "$1\n}\n", $modelContent);
+
+            if (! str_contains($modelContent, 'use App\\Traits\\HasFillableWithTypes;')) {
                 $modelContent = str_replace(
                     'namespace App\\Models;',
-                    "namespace App\\Models;\n\nuse Illuminate\\Support\\Facades\\DB;",
+                    "namespace App\\Models;\n\nuse App\\Traits\\HasFillableWithTypes;",
                     $modelContent
                 );
             }
 
-            if (! str_contains($modelContent, 'function getFillableWithTypes')) {
-                $method = <<<'PHP'
-
-
-    public static function getFillableWithTypes(): array
-    {
-        $table = (new static)->getTable();
-        $columns = DB::select("SHOW COLUMNS FROM {$table}");
-
-        $fillable = (new static)->getFillable();
-        $result = [];
-
-        foreach ($columns as $column) {
-            if (! in_array($column->Field, $fillable) || $column->Field === 'id') {
-                continue;
+            if (! str_contains($modelContent, 'use HasFillableWithTypes;')) {
+                $modelContent = preg_replace(
+                    '/(\n\s*use HasFactory;)/',
+                    "$1\n    use HasFillableWithTypes;",
+                    $modelContent,
+                    1
+                );
             }
 
-            $type = 'text';
-            if (str_contains($column->Type, 'foreign') || str_ends_with($column->Field, '_id')) {
-                $type = 'foreign';
-            } elseif (str_contains($column->Type, 'int')) {
-                $type = 'integer';
-            } elseif (str_contains($column->Type, 'decimal') || str_contains($column->Type, 'float')) {
-                $type = 'dinero';
-            } elseif (str_contains($column->Type, 'date') || str_contains($column->Type, 'datetime')) {
-                $type = 'date';
-            }
-
-            $result[] = [
-                'order' => $column->Field,
-                'label' => $column->Field,
-                'type' => $type,
-            ];
-        }
-
-        return $result;
-    }
-PHP;
-                $modelContent = preg_replace('/}\s*$/', "$method\n}\n", $modelContent);
+            if (! str_contains($modelContent, 'DB::')) {
+                $modelContent = preg_replace('/^use Illuminate\\\\Support\\\\Facades\\\\DB;\R/m', '', $modelContent);
             }
 
             // Guardar el contenido modificado

@@ -15,7 +15,15 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     use HasFactory;
     protected $fillable = ['nombre', 'categoria', 'celular1', 'celular2'];
 
+    public function materialesHabituales()
+    {
+        return $this->hasMany(Material::class, 'proveedor_habitual');
+    }
 
+    public function kitProcesos()
+    {
+        return $this->hasMany(KitProceso::class, 'proveedor_id');
+    }
 
     public static function getFillableWithTypes(): array
     {

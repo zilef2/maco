@@ -97,7 +97,29 @@ use Illuminate\Database\Eloquent\SoftDeletes;
         return $this->hasMany(KitProceso::class, 'orden_produccion_id');
     }
 
+    /**
+     * Materiales que la OP tiene fuera en procesos externos.
+     */
+    public function procesosExternos()
+    {
+        return $this->hasMany(ProcesoExterno::class, 'orden_produccion_id');
+    }
 
+    /**
+     * Pendientes de producción abiertos para la OP.
+     */
+    public function pendientesProducciones()
+    {
+        return $this->hasMany(PendientesProduccion::class, 'orden_produccion_id');
+    }
+
+    /**
+     * Registro de cierre (conciliación) de la OP.
+     */
+    public function cierres()
+    {
+        return $this->hasMany(CierreOrdenProduccion::class, 'orden_produccion_id');
+    }
 
     public static function getFillableWithTypes(): array
     {

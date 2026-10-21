@@ -5,140 +5,455 @@ import Modal from '@/components/Modal.vue';
 import PrimaryButton from '@/components/PrimaryButton.vue';
 import SecondaryButton from '@/components/SecondaryButton.vue';
 import TextInput from '@/components/TextInput.vue';
+import EditorMateriales from '@/pages/FichaTecnicaMateriales/EditorMateriales.vue';
+import { MAX_TALLAS_POR_RANGO, TALLAS_ALFABETICAS, useTallasVariante } from '@/composables/useTallasVariante';
+import { dineroANumero } from '@/global.ts';
+import { CheckCircleIcon, ClipboardDocumentListIcon, CubeIcon, DocumentTextIcon, PencilSquareIcon } from '@heroicons/vue/24/solid';
 import { useForm } from '@inertiajs/vue3';
-import { onMounted, reactive, watchEffect } from 'vue';
-import "vue-select/dist/vue-select.css";
+import { computed, watch, watchEffect } from 'vue';
+import vSelect from 'vue-select';
+import 'vue-select/dist/vue-select.css';
 
-
-const props = defineProps({
-    show: Boolean,
-    title: String,
-    Productoa: Object,
-    titulos: Object, //parametros de la clase principal
-    losSelect: Object,
-
-})
-
-const emit = defineEmits(["close"]);
-const data = reactive({
-    printForm: []
-})
-
-//very usefull
-const justNames = props.titulos.map(names => names['order'])
-const form = useForm({ ...Object.fromEntries(justNames.map(field => [field, ''])) });
-onMounted(() => {
-    if (props.numberPermissions > 9) {
-        const valueRAn = Math.floor(Math.random() * 9 + 1)
-        form.nombre = 'admin orden trabajo ' + (valueRAn);
-        form.codigo = (valueRAn);
-        // form.hora_inicial = '0'+valueRAn+':00'//temp
-        // form.fecha = '2023-06-01'
+const props = withDefaults(
+    defineProps<{
+        show: boolean;
+        title?: string;
+        Productoa?: any;
+        titulos?: any[];
+        losSelect?: any;
+        numberPermissions?: number;
+    }>(),
+    {
+        show: false,
+        title: '',
+        Productoa: null,
+        titulos: () => [],
+        losSelect: () => ({}),
+        numberPermissions: 0,
     }
-    // data.printForm.length -= 1 //dependex
+);
+
+const emit = defineEmits<{
+    (e: 'close'): void;
+}>();
+
+const camposSelect = [
+    { campo: 'Categoria_original', subcategoria: 'categoria_original' },
+    { campo: 'Familia_normalizada', subcategoria: 'familia_normalizada' },
+    { campo: 'Control_de_variante', subcategoria: 'control_de_variante' },
+] as const;
+
+const optionsPara = (campo: string) => props.losSelect?.[campo] ?? [];
+const faltanOpciones = computed(() => camposSelect.filter(({ campo }) => !optionsPara(campo).length));
+
+const form = useForm({
+    Codigo_interno: '',
+    ID_producto_Shopify: '',
+    Categoria_original: '',
+    Familia_normalizada: '',
+    Titulo_Shopify: '',
+    Control_de_variante: '',
+    Opciones: '',
+    tallas: [] as string[],
+    Estado: 1,
+    Observaciones: '',
+    descripcion: '',
+    precio_predicho: '' as string | number,
+    precio_preventa: '' as string | number,
+    materiales: [] as any[],
 });
 
-props.titulos.forEach(names => {
-    data.printForm.push({
-        idd: names['order'], label: names['label'], type: names['type']
-        , value: form[names['order']]
-    })
-});
+const { modo, rango, tallasEscogidas, tallas, alternarTalla, rangoDemasiadoGrande, opcionesTexto, sembrar } =
+    useTallasVariante(() => form.Control_de_variante);
 
-watchEffect(() => {
-    if (props.show) {
-        // data.justNames.forEach(element => {
-        //     form[element] =  props.Productoa[element]
-        // });
-        form.errors = {}
-        props.titulos.forEach(names => {
-            form[names['order']] = props.Productoa[names['order']]
-        });
+// Igual que en el alta: las tallas y su resumen derivan del control de variante.
+watch([modo, tallas], () => {
+    form.tallas = tallas.value;
+    form.Opciones = opcionesTexto.value;
+}, { immediate: true });
 
-        // form.codigo = props.Productoa?.codigo
-    }
-})
+// La ficha solo se puede editar si el producto no está en una OP activa.
+const fichaBloqueada = computed(() => Boolean(props.Productoa?.ficha_bloqueada));
+const fichaBloqueoDetalle = computed(() => String(props.Productoa?.ficha_bloqueo_detalle ?? ''));
+
+const tallasProducto = computed<string[]>(() =>
+    ((props.Productoa?.distribuciones_por_tallas ?? []) as any[])
+        .map((distribucion) => String(distribucion.talla ?? '').trim())
+        .filter((talla) => talla !== '')
+);
+
+const toggleEstado = () => {
+    form.Estado = form.Estado == 1 ? 0 : 1;
+};
 
 const update = () => {
-    form.put(route('Producto.update', props.Productoa?.id), {
-        preserveScroll: true,
-        onSuccess: () => {
-            emit("close")
-            form.reset()
-        },
-        onError: () => null,
-        onFinish: () => null,
-    })
-}
-// const sexos = [ { label: 'Masculino', value: 'Masculino' }, { label: 'Femenino', value: 'Femenino' } ];
+    if (faltanOpciones.value.length) {
+        faltanOpciones.value.forEach(({ campo, subcategoria }) => {
+            form.setError(campo, `Falta configurar ${subcategoria} en la lista desplegable (categoría: Producto).`);
+        });
+        return;
+    }
+    if (modo.value === 'numerica' && !tallas.value.length) {
+        form.setError('Opciones', rangoDemasiadoGrande.value
+            ? `El rango debe generar como máximo ${MAX_TALLAS_POR_RANGO} tallas.`
+            : 'Indique un rango válido (desde ≤ hasta).');
+        return;
+    }
+    if (modo.value === 'alfabetica' && !tallas.value.length) {
+        form.setError('Opciones', 'Seleccione al menos una talla.');
+        return;
+    }
 
+    form
+        .transform((datos) => ({
+            ...datos,
+            // Con la ficha bloqueada no se envía nada que la modifique.
+            materiales: fichaBloqueada.value
+                ? []
+                : datos.materiales
+                    .filter((fila: any) => fila.material_componente_id)
+                    .map((fila: any) => ({
+                        ...fila,
+                        consumo_estandar: dineroANumero(fila.consumo_estandar),
+                        costo_asociado_teorico: dineroANumero(fila.costo_asociado_teorico),
+                    })),
+        }))
+        .put(route('Producto.update', props.Productoa?.id), {
+            preserveScroll: true,
+            onSuccess: () => {
+                emit('close');
+            },
+            onError: () => null,
+            onFinish: () => null,
+        });
+};
+
+watchEffect(() => {
+    if (!props.show) return;
+
+    form.errors = {};
+    const producto: any = props.Productoa ?? {};
+
+    form.Codigo_interno = producto.Codigo_interno ?? '';
+    form.ID_producto_Shopify = producto.ID_producto_Shopify ?? '';
+    form.Categoria_original = producto.Categoria_original ?? '';
+    form.Familia_normalizada = producto.Familia_normalizada ?? '';
+    form.Titulo_Shopify = producto.Titulo_Shopify ?? '';
+    form.Control_de_variante = producto.Control_de_variante ?? '';
+    form.Opciones = producto.Opciones ?? '';
+    sembrar(tallasProducto.value, producto.Opciones ?? '');
+    form.Estado = Number(producto.Estado) === 0 ? 0 : 1;
+    form.Observaciones = producto.Observaciones ?? '';
+    form.descripcion = producto.descripcion ?? '';
+    form.precio_predicho = producto.precio_predicho ?? '';
+    form.precio_preventa = producto.precio_preventa ?? '';
+    form.materiales = (producto.ficha_materiales ?? []).map((material: any) => ({
+        material_componente_id: material.material_componente_id,
+        consumo_estandar: material.consumo_estandar ?? 1,
+        unidad_medida: material.unidad_medida ?? '',
+        costo_asociado_teorico: material.costo_asociado_teorico ?? '',
+    }));
+});
 </script>
 
 <template>
     <section class="space-y-6">
-        <Modal :show="props.show" @close="emit('close')" :maxWidth="'xl4'">
-            <form class="p-6" @submit.prevent="create">
-                <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100">
-                    {{ lang().t('app.label.edit') }} {{ props.title }}
-                </h2>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <Modal :show="props.show" @close="emit('close')" :maxWidth="'xl5'">
+            <form class="p-0" @submit.prevent="update">
+                <!-- Encabezado -->
+                <div class="px-6 pt-6 pb-4 border-b border-gray-200 dark:border-gray-700 bg-gradient-to-r from-indigo-50 via-white to-violet-50 dark:from-gray-800 dark:via-gray-800 dark:to-gray-800 rounded-t-lg">
+                    <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                        <span class="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white">
+                            <PencilSquareIcon class="w-5 h-5" />
+                        </span>
+                        {{ lang().t('app.label.edit') }} {{ props.title }}
+                    </h2>
+                    <p class="mt-1.5 text-sm text-gray-500 dark:text-gray-400 pl-10">
+                        Actualice los datos del producto.
+                    </p>
+                </div>
 
+                <div class="px-6 py-5 space-y-7 max-h-[70vh] overflow-y-auto scrollbar-table">
+                    <!-- Información principal -->
+                    <div>
+                        <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-1.5 mb-4">
+                            <ClipboardDocumentListIcon class="w-4 h-4 text-gray-400 dark:text-gray-500" />
+                            Información principal
+                        </h3>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+                            <div>
+                                <InputLabel for="Codigo_interno" :value="lang().t('app.label.Codigo_interno') || 'Código interno'" />
+                                <TextInput id="Codigo_interno" type="text" class="mt-1 block w-full"
+                                    v-model="form.Codigo_interno" required placeholder="Código interno"
+                                    :error="form.errors.Codigo_interno" />
+                                <InputError class="mt-2" :message="form.errors.Codigo_interno" />
+                            </div>
 
-                    <!--                    <div id="SelectVue" class="">-->
-                    <!--                        <label name="labelSelectVue2"> Centro de costo </label>-->
-                    <!--                        <v-select :options="props.losSelect[0]"-->
-                    <!--                                  v-model="form.centro_costo_id"-->
-                    <!--                                  label="name"-->
-                    <!--                        ></v-select>-->
-                    <!--                    </div>-->
+                            <div>
+                                <InputLabel for="Familia_normalizada" :value="lang().t('app.label.Familia_normalizada') || 'Familia normalizada'" />
+                                <v-select
+                                    v-if="optionsPara('Familia_normalizada').length"
+                                    id="Familia_normalizada"
+                                    :options="optionsPara('Familia_normalizada')"
+                                    :reduce="(item: any) => item.nombre"
+                                    label="nombre"
+                                    v-model="form.Familia_normalizada"
+                                    placeholder="Seleccione familia"
+                                    append-to-body
+                                    class="mt-1 block w-full"
+                                />
+                                <p v-else class="mt-1 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs font-medium text-amber-800 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
+                                    Falta configurar familia_normalizada en la lista desplegable (categoría: Producto).
+                                </p>
+                                <InputError class="mt-2" :message="form.errors.Familia_normalizada" />
+                            </div>
 
+                            <div class="md:col-span-2">
+                                <InputLabel for="Titulo_Shopify" :value="lang().t('app.label.Titulo_Shopify') || 'Título Shopify / Nombre'" />
+                                <TextInput id="Titulo_Shopify" type="text" class="mt-1 block w-full"
+                                    v-model="form.Titulo_Shopify" required placeholder="Título Shopify"
+                                    :error="form.errors.Titulo_Shopify" />
+                                <InputError class="mt-2" :message="form.errors.Titulo_Shopify" />
+                            </div>
 
+                            <div class="md:col-span-2">
+                                <InputLabel for="descripcion" :value="lang().t('app.label.descripcion') || 'Descripción'" />
+                                <textarea
+                                    id="descripcion"
+                                    rows="2"
+                                    class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 focus:border-indigo-500 dark:focus:border-indigo-600 focus:ring-indigo-500 dark:focus:ring-indigo-600 shadow-sm text-sm"
+                                    v-model="form.descripcion"
+                                    placeholder="Descripción del producto (opcional)"
+                                ></textarea>
+                                <InputError class="mt-2" :message="form.errors.descripcion" />
+                            </div>
 
-                    <div v-for="(atributosform, indice) in data.printForm" :key="indice">
-                        <div v-if="atributosform.type === 'foreign'" id="SelectVue" class="">
-                            <label name="labelSelectVue"> {{ atributosform.label }} </label>
-                            <v-select :options="props.losSelect" v-model="form[atributosform.idd]"
-                                :reduce="element => element.value" label="label"></v-select>
-                            <InputError class="mt-2" :message="form.errors[atributosform.idd]" />
-                        </div>
+                            <div>
+                                <InputLabel for="Categoria_original" :value="lang().t('app.label.Categoria_original') || 'Categoría original'" />
+                                <v-select
+                                    v-if="optionsPara('Categoria_original').length"
+                                    id="Categoria_original"
+                                    :options="optionsPara('Categoria_original')"
+                                    :reduce="(item: any) => item.nombre"
+                                    label="nombre"
+                                    v-model="form.Categoria_original"
+                                    placeholder="Seleccione categoría"
+                                    class="mt-1 block w-full"
+                                />
+                                <p v-else class="mt-1 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs font-medium text-amber-800 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
+                                    Falta configurar categoria_original en la lista desplegable (categoría: Producto).
+                                </p>
+                                <InputError class="mt-2" :message="form.errors.Categoria_original" />
+                            </div>
 
-                        <div v-else-if="atributosform.type === 'time'" id="SelectVue">
-                            <InputLabel :for="atributosform.label"
-                                :value="lang().t('app.label')[atributosform.label]" />
-                            <TextInput :id="atributosform.idd" :type="atributosform.type" class="mt-1 block w-full"
-                                v-model="form[atributosform.idd]" required :placeholder="atributosform.label"
-                                :error="form.errors[atributosform.idd]" step="3600" />
-                            <InputError class="mt-2" :message="form.errors[atributosform.idd]" />
-                        </div>
-                        <div v-else class="">
-                            <InputLabel :for="atributosform.label"
-                                :value="lang().t('app.label')[atributosform.label]" />
-                            <TextInput :id="atributosform.idd" :type="atributosform.type" class="mt-1 block w-full"
-                                v-model="form[atributosform.idd]" required :placeholder="atributosform.label"
-                                :error="form.errors[atributosform.idd]" />
-                            <InputError class="mt-2" :message="form.errors[atributosform.idd]" />
+                            <div>
+                                <InputLabel for="Control_de_variante" :value="lang().t('app.label.Control_de_variante') || 'Control de variante'" />
+                                <v-select
+                                    v-if="optionsPara('Control_de_variante').length"
+                                    id="Control_de_variante"
+                                    :options="optionsPara('Control_de_variante')"
+                                    :reduce="(item: any) => item.nombre"
+                                    label="nombre"
+                                    v-model="form.Control_de_variante"
+                                    placeholder="Seleccione control de variante"
+                                    class="mt-1 block w-full"
+                                />
+                                <p v-else class="mt-1 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs font-medium text-amber-800 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
+                                    Falta configurar control_de_variante en la lista desplegable (categoría: Producto).
+                                </p>
+                                <InputError class="mt-2" :message="form.errors.Control_de_variante" />
+                            </div>
+
+                            <div class="md:col-span-2">
+                                <InputLabel for="Opciones" :value="lang().t('app.label.Opciones') || 'Opciones'" />
+
+                                <!-- Sin talla: las opciones no aplican -->
+                                <p v-if="modo === 'sin-talla'"
+                                    class="mt-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-400">
+                                    «{{ form.Control_de_variante }}» no usa opciones: se guardará sin tallas.
+                                </p>
+
+                                <!-- Talla numérica: rango desde/hasta -->
+                                <div v-else-if="modo === 'numerica'">
+                                    <div class="mt-1 flex items-end gap-3">
+                                        <div class="flex-1">
+                                            <InputLabel for="talla_desde" value="Desde" class="!text-xs" />
+                                            <TextInput id="talla_desde" type="number" min="0" step="1"
+                                                class="mt-1 block w-full" v-model="rango.desde" placeholder="21" />
+                                        </div>
+                                        <span class="pb-2.5 text-gray-400 dark:text-gray-500">—</span>
+                                        <div class="flex-1">
+                                            <InputLabel for="talla_hasta" value="Hasta" class="!text-xs" />
+                                            <TextInput id="talla_hasta" type="number" min="0" step="1"
+                                                class="mt-1 block w-full" v-model="rango.hasta" placeholder="40" />
+                                        </div>
+                                    </div>
+                                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                        <span v-if="tallas.length">
+                                            Se guardarán {{ tallas.length }} distribuciones:
+                                            {{ tallas.slice(0, 6).join(', ') }}{{ tallas.length > 6 ? ', …' : '' }}
+                                        </span>
+                                        <span v-else-if="rangoDemasiadoGrande" class="text-amber-600 dark:text-amber-400">
+                                            El rango debe generar como máximo {{ MAX_TALLAS_POR_RANGO }} tallas.
+                                        </span>
+                                        <span v-else>
+                                            Ingrese el rango de tallas, por ejemplo 21 a 40.
+                                        </span>
+                                    </p>
+                                </div>
+
+                                <!-- Talla alfabética: elección individual -->
+                                <div v-else-if="modo === 'alfabetica'" class="mt-1 flex flex-wrap gap-2">
+                                    <button v-for="talla in TALLAS_ALFABETICAS" :key="talla" type="button"
+                                        @click="alternarTalla(talla)"
+                                        :aria-pressed="tallasEscogidas.includes(talla)"
+                                        class="h-9 min-w-[3rem] rounded-lg border px-3 text-sm font-medium transition-colors"
+                                        :class="tallasEscogidas.includes(talla)
+                                            ? 'border-indigo-600 bg-indigo-600 text-white'
+                                            : 'border-gray-300 bg-white text-gray-700 hover:border-indigo-400 dark:border-gray-600 dark:bg-gray-900/40 dark:text-gray-300'">
+                                        {{ talla }}
+                                    </button>
+                                    <p class="w-full text-xs text-gray-500 dark:text-gray-400">
+                                        {{ tallas.length ? `Seleccionadas: ${tallas.join(', ')}` : 'Elija una o más tallas.' }}
+                                    </p>
+                                </div>
+
+                                <p v-else
+                                    class="mt-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-400">
+                                    Seleccione primero el control de variante.
+                                </p>
+
+                                <p v-if="modo === 'numerica' || modo === 'alfabetica'"
+                                    class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                                    Las cantidades planificadas de cada talla se ajustan desde el botón «Tallas» del listado.
+                                </p>
+
+                                <InputError class="mt-2" :message="form.errors.Opciones" />
+                            </div>
                         </div>
                     </div>
 
+                    <!-- Ficha técnica de materiales -->
+                    <div>
+                        <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
+                            <CubeIcon class="w-4 h-4 text-gray-400 dark:text-gray-500" />
+                            Ficha técnica de materiales
+                        </h3>
+
+                        <div v-if="fichaBloqueada"
+                            class="mt-2 mb-3 rounded-lg border border-amber-200 bg-amber-50/70 px-4 py-3 dark:border-amber-800 dark:bg-amber-900/20"
+                            role="status">
+                            <p class="text-sm font-medium text-amber-900 dark:text-amber-100">
+                                Ficha técnica bloqueada
+                            </p>
+                            <p class="mt-1 text-xs text-amber-800/80 dark:text-amber-200/80">
+                                El producto está en la OP {{ fichaBloqueoDetalle }}.
+                                Solo se puede modificar cuando la OP esté en Borrador, Preparación o Cerrada.
+                            </p>
+                        </div>
+                        <p v-else class="mt-1 mb-3 pl-6 text-xs text-gray-400 dark:text-gray-500">
+                            Opcional. Los materiales se guardan en la ficha técnica de este producto.
+                        </p>
+
+                        <EditorMateriales
+                            v-model="form.materiales"
+                            :opciones="props.losSelect"
+                            :errors="form.errors"
+                            :disabled="fichaBloqueada"
+                        />
+                        <InputError class="mt-2" :message="form.errors.materiales" />
+                        <InputError class="mt-1" :message="form.errors.productos" />
+                    </div>
+
+                    <!-- Estado -->
+                    <div>
+                        <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-1.5 mb-3">
+                            <CheckCircleIcon class="w-4 h-4 text-gray-400 dark:text-gray-500" />
+                            Estado
+                        </h3>
+                        <div
+                            role="switch" tabindex="0"
+                            :aria-checked="form.Estado == 1"
+                            @click="toggleEstado"
+                            @keydown.space.prevent="toggleEstado"
+                            class="flex items-center justify-between gap-4 px-4 py-3 rounded-xl border cursor-pointer transition-colors"
+                            :class="form.Estado == 1
+                                ? 'border-emerald-300 dark:border-emerald-700 bg-emerald-50/70 dark:bg-emerald-900/20'
+                                : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/40 hover:border-gray-300 dark:hover:border-gray-600'">
+                            <div>
+                                <span class="block text-sm font-medium text-gray-800 dark:text-gray-200">Estado</span>
+                                <span class="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                    {{ form.Estado == 1 ? 'Sí — activo (se guarda como 1)' : 'No — inactivo (se guarda como 0)' }}
+                                </span>
+                            </div>
+                            <span class="relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors duration-200"
+                                :class="form.Estado == 1 ? 'bg-emerald-600' : 'bg-gray-300 dark:bg-gray-600'">
+                                <span class="inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform duration-200"
+                                    :class="form.Estado == 1 ? 'translate-x-6' : 'translate-x-1'" />
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Campos opcionales -->
+                    <div>
+                        <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-1.5 mb-1">
+                            <DocumentTextIcon class="w-4 h-4 text-gray-400 dark:text-gray-500" />
+                            Campos opcionales
+                        </h3>
+                        <p class="text-xs text-gray-400 dark:text-gray-500 mb-3 pl-6">
+                            Los siguientes campos son opcionales: puede dejarlos vacíos.
+                        </p>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-4 rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-4">
+                            <div>
+                                <InputLabel for="ID_producto_Shopify" :value="lang().t('app.label.ID_producto_Shopify') || 'ID Shopify'" />
+                                <TextInput id="ID_producto_Shopify" type="text" class="mt-1 block w-full"
+                                    v-model="form.ID_producto_Shopify" placeholder="ID Producto Shopify (opcional)"
+                                    :error="form.errors.ID_producto_Shopify" />
+                                <InputError class="mt-2" :message="form.errors.ID_producto_Shopify" />
+                            </div>
+
+                            <div>
+                                <InputLabel for="precio_predicho" :value="lang().t('app.label.precio_predicho') || 'Precio predicho'" />
+                                <TextInput id="precio_predicho" type="number" step="any" min="0" class="mt-1 block w-full"
+                                    v-model="form.precio_predicho" placeholder="Precio predicho (opcional)"
+                                    :error="form.errors.precio_predicho" />
+                                <InputError class="mt-2" :message="form.errors.precio_predicho" />
+                            </div>
+
+                            <div>
+                                <InputLabel for="precio_preventa" :value="lang().t('app.label.precio_preventa') || 'Precio preventa'" />
+                                <TextInput id="precio_preventa" type="number" step="any" min="0" class="mt-1 block w-full"
+                                    v-model="form.precio_preventa" placeholder="Precio preventa (opcional)"
+                                    :error="form.errors.precio_preventa" />
+                                <InputError class="mt-2" :message="form.errors.precio_preventa" />
+                            </div>
+
+                            <div class="md:col-span-3">
+                                <InputLabel for="Observaciones" :value="lang().t('app.label.Observaciones') || 'Observaciones'" />
+                                <textarea
+                                    id="Observaciones"
+                                    rows="2"
+                                    class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 focus:border-indigo-500 dark:focus:border-indigo-600 focus:ring-indigo-500 dark:focus:ring-indigo-600 shadow-sm text-sm"
+                                    v-model="form.Observaciones"
+                                    placeholder="Observaciones adicionales (opcional)"
+                                ></textarea>
+                                <InputError class="mt-2" :message="form.errors.Observaciones" />
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div class=" my-8 flex justify-end">
-                    <SecondaryButton :disabled="form.processing" @click="emit('close')"> {{ lang().t('app.button.close')
-                        }}
+
+                <!-- Pie -->
+                <div class="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3 bg-gray-50 dark:bg-gray-800/50 rounded-b-lg">
+                    <SecondaryButton :disabled="form.processing" type="button" @click="emit('close')">
+                        {{ lang().t('app.button.close') }}
                     </SecondaryButton>
                     <PrimaryButton class="ml-3" :class="{ 'opacity-25': form.processing }" :disabled="form.processing"
-                        @click="update">
-                        {{ form.processing ? lang().t('app.button.save') + '...' : lang().t('app.button.save') }}
+                        type="submit">
+                        {{ lang().t('app.button.save') }} {{ form.processing ? '...' : '' }}
                     </PrimaryButton>
                 </div>
             </form>
         </Modal>
     </section>
 </template>
-
-<style>
-[name="labelSelectVue"],
-[name="labelSelectVue"] {
-    /* font-size: 22px; */
-    font-weight: 600;
-}
-</style>

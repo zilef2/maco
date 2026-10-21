@@ -18,10 +18,13 @@ const props = withDefaults(
     defineProps<{
         opciones?: { materiales?: any[]; unidad_medida?: any[] };
         errors?: Record<string, string>;
+        // Bloquea la edición (p. ej. cuando la ficha está en una OP activa).
+        disabled?: boolean;
     }>(),
     {
         opciones: () => ({}),
         errors: () => ({}),
+        disabled: false,
     }
 );
 
@@ -95,6 +98,7 @@ const errorDe = (index: number, campo: string) => props.errors?.[`materiales.${i
                                 :placeholder="lang().t('app.label.material')"
                                 class="block w-full"
                                 append-to-body
+                                :disabled="props.disabled"
                                 @option:selected="(opt: any) => alElegirMaterial(fila, opt)"
                             />
                             <InputError class="mt-1" :message="errorDe(index, 'material_componente_id')" />
@@ -109,6 +113,7 @@ const errorDe = (index: number, campo: string) => props.errors?.[`materiales.${i
                                 class="block h-9 w-full px-2"
                                 v-model="fila.consumo_estandar"
                                 :aria-label="lang().t('app.label.cantidad')"
+                                :disabled="props.disabled"
                                 required
                             />
                             <InputError class="mt-1" :message="errorDe(index, 'consumo_estandar')" />
@@ -123,6 +128,8 @@ const errorDe = (index: number, campo: string) => props.errors?.[`materiales.${i
                                 :placeholder="lang().t('app.label.unidad')"
                                 class="block w-full"
                                 :taggable="true"
+                                append-to-body
+                                :disabled="props.disabled"
                             />
                             <InputError class="mt-1" :message="errorDe(index, 'unidad_medida')" />
                         </td>
@@ -134,13 +141,14 @@ const errorDe = (index: number, campo: string) => props.errors?.[`materiales.${i
                                 class="block h-9 w-full px-2 text-right tabular-nums"
                                 v-model="fila.costo_asociado_teorico"
                                 :aria-label="lang().t('app.label.costo_asociado_teorico')"
+                                :disabled="props.disabled"
                                 @focus="alEntrarDinero(fila)"
                                 @blur="alSalirDinero(fila)"
                             />
                             <InputError class="mt-1" :message="errorDe(index, 'costo_asociado_teorico')" />
                         </td>
 
-                        <td class="px-2 py-2">
+                        <td v-if="!props.disabled" class="px-2 py-2">
                             <button
                                 type="button"
                                 @click="quitar(index)"
@@ -171,10 +179,13 @@ const errorDe = (index: number, campo: string) => props.errors?.[`materiales.${i
         <div
             class="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 bg-gray-50/60 px-3 py-2.5 dark:border-gray-700 dark:bg-gray-900/30"
         >
-            <SecondaryButton type="button" class="text-xs" @click="agregar">
+            <SecondaryButton v-if="!props.disabled" type="button" class="text-xs" @click="agregar">
                 <PlusIcon class="mr-1 inline h-3.5 w-3.5" />
                 {{ lang().t('app.label.agregar_material') }}
             </SecondaryButton>
+            <span v-else class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                Ficha técnica en solo lectura
+            </span>
 
             <p v-if="filas.length" class="text-sm text-gray-500 dark:text-gray-400">
                 {{ lang().t('app.label.costo_teorico_total', 'Costo teórico total') }}:

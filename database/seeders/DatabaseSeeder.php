@@ -19,6 +19,7 @@ class DatabaseSeeder extends Seeder
             RoleSeeder::class,
             UserSeeder::class,
             ParametrosSeeder::class,
+            SeederParametroMaterialesTaller::class,
             ListaDesplegableSeeder::class,
             EstadoOperacionSeeder::class,
             MaterialSeeder::class,

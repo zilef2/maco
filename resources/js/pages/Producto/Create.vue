@@ -6,10 +6,11 @@ import PrimaryButton from '@/components/PrimaryButton.vue';
 import SecondaryButton from '@/components/SecondaryButton.vue';
 import TextInput from '@/components/TextInput.vue';
 import EditorMateriales from '@/pages/FichaTecnicaMateriales/EditorMateriales.vue';
+import { MAX_TALLAS_POR_RANGO, TALLAS_ALFABETICAS, useTallasVariante } from '@/composables/useTallasVariante';
 import { dineroANumero } from '@/global.ts';
 import { CheckCircleIcon, ClipboardDocumentListIcon, CubeIcon, DocumentTextIcon, ShoppingBagIcon } from '@heroicons/vue/24/solid';
 import { useForm } from '@inertiajs/vue3';
-import { computed, watchEffect } from 'vue';
+import { computed, watch, watchEffect } from 'vue';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
 
@@ -40,7 +41,6 @@ const camposSelect = [
     { campo: 'Categoria_original', subcategoria: 'categoria_original' },
     { campo: 'Familia_normalizada', subcategoria: 'familia_normalizada' },
     { campo: 'Control_de_variante', subcategoria: 'control_de_variante' },
-    { campo: 'Opciones', subcategoria: 'opciones' },
 ] as const;
 
 const optionsPara = (campo: string) => props.losSelect?.[campo] ?? [];
@@ -54,6 +54,7 @@ const form = useForm({
     Titulo_Shopify: '',
     Control_de_variante: '',
     Opciones: '',
+    tallas: [] as string[],
     Estado: 1,
     Observaciones: '',
     descripcion: '',
@@ -61,6 +62,15 @@ const form = useForm({
     precio_preventa: '' as string | number,
     materiales: [] as any[],
 });
+
+const { modo, rango, tallasEscogidas, tallas, alternarTalla, rangoDemasiadoGrande, opcionesTexto, limpiar } =
+    useTallasVariante(() => form.Control_de_variante);
+
+// Las tallas y el resumen de opciones siempre derivan del control de variante.
+watch([modo, tallas], () => {
+    form.tallas = tallas.value;
+    form.Opciones = opcionesTexto.value;
+}, { immediate: true });
 
 const toggleEstado = () => {
     form.Estado = form.Estado == 1 ? 0 : 1;
@@ -71,6 +81,16 @@ const create = () => {
         faltanOpciones.value.forEach(({ campo, subcategoria }) => {
             form.setError(campo, `Falta configurar ${subcategoria} en la lista desplegable (categoría: Producto).`);
         });
+        return;
+    }
+    if (modo.value === 'numerica' && !tallas.value.length) {
+        form.setError('Opciones', rangoDemasiadoGrande.value
+            ? `El rango debe generar como máximo ${MAX_TALLAS_POR_RANGO} tallas.`
+            : 'Indique un rango válido (desde ≤ hasta).');
+        return;
+    }
+    if (modo.value === 'alfabetica' && !tallas.value.length) {
+        form.setError('Opciones', 'Seleccione al menos una talla.');
         return;
     }
     form
@@ -99,6 +119,7 @@ watchEffect(() => {
     if (props.show) {
         form.errors = {}
         form.reset()
+        limpiar();
         if ((props.numberPermissions ?? 0) > 99) {
             const valueRAn = Math.floor(Math.random() * 9 + 1)
             form.Codigo_interno = 'PROD-' + valueRAn
@@ -106,8 +127,9 @@ watchEffect(() => {
             form.Categoria_original = 'Bolso manos libres'
             form.Familia_normalizada = 'Bolso'
             form.Titulo_Shopify = 'Producto Genérico ' + valueRAn
-            form.Control_de_variante = 'Color / Talla'
-            form.Opciones = 'Negro, Café'
+            form.Control_de_variante = 'Talla numerica'
+            rango.desde = '21';
+            rango.hasta = '40';
             form.Estado = 1
             form.Observaciones = 'Observación genérica ' + valueRAn
             form.descripcion = 'Descripción genérica ' + valueRAn
@@ -178,6 +200,18 @@ watchEffect(() => {
                                 <InputError class="mt-2" :message="form.errors.Titulo_Shopify" />
                             </div>
 
+                            <div class="md:col-span-2">
+                                <InputLabel for="descripcion" :value="lang().t('app.label.descripcion') || 'Descripción'" />
+                                <textarea
+                                    id="descripcion"
+                                    rows="2"
+                                    class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 focus:border-indigo-500 dark:focus:border-indigo-600 focus:ring-indigo-500 dark:focus:ring-indigo-600 shadow-sm text-sm"
+                                    v-model="form.descripcion"
+                                    placeholder="Descripción del producto (opcional)"
+                                ></textarea>
+                                <InputError class="mt-2" :message="form.errors.descripcion" />
+                            </div>
+
                             <div>
                                 <InputLabel for="Categoria_original" :value="lang().t('app.label.Categoria_original') || 'Categoría original'" />
                                 <v-select
@@ -216,19 +250,63 @@ watchEffect(() => {
 
                             <div class="md:col-span-2">
                                 <InputLabel for="Opciones" :value="lang().t('app.label.Opciones') || 'Opciones'" />
-                                <v-select
-                                    v-if="optionsPara('Opciones').length"
-                                    id="Opciones"
-                                    :options="optionsPara('Opciones')"
-                                    :reduce="(item: any) => item.nombre"
-                                    label="nombre"
-                                    v-model="form.Opciones"
-                                    placeholder="Seleccione opciones"
-                                    class="mt-1 block w-full"
-                                />
-                                <p v-else class="mt-1 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs font-medium text-amber-800 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
-                                    Falta configurar opciones en la lista desplegable (categoría: Producto).
+
+                                <!-- Sin talla: las opciones no aplican -->
+                                <p v-if="modo === 'sin-talla'"
+                                    class="mt-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-400">
+                                    «{{ form.Control_de_variante }}» no usa opciones: se guardará sin tallas.
                                 </p>
+
+                                <!-- Talla numérica: rango desde/hasta -->
+                                <div v-else-if="modo === 'numerica'">
+                                    <div class="mt-1 flex items-end gap-3">
+                                        <div class="flex-1">
+                                            <InputLabel for="talla_desde" value="Desde" class="!text-xs" />
+                                            <TextInput id="talla_desde" type="number" min="0" step="1"
+                                                class="mt-1 block w-full" v-model="rango.desde" placeholder="21" />
+                                        </div>
+                                        <span class="pb-2.5 text-gray-400 dark:text-gray-500">—</span>
+                                        <div class="flex-1">
+                                            <InputLabel for="talla_hasta" value="Hasta" class="!text-xs" />
+                                            <TextInput id="talla_hasta" type="number" min="0" step="1"
+                                                class="mt-1 block w-full" v-model="rango.hasta" placeholder="40" />
+                                        </div>
+                                    </div>
+                                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                        <span v-if="tallas.length">
+                                            Se crearán {{ tallas.length }} distribuciones:
+                                            {{ tallas.slice(0, 6).join(', ') }}{{ tallas.length > 6 ? ', …' : '' }}
+                                        </span>
+                                        <span v-else-if="rangoDemasiadoGrande" class="text-amber-600 dark:text-amber-400">
+                                            El rango debe generar como máximo {{ MAX_TALLAS_POR_RANGO }} tallas.
+                                        </span>
+                                        <span v-else>
+                                            Ingrese el rango de tallas, por ejemplo 21 a 40.
+                                        </span>
+                                    </p>
+                                </div>
+
+                                <!-- Talla alfabética: elección individual -->
+                                <div v-else-if="modo === 'alfabetica'" class="mt-1 flex flex-wrap gap-2">
+                                    <button v-for="talla in TALLAS_ALFABETICAS" :key="talla" type="button"
+                                        @click="alternarTalla(talla)"
+                                        :aria-pressed="tallasEscogidas.includes(talla)"
+                                        class="h-9 min-w-[3rem] rounded-lg border px-3 text-sm font-medium transition-colors"
+                                        :class="tallasEscogidas.includes(talla)
+                                            ? 'border-indigo-600 bg-indigo-600 text-white'
+                                            : 'border-gray-300 bg-white text-gray-700 hover:border-indigo-400 dark:border-gray-600 dark:bg-gray-900/40 dark:text-gray-300'">
+                                        {{ talla }}
+                                    </button>
+                                    <p class="w-full text-xs text-gray-500 dark:text-gray-400">
+                                        {{ tallas.length ? `Seleccionadas: ${tallas.join(', ')}` : 'Elija una o más tallas.' }}
+                                    </p>
+                                </div>
+
+                                <p v-else
+                                    class="mt-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-400">
+                                    Seleccione primero el control de variante.
+                                </p>
+
                                 <InputError class="mt-2" :message="form.errors.Opciones" />
                             </div>
                         </div>
@@ -308,18 +386,6 @@ watchEffect(() => {
                                     v-model="form.precio_preventa" placeholder="Precio preventa (opcional)"
                                     :error="form.errors.precio_preventa" />
                                 <InputError class="mt-2" :message="form.errors.precio_preventa" />
-                            </div>
-
-                            <div class="md:col-span-3">
-                                <InputLabel for="descripcion" :value="lang().t('app.label.descripcion') || 'Descripción'" />
-                                <textarea
-                                    id="descripcion"
-                                    rows="2"
-                                    class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 focus:border-indigo-500 dark:focus:border-indigo-600 focus:ring-indigo-500 dark:focus:ring-indigo-600 shadow-sm text-sm"
-                                    v-model="form.descripcion"
-                                    placeholder="Descripción del producto (opcional)"
-                                ></textarea>
-                                <InputError class="mt-2" :message="form.errors.descripcion" />
                             </div>
 
                             <div class="md:col-span-3">

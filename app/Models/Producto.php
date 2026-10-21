@@ -2,10 +2,11 @@
 
 namespace App\Models;
 
+use Illuminate\Support\Facades\DB;
+
 use Database\Factories\ProductoFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\DB;
 
 class Producto extends Model
 {
@@ -48,6 +49,11 @@ class Producto extends Model
     public function fichaTecnica()
     {
         return $this->belongsToMany(FichaTecnica::class, 'ficha_tecnica_producto', 'producto_id', 'ficha_tecnica_id')->withTimestamps();
+    }
+
+    public function recepcionesCalidad()
+    {
+        return $this->hasMany(RecepcionCalidad::class, 'producto_referencia_id');
     }
 
     public static function getFillableWithTypes(): array

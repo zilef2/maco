@@ -55,6 +55,7 @@ Route::middleware('auth', 'verified')->group(function () {
 	Route::resource("/OrdenProduccion", \App\Http\Controllers\OrdenProduccionController::class);
 	Route::put("/OrdenProduccion/{id}/distribucion", [\App\Http\Controllers\OrdenProduccionController::class, 'syncDistribucion'])->name('OrdenProduccion.distribucion');
 	Route::put("/OrdenProduccion/{id}/estado", [\App\Http\Controllers\OrdenProduccionController::class, 'cambiarEstado'])->name('OrdenProduccion.cambiarEstado');
+	Route::put("/OrdenProduccion/{id}/cierre", [\App\Http\Controllers\OrdenProduccionController::class, 'guardarCierre'])->name('OrdenProduccion.cierre');
 	Route::post("/OrdenProduccion/borrador", [\App\Http\Controllers\OrdenProduccionController::class, 'guardarBorrador'])->name('OrdenProduccion.borrador');
 	Route::get("/ProcesoExterno/materiales-op/{orden}", [\App\Http\Controllers\ProcesoExternoController::class, 'materialesOp'])->name('ProcesoExterno.materialesOp');
 	Route::post("/ProcesoExterno/salida-op", [\App\Http\Controllers\ProcesoExternoController::class, 'salidaOp'])->name('ProcesoExterno.salidaOp');
@@ -82,6 +83,9 @@ Route::middleware('auth', 'verified')->group(function () {
 	Route::post("/ImportarExcel/entidad", [\App\Http\Controllers\ImportarExcelController::class, 'toggleEntidad'])->name('ImportarExcel.toggleEntidad');
 	Route::resource("/EstadoOpMaterial", \App\Http\Controllers\EstadoOpMaterialController::class);
 	Route::resource("/EmpresaExterna", \App\Http\Controllers\EmpresaExternaController::class);
+	Route::resource("/Merma", \App\Http\Controllers\MermaController::class);
+	Route::resource("/FichaEnsamble", \App\Http\Controllers\FichaEnsambleController::class);
+	Route::resource("/FichaEnsambleMaterial", \App\Http\Controllers\FichaEnsambleMaterialController::class);
 	//aquipues
 }); //fin verified
 

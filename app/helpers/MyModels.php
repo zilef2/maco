@@ -53,6 +53,9 @@ class MyModels {
 			'GrupoTalla',
 			'EstadoOpMaterial',
 			'EmpresaExterna',
+			'Merma',
+			'FichaEnsamble',
+			'FichaEnsambleMaterial',
 			//aquipues
 
 		];

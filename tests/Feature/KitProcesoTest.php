@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Distribucion_por_tallas;
 use App\Models\EstadoOpMaterial;
 use App\Models\EstadoOperacion;
 use App\Models\FichaTecnica;
@@ -66,6 +67,63 @@ class KitProcesoTest extends TestCase
         $this->assertNull($kit->proveedor_id);
         $this->assertSame('m', $kit->unidad);
         $this->assertEquals(10, (float) $kit->cantidad_requerida);
+    }
+
+    /**
+     * Al crear una OP desde una plantilla de tallas con cantidad 0, la
+     * cantidad planificada que digita el usuario debe persistir en la fila de
+     * distribución y alimentar el kit (no quedarse en cero).
+     */
+    public function test_la_op_actualiza_la_cantidad_de_la_plantilla_de_tallas_al_crearse(): void
+    {
+        [$user, $taller, $estadoMaterial, $producto] = $this->contextoBasico();
+
+        $material = Material::create([
+            'codigo_material' => 'MAT-030',
+            'categoria' => 'Prueba',
+            'nombre_base' => 'Ajiné Grueso',
+            'unidad_inventario' => 'u',
+            'estado' => 'Activo',
+        ]);
+
+        $ficha = FichaTecnica::create(['nombre' => 'Ficha de prueba']);
+        $ficha->productos()->attach($producto->id);
+        $ficha->materiales()->create([
+            'material_componente_id' => $material->id,
+            'consumo_estandar' => 2,
+            'unidad_medida' => 'u',
+        ]);
+
+        $distribucion = Distribucion_por_tallas::create([
+            'producto_id' => $producto->id,
+            'talla' => 'M',
+            'cantidad_planificada' => 0,
+        ]);
+        $producto->distribucionesPorTallas()->attach($distribucion->id);
+
+        $response = $this->actingAs($user)->post(route('OrdenProduccion.store'), [
+            'productos' => [$producto->id],
+            'productos_cantidad' => [$producto->id => 1],
+            'cantidad_planificada' => 1,
+            'tipo' => 'taller',
+            'taller_id' => $taller->id,
+            'user_id' => $user->id,
+            'estado_op_material_id' => $estadoMaterial->id,
+            'distribucion_tallas' => [[
+                'id' => $distribucion->id,
+                'producto_id' => $producto->id,
+                'talla' => 'M',
+                'cantidad_planificada' => 1,
+            ]],
+        ]);
+
+        $response->assertSessionHasNoErrors();
+
+        $this->assertSame(1, (int) $distribucion->fresh()->cantidad_planificada);
+
+        $kit = KitProceso::firstOrFail();
+        $this->assertSame($producto->id, $kit->ordenProduccion->productos()->firstOrFail()->id);
+        $this->assertEquals(2, (float) $kit->cantidad_requerida);
     }
 
     /**

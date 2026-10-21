@@ -15,7 +15,10 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     use HasFactory;
     protected $fillable = ['orden_produccion_id', 'prioridad', 'pendiente', 'donde_se_usa', 'por_definir', 'fecha_registro', 'id', 'fecha_estimada_resolucion', 'fecha_resolucion_real'];
 
-
+    public function ordenProduccion()
+    {
+        return $this->belongsTo(OrdenProduccion::class, 'orden_produccion_id');
+    }
 
     public static function getFillableWithTypes(): array
     {

@@ -15,6 +15,9 @@ use Inertia\Inertia;
 use Inertia\Response;
 
 class Distribucion_por_tallasController extends Controller {
+    // El listado es solo lectura y muestra muchas tallas: 200 filas por página.
+    private const PER_PAGE_POR_DEFECTO = 200;
+
     public array $thisAtributos;
     public string $FromController = 'Distribucion_por_tallas';
 
@@ -34,7 +37,7 @@ class Distribucion_por_tallasController extends Controller {
 //        $losSelect = $this->Dependencias();
 
         $titulo = str_replace('_', ' ', $this->FromController);
-        $perPage = $request->has('perPage') ? $request->perPage : 10;
+        $perPage = $request->has('perPage') ? $request->perPage : self::PER_PAGE_POR_DEFECTO;
         return Inertia::render($this->FromController . '/Index', [
             'fromController' => $this->PerPageAndPaginate($request, $Distribucion_por_tallass),
             'total' => $Distribucion_por_tallass->count(),
@@ -72,7 +75,7 @@ class Distribucion_por_tallasController extends Controller {
         $Distribucion_por_tallass = Distribucion_por_tallas::query();
         if ($request->has('search')) {
             $Distribucion_por_tallass = $Distribucion_por_tallass->where(function ($query) use ($request) {
-                $query->where('nombre', 'LIKE', "%" . $request->search . "%")
+                $query->where('talla', 'LIKE', "%" . $request->search . "%")
                     //                    ->orWhere('codigo', 'LIKE', "%" . $request->search . "%")
                     //                    ->orWhere('identificacion', 'LIKE', "%" . $request->search . "%")
                 ;
@@ -100,7 +103,7 @@ class Distribucion_por_tallasController extends Controller {
     //</editor-fold>
 
     public function PerPageAndPaginate($request, $Distribucion_por_tallass) {
-        $perPage = $request->has('perPage') ? $request->perPage : 10;
+        $perPage = $request->has('perPage') ? $request->perPage : self::PER_PAGE_POR_DEFECTO;
         $page = request('page', 1); // Current page number
         $paginated = new LengthAwarePaginator(
             $Distribucion_por_tallass->forPage($page, $perPage),

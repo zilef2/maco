@@ -15,7 +15,10 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     use HasFactory;
     protected $fillable = ['nombre', 'direccion'];
 
-
+    public function ordenesProduccion()
+    {
+        return $this->hasMany(OrdenProduccion::class, 'taller_id');
+    }
 
     public static function getFillableWithTypes(): array
     {

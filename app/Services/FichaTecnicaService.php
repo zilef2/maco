@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\FichaTecnica;
 use App\Models\Material;
+use App\Models\OrdenProduccion;
 use App\Models\Producto;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -15,6 +16,9 @@ use Illuminate\Validation\ValidationException;
  */
 class FichaTecnicaService
 {
+    /** Estados de OP que todavía permiten editar la ficha del producto. */
+    public const ESTADOS_FICHA_EDITABLE = ['Borrador', 'Preparación', 'Cerrada'];
+
     public function __construct(
         protected ListaDesplegableService $listaDesplegableService
     ) {}
@@ -77,14 +81,78 @@ class FichaTecnicaService
     }
 
     /**
+     * OPs que impiden editar la ficha de un producto: cualquier OP activa
+     * (fuera de Borrador, Preparación o Cerrada).
+     *
+     * @return array<string, string> número de OP => estado
+     */
+    public function operacionesQueBloquean(int $productoId): array
+    {
+        $producto = Producto::find($productoId);
+        if (!$producto) {
+            return [];
+        }
+
+        return $producto->ordenesProduccion()
+            ->with('estadoOp:id,nombre')
+            ->get()
+            ->reject(fn ($op) => in_array($op->estadoOp?->nombre, self::ESTADOS_FICHA_EDITABLE, true))
+            ->mapWithKeys(fn ($op) => [
+                ($op->numero_op ?? $op->id) => ($op->estadoOp?->nombre ?? 'sin estado'),
+            ])
+            ->all();
+    }
+
+    /**
+     * Mapa producto_id => [número de OP => estado] con las OPs que bloquean
+     * la ficha. Se usa en el listado para no consultar producto por producto.
+     *
+     * @return array<int, array<string, string>>
+     */
+    public function bloqueosPorProducto(): array
+    {
+        $bloqueos = [];
+
+        OrdenProduccion::with(['productos:id', 'estadoOp:id,nombre'])
+            ->get()
+            ->each(function ($op) use (&$bloqueos) {
+                if (in_array($op->estadoOp?->nombre, self::ESTADOS_FICHA_EDITABLE, true)) {
+                    return;
+                }
+
+                foreach ($op->productos as $producto) {
+                    $bloqueos[$producto->id][$op->numero_op ?? $op->id] = $op->estadoOp?->nombre ?? 'sin estado';
+                }
+            });
+
+        return $bloqueos;
+    }
+
+    /**
      * Crea o actualiza la ficha con sus materiales y productos.
      * Un producto solo puede pertenecer a una ficha (ficha única por producto).
+     * No se puede modificar si el producto está en una OP activa.
      *
      * @param  array{nombre: string, productos?: array, materiales: array}  $datos
      */
     public function guardar(array $datos, ?FichaTecnica $ficha = null): FichaTecnica
     {
         $productoIds = array_map('intval', $datos['productos'] ?? []);
+
+        $bloqueos = [];
+        foreach ($productoIds as $productoId) {
+            $bloqueos += $this->operacionesQueBloquean($productoId);
+        }
+        if (!empty($bloqueos)) {
+            $detalle = collect($bloqueos)
+                ->map(fn ($estado, $numeroOp) => $numeroOp . ' (' . $estado . ')')
+                ->implode(', ');
+            throw ValidationException::withMessages([
+                'productos' => 'La ficha técnica no se puede modificar: el producto está en la OP ' . $detalle
+                    . '. Solo se permite en Borrador, Preparación o Cerrada.',
+            ]);
+        }
+
         $enOtraFicha = FichaTecnica::productosConFicha($productoIds, $ficha?->id);
         if (!empty($enOtraFicha)) {
             $nombres = Producto::whereIn('id', $enOtraFicha)->get()

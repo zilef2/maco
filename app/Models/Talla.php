@@ -15,8 +15,6 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     use HasFactory;
     protected $fillable = ['referencia', 'nombre', 'descripcion', 'tipo', 'estado'];
 
-
-
     public static function getFillableWithTypes(): array
     {
         $table = (new static)->getTable();

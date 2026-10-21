@@ -28,6 +28,13 @@ use Illuminate\Database\Eloquent\SoftDeletes;
          'fecha_regreso_real'
     ];
 
+    protected $casts = [
+        'cantidad_salida' => 'float',
+        'fecha_salida' => 'datetime',
+        'fecha_prevista_regreso' => 'date',
+        'fecha_regreso_real' => 'datetime',
+    ];
+
     public function materialOrigen(): \Illuminate\Database\Eloquent\Relations\BelongsTo
     {
         return $this->belongsTo(Material::class, 'material_origen_id');
@@ -42,8 +49,6 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     {
         return $this->belongsTo(Proveedor::class, 'proveedor_destino_id');
     }
-
-
 
     public static function getFillableWithTypes(): array
     {
