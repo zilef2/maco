@@ -5,7 +5,6 @@ namespace Alejo\Notificaciones\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
 use Alejo\Notificaciones\NotificacionesManager;
-use Illuminate\Support\Facades\DB;
 
 class NotificacionController extends Controller
 {
@@ -44,17 +43,7 @@ class NotificacionController extends Controller
 
     public function marcarTodas(Request $request)
     {
-        $usuarioId = $request->user()?->id;
-
-        DB::table('notificaciones')
-            ->where('leida', false)
-            ->when($usuarioId, function ($query, $usuarioId) {
-                return $query->where(function ($q) use ($usuarioId) {
-                    $q->where('user_id', $usuarioId)
-                      ->orWhereNull('user_id');
-                });
-            })
-            ->update(['leida' => true]);
+        $this->manager->marcarTodas($request->user()?->id);
 
         return response()->json(['success' => true]);
     }

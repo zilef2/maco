@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Distribucion_por_tallas;
 use App\Models\CierreOrdenProduccion;
+use App\Models\CompromisoReparacion;
 use App\Models\GrupoTalla;
 use App\Models\KitProceso;
 use App\Models\Material;
@@ -49,10 +50,10 @@ class OrdenProduccionController extends Controller {
 
         // Listado completo: la tabla filtra, ordena y pagina en el frontend.
         // La clave solo depende de la versión, que se incrementa al escribir.
-        $claveListado = 'op_index_v6_' . $this->versionCache();
+        $claveListado = 'op_index_v7_' . $this->versionCache();
         $OrdenProduccions = Cache::remember($claveListado, now()->addMinutes(10), function () {
             return OrdenProduccion::query()
-                ->with(['productoReferencia', 'taller', 'empresaExterna', 'estadoOp', 'responsable', 'distribucionesPorTallas.producto', 'productos', 'recepcionesCalidad', 'kitProcesos.material', 'procesosExternos.materialOrigen', 'procesosExternos.proveedorDestino', 'cierres'])
+                ->with(['productoReferencia', 'taller', 'empresaExterna', 'estadoOp', 'responsable', 'distribucionesPorTallas.producto', 'productos', 'recepcionesCalidad', 'compromisosReparacion', 'kitProcesos.material', 'procesosExternos.materialOrigen', 'procesosExternos.proveedorDestino', 'cierres'])
                 ->orderByDesc('updated_at')
                 ->get()
                 ->map(function ($op) {
@@ -129,6 +130,18 @@ class OrdenProduccionController extends Controller {
                             ? substr((string) $r->fecha_recepcion, 0, 10)
                             : null,
                     ])->values()->all();
+
+                    // Compromisos de reparación sin resolver: precargan la
+                    // fecha de compromiso pendiente en el formulario de recepción.
+                    $op->compromisos_detalle = $op->compromisosReparacion
+                        ->reject(fn ($c) => $c->atendido)
+                        ->map(fn ($c) => [
+                            'id'                     => $c->id,
+                            'producto_id'            => $c->producto_referencia_id,
+                            'talla'                  => $c->talla,
+                            'cantidad_en_reparacion' => $c->cantidad_en_reparacion,
+                            'fecha_compromiso'       => $c->fecha_compromiso?->toDateString(),
+                        ])->values()->all();
 
                     // Procesos externos que todavía no han regresado: se usan
                     // al pasar la OP a "Lista para taller".
@@ -787,8 +800,10 @@ class OrdenProduccionController extends Controller {
      * reparación + no recuperable debe cuadrar con esa cantidad (esa suma es la
      * cantidad recibida).
      *
-     * Si la suma de pares en reparación queda en cero, la OP pasa
-     * automáticamente a "Pendiente" en la misma operación.
+     * "Cerrada" no se elige a mano: cuando la recepción deja cada talla completa
+     * y sin pares en reparación, el sistema cierra la OP en la misma operación.
+     * Cada talla que queda en reparación exige su fecha de compromiso pendiente
+     * y genera los avisos programados (dos días antes y el día del compromiso).
      */
     /** Único par de estados que puede coexistir en una OP al mismo tiempo. */
     private const PAR_COEXISTENCIA = ['Esperando materiales', 'Procesos externos'];
@@ -803,6 +818,7 @@ class OrdenProduccionController extends Controller {
             'recepciones.*.cantidad_aprobada' => ['nullable', 'integer', 'min:0'],
             'recepciones.*.cantidad_en_reparacion' => ['nullable', 'integer', 'min:0'],
             'recepciones.*.cantidad_no_recuperable' => ['nullable', 'integer', 'min:0'],
+            'recepciones.*.fecha_compromiso' => ['nullable', 'date'],
             'proceso_externo' => ['nullable', 'array'],
             'proceso_externo.proveedor_destino_id' => ['nullable', 'integer', 'exists:proveedors,id'],
             'proceso_externo.etapa_componente' => ['nullable', 'string', 'max:255'],
@@ -911,22 +927,16 @@ class OrdenProduccionController extends Controller {
             ]);
         }
 
-        // Si no quedó ningún par en reparación, "Recibiendo" pasa solo a
-        // "Pendiente"; un estado elegido explícitamente (p. ej. "Cerrada") no
-        // se sobrescribe.
+        // Con todas las tallas completas y sin pares en reparación la OP ya no
+        // tiene nada pendiente: el sistema la cierra, sin que el usuario elija
+        // "Cerrada".
         $estadoFinal = $nuevoEstado;
-        $pasaAPendiente = false;
-        if ($esRecepcion && $nuevoEstado?->nombre === 'Recibiendo' && $totalEnReparacion === 0) {
-            $estadoPendiente = EstadoOperacion::where('nombre', 'Pendiente')->first();
-            $puedePasarAPendiente = $estadoPendiente
-                && (
-                    (int) $estadoPendiente->id === (int) $OrdenProduccion->estado_op_id
-                    || in_array((int) $estadoPendiente->id, $permitidos, true)
-                );
-
-            if ($puedePasarAPendiente) {
-                $estadoFinal = $estadoPendiente;
-                $pasaAPendiente = true;
+        $seCierraAutomatica = false;
+        if ($esRecepcion && $nuevoEstado?->nombre === 'Recibiendo' && $this->recepcionCompleta($recepciones)) {
+            $estadoCerrada = EstadoOperacion::where('nombre', 'Cerrada')->first();
+            if ($estadoCerrada) {
+                $estadoFinal = $estadoCerrada;
+                $seCierraAutomatica = true;
             }
         }
 
@@ -935,6 +945,7 @@ class OrdenProduccionController extends Controller {
         $recepcionesGeneradas = 0;
         $procesosCreados = 0;
         $materialesDescontados = 0;
+        $compromisosAvisados = 0;
 
         // Entrar a "En taller" saca el kit de bodega: se descuenta inventario
         // una sola vez (reenviar el mismo estado no vuelve a restar).
@@ -958,7 +969,10 @@ class OrdenProduccionController extends Controller {
 
             if (!empty($faltantes)) {
                 return back()->withErrors([
-                    'cierre' => 'Complete el cierre antes de cerrar la OP: falta ' . implode(', ', $faltantes) . '.',
+                    'cierre' => ($seCierraAutomatica
+                        ? 'La recepción quedó completa y la OP se cerrará: registre el cierre, falta '
+                        : 'Complete el cierre antes de cerrar la OP: falta ')
+                        . implode(', ', $faltantes) . '.',
                 ]);
             }
         }
@@ -1005,7 +1019,8 @@ class OrdenProduccionController extends Controller {
             $cierreDatos,
             &$recepcionesGeneradas,
             &$procesosCreados,
-            &$materialesDescontados
+            &$materialesDescontados,
+            &$compromisosAvisados
         ) {
             if ($entraEnTaller) {
                 $materialesDescontados = $this->descontarMaterialesTaller($OrdenProduccion);
@@ -1035,6 +1050,7 @@ class OrdenProduccionController extends Controller {
 
             if (!empty($recepciones)) {
                 $recepcionesGeneradas = RecepcionCalidad::generarDesdeOrden($OrdenProduccion, $recepciones, $fechaRecepcion);
+                $compromisosAvisados = $this->registrarCompromisosReparacion($OrdenProduccion, $recepciones);
             }
 
             if ($entraProcesoExterno) {
@@ -1092,7 +1108,7 @@ class OrdenProduccionController extends Controller {
         $this->invalidarCache();
 
         $identificador = $OrdenProduccion->numero_op ?? $OrdenProduccion->id;
-        Myhelp::EscribirEnLog($this, 'CAMBIAR-ESTADO:OrdenProduccions', 'OrdenProduccion id:' . $OrdenProduccion->id . ' | ' . $identificador . ' | ' . ($estadoActual?->nombre ?? '?') . ' -> ' . ($estadoFinalNombre ?? '?') . ($pasaAPendiente ? ' (automático)' : ''), false);
+        Myhelp::EscribirEnLog($this, 'CAMBIAR-ESTADO:OrdenProduccions', 'OrdenProduccion id:' . $OrdenProduccion->id . ' | ' . $identificador . ' | ' . ($estadoActual?->nombre ?? '?') . ' -> ' . ($estadoFinalNombre ?? '?') . ($seCierraAutomatica ? ' (cierre automático)' : ''), false);
 
         $mensaje = __('app.label.updated_successfully2', ['nombre' => $identificador]);
         if ($recepcionesGeneradas > 0) {
@@ -1105,10 +1121,13 @@ class OrdenProduccionController extends Controller {
             $mensaje .= ' Se descontaron ' . $materialesDescontados . ' materiales del inventario para el taller.';
         }
         if ($esCierre) {
-            $mensaje .= ' La OP quedó cerrada con su cierre registrado.';
+            $mensaje .= $seCierraAutomatica
+                ? ' La recepción quedó completa: la OP se cerró automáticamente con su cierre registrado.'
+                : ' La OP quedó cerrada con su cierre registrado.';
         }
-        if ($pasaAPendiente) {
-            $mensaje .= ' La OP pasó automáticamente a «Pendiente» porque no quedaron pares en reparación.';
+        if ($compromisosAvisados > 0) {
+            $mensaje .= ' Se crearon los avisos de ' . $compromisosAvisados
+                . ' fecha(s) de compromiso pendiente.';
         }
 
         return back()->with('success', $mensaje);
@@ -1341,12 +1360,20 @@ class OrdenProduccionController extends Controller {
             $aprobada = (int) ($fila['cantidad_aprobada'] ?? 0);
             $reparacion = (int) ($fila['cantidad_en_reparacion'] ?? 0);
             $noRecuperable = (int) ($fila['cantidad_no_recuperable'] ?? 0);
+            $fechaCompromiso = $fila['fecha_compromiso'] ?? null;
             $suma = $aprobada + $reparacion + $noRecuperable;
             $esperada = (int) $distribucion->cantidad_planificada;
 
             if ($suma > $esperada) {
                 throw ValidationException::withMessages([
                     'recepciones' => "Talla {$distribucion->talla}: la suma ({$suma}) supera la cantidad esperada ({$esperada}).",
+                ]);
+            }
+
+            // Lo que se va a reparación necesita una fecha de compromiso pendiente.
+            if ($reparacion > 0 && empty($fechaCompromiso)) {
+                throw ValidationException::withMessages([
+                    'recepciones' => "Talla {$distribucion->talla}: indique la fecha de compromiso pendiente para los {$reparacion} par(es) en reparación.",
                 ]);
             }
 
@@ -1366,6 +1393,7 @@ class OrdenProduccionController extends Controller {
                 'cantidad_aprobada' => $aprobada,
                 'cantidad_en_reparacion' => $reparacion,
                 'cantidad_no_recuperable' => $noRecuperable,
+                'fecha_compromiso' => $fechaCompromiso ?: null,
             ];
         }
 
@@ -1378,6 +1406,105 @@ class OrdenProduccionController extends Controller {
         }
 
         return array_values($normalizadas);
+    }
+
+    /**
+     * La recepción está completa cuando cada talla registró exactamente lo
+     * esperado y no quedó ningún par en reparación: ya no hay nada pendiente
+     * del taller, así que la OP se puede cerrar.
+     */
+    private function recepcionCompleta(array $recepciones): bool {
+        if (empty($recepciones)) {
+            return false;
+        }
+
+        foreach ($recepciones as $fila) {
+            if ((int) ($fila['cantidad_en_reparacion'] ?? 0) > 0) {
+                return false;
+            }
+
+            if ((int) ($fila['cantidad_recibida'] ?? 0) !== (int) ($fila['cantidad_esperada'] ?? 0)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Lleva los compromisos de reparación de la OP: cada talla que queda en
+     * reparación abre un episodio con su fecha de compromiso pendiente y cada
+     * episodio nuevo (o con fecha cambiada) deja dos avisos programados.
+     * Cuando la talla se queda sin pares en reparación, su episodio abierto
+     * se marca como atendido.
+     *
+     * @return int cantidad de compromisos avisados
+     */
+    private function registrarCompromisosReparacion(OrdenProduccion $orden, array $recepciones): int {
+        $avisos = 0;
+
+        foreach ($recepciones as $fila) {
+            $enReparacion = (int) ($fila['cantidad_en_reparacion'] ?? 0);
+            $productoId = $fila['producto_id'] ? (int) $fila['producto_id'] : null;
+            $compromiso = CompromisoReparacion::abiertoPorTalla((int) $orden->id, $fila['talla'], $productoId);
+
+            if ($enReparacion === 0) {
+                $compromiso?->update(['atendido' => true]);
+                continue;
+            }
+
+            $nuevo = $compromiso === null;
+            $cambioFecha = ! $nuevo
+                && $compromiso->fecha_compromiso?->toDateString() !== (string) $fila['fecha_compromiso'];
+
+            $datos = [
+                'orden_produccion_id'    => $orden->id,
+                'producto_referencia_id' => $productoId,
+                'talla'                  => $fila['talla'],
+                'cantidad_en_reparacion' => $enReparacion,
+                'fecha_compromiso'       => $fila['fecha_compromiso'],
+                'atendido'               => false,
+            ];
+
+            if ($nuevo) {
+                $compromiso = CompromisoReparacion::create($datos);
+            } else {
+                $compromiso->update($datos);
+            }
+
+            if ($nuevo || $cambioFecha) {
+                $this->avisarCompromisoReparacion($orden, $compromiso);
+                $avisos++;
+            }
+        }
+
+        return $avisos;
+    }
+
+    /**
+     * Un aviso dos días antes del compromiso y otro el día del compromiso.
+     */
+    private function avisarCompromisoReparacion(OrdenProduccion $orden, CompromisoReparacion $compromiso): void {
+        $identificador = $orden->numero_op ?? ('OP #' . $orden->id);
+        $detalle = $compromiso->cantidad_en_reparacion . ' par(es) en reparación'
+            . ($compromiso->talla ? ' (talla ' . $compromiso->talla . ')' : '');
+        $vencimiento = $compromiso->fecha_compromiso->toDateString();
+        $recordatorio = $compromiso->fecha_compromiso->copy()->subDays(2)->toDateString();
+
+        $notificaciones = app(\Alejo\Notificaciones\NotificacionesManager::class);
+        $notificaciones->crear(
+            $identificador . ': faltan 2 días para el compromiso de reparación — ' . $detalle
+                . '. Fecha comprometida: ' . $vencimiento . '.',
+            'media',
+            $orden->user_id,
+            $recordatorio
+        );
+        $notificaciones->crear(
+            $identificador . ': vence hoy el compromiso de reparación — ' . $detalle . '.',
+            'alta',
+            $orden->user_id,
+            $vencimiento
+        );
     }
 
     public function syncDistribucion(Request $request, $id): RedirectResponse {

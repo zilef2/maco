@@ -230,7 +230,7 @@ const tieneFaltantes = (op: any): boolean =>
 // Los faltantes solo se vigilan antes de que el material salga al taller:
 // desde "En taller" el inventario ya se descontó y la comparación dejaría
 // de reflejar una necesidad real de compra.
-const ESTADOS_SIN_FALTANTES = ['En taller', 'Recibiendo', 'Pendiente', 'Terminada', 'Cerrada'];
+const ESTADOS_SIN_FALTANTES = ['En taller', 'Recibiendo', 'Terminada', 'Cerrada'];
 const faltantesVigentes = (op: any): boolean =>
     tieneFaltantes(op) && !ESTADOS_SIN_FALTANTES.some((nombre) => estadoCoincide(op, nombre));
 
@@ -481,8 +481,8 @@ const guiaEstados = computed(() =>
 );
 
 // Estados que muestran información adicional al hacer clic. El resto
-// (Borrador, Procesos externos, Lista para taller, En taller, Pendiente,
-// Cerrada) no tiene detalle y su vínculo queda deshabilitado.
+// (Borrador, Procesos externos, Lista para taller, En taller, Cerrada)
+// no tiene detalle y su vínculo queda deshabilitado.
 const ESTADOS_CON_DETALLE = ['Preparación', 'Esperando materiales', 'Recibiendo'];
 const estadoConDetalle = (nombre: string | null | undefined) =>
     ESTADOS_CON_DETALLE.includes(String(nombre ?? ''));

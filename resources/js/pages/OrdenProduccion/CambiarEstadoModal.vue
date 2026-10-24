@@ -171,14 +171,15 @@ const itemsProcesoSeleccionados = computed(() =>
 
 // Una OP no puede cerrarse mientras queden pares en reparación.
 const destinoEsCerrada = computed(() =>
-    form.estado_op_id !== ''
-        ? estadoSeleccionado.value?.name === 'Cerrada'
-        : estadoActual.value?.name === 'Cerrada'
+    form.estado_op_id !== '' && estadoSeleccionado.value?.name === 'Cerrada'
 );
 
 // ── Cierre de la OP ──────────────────────────────────────────────────────
-// Solo cuando se selecciona «Cerrada» como nuevo estado (no al abrir una OP ya cerrada).
-const mostrarCierre = computed(() => estadoSeleccionado.value?.name === 'Cerrada');
+// El cierre se pide al elegir «Cerrada» y también cuando la recepción queda
+// completa: en ambos casos hay que conciliar antes de guardar.
+const mostrarCierre = computed(() =>
+    estadoSeleccionado.value?.name === 'Cerrada' || seCierraAutomatica.value
+);
 
 const avanceGuardado = ref(false);
 const avanceRecepcionGuardado = ref(false);
@@ -386,7 +387,17 @@ const tallasOp = computed(() =>
 
 const claveRecepcion = (productoId: any, talla: any) => `${productoId ?? ''}|${talla ?? ''}`;
 
-const nuevaFila = (talla: any, existente?: any) => ({
+// Compromiso de reparación sin resolver de cada talla: precarga la fecha
+// de compromiso pendiente que ya estaba pactada.
+const compromisosAbiertos = computed(() => {
+    const abiertos = new Map<string, any>();
+    for (const compromiso of ((props.op as any)?.compromisos_detalle || [])) {
+        abiertos.set(claveRecepcion(compromiso.producto_id, compromiso.talla), compromiso);
+    }
+    return abiertos;
+});
+
+const nuevaFila = (talla: any, existente?: any, compromiso?: any) => ({
     distribucion_id: talla.distribucion_id,
     talla: talla.talla,
     esperada: talla.esperada,
@@ -395,6 +406,7 @@ const nuevaFila = (talla: any, existente?: any) => ({
     cantidad_aprobada: (existente?.cantidad_aprobada ?? null) as number | null,
     cantidad_en_reparacion: (existente?.cantidad_en_reparacion ?? null) as number | null,
     cantidad_no_recuperable: (existente?.cantidad_no_recuperable ?? null) as number | null,
+    fecha_compromiso: (compromiso?.fecha_compromiso ?? '') as string,
 });
 
 // Cruza las tallas de la OP con la recepción ya registrada, para que al abrir
@@ -405,9 +417,10 @@ const filasRecepcion = computed(() => {
         existentes.set(claveRecepcion(recepcion.producto_id, recepcion.talla), recepcion);
     }
 
-    return tallasOp.value.map((talla: any) =>
-        nuevaFila(talla, existentes.get(claveRecepcion(talla.producto_id, talla.talla)))
-    );
+    return tallasOp.value.map((talla: any) => {
+        const clave = claveRecepcion(talla.producto_id, talla.talla);
+        return nuevaFila(talla, existentes.get(clave), compromisosAbiertos.value.get(clave));
+    });
 });
 
 const fechaRecepcionInicial = () => {
@@ -527,6 +540,9 @@ const puedeGuardar = computed(() => {
 
     if (mostrarTablaRecepcion.value && !form.fecha_recepcion) return false;
 
+    // Toda talla con pares en reparación necesita su fecha de compromiso.
+    if (faltanFechasCompromiso.value) return false;
+
     if (!mostrarTablaRecepcion.value) return true;
     if (!form.recepciones.length) return true;
     return filasListas.value && !clavesDuplicadas.value.length;
@@ -578,9 +594,22 @@ const destinoEsRecibiendo = computed(() =>
         : estadoActual.value?.name === 'Recibiendo'
 );
 
-const pasaraAPendiente = computed(() =>
-    mostrarTablaRecepcion.value
-    && destinoEsRecibiendo.value
+// Cada talla que se va a reparación deja un compromiso pendiente con fecha.
+const filasConReparacion = computed(() =>
+    form.recepciones.filter((fila: any) => (numeroONulo(fila.cantidad_en_reparacion) ?? 0) > 0)
+);
+
+const faltanFechasCompromiso = computed(() =>
+    filasConReparacion.value.filter((fila: any) => !fila.fecha_compromiso).length
+);
+
+// Cuando cada talla cuadró con lo esperado y no quedó nada en reparación, la OP
+// ya no tiene pendientes: el sistema la cierra al guardar (el usuario no elige
+// «Cerrada»).
+const seCierraAutomatica = computed(() =>
+    destinoEsRecibiendo.value
+    && form.recepciones.length > 0
+    && filasListas.value
     && totalEnReparacion.value === 0
 );
 
@@ -602,6 +631,7 @@ const guardar = () => {
                 cantidad_aprobada: numeroONulo(fila.cantidad_aprobada),
                 cantidad_en_reparacion: numeroONulo(fila.cantidad_en_reparacion),
                 cantidad_no_recuperable: numeroONulo(fila.cantidad_no_recuperable),
+                fecha_compromiso: fila.fecha_compromiso || null,
             })),
             proceso_externo: mostrarProcesoExterno.value ? {
                 proveedor_destino_id: datos.proceso_externo.proveedor_destino_id,
@@ -667,7 +697,9 @@ watch(() => props.show, (visible) => {
                     <InputLabel value="Nuevo estado" />
 
                     <p v-if="!opcionesPermitidas.length" class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                        Este estado es final: no admite transiciones.
+                        {{ estadoActual?.name === 'Recibiendo'
+                            ? 'Aquí se actualiza la recepción de calidad. La OP se cierra sola cuando cada talla cuadra con lo esperado y no quedan pares en reparación.'
+                            : 'Este estado es final: no admite transiciones.' }}
                     </p>
 
                     <div v-else class="mt-2 space-y-3">
@@ -843,18 +875,20 @@ watch(() => props.show, (visible) => {
                         <p class="mt-1 text-xs text-indigo-800/80 dark:text-indigo-200/80">
                             Registre por talla las cantidades aprobadas, en reparación y no recuperables.
                             La suma de las tres debe ser igual a la cantidad esperada de cada talla.
+                            Las tallas con pares en reparación exigen su fecha de compromiso pendiente.
                         </p>
                         <p
-                            v-if="pasaraAPendiente"
+                            v-if="seCierraAutomatica"
                             class="mt-2 inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300"
                         >
-                            Sin pares en reparación: la OP pasará a «Pendiente» al guardar.
+                            Recepción completa y sin pares en reparación: la OP se cierra al guardar.
                         </p>
                         <p
-                            v-else-if="destinoEsRecibiendo"
+                            v-else-if="filasConReparacion.length"
                             class="mt-2 inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800 dark:bg-amber-500/15 dark:text-amber-300"
                         >
-                            Quedan pares en reparación: la OP quedará en «Recibiendo».
+                            Quedan {{ totalEnReparacion }} {{ totalEnReparacion === 1 ? 'par' : 'pares' }}
+                            en reparación: la OP seguirá en «Recibiendo» hasta que se cumpla el compromiso.
                         </p>
                     </div>
 
@@ -876,16 +910,17 @@ watch(() => props.show, (visible) => {
 
                     <div class="mt-3 overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
                         <div class="overflow-x-auto">
-                            <table class="w-full min-w-[820px] text-sm">
+                            <table class="w-full min-w-[980px] text-sm">
                                 <thead>
                                     <tr class="border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-400">
                                         <th scope="col" class="px-3 py-2 font-semibold">Producto</th>
-                                        <th scope="col" class="w-28 px-3 py-2 font-semibold">Talla</th>
+                                        <th scope="col" class="w-24 px-3 py-2 font-semibold">Talla</th>
                                         <th scope="col" class="w-20 px-3 py-2 text-right font-semibold">Esperada</th>
                                         <th scope="col" class="w-24 px-3 py-2 font-semibold">Aprobada</th>
                                         <th scope="col" class="w-24 px-3 py-2 font-semibold">En reparación</th>
                                         <th scope="col" class="w-24 px-3 py-2 font-semibold">No recuperable</th>
                                         <th scope="col" class="w-20 px-3 py-2 text-right font-semibold">Recibida</th>
+                                        <th scope="col" class="w-40 px-3 py-2 font-semibold">Compromiso pendiente</th>
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-gray-100 dark:divide-gray-700/60">
@@ -940,10 +975,19 @@ watch(() => props.show, (visible) => {
                                                 {{ sumaFila(fila) }}
                                             </span>
                                         </td>
+                                        <td class="px-3 py-2">
+                                            <TextInput
+                                                type="date"
+                                                class="block h-9 w-36 px-2 text-xs tabular-nums disabled:cursor-not-allowed disabled:bg-gray-100 disabled:text-gray-400 dark:disabled:bg-gray-800/60"
+                                                v-model="fila.fecha_compromiso"
+                                                :disabled="(numeroONulo(fila.cantidad_en_reparacion) ?? 0) === 0"
+                                                :aria-label="`Fecha de compromiso pendiente talla ${fila.talla}`"
+                                            />
+                                        </td>
                                     </tr>
 
                                     <tr v-if="!form.recepciones.length">
-                                        <td colspan="7" class="px-3 py-6 text-center text-sm text-gray-500 dark:text-gray-400">
+                                        <td colspan="8" class="px-3 py-6 text-center text-sm text-gray-500 dark:text-gray-400">
                                             Esta OP no tiene tallas distribuidas, así que no se generarán
                                             registros de recepción.
                                         </td>
@@ -973,6 +1017,11 @@ watch(() => props.show, (visible) => {
                             </p>
                             <p v-else-if="!filasListas" class="text-amber-600 dark:text-amber-400">
                                 Puede guardar avance o completar las cantidades para enviar.
+                            </p>
+                            <p v-else-if="faltanFechasCompromiso" class="text-amber-600 dark:text-amber-400">
+                                Faltan {{ faltanFechasCompromiso }}
+                                {{ faltanFechasCompromiso === 1 ? 'fecha' : 'fechas' }}
+                                de compromiso pendiente.
                             </p>
                             <span v-if="avanceRecepcionGuardado" class="text-xs font-medium text-emerald-700 dark:text-emerald-300">
                                 Avance guardado

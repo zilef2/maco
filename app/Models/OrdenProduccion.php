@@ -100,6 +100,14 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     }
 
     /**
+     * Fechas de compromiso pendiente: un registro por episodio de reparación.
+     */
+    public function compromisosReparacion()
+    {
+        return $this->hasMany(CompromisoReparacion::class, 'orden_produccion_id');
+    }
+
+    /**
      * Kits de materiales generados desde la ficha técnica de los productos.
      */
     public function kitProcesos()

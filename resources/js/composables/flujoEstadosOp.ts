@@ -14,7 +14,6 @@ export const ORDEN_FLUJO = [
     'Lista para taller',
     'En taller',
     'Recibiendo',
-    'Pendiente',
     'Cerrada',
 ] as const;
 
@@ -40,6 +39,3 @@ export const sePuedeEditarPlan = (...nombres: unknown[]): boolean =>
         if (!texto) return true;
         return ORDEN_FLUJO.indexOf(texto as NombreEstadoFlujo) < rangoFlujo(ESTADO_CONGELA_PLAN);
     });
-
-/** Etiqueta «Avance» / «Retroceso» de una transición respecto al estado actual. */
-export const esAvance = (desde: unknown, hacia: unknown): boolean => rangoFlujo(hacia) > rangoFlujo(desde);

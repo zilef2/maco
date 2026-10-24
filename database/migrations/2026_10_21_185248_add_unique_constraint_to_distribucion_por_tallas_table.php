@@ -11,10 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('distribucion_por_tallas', function (Blueprint $table) {
+        // Schema::table('distribucion_por_tallas', function (Blueprint $table) {
             // Agregar restricción única para evitar duplicados de la misma talla
-            $table->unique('talla');
-        });
+            // $table->unique('talla');
+        // });
     }
 
     /**
@@ -22,9 +22,9 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('distribucion_por_tallas', function (Blueprint $table) {
+        // Schema::table('distribucion_por_tallas', function (Blueprint $table) {
             // Eliminar la restricción única
-            $table->dropUnique('distribucion_por_tallas_talla_unique');
-        });
+            // $table->dropUnique('distribucion_por_tallas_talla_unique');
+        // });
     }
 };

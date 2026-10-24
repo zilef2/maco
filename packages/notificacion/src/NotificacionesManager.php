@@ -35,7 +35,7 @@ class NotificacionesManager
         return $this->crear($mensaje, $prioridad, $userId);
     }
 
-    public function crear(string $mensaje, string $prioridad = 'baja', ?int $userId = null): object
+    public function crear(string $mensaje, string $prioridad = 'baja', ?int $userId = null, ?string $fechaProgramada = null): object
     {
         $targetUser = $userId ?? $this->targetUserId;
         $prioridadNormalizada = match (strtolower($prioridad)) {
@@ -50,6 +50,7 @@ class NotificacionesManager
             'user_id'    => $targetUser,
             'mensaje'    => $mensaje,
             'prioridad'  => $prioridadNormalizada,
+            'fecha_programada' => $fechaProgramada,
             'leida'      => false,
             'created_at' => now(),
             'updated_at' => now(),
@@ -58,16 +59,28 @@ class NotificacionesManager
         return DB::table($this->table)->find($id);
     }
 
+    /**
+     * Una notificación programada para una fecha futura todavía no es visible:
+     * aparece el día indicado.
+     */
+    protected function vigentes($consulta)
+    {
+        return $consulta->where(function ($q) {
+            $q->whereNull('fecha_programada')
+              ->orWhereDate('fecha_programada', '<=', now()->toDateString());
+        });
+    }
+
     public function noLeidas(?int $userId = null): \Illuminate\Support\Collection
     {
-        return DB::table($this->table)
+        return $this->vigentes(DB::table($this->table)
             ->where('leida', false)
             ->when($userId, function ($query, $userId) {
                 return $query->where(function ($q) use ($userId) {
                     $q->where('user_id', $userId)
                       ->orWhereNull('user_id');
                 });
-            })
+            }))
             ->orderByRaw("CASE WHEN prioridad = 'alta' THEN 1 WHEN prioridad = 'media' THEN 2 ELSE 3 END")
             ->orderByDesc('created_at')
             ->get();
@@ -80,16 +93,29 @@ class NotificacionesManager
             ->update(['leida' => true]);
     }
 
-    public function todasLeidas(?int $userId = null): bool
+    public function marcarTodas(?int $userId = null): bool
     {
-        return DB::table($this->table)
+        return (bool) $this->vigentes(DB::table($this->table)
             ->where('leida', false)
             ->when($userId, function ($query, $userId) {
                 return $query->where(function ($q) use ($userId) {
                     $q->where('user_id', $userId)
                       ->orWhereNull('user_id');
                 });
-            })
+            }))
+            ->update(['leida' => true]);
+    }
+
+    public function todasLeidas(?int $userId = null): bool
+    {
+        return $this->vigentes(DB::table($this->table)
+            ->where('leida', false)
+            ->when($userId, function ($query, $userId) {
+                return $query->where(function ($q) use ($userId) {
+                    $q->where('user_id', $userId)
+                      ->orWhereNull('user_id');
+                });
+            }))
             ->doesNotExist();
     }
 }
