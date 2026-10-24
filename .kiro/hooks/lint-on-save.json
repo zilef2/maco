@@ -1,0 +1,14 @@
+{
+  "version": "v1",
+  "hooks": [
+    {
+      "name": "Lint on Save",
+      "trigger": "PreToolUse",
+      "description": "Create migration for unique constraint on talla column",
+      "action": {
+        "type": "command",
+        "command": "cd c:\\laragon\\www\\maco && php artisan make:migration add_unique_constraint_to_distribucion_por_tallas_table --table=distribucion_por_tallas"
+      }
+    }
+  ]
+}

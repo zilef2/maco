@@ -17,8 +17,9 @@ import SacarMaterialesModal from '@/pages/ProcesoExterno/SacarMaterialesModal.vu
 import {
     ArrowDownTrayIcon,
     ArrowPathIcon,
-    ArrowUpTrayIcon,
     ArrowUturnLeftIcon,
+    ChartBarIcon,
+    CheckCircleIcon,
     ChevronDoubleLeftIcon,
     ChevronDoubleRightIcon,
     ChevronDownIcon,
@@ -26,14 +27,17 @@ import {
     ChevronRightIcon,
     ChevronUpDownIcon,
     ChevronUpIcon,
+    ClipboardDocumentCheckIcon,
     ClipboardDocumentListIcon,
+    CubeIcon,
     EllipsisVerticalIcon,
+    ExclamationTriangleIcon,
     FunnelIcon,
     MagnifyingGlassIcon,
     PencilIcon,
     PlusIcon,
-    SquaresPlusIcon,
     TrashIcon,
+    WrenchScrewdriverIcon,
     XMarkIcon,
 } from '@heroicons/vue/24/solid';
 
@@ -186,7 +190,7 @@ const collator = new Intl.Collator('es', { numeric: true, sensitivity: 'base' })
 const valorOrden = (op: any, key: string): any => {
     switch (key) {
         case 'producto':
-            return op.producto_nombre ?? '';
+            return nombreProductoOp(op);
         case 'taller':
             return (op.taller_nombre || op.empresa_externa_nombre) ?? '';
         case 'estado':
@@ -214,6 +218,56 @@ const ordenadas = computed(() => {
         if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
         return collator.compare(String(va), String(vb)) * dir;
     });
+});
+
+const estadoCoincide = (op: any, nombre: string): boolean =>
+    normalizar(op?.estado_nombre) === normalizar(nombre)
+    || normalizar(op?.estado_secundario_nombre) === normalizar(nombre);
+
+const tieneFaltantes = (op: any): boolean =>
+    Array.isArray(op?.materiales_faltantes) && op.materiales_faltantes.length > 0;
+
+// Los faltantes solo se vigilan antes de que el material salga al taller:
+// desde "En taller" el inventario ya se descontó y la comparación dejaría
+// de reflejar una necesidad real de compra.
+const ESTADOS_SIN_FALTANTES = ['En taller', 'Recibiendo', 'Pendiente', 'Terminada', 'Cerrada'];
+const faltantesVigentes = (op: any): boolean =>
+    tieneFaltantes(op) && !ESTADOS_SIN_FALTANTES.some((nombre) => estadoCoincide(op, nombre));
+
+const etiquetaOp = (op: any): string => op?.numero_op || (op?.id ? `OP #${op.id}` : 'OP');
+
+// Las fechas sin hora llegan como "YYYY-MM-DD" (o medianoche UTC). Si se
+// convierten directo, en Colombia se muestran un día antes.
+const formatFecha = (valor: any): string => {
+    if (!valor) return '';
+    const texto = String(valor);
+    const soloFecha = texto.match(/^(\d{4}-\d{2}-\d{2})(?:[T ]00:00:00(?:\.\d+)?Z?)?$/);
+    return formatDate(soloFecha ? new Date(`${soloFecha[1]}T12:00:00`) : texto);
+};
+
+const opsConFaltantes = computed(() => ordenadas.value.filter(faltantesVigentes));
+const opsEnTaller = computed(() => ordenadas.value.filter((op: any) => estadoCoincide(op, 'En taller')));
+const opsRecibiendo = computed(() => ordenadas.value.filter((op: any) => estadoCoincide(op, 'Recibiendo')));
+const opsSinFaltantes = computed(() => ordenadas.value.length - opsConFaltantes.value.length);
+const totalUnidades = computed(() =>
+    ordenadas.value.reduce((total: number, op: any) => total + (Number(op.cantidad_planificada) || 0), 0),
+);
+
+const resumenEstados = computed(() => {
+    const conteos = new Map<number, number>();
+    ordenadas.value.forEach((op: any) => {
+        // Una OP en coexistencia ("Esperando materiales" + "Procesos externos")
+        // cuenta bajo ambos estados.
+        [op.estado_op_id, op.estado_op_secundario_id].forEach((rawId: any) => {
+            const id = Number(rawId);
+            if (!id) return;
+            conteos.set(id, (conteos.get(id) ?? 0) + 1);
+        });
+    });
+
+    return estadosDisponibles.value
+        .map((estado) => ({ ...estado, count: conteos.get(estado.id) ?? 0 }))
+        .filter((estado) => estado.count > 0);
 });
 
 const totalFiltrado = computed(() => ordenadas.value.length);
@@ -439,6 +493,7 @@ const columnas = [
     { key: 'cantidad_planificada', label: 'Cantidad', sortable: true, align: 'right', headerClass: 'w-[100px]', cellClass: 'w-[100px]' },
     { key: 'taller', label: 'Envío taller', sortable: true, align: 'left', headerClass: 'hidden min-w-[150px] md:table-cell', cellClass: 'hidden min-w-[150px] md:table-cell' },
     { key: 'estado', label: 'Estado', sortable: true, align: 'left', headerClass: 'min-w-[150px]', cellClass: 'min-w-[150px]' },
+    { key: 'contexto', label: '-', sortable: false, align: 'left', headerClass: 'min-w-[160px]', cellClass: 'min-w-[160px]' },
     { key: 'responsable', label: 'Responsable', sortable: true, align: 'left', headerClass: 'hidden min-w-[120px] lg:table-cell', cellClass: 'hidden min-w-[120px] lg:table-cell' },
     { key: 'observaciones', label: 'Observaciones', sortable: false, align: 'left', headerClass: 'hidden min-w-[200px] 2xl:table-cell', cellClass: 'hidden min-w-[200px] 2xl:table-cell' },
 ] as const;
@@ -502,10 +557,6 @@ const accionesFila = computed(() => {
     if (puede(['update OrdenProduccion'])) {
         arr.push({ id: 'edit', label: 'Editar', icon: PencilIcon });
     }
-    if (puede(['create KitProceso'])) {
-        arr.push({ id: 'kit', label: 'Kit taller / Importar Excel', icon: ArrowUpTrayIcon });
-    }
-    arr.push({ id: 'tallas', label: 'Editar tallas', icon: SquaresPlusIcon });
     if (puede(['create ProcesoExterno'])) {
         arr.push({
             id: 'salida',
@@ -544,6 +595,15 @@ const onAccionFila = (id: string, op: any) => {
     }
 };
 
+// Una OP sin producto de referencia igual produce: su titular salen del kit de productos.
+const nombreProductoOp = (op: any) => op.producto_nombre || op.productos_nombres || '';
+
+const detalleProductoOp = (op: any) => {
+    if (op.producto_nombre) return op.productos_nombres || 'Sin productos en el kit';
+    const kit = (op.productos || []).length;
+    return kit ? (kit === 1 ? 'producto del kit' : 'productos del kit') : 'Sin productos';
+};
+
 const tooltipProductos = (op: any) => {
     const escapar = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const lineas = (op?.productos || []).map((p: any) =>
@@ -551,6 +611,17 @@ const tooltipProductos = (op: any) => {
     );
     if (!lineas.length) return undefined;
     return { content: lineas.join('<br><br>'), html: true, delay: { show: 200, hide: 100 } };
+};
+
+const tooltipFaltantes = (op: any) => {
+    const escapar = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const lineas = (op?.materiales_faltantes || []).map((m: any) => {
+        const cantidad = zilef_nuber_format(m.faltante ?? 0, 2, false);
+        const unidad = escapar(String(m.unidad ?? '')).trim();
+        return `${escapar(String(m.nombre ?? 'Material'))}: faltan ${cantidad}${unidad ? ' ' + unidad : ''}`;
+    });
+    if (!lineas.length) return undefined;
+    return { content: lineas.join('<br>'), html: true, delay: { show: 200, hide: 100 } };
 };
 
 /* -------------------------- Carga / recarga ----------------------------- */
@@ -649,7 +720,7 @@ const titulos = [
                             class="inline-flex h-9 items-center gap-1.5 rounded-md border border-amber-300 bg-amber-50 px-3 text-xs font-semibold text-amber-800 shadow-sm transition hover:bg-amber-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-background dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300 dark:hover:bg-amber-500/20"
                         >
                             <ArrowUturnLeftIcon class="h-4 w-4" />
-                            Continuar OP {{ (props.borradorUltimo as any)?.numero_op }}
+                            Continuar {{ (props.borradorUltimo as any)?.numero_op }}
                         </button>
 
                         <PrimaryButton v-if="can(['create OrdenProduccion'])" type="button" class="h-9" @click="abrirNuevo">
@@ -779,7 +850,7 @@ const titulos = [
 
                 <!-- Tabla -->
                 <div class="op-scroll max-h-[68vh] overflow-auto overscroll-contain">
-                    <table class="w-full min-w-[960px] border-collapse text-sm">
+                    <table class="w-full min-w-[1140px] border-collapse text-sm">
                         <thead>
                             <tr>
                                 <th
@@ -787,6 +858,8 @@ const titulos = [
                                     :key="col.key"
                                     scope="col"
                                     :aria-sort="col.sortable ? ariaSort(col.key) : undefined"
+                                    :title="col.key === 'contexto' ? 'Información según el estado' : undefined"
+                                    :aria-label="col.key === 'contexto' ? 'Información según el estado' : undefined"
                                     :class="[
                                         'bg-muted px-3 py-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground',
                                         col.align === 'right' ? 'text-right' : 'text-left',
@@ -857,15 +930,15 @@ const titulos = [
                                 <!-- Producto -->
                                 <td class="px-3 py-3 align-top">
                                     <div class="flex max-w-[220px] flex-col gap-0.5">
-                                        <span class="truncate font-medium text-foreground" :title="op.producto_nombre">
-                                            {{ op.producto_nombre || 'Sin producto de referencia' }}
+                                        <span class="truncate font-medium text-foreground" :title="nombreProductoOp(op)">
+                                            {{ nombreProductoOp(op) || 'Sin productos' }}
                                         </span>
                                         <span class="flex items-center gap-1.5 text-[11px] text-muted-foreground">
                                             <span class="inline-flex min-w-4 items-center justify-center rounded-full border border-border bg-muted/60 px-1.5 py-0.5 font-medium tabular-nums">
                                                 {{ (op.productos || []).length }}
                                             </span>
                                             <span class="truncate" v-tooltip="tooltipProductos(op)">
-                                                {{ op.productos_nombres || 'Sin productos asociados' }}
+                                                {{ detalleProductoOp(op) }}
                                             </span>
                                         </span>
                                     </div>
@@ -889,7 +962,7 @@ const titulos = [
                                         <span class="text-sm text-foreground">{{ op.taller_nombre || op.empresa_externa_nombre || '—' }}</span>
                                         <span v-if="op.tipo === 'externa'" class="text-[10px] font-medium uppercase tracking-wide text-violet-600 dark:text-violet-300">Proceso externo</span>
                                         <span v-if="op.fecha_prevista_envio_taller" class="text-[11px] tabular-nums text-muted-foreground">
-                                            {{ formatDate(op.fecha_prevista_envio_taller) }}
+                                            {{ formatFecha(op.fecha_prevista_envio_taller) }}
                                         </span>
                                     </div>
                                 </td>
@@ -924,6 +997,53 @@ const titulos = [
                                     >
                                         + {{ op.estado_secundario_nombre }}
                                     </span>
+                                </td>
+
+                                <!-- Información según el estado -->
+                                <td class="px-3 py-3 align-top">
+                                    <div v-if="estadoCoincide(op, 'Esperando materiales')" class="flex flex-col items-start gap-1">
+                                        <span
+                                            v-if="tieneFaltantes(op)"
+                                            v-tooltip="tooltipFaltantes(op)"
+                                            class="inline-flex items-center gap-1.5 rounded-full border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-medium text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300"
+                                        >
+                                            <ExclamationTriangleIcon class="h-3 w-3" />
+                                            Faltan materiales
+                                        </span>
+                                        <span
+                                            v-else
+                                            class="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300"
+                                        >
+                                            <CheckCircleIcon class="h-3 w-3" />
+                                            Materiales completos
+                                        </span>
+                                        <span v-if="tieneFaltantes(op)" class="text-[11px] tabular-nums text-muted-foreground">
+                                            {{ op.materiales_faltantes.length }}
+                                            {{ op.materiales_faltantes.length === 1 ? 'material' : 'materiales' }}
+                                        </span>
+                                    </div>
+
+                                    <div v-else-if="estadoCoincide(op, 'En taller')" class="flex flex-col gap-0.5">
+                                        <span class="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                                            Envío previsto
+                                        </span>
+                                        <span v-if="op.fecha_prevista_envio_taller" class="text-sm tabular-nums text-foreground">
+                                            {{ formatFecha(op.fecha_prevista_envio_taller) }}
+                                        </span>
+                                        <span v-else class="text-xs text-muted-foreground">Sin fecha</span>
+                                    </div>
+
+                                    <div v-else-if="estadoCoincide(op, 'Recibiendo')" class="flex flex-col gap-0.5">
+                                        <span class="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                                            Fecha recepción
+                                        </span>
+                                        <span v-if="op.recepcion_desde" class="text-sm tabular-nums text-foreground">
+                                            {{ formatDate(op.recepcion_desde, 'conLaHora') }}
+                                        </span>
+                                        <span v-else class="text-xs text-muted-foreground">Sin fecha</span>
+                                    </div>
+
+                                    <span v-else class="text-xs text-muted-foreground">—</span>
                                 </td>
 
                                 <!-- Responsable -->
@@ -1096,6 +1216,200 @@ const titulos = [
                     </nav>
                 </footer>
             </div>
+
+            <!-- Resumen bajo la tabla: totales y órdenes que requieren atención -->
+            <section v-if="filas.length" class="rounded-xl border border-border bg-card shadow-sm">
+                <div class="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3">
+                    <div class="flex items-start gap-2.5">
+                        <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-muted/60">
+                            <ChartBarIcon class="h-4 w-4 text-muted-foreground" />
+                        </span>
+                        <div>
+                            <h2 class="text-sm font-semibold text-foreground">Resumen de órdenes</h2>
+                            <p class="mt-0.5 text-xs text-muted-foreground">
+                                {{
+                                    hayFiltros
+                                        ? 'Totales de las órdenes que coinciden con los filtros actuales.'
+                                        : 'Totales generales y órdenes que requieren atención.'
+                                }}
+                            </p>
+                        </div>
+                    </div>
+                    <span class="text-xs tabular-nums text-muted-foreground">
+                        {{ totalFiltrado }} {{ totalFiltrado === 1 ? 'orden' : 'órdenes' }}
+                    </span>
+                </div>
+
+                <div class="flex flex-col gap-3 p-4">
+                    <!-- Totales principales -->
+                    <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+                        <div class="rounded-lg border border-border bg-background p-3">
+                            <p class="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Órdenes</p>
+                            <p class="mt-1 text-2xl font-semibold tabular-nums text-foreground">{{ totalFiltrado }}</p>
+                            <p class="mt-0.5 text-[11px] text-muted-foreground">
+                                {{ hayFiltros ? `de ${filas.length} en total` : 'registradas' }}
+                            </p>
+                        </div>
+
+                        <div class="rounded-lg border border-border bg-background p-3">
+                            <p class="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Unidades</p>
+                            <p class="mt-1 text-2xl font-semibold tabular-nums text-foreground">
+                                {{ zilef_nuber_format(totalUnidades, 0, false) }}
+                            </p>
+                            <span class="mt-0.5 inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                                <CubeIcon class="h-3 w-3" />
+                                planificadas
+                            </span>
+                        </div>
+
+                        <div class="rounded-lg border border-cyan-200/70 bg-cyan-50/40 p-3 dark:border-cyan-500/20 dark:bg-cyan-500/5">
+                            <p class="text-[10px] font-semibold uppercase tracking-[0.08em] text-cyan-700 dark:text-cyan-300">En taller</p>
+                            <p class="mt-1 text-2xl font-semibold tabular-nums text-cyan-800 dark:text-cyan-300">{{ opsEnTaller.length }}</p>
+                            <p class="mt-0.5 text-[11px] text-cyan-700/80 dark:text-cyan-300/80">en ensamble</p>
+                        </div>
+
+                        <div class="rounded-lg border border-amber-200/70 bg-amber-50/40 p-3 dark:border-amber-500/20 dark:bg-amber-500/5">
+                            <p class="text-[10px] font-semibold uppercase tracking-[0.08em] text-amber-700 dark:text-amber-300">Recibiendo</p>
+                            <p class="mt-1 text-2xl font-semibold tabular-nums text-amber-800 dark:text-amber-300">{{ opsRecibiendo.length }}</p>
+                            <p class="mt-0.5 text-[11px] text-amber-700/80 dark:text-amber-300/80">en control de calidad</p>
+                        </div>
+
+                        <div
+                            class="rounded-lg border p-3"
+                            :class="opsConFaltantes.length
+                                ? 'border-rose-200/70 bg-rose-50/40 dark:border-rose-500/20 dark:bg-rose-500/5'
+                                : 'border-emerald-200/70 bg-emerald-50/40 dark:border-emerald-500/20 dark:bg-emerald-500/5'"
+                        >
+                            <p
+                                class="text-[10px] font-semibold uppercase tracking-[0.08em]"
+                                :class="opsConFaltantes.length ? 'text-rose-700 dark:text-rose-300' : 'text-emerald-700 dark:text-emerald-300'"
+                            >
+                                Con faltantes
+                            </p>
+                            <p
+                                class="mt-1 text-2xl font-semibold tabular-nums"
+                                :class="opsConFaltantes.length ? 'text-rose-800 dark:text-rose-300' : 'text-emerald-800 dark:text-emerald-300'"
+                            >
+                                {{ opsConFaltantes.length }}
+                            </p>
+                            <p
+                                class="mt-0.5 text-[11px]"
+                                :class="opsConFaltantes.length ? 'text-rose-700/80 dark:text-rose-300/80' : 'text-emerald-700/80 dark:text-emerald-300/80'"
+                            >
+                                {{ opsSinFaltantes }} sin faltantes
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- Listados por situación -->
+                    <div class="grid gap-2.5 lg:grid-cols-3">
+                        <div class="rounded-lg border border-rose-200/70 bg-rose-50/40 p-3 dark:border-rose-500/20 dark:bg-rose-500/5">
+                            <div class="flex items-center justify-between gap-2">
+                                <h3 class="inline-flex items-center gap-1.5 text-xs font-semibold text-rose-800 dark:text-rose-300">
+                                    <ExclamationTriangleIcon class="h-4 w-4" />
+                                    Materiales faltantes
+                                </h3>
+                                <span class="rounded-full border border-rose-200 bg-white/60 px-2 py-0.5 text-[10px] font-semibold tabular-nums text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">
+                                    {{ opsConFaltantes.length }}
+                                </span>
+                            </div>
+
+                            <div v-if="opsConFaltantes.length" class="mt-2 flex max-h-32 flex-wrap gap-1.5 overflow-y-auto pr-1">
+                                <span
+                                    v-for="op in opsConFaltantes"
+                                    :key="op.id"
+                                    v-tooltip="tooltipFaltantes(op)"
+                                    :title="op.producto_nombre || etiquetaOp(op)"
+                                    class="inline-flex items-center rounded-full border border-rose-200 bg-white/70 px-2 py-0.5 text-[11px] font-medium tabular-nums text-rose-800 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300"
+                                >
+                                    {{ etiquetaOp(op) }}
+                                </span>
+                            </div>
+                            <p v-else class="mt-2 inline-flex items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-300">
+                                <CheckCircleIcon class="h-3.5 w-3.5" />
+                                Ninguna orden tiene faltantes vigentes.
+                            </p>
+                        </div>
+
+                        <div class="rounded-lg border border-cyan-200/70 bg-cyan-50/40 p-3 dark:border-cyan-500/20 dark:bg-cyan-500/5">
+                            <div class="flex items-center justify-between gap-2">
+                                <h3 class="inline-flex items-center gap-1.5 text-xs font-semibold text-cyan-800 dark:text-cyan-300">
+                                    <WrenchScrewdriverIcon class="h-4 w-4" />
+                                    En taller
+                                </h3>
+                                <span class="rounded-full border border-cyan-200 bg-white/60 px-2 py-0.5 text-[10px] font-semibold tabular-nums text-cyan-700 dark:border-cyan-500/30 dark:bg-cyan-500/10 dark:text-cyan-300">
+                                    {{ opsEnTaller.length }}
+                                </span>
+                            </div>
+
+                            <div v-if="opsEnTaller.length" class="mt-2 flex max-h-32 flex-wrap gap-1.5 overflow-y-auto pr-1">
+                                <span
+                                    v-for="op in opsEnTaller"
+                                    :key="op.id"
+                                    :title="op.producto_nombre || etiquetaOp(op)"
+                                    class="inline-flex items-center rounded-full border border-cyan-200 bg-white/70 px-2 py-0.5 text-[11px] font-medium tabular-nums text-cyan-800 dark:border-cyan-500/30 dark:bg-cyan-500/10 dark:text-cyan-300"
+                                >
+                                    {{ etiquetaOp(op) }}
+                                </span>
+                            </div>
+                            <p v-else class="mt-2 text-xs text-muted-foreground">Ninguna orden está en taller.</p>
+                        </div>
+
+                        <div class="rounded-lg border border-amber-200/70 bg-amber-50/40 p-3 dark:border-amber-500/20 dark:bg-amber-500/5">
+                            <div class="flex items-center justify-between gap-2">
+                                <h3 class="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-800 dark:text-amber-300">
+                                    <ClipboardDocumentCheckIcon class="h-4 w-4" />
+                                    Recibiendo
+                                </h3>
+                                <span class="rounded-full border border-amber-200 bg-white/60 px-2 py-0.5 text-[10px] font-semibold tabular-nums text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+                                    {{ opsRecibiendo.length }}
+                                </span>
+                            </div>
+
+                            <div v-if="opsRecibiendo.length" class="mt-2 flex max-h-32 flex-wrap gap-1.5 overflow-y-auto pr-1">
+                                <span
+                                    v-for="op in opsRecibiendo"
+                                    :key="op.id"
+                                    :title="op.producto_nombre || etiquetaOp(op)"
+                                    class="inline-flex items-center rounded-full border border-amber-200 bg-white/70 px-2 py-0.5 text-[11px] font-medium tabular-nums text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
+                                >
+                                    {{ etiquetaOp(op) }}
+                                </span>
+                            </div>
+                            <p v-else class="mt-2 text-xs text-muted-foreground">Ninguna orden está en recepción.</p>
+                        </div>
+                    </div>
+
+                    <!-- Distribución por estado -->
+                    <div class="border-t border-border pt-3">
+                        <div class="flex flex-wrap items-baseline justify-between gap-2">
+                            <h3 class="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                                Distribución por estado
+                            </h3>
+                            <span class="text-[10px] text-muted-foreground">
+                                Una OP en coexistencia cuenta en ambos estados.
+                            </span>
+                        </div>
+                        <div class="mt-2 flex flex-wrap gap-1.5">
+                            <span
+                                v-for="estado in resumenEstados"
+                                :key="estado.id"
+                                class="inline-flex items-center gap-1.5 rounded-full border px-2 py-1 text-[11px] font-medium"
+                                :class="estiloEstado(estado.nombre).badge"
+                            >
+                                <span class="h-1.5 w-1.5 rounded-full" :class="estiloEstado(estado.nombre).dot"></span>
+                                {{ estado.nombre }}
+                                <span class="rounded-full bg-white/60 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums dark:bg-black/20">
+                                    {{ estado.count }}
+                                </span>
+                            </span>
+                            <span v-if="!resumenEstados.length" class="text-xs text-muted-foreground">
+                                Sin estados para mostrar.
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </section>
         </div>
 
         <!-- Modales (acciones que sí hablan con el backend) -->

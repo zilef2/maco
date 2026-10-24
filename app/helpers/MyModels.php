@@ -36,7 +36,6 @@ class MyModels {
 			'user',
 			'parametros',
 			
-			'Presupuesto',
 			'Producto',
 			'Talla',
 			'OrdenProduccion',

@@ -125,6 +125,9 @@ class OrdenProduccionController extends Controller {
                         'cantidad_aprobada'       => $r->cantidad_aprobada,
                         'cantidad_en_reparacion'  => $r->cantidad_en_reparacion,
                         'cantidad_no_recuperable' => $r->cantidad_no_recuperable,
+                        'fecha_recepcion'         => $r->fecha_recepcion
+                            ? substr((string) $r->fecha_recepcion, 0, 10)
+                            : null,
                     ])->values()->all();
 
                     // Procesos externos que todavía no han regresado: se usan
@@ -491,7 +494,7 @@ class OrdenProduccionController extends Controller {
                 ->map(fn ($f) => $f['nombre'] . ': faltan ' . round($f['faltante'], 2) . ' (necesita ' . round($f['necesita'], 2) . ', hay ' . round($f['hay'], 2) . ')')
                 ->implode(' | ');
             app(\Alejo\Notificaciones\NotificacionesManager::class)->crear(
-                'OP ' . ($data['numero_op'] ?? $OrdenProduccion->id) . ': material insuficiente — ' . $detalle,
+                ($data['numero_op'] ?? ('OP #' . $OrdenProduccion->id)) . ': material insuficiente — ' . $detalle,
                 'alta',
                 $data['user_id'] ?? null
             );
@@ -794,6 +797,7 @@ class OrdenProduccionController extends Controller {
         $datos = $request->validate([
             'estado_op_id' => ['required', 'integer', 'exists:estado_operacions,id'],
             'estado_op_secundario_id' => ['nullable', 'integer', 'exists:estado_operacions,id', 'different:estado_op_id'],
+            'fecha_recepcion' => ['nullable', 'date'],
             'recepciones' => ['nullable', 'array'],
             'recepciones.*.distribucion_id' => ['required', 'integer'],
             'recepciones.*.cantidad_aprobada' => ['nullable', 'integer', 'min:0'],
@@ -816,6 +820,9 @@ class OrdenProduccionController extends Controller {
             'cierre.perdidas_mermas' => ['nullable', 'integer', 'min:0'],
             'cierre.costo_real_final' => ['nullable', 'numeric', 'min:0'],
         ]);
+
+        // Si la petición no envía fecha, se registra la fecha del guardado.
+        $fechaRecepcion = $datos['fecha_recepcion'] ?? now()->toDateString();
 
         $OrdenProduccion = OrdenProduccion::findOrFail($id);
         $estadoActual = $OrdenProduccion->estadoOp;
@@ -985,6 +992,7 @@ class OrdenProduccionController extends Controller {
             $estadoFinalId,
             $secundarioId,
             $recepciones,
+            $fechaRecepcion,
             $recepcionDesde,
             $entraProcesoExterno,
             $procesoExternoDatos,
@@ -1026,7 +1034,7 @@ class OrdenProduccionController extends Controller {
             }
 
             if (!empty($recepciones)) {
-                $recepcionesGeneradas = RecepcionCalidad::generarDesdeOrden($OrdenProduccion, $recepciones);
+                $recepcionesGeneradas = RecepcionCalidad::generarDesdeOrden($OrdenProduccion, $recepciones, $fechaRecepcion);
             }
 
             if ($entraProcesoExterno) {
@@ -1146,6 +1154,80 @@ class OrdenProduccionController extends Controller {
     }
 
     /**
+     * Guarda un borrador de la recepción de calidad (Aprobada / En reparación /
+     * No recuperable) sin cambiar el estado de la OP ni exigir que la suma
+     * cuadre exactamente con la cantidad esperada. Permite al usuario guardar
+     * lo que lleva hasta el momento y terminarlo después.
+     */
+    public function guardarRecepcionBorrador(Request $request, $id): RedirectResponse {
+        $datos = $request->validate([
+            'fecha_recepcion'                        => ['nullable', 'date'],
+            'recepciones'                            => ['nullable', 'array'],
+            'recepciones.*.distribucion_id'          => ['required', 'integer'],
+            'recepciones.*.cantidad_aprobada'        => ['nullable', 'integer', 'min:0'],
+            'recepciones.*.cantidad_en_reparacion'   => ['nullable', 'integer', 'min:0'],
+            'recepciones.*.cantidad_no_recuperable'  => ['nullable', 'integer', 'min:0'],
+        ]);
+
+        $orden = OrdenProduccion::findOrFail($id);
+        $fechaRecepcion = $datos['fecha_recepcion'] ?? now()->toDateString();
+
+        $distribuciones = $orden->distribucionesPorTallas()->get()->keyBy('id');
+
+        $productosOp = $orden->productos()->pluck('productos.id')->map(fn ($pid) => (int) $pid)->all();
+
+        $guardadas = 0;
+        foreach ($datos['recepciones'] ?? [] as $fila) {
+            $distribucion = $distribuciones->get((int) ($fila['distribucion_id'] ?? 0));
+            if (!$distribucion) {
+                continue;
+            }
+
+            $aprobada      = isset($fila['cantidad_aprobada'])      ? (int) $fila['cantidad_aprobada']      : null;
+            $reparacion    = isset($fila['cantidad_en_reparacion'])  ? (int) $fila['cantidad_en_reparacion'] : null;
+            $noRecuperable = isset($fila['cantidad_no_recuperable']) ? (int) $fila['cantidad_no_recuperable']: null;
+
+            $suma     = ($aprobada ?? 0) + ($reparacion ?? 0) + ($noRecuperable ?? 0);
+            $esperada = (int) $distribucion->cantidad_planificada;
+
+            if ($suma > $esperada) {
+                return back()->withErrors([
+                    'recepciones' => "Talla {$distribucion->talla}: la suma ({$suma}) supera la cantidad esperada ({$esperada}).",
+                ]);
+            }
+
+            $productoId = (int) ($distribucion->producto_id ?? 0)
+                ?: (int) ($orden->producto_referencia_id ?? 0)
+                ?: (count($productosOp) === 1 ? (int) $productosOp[0] : 0);
+
+            RecepcionCalidad::updateOrCreate(
+                [
+                    'orden_produccion_id'    => $orden->id,
+                    'producto_referencia_id' => $productoId ?: null,
+                    'talla'                  => $distribucion->talla,
+                ],
+                [
+                    'cantidad_esperada'       => $esperada,
+                    'cantidad_recibida'       => $suma,
+                    'cantidad_aprobada'       => $aprobada,
+                    'cantidad_en_reparacion'  => $reparacion,
+                    'cantidad_no_recuperable' => $noRecuperable,
+                    'fecha_recepcion'         => $fechaRecepcion,
+                ]
+            );
+
+            $guardadas++;
+        }
+
+        $this->invalidarCache();
+
+        $identificador = $orden->numero_op ?? $orden->id;
+        Myhelp::EscribirEnLog($this, 'RECEPCION-BORRADOR:OrdenProduccions', 'OrdenProduccion id:' . $orden->id . ' | ' . $identificador . ' | ' . $guardadas . ' fila(s)', false);
+
+        return back()->with('success', 'Avance de recepción guardado. Los valores se conservarán al terminar.');
+    }
+
+    /**
      * Al pasar a «En taller» el kit sale de bodega: se exige que lo preparado
      * sea igual a lo requerido, se valida la existencia y se descuenta el
      * inventario dejando un MaterialMovimiento de salida por material.
@@ -1161,7 +1243,11 @@ class OrdenProduccionController extends Controller {
         $descuadres = [];
         foreach ($kits as $kit) {
             $requerida = round((float) ($kit->cantidad_requerida ?? 0), 2);
-            $preparada = round((float) ($kit->cantidad_preparada ?? 0), 2);
+            // La cantidad preparada es opcional. Si no está registrada se
+            // asume que se preparó la cantidad requerida.
+            $preparada = $kit->cantidad_preparada === null
+                ? $requerida
+                : round((float) $kit->cantidad_preparada, 2);
 
             if (abs($preparada - $requerida) > 0.004) {
                 $nombre = $kit->material?->nombre_base ?: ('Material #' . $kit->material_id);
@@ -1258,9 +1344,9 @@ class OrdenProduccionController extends Controller {
             $suma = $aprobada + $reparacion + $noRecuperable;
             $esperada = (int) $distribucion->cantidad_planificada;
 
-            if ($suma !== $esperada) {
+            if ($suma > $esperada) {
                 throw ValidationException::withMessages([
-                    'recepciones' => "Talla {$distribucion->talla}: aprobada + en reparación + no recuperable suma {$suma} y debe ser {$esperada}.",
+                    'recepciones' => "Talla {$distribucion->talla}: la suma ({$suma}) supera la cantidad esperada ({$esperada}).",
                 ]);
             }
 

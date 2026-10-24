@@ -13,7 +13,17 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 {
     /** @use HasFactory<\Database\Factories\OrdenProduccionFactory> */
     use HasFactory;
-    protected $fillable = ['numero_op', 'producto_referencia_id', 'cantidad_planificada', 'fecha_prevista_envio_taller', 'taller_id', 'tipo', 'empresa_externa_id', 'estado_op_id', 'estado_op_secundario_id', 'estado_op_material_id', 'externa', 'user_id', 'id_shopify_producto', 'observaciones'];
+    protected $fillable = [
+        'numero_op',
+         'producto_referencia_id',
+         'cantidad_planificada',
+         'fecha_prevista_envio_taller',
+         'taller_id',
+         'tipo',
+         'empresa_externa_id',
+         'estado_op_id',
+         'estado_op_secundario_id',
+         'estado_op_material_id', 'externa', 'user_id', 'id_shopify_producto', 'observaciones'];
 
     protected $casts = [
         'externa' => 'boolean',

@@ -370,7 +370,7 @@ watch(
 
                                 <th
                                     scope="col"
-                                    class="sticky right-0 z-30 w-[72px] border-l border-border bg-muted px-2 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground"
+                                    class="sticky right-0 z-30 w-[104px] border-l border-border bg-muted px-2 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground"
                                 >
                                     Acciones
                                 </th>
@@ -486,9 +486,19 @@ watch(
                                 </td>
 
                                 <td
-                                    class="sticky right-0 z-10 w-[72px] border-l border-border/60 bg-card px-2 py-2 align-middle shadow-[-8px_0_16px_-16px_rgba(0,0,0,0.35)] transition-colors group-hover:bg-muted/40"
+                                    class="sticky right-0 z-10 w-[104px] border-l border-border/60 bg-card px-2 py-2 align-middle shadow-[-8px_0_16px_-16px_rgba(0,0,0,0.35)] transition-colors group-hover:bg-muted/40"
                                 >
                                     <div class="flex items-center justify-end gap-1">
+                                        <button
+                                            v-if="can(['update Producto'])"
+                                            type="button"
+                                            @click="accionFila('edit', producto)"
+                                            title="Editar"
+                                            :aria-label="`Editar ${producto.Codigo_interno || producto.Titulo_Shopify}`"
+                                            class="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                                        >
+                                            <PencilIcon class="h-4 w-4" />
+                                        </button>
                                         <DropdownMenu>
                                             <DropdownMenuTrigger
                                                 type="button"
@@ -499,14 +509,6 @@ watch(
                                                 <EllipsisVerticalIcon class="h-4 w-4" />
                                             </DropdownMenuTrigger>
                                             <DropdownMenuContent align="end" class="w-56 p-1">
-                                                <DropdownMenuItem
-                                                    v-if="can(['update Producto'])"
-                                                    @click="accionFila('edit', producto)"
-                                                    class="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-xs font-medium"
-                                                >
-                                                    <PencilIcon class="h-4 w-4" />
-                                                    <span>Editar</span>
-                                                </DropdownMenuItem>
                                                 <DropdownMenuItem
                                                     v-if="can(['update Producto'])"
                                                     @click="accionFila('tallas', producto)"

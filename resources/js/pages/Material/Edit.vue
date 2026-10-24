@@ -47,7 +47,7 @@ const camposNormales = printForm.filter((campo) => campo.type !== 'boolean');
 const camposBooleanos = printForm.filter((campo) => campo.type === 'boolean');
 
 const camposBloqueados = ['codigo_material', 'existencia_actual'];
-const esCampoBloqueado = (campo: string) => camposBloqueados.includes(campo);
+const esCampoBloqueado = (campo: string) => camposBloqueados.includes(campo) && campo !== 'estado';
 
 const estadoActivo = (valor: any): boolean => {
     const texto = String(valor ?? '').trim().toLowerCase();

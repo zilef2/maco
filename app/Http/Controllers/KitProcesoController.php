@@ -203,7 +203,13 @@ class KitProcesoController extends Controller {
         $KitProceso = KitProceso::with('material:id,existencia_actual')->findOrFail($id);
         $KitProceso->estado_requerido = $datos['estado_requerido'];
         $KitProceso->proveedor_id = $datos['proveedor_id'];
-        $KitProceso->cantidad_preparada = (float) ($datos['cantidad_preparada'] ?? 0);
+
+        // La cantidad preparada es opcional: si el formulario no la envía se
+        // conserva el valor actual (puede ser null) en lugar de volverlo cero.
+        if (array_key_exists('cantidad_preparada', $datos) && $datos['cantidad_preparada'] !== null) {
+            $KitProceso->cantidad_preparada = (float) $datos['cantidad_preparada'];
+        }
+
         $KitProceso->cantidad_disponible = (float) ($KitProceso->material?->existencia_actual ?? 0);
         $KitProceso->observaciones = $datos['observaciones'] ?? null;
         $KitProceso->save();
@@ -246,7 +252,13 @@ class KitProcesoController extends Controller {
 
             $kit->estado_requerido = $fila['estado_requerido'];
             $kit->proveedor_id = $fila['proveedor_id'];
-            $kit->cantidad_preparada = (float) ($fila['cantidad_preparada'] ?? 0);
+
+            // Si la fila no trae cantidad preparada, se conserva la que ya
+            // tenía el kit. El campo es opcional y no debe reiniciarse.
+            if (array_key_exists('cantidad_preparada', $fila) && $fila['cantidad_preparada'] !== null) {
+                $kit->cantidad_preparada = (float) $fila['cantidad_preparada'];
+            }
+
             $kit->cantidad_disponible = (float) ($kit->material?->existencia_actual ?? 0);
             $kit->observaciones = $fila['observaciones'] ?? null;
             $kit->save();
@@ -298,8 +310,11 @@ class KitProcesoController extends Controller {
             ->get()
             ->map(function (KitProceso $kit) {
                 $disponible = (float) ($kit->material?->existencia_actual ?? 0);
-                $preparada = (float) ($kit->cantidad_preparada ?? 0);
                 $requerida = (float) ($kit->cantidad_requerida ?? 0);
+                // "Preparada" es opcional: si no está registrada se envía null para que el
+                // modal la muestre como "—" y la asuma igual a la requerida, no como 0.
+                $preparada = $kit->cantidad_preparada === null ? null : (float) $kit->cantidad_preparada;
+                $preparadaEfectiva = $preparada ?? $requerida;
 
                 return [
                     'id' => $kit->id,
@@ -313,8 +328,8 @@ class KitProcesoController extends Controller {
                     // La disponibilidad es la existencia actual del material.
                     'cantidad_disponible' => $disponible,
                     'cantidad_preparada' => $preparada,
-                    'falta' => $disponible - $preparada,
-                    'listo' => $requerida > 0 && $preparada >= $requerida,
+                    'falta' => $disponible - $preparadaEfectiva,
+                    'listo' => $requerida > 0 && $preparadaEfectiva >= $requerida,
                     'observaciones' => $kit->observaciones,
                 ];
             });

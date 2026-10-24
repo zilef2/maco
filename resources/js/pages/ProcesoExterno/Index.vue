@@ -3,7 +3,6 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, router, usePage } from '@inertiajs/vue3';
 import Breadcrumb from '@/components/Breadcrumb.vue';
 import TextInput from '@/components/TextInput.vue';
-import PrimaryButton from '@/components/PrimaryButton.vue';
 import SelectInput from '@/components/SelectInput.vue';
 import { computed, reactive, watch } from 'vue';
 
@@ -11,8 +10,7 @@ import DangerButton from '@/components/DangerButton.vue';
 import pkg from 'lodash';
 
 import Pagination from '@/components/Pagination.vue';
-import { ChevronUpDownIcon, PencilIcon, TrashIcon } from '@heroicons/vue/24/solid';
-import Create from '@/pages/ProcesoExterno/Create.vue';
+import { ChevronUpDownIcon, InformationCircleIcon, PencilIcon, TrashIcon } from '@heroicons/vue/24/solid';
 import Edit from '@/pages/ProcesoExterno/Edit.vue';
 import Delete from '@/pages/ProcesoExterno/Delete.vue';
 
@@ -25,6 +23,7 @@ const { _, debounce, pickBy } = pkg
 const props = defineProps({
     fromController: Object,
     total: Number,
+    ordenesEnProcesoExterno: Number,
     filters: Object,
     breadcrumbs: Object,
     perPage: Number,
@@ -54,7 +53,6 @@ const data = reactive({
     ProcesoExternoo: null as any,
     selectedId: [] as number[],
     multipleSelect: false,
-    createOpen: false,
     editOpen: false,
     deleteOpen: false,
     dataSet: (usePage().props as any)?.app?.perpage ?? defaultPerPage,
@@ -125,23 +123,41 @@ const grupos = computed(() => {
         <Breadcrumb :title="title" :breadcrumbs="breadcrumbs" class="capitalize text-xl font-bold" />
         <div class="space-y-4">
             <div class="px-4 sm:px-0">
-                <div class="rounded-lg overflow-hidden w-fit">
-                    <PrimaryButton class="m-1" @click="data.createOpen = true" v-if="can(['create ProcesoExterno'])">
-                        {{ lang().t('app.button.add') }}
-                    </PrimaryButton>
-
-                    <Create v-if="can(['create ProcesoExterno'])" :numberPermissions="props.numberPermissions"
-                        :titulos="titulos" :show="data.createOpen" @close="data.createOpen = false" :title="props.title"
-                        :losSelect="props.losSelect" />
-
-                    <Edit v-if="can(['update ProcesoExterno'])" :titulos="titulos" :numberPermissions="props.numberPermissions"
-                        :show="data.editOpen" @close="data.editOpen = false" :ProcesoExternoa="data.ProcesoExternoo"
-                        :title="props.title" :losSelect="props.losSelect" />
-
-                    <Delete v-if="can(['delete ProcesoExterno'])" :numberPermissions="props.numberPermissions"
-                        :show="data.deleteOpen" @close="data.deleteOpen = false" :ProcesoExternoa="data.ProcesoExternoo"
-                        :title="props.title" />
+                <div class="rounded-xl border border-blue-200 bg-blue-50/60 p-4 dark:border-blue-900/60 dark:bg-blue-950/20">
+                    <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                        <div class="flex items-start gap-3">
+                            <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300">
+                                <InformationCircleIcon class="h-5 w-5" />
+                            </span>
+                            <div>
+                                <h2 class="text-sm font-semibold text-blue-900 dark:text-blue-200">
+                                    El proceso externo se registra desde la OP
+                                </h2>
+                                <p class="mt-1 max-w-3xl text-sm text-blue-800 dark:text-blue-300">
+                                    Este listado se llena automáticamente cuando una OP pasa al estado
+                                    <span class="font-semibold">«Procesos externos»</span> y se registran el proveedor
+                                    y los materiales que salen. No es necesario crear registros manualmente.
+                                </p>
+                            </div>
+                        </div>
+                        <div class="flex shrink-0 items-center gap-3 self-start rounded-lg border border-blue-200 bg-white/70 px-4 py-3 dark:border-blue-900/60 dark:bg-blue-950/40 lg:self-auto">
+                            <span class="text-2xl font-semibold tabular-nums text-blue-900 dark:text-blue-200">
+                                {{ props.ordenesEnProcesoExterno }}
+                            </span>
+                            <span class="text-xs font-semibold uppercase tracking-wide text-blue-700 dark:text-blue-300">
+                                {{ props.ordenesEnProcesoExterno === 1 ? 'OP activa en proceso externo' : 'OP activas en proceso externo' }}
+                            </span>
+                        </div>
+                    </div>
                 </div>
+
+                <Edit v-if="can(['update ProcesoExterno'])" :titulos="titulos" :numberPermissions="props.numberPermissions"
+                    :show="data.editOpen" @close="data.editOpen = false" :ProcesoExternoa="data.ProcesoExternoo"
+                    :title="props.title" :losSelect="props.losSelect" />
+
+                <Delete v-if="can(['delete ProcesoExterno'])" :numberPermissions="props.numberPermissions"
+                    :show="data.deleteOpen" @close="data.deleteOpen = false" :ProcesoExternoa="data.ProcesoExternoo"
+                    :title="props.title" />
             </div>
             <div class="relative bg-white dark:bg-gray-800 shadow sm:rounded-lg w-max min-w-full">
                 <div class="flex justify-between p-2">

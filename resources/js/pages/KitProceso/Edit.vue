@@ -35,28 +35,15 @@ const formatear = (valor: any) => {
     return Number(valor).toFixed(2);
 };
 
-const faltaDe = (fila: any) => {
-    const disponible = Number(fila.cantidad_disponible) || 0;
-    const preparada = Number(fila.cantidad_preparada) || 0;
-    return disponible - preparada;
-};
-
-const estaListo = (fila: any) => {
-    const requerida = Number(fila.cantidad_requerida) || 0;
-    const preparada = Number(fila.cantidad_preparada) || 0;
-    return requerida > 0 && preparada >= requerida;
-};
+const estaListo = (fila: any) =>
+    String(fila.estado_requerido ?? '').trim() !== '' && Boolean(fila.proveedor_id);
 
 const total = computed(() => form.filas.length);
 const listos = computed(() => form.filas.filter((fila: any) => estaListo(fila)).length);
 const completo = computed(() => total.value > 0 && listos.value === total.value);
 const progreso = computed(() => (total.value > 0 ? Math.round((listos.value / total.value) * 100) : 0));
 
-const faltanDatos = computed(() =>
-    form.filas.some(
-        (fila: any) => String(fila.estado_requerido ?? '').trim() === '' || !fila.proveedor_id,
-    ),
-);
+const faltanDatos = computed(() => form.filas.some((fila: any) => !estaListo(fila)));
 
 const cargar = async () => {
     if (!opId.value) {
@@ -90,7 +77,6 @@ const cargar = async () => {
             unidad: kit.unidad,
             cantidad_requerida: kit.cantidad_requerida,
             cantidad_disponible: kit.cantidad_disponible,
-            cantidad_preparada: kit.cantidad_preparada ?? '',
             estado_requerido: kit.estado_requerido ?? '',
             proveedor_id: kit.proveedor_id ?? null,
             observaciones: kit.observaciones ?? '',
@@ -159,8 +145,8 @@ const update = () => {
                             </span>
                         </div>
                         <p class="mt-1 max-w-2xl text-sm text-gray-500 dark:text-gray-400">
-                            Esta es la lista completa de materiales de la OP. Completa el estado requerido,
-                            el proveedor y la cantidad preparada de cada fila.
+                            Esta es la lista completa de materiales de la OP. Completa el estado requerido
+                            y el proveedor de cada fila.
                         </p>
                     </div>
                     <button type="button" @click="emit('close')"
@@ -200,15 +186,13 @@ const update = () => {
                 </div>
 
                 <div v-else class="mt-5 overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-700">
-                    <table class="w-full min-w-[1050px] text-sm">
+                    <table class="w-full min-w-[900px] text-sm">
                         <thead
                             class="bg-gray-50/80 text-[11px] font-semibold uppercase tracking-[0.08em] text-gray-500 dark:bg-gray-900/40 dark:text-gray-400">
                             <tr class="text-left">
                                 <th class="px-3 py-3">Material</th>
                                 <th class="px-3 py-3 text-right">Requerida</th>
                                 <th class="px-3 py-3 text-right">Disponible</th>
-                                <th class="px-3 py-3 text-right">Preparada</th>
-                                <th class="px-3 py-3 text-right">Falta</th>
                                 <th class="bg-amber-50/70 px-3 py-3 dark:bg-amber-500/[0.06]">
                                     Estado requerido <span class="text-amber-500">*</span>
                                 </th>
@@ -245,22 +229,6 @@ const update = () => {
                                     <p class="text-[10px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
                                         Inventario
                                     </p>
-                                </td>
-
-                                <td class="px-3 py-2.5 text-right">
-                                    <input v-model="fila.cantidad_preparada" type="number" min="0" step="0.01"
-                                        class="w-24 rounded-md border-gray-300 bg-white py-1.5 text-right text-sm tabular-nums shadow-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200"
-                                        placeholder="0.00" />
-                                    <InputError class="mt-1 text-left" :message="form.errors[`filas.${index}.cantidad_preparada`]" />
-                                </td>
-
-                                <td class="px-3 py-2.5 text-right tabular-nums whitespace-nowrap">
-                                    <span
-                                        :class="faltaDe(fila) < 0
-                                            ? 'font-semibold text-red-600 dark:text-red-400'
-                                            : 'text-gray-700 dark:text-gray-200'">
-                                        {{ formatear(faltaDe(fila)) }}
-                                    </span>
                                 </td>
 
                                 <td class="bg-amber-50/30 px-3 py-2.5 dark:bg-amber-500/[0.03]">
@@ -314,8 +282,8 @@ const update = () => {
                 <div class="mt-5 flex flex-col gap-3 rounded-lg bg-gray-50 px-4 py-3 text-xs text-gray-500 dark:bg-gray-900/30 dark:text-gray-400 sm:flex-row sm:items-center sm:justify-between">
                     <p class="max-w-2xl">
                         <b class="text-gray-700 dark:text-gray-200">Disponible</b> es la existencia del material en inventario.
-                        <b class="text-gray-700 dark:text-gray-200">Falta</b> = disponible − preparada.
-                        El kit queda <b class="text-gray-700 dark:text-gray-200">listo</b> cuando la cantidad preparada cubre la requerida.
+                        El kit queda <b class="text-gray-700 dark:text-gray-200">listo</b> cuando la fila tiene
+                        estado requerido y proveedor.
                     </p>
                     <p v-if="faltanDatos" class="shrink-0 font-semibold text-amber-700 dark:text-amber-300">
                         Completa estado y proveedor en todas las filas.

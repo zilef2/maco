@@ -79,7 +79,7 @@ const guardar = () => {
                 <div class="flex items-center justify-between border-b pb-3 dark:border-gray-700">
                     <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100">
                         Distribución por Tallas
-                        <span v-if="props.numeroOp" class="text-sm font-normal text-gray-500 dark:text-gray-400"> — OP {{ props.numeroOp }} </span>
+                        <span v-if="props.numeroOp" class="text-sm font-normal text-gray-500 dark:text-gray-400"> — {{ props.numeroOp }} </span>
                     </h3>
                     <button type="button" @click="closeModal" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">✕</button>
                 </div>

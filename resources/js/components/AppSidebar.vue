@@ -2,7 +2,7 @@
 import NavFooter from '@/components/NavFooter.vue';
 import NavMain from '@/components/NavMain.vue';
 import NavUser from '@/components/NavUser.vue';
-import { Sidebar, SidebarContent, SidebarFooter , SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
+import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { type NavGroup } from '@/types';
 import { Link } from '@inertiajs/vue3';
 import {
@@ -27,6 +27,7 @@ import {
     Grid3x3,
     FileUp,
     BookmarkCheck,
+    BookOpen,
     ShieldCheck,
     Layers,
     Settings,
@@ -97,11 +98,11 @@ const navDropdown: NavGroup[] = [
                 href: '/FichaEnsamble',
                 icon: FileSpreadsheet,
             },
-            {
-                title: 'FichaEnsambleMaterial',
-                href: '/FichaEnsambleMaterial',
-                icon: FileSpreadsheet,
-            },
+            // {
+            //     title: 'FichaEnsambleMaterial',
+            //     href: '/FichaEnsambleMaterial',
+            //     icon: FileSpreadsheet,
+            // },
             {
                 title: 'KitProceso',
                 href: '/KitProceso',
@@ -110,14 +111,26 @@ const navDropdown: NavGroup[] = [
         ],
     },
     {
-        label: 'Listas',
-        icon: Database,
+        label: 'Taller & Externo',
+        icon: Building2,
         items: [
+            {
+                title: 'EmpresaExterna',
+                href: '/EmpresaExterna',
+                icon: Building2,
+            },
             {
                 title: 'Taller',
                 href: '/Taller',
                 icon: Building2,
             },
+        ],
+    },
+    {
+        label: 'Listas',
+        icon: Database,
+        items: [
+
 
             // {
             //     title: 'GrupoTalla',
@@ -127,26 +140,17 @@ const navDropdown: NavGroup[] = [
 
 
             {
-		title: 'EstadoOpMaterial',
-		href: '/EstadoOpMaterial',
-		icon: LayoutGrid,
-	},
-	{
-		title: 'EmpresaExterna',
-		href: '/EmpresaExterna',
-		icon: LayoutGrid,
-	},
-	{
-		title: 'Merma',
-		href: '/Merma',
-		icon: LayoutGrid,
-	},
-	{
-		title: 'FichaEnsamble',
-		href: '/FichaEnsamble',
-		icon: LayoutGrid,
-	},
-	//aquipuesSide
+                title: 'EstadoOpMaterial',
+                href: '/EstadoOpMaterial',
+                icon: LayoutGrid,
+            },
+
+            {
+                title: 'Merma',
+                href: '/Merma',
+                icon: LayoutGrid,
+            },
+            //aquipuesSide
         ],
     },
     {
@@ -195,6 +199,11 @@ const navDropdown: NavGroup[] = [
                 title: 'Importar Excel',
                 href: '/ImportarExcel',
                 icon: FileUp,
+            },
+            {
+                title: 'Explicaciones',
+                href: '/Explicaciones',
+                icon: BookOpen,
             },
         ],
     },

@@ -52,9 +52,19 @@ class ProcesoExternoController extends Controller {
 
 
         $perPage = $request->has('perPage') ? $request->perPage : 10;
+
+        // Solo cuentan las OP que todavía tienen material fuera: al registrar
+        // el regreso se llena fecha_regreso_real y la OP deja de estar activa.
+        $ordenesEnProcesoExterno = ProcesoExterno::query()
+            ->whereNull('fecha_regreso_real')
+            ->whereNotNull('orden_produccion_id')
+            ->distinct()
+            ->count('orden_produccion_id');
+
         return Inertia::render($this->FromController . '/Index', [
             'fromController' => $this->PerPageAndPaginate($request, $ProcesoExternos),
             'total' => $ProcesoExternos->count(),
+            'ordenesEnProcesoExterno' => $ordenesEnProcesoExterno,
             'breadcrumbs' => [['label' => __('app.label.' . $this->FromController), 'href' => route($this->FromController . '.index')]],
             'title' => __('app.label.' . $this->FromController),
             'filters' => $request->all(['search', 'field', 'order']),

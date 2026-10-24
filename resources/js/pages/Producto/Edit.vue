@@ -2,6 +2,7 @@
 import InputError from '@/components/InputError.vue';
 import InputLabel from '@/components/InputLabel.vue';
 import Modal from '@/components/Modal.vue';
+import MoneyInput from '@/components/MoneyInput.vue';
 import PrimaryButton from '@/components/PrimaryButton.vue';
 import SecondaryButton from '@/components/SecondaryButton.vue';
 import TextInput from '@/components/TextInput.vue';
@@ -414,16 +415,16 @@ watchEffect(() => {
 
                             <div>
                                 <InputLabel for="precio_predicho" :value="lang().t('app.label.precio_predicho') || 'Precio predicho'" />
-                                <TextInput id="precio_predicho" type="number" step="any" min="0" class="mt-1 block w-full"
-                                    v-model="form.precio_predicho" placeholder="Precio predicho (opcional)"
+                                <MoneyInput id="precio_predicho" class="mt-1 block w-full"
+                                    v-model="form.precio_predicho" placeholder="$0"
                                     :error="form.errors.precio_predicho" />
                                 <InputError class="mt-2" :message="form.errors.precio_predicho" />
                             </div>
 
                             <div>
                                 <InputLabel for="precio_preventa" :value="lang().t('app.label.precio_preventa') || 'Precio preventa'" />
-                                <TextInput id="precio_preventa" type="number" step="any" min="0" class="mt-1 block w-full"
-                                    v-model="form.precio_preventa" placeholder="Precio preventa (opcional)"
+                                <MoneyInput id="precio_preventa" class="mt-1 block w-full"
+                                    v-model="form.precio_preventa" placeholder="$0"
                                     :error="form.errors.precio_preventa" />
                                 <InputError class="mt-2" :message="form.errors.precio_preventa" />
                             </div>

@@ -10,6 +10,7 @@ import { computed, ref, watch } from 'vue';
 import vSelect from "vue-select";
 import "vue-select/dist/vue-select.css";
 import { zilef_nuber_format } from '@/global.ts';
+import { rangoFlujo } from '@/composables/flujoEstadosOp';
 
 const props = defineProps({
     show: Boolean,
@@ -27,6 +28,7 @@ const emit = defineEmits(["close"]);
 const form = useForm({
     estado_op_id: '' as string | number,
     estado_op_secundario_id: '' as string | number,
+    fecha_recepcion: '' as string,
     recepciones: [] as any[],
     proceso_externo: {
         proveedor_destino_id: '' as string | number,
@@ -46,7 +48,11 @@ const form = useForm({
 });
 
 const normalizar = (valor: any) => String(valor ?? '').trim().toLowerCase();
-const hoy = () => new Date().toISOString().split('T')[0];
+const hoy = () => {
+    const fecha = new Date();
+    fecha.setMinutes(fecha.getMinutes() - fecha.getTimezoneOffset());
+    return fecha.toISOString().split('T')[0];
+};
 
 // Único par de estados que puede coexistir en una OP (regla de negocio).
 const PAR_COEXISTENCIA = ['Esperando materiales', 'Procesos externos'] as const;
@@ -63,6 +69,29 @@ const opcionesPermitidas = computed(() => {
 const estadoSeleccionado = computed(() =>
     (props.estados || []).find((e: any) => Number(e.id) === Number(form.estado_op_id))
 );
+
+// El orden del flujo vive en flujoEstadosOp; aquí solo se usa para etiquetar
+// una transición como avance o retroceso. Las transiciones permitidas las
+// decide el backend.
+const rangoEstado = (estado: any) => rangoFlujo(estado?.name);
+
+const transiciones = computed(() => {
+    const actual = rangoEstado(estadoActual.value);
+    return opcionesPermitidas.value
+        .slice()
+        .sort((a: any, b: any) => rangoEstado(a) - rangoEstado(b))
+        .map((estado: any) => ({ estado, avanza: rangoEstado(estado) > actual }));
+});
+
+const transicionesAvance = computed(() => transiciones.value.filter((t) => t.avanza));
+const transicionesRetroceso = computed(() => transiciones.value.filter((t) => !t.avanza));
+
+const estaElegido = (id: any) => String(form.estado_op_id) === String(id);
+
+// Re-hacer clic sobre el estado elegido vuelve a "sin cambio seleccionado".
+const elegirEstado = (id: any) => {
+    form.estado_op_id = estaElegido(id) ? '' : id;
+};
 
 // El estado "objetivo" es el seleccionado, o el actual si aún no se elige otro.
 const estadoObjetivo = computed(() => estadoSeleccionado.value ?? estadoActual.value);
@@ -152,6 +181,7 @@ const destinoEsCerrada = computed(() =>
 const mostrarCierre = computed(() => estadoSeleccionado.value?.name === 'Cerrada');
 
 const avanceGuardado = ref(false);
+const avanceRecepcionGuardado = ref(false);
 
 const cierreLleno = (valor: any) =>
     valor !== '' && valor !== null && valor !== undefined;
@@ -174,6 +204,31 @@ watch(
     () => [form.cierre.materiales_sobrantes, form.cierre.perdidas_mermas, form.cierre.costo_real_final],
     () => { avanceGuardado.value = false; }
 );
+
+watch(
+    () => form.recepciones.map((f: any) => [f.cantidad_aprobada, f.cantidad_en_reparacion, f.cantidad_no_recuperable]),
+    () => { avanceRecepcionGuardado.value = false; },
+    { deep: true }
+);
+
+const guardarAvanceRecepcion = () => {
+    form
+        .transform((datos) => ({
+            fecha_recepcion: datos.fecha_recepcion || null,
+            recepciones: datos.recepciones.map((fila: any) => ({
+                distribucion_id: fila.distribucion_id,
+                cantidad_aprobada: numeroONulo(fila.cantidad_aprobada),
+                cantidad_en_reparacion: numeroONulo(fila.cantidad_en_reparacion),
+                cantidad_no_recuperable: numeroONulo(fila.cantidad_no_recuperable),
+            })),
+        }))
+        .put(route('OrdenProduccion.recepcionBorrador', props.op?.id), {
+            preserveScroll: true,
+            preserveState: true,
+            onSuccess: () => { avanceRecepcionGuardado.value = true; },
+            onError: () => { avanceRecepcionGuardado.value = false; },
+        });
+};
 
 // Guarda el avance del cierre sin cerrar la OP.
 const guardarAvance = () => {
@@ -273,8 +328,19 @@ watch(mostrarRestaMateriales, (visible) => {
     errorResta.value = null;
 });
 
-const kitDescuadrado = (kit: any): boolean =>
-    Math.abs(Number(kit.cantidad_preparada || 0) - Number(kit.cantidad_requerida || 0)) > 0.004;
+const kitDescuadrado = (kit: any): boolean => {
+    // La cantidad preparada es opcional: si no está registrada, se asume la
+    // cantidad requerida y no se marca como descuadre.
+    if (
+        kit?.cantidad_preparada === null
+        || kit?.cantidad_preparada === undefined
+        || kit?.cantidad_preparada === ''
+    ) {
+        return false;
+    }
+
+    return Math.abs(Number(kit.cantidad_preparada) - Number(kit.cantidad_requerida || 0)) > 0.004;
+};
 
 const kitSinStock = (kit: any): boolean =>
     Number(kit.cantidad_disponible || 0) < Number(kit.cantidad_requerida || 0);
@@ -284,6 +350,18 @@ const problemasResta = computed(() =>
 );
 
 const cantidadKit = (valor: any) => zilef_nuber_format(valor ?? 0, 2, false);
+
+// Lo preparado es la cantidad que hay en el material; si se registró una
+// preparación explícita en el kit, esa manda.
+const cantidadPreparadaKit = (kit: any) =>
+    cantidadKit(kit?.cantidad_preparada ?? kit?.cantidad_disponible);
+
+// Lo que queda después de restar la requerida.
+const cantidadRestaKit = (kit: any) => {
+    if (kitDescuadrado(kit) || kitSinStock(kit)) return '—';
+    const preparada = Number(kit?.cantidad_preparada ?? kit?.cantidad_disponible ?? 0);
+    return cantidadKit(preparada - Number(kit?.cantidad_requerida ?? 0));
+};
 
 // Nombre de respaldo cuando la OP tiene un único producto.
 const productoSuelto = computed(() => {
@@ -332,11 +410,21 @@ const filasRecepcion = computed(() => {
     );
 });
 
+const fechaRecepcionInicial = () => {
+    const existente = ((props.op as any)?.recepciones_detalle || [])
+        .find((recepcion: any) => recepcion?.fecha_recepcion);
+
+    return existente?.fecha_recepcion
+        ? String(existente.fecha_recepcion).slice(0, 10)
+        : hoy();
+};
+
 const abrirModal = () => {
     form.errors = {} as any;
     form.reset();
     form.estado_op_id = '';
     form.estado_op_secundario_id = (props.op as any)?.estado_op_secundario_id ?? '';
+    form.fecha_recepcion = fechaRecepcionInicial();
     form.recepciones = mostrarTablaRecepcion.value
         ? filasRecepcion.value.map((fila: any) => ({ ...fila }))
         : [];
@@ -392,12 +480,13 @@ const sumaFila = (fila: any): number =>
     + (numeroONulo(fila.cantidad_en_reparacion) ?? 0)
     + (numeroONulo(fila.cantidad_no_recuperable) ?? 0);
 
+const filaSuperada = (fila: any): boolean => sumaFila(fila) > Number(fila.esperada);
 const filaCuadra = (fila: any): boolean => sumaFila(fila) === Number(fila.esperada);
 
 const filaValida = (fila: any): boolean => {
     const sinNegativos = [fila.cantidad_aprobada, fila.cantidad_en_reparacion, fila.cantidad_no_recuperable]
         .every(valorValido);
-    return sinNegativos && filaCuadra(fila);
+    return sinNegativos && !filaSuperada(fila);
 };
 
 // Misma talla para el mismo producto: la recepción quedaría duplicada.
@@ -413,6 +502,7 @@ const clavesDuplicadas = computed(() => {
 });
 
 const filasCompletas = computed(() => form.recepciones.every(filaValida));
+const filasListas = computed(() => form.recepciones.every(filaCuadra));
 
 const puedeGuardar = computed(() => {
     if (destinoEsCerrada.value && totalEnReparacionEfectivo.value > 0) return false;
@@ -435,9 +525,11 @@ const puedeGuardar = computed(() => {
 
     if (mostrarRegresoReal.value && !form.fecha_regreso_real) return false;
 
+    if (mostrarTablaRecepcion.value && !form.fecha_recepcion) return false;
+
     if (!mostrarTablaRecepcion.value) return true;
-    if (!form.recepciones.length) return true; // OP sin tallas: no hay recepción que cuadrar
-    return filasCompletas.value && !clavesDuplicadas.value.length;
+    if (!form.recepciones.length) return true;
+    return filasListas.value && !clavesDuplicadas.value.length;
 });
 
 // Con un estado del par se puede guardar aunque no se cambie el principal (solo la coexistencia).
@@ -504,6 +596,7 @@ const guardar = () => {
         .transform((datos) => ({
             ...datos,
             estado_op_id: datos.estado_op_id || props.op?.estado_op_id,
+            fecha_recepcion: mostrarTablaRecepcion.value ? (datos.fecha_recepcion || null) : undefined,
             recepciones: datos.recepciones.map((fila: any) => ({
                 distribucion_id: fila.distribucion_id,
                 cantidad_aprobada: numeroONulo(fila.cantidad_aprobada),
@@ -553,7 +646,7 @@ watch(() => props.show, (visible) => {
                 <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100">
                     Cambiar estado
                     <span v-if="props.op?.numero_op" class="text-sm font-normal text-gray-500 dark:text-gray-400">
-                        — OP {{ props.op.numero_op }}
+                        — {{ props.op.numero_op }}
                     </span>
                 </h2>
 
@@ -571,20 +664,56 @@ watch(() => props.show, (visible) => {
                 </div>
 
                 <div class="mt-4">
-                    <InputLabel for="estado_nuevo" value="Nuevo estado" />
-                    <v-select
-                        v-if="opcionesPermitidas.length"
-                        id="estado_nuevo"
-                        class="mt-1 block w-full"
-                        :options="opcionesPermitidas"
-                        label="name"
-                        :reduce="(item: any) => item.id"
-                        v-model="form.estado_op_id"
-                        placeholder="Seleccione el nuevo estado..."
-                    />
-                    <p v-else class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    <InputLabel value="Nuevo estado" />
+
+                    <p v-if="!opcionesPermitidas.length" class="mt-1 text-sm text-gray-500 dark:text-gray-400">
                         Este estado es final: no admite transiciones.
                     </p>
+
+                    <div v-else class="mt-2 space-y-3">
+                        <div v-if="transicionesAvance.length">
+                            <p class="text-[11px] font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+                                Avanzar
+                            </p>
+                            <div class="mt-1.5 flex flex-wrap gap-2">
+                                <button v-for="transicion in transicionesAvance" :key="transicion.estado.id"
+                                    type="button" @click="elegirEstado(transicion.estado.id)"
+                                    :aria-pressed="estaElegido(transicion.estado.id)"
+                                    :title="transicion.estado.regla_clave || ''"
+                                    class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors"
+                                    :class="estaElegido(transicion.estado.id)
+                                        ? 'border-emerald-600 bg-emerald-600 text-white'
+                                        : 'border-emerald-200 bg-white text-emerald-800 hover:border-emerald-400 dark:border-emerald-500/30 dark:bg-gray-900/40 dark:text-emerald-200 dark:hover:border-emerald-400/60'">
+                                    {{ transicion.estado.name }}
+                                    <span aria-hidden="true">&rarr;</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div v-if="transicionesRetroceso.length">
+                            <p class="text-[11px] font-semibold uppercase tracking-wider text-amber-700 dark:text-amber-400">
+                                Retroceder
+                            </p>
+                            <div class="mt-1.5 flex flex-wrap gap-2">
+                                <button v-for="transicion in transicionesRetroceso" :key="transicion.estado.id"
+                                    type="button" @click="elegirEstado(transicion.estado.id)"
+                                    :aria-pressed="estaElegido(transicion.estado.id)"
+                                    :title="transicion.estado.regla_clave || ''"
+                                    class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors"
+                                    :class="estaElegido(transicion.estado.id)
+                                        ? 'border-amber-600 bg-amber-600 text-white'
+                                        : 'border-amber-200 bg-white text-amber-800 hover:border-amber-400 dark:border-amber-500/30 dark:bg-gray-900/40 dark:text-amber-200 dark:hover:border-amber-400/60'">
+                                    <span aria-hidden="true">&larr;</span>
+                                    {{ transicion.estado.name }}
+                                </button>
+                            </div>
+                        </div>
+
+                        <p class="text-xs text-gray-500 dark:text-gray-400">
+                            Desde «{{ estadoActual?.name || 'Sin estado' }}». Haga clic de nuevo sobre un estado para dejar sin cambio.
+                        </p>
+                    </div>
+
                     <InputError class="mt-2" :message="form.errors.estado_op_id" />
 
                     <p
@@ -625,7 +754,8 @@ watch(() => props.show, (visible) => {
                         </p>
                         <p class="mt-1 text-xs text-emerald-800/80 dark:text-emerald-200/80">
                             Se descontará del inventario la cantidad requerida de cada material y quedará registrada
-                            en el histórico de movimientos. La cantidad preparada debe ser igual a la requerida.
+                            en el histórico de movimientos. Si registras una cantidad preparada, debe coincidir con
+                            la requerida.
                         </p>
                     </div>
 
@@ -651,7 +781,7 @@ watch(() => props.show, (visible) => {
                                         <th scope="col" class="px-3 py-2 font-semibold">Material</th>
                                         <th scope="col" class="w-24 px-3 py-2 text-right font-semibold">Requerida</th>
                                         <th scope="col" class="w-24 px-3 py-2 text-right font-semibold">Preparada</th>
-                                        <th scope="col" class="w-24 px-3 py-2 text-right font-semibold">Se resta</th>
+                                        <th scope="col" class="w-24 px-3 py-2 text-right font-semibold">Quedan</th>
                                         <th scope="col" class="w-20 px-3 py-2 font-semibold">Unidad</th>
                                         <th scope="col" class="w-40 px-3 py-2 font-semibold">Estado</th>
                                     </tr>
@@ -668,10 +798,10 @@ watch(() => props.show, (visible) => {
                                             :class="kitDescuadrado(kit)
                                                 ? 'font-semibold text-amber-600 dark:text-amber-400'
                                                 : 'text-gray-700 dark:text-gray-300'">
-                                            {{ cantidadKit(kit.cantidad_preparada) }}
+                                            {{ cantidadPreparadaKit(kit) }}
                                         </td>
                                         <td class="px-3 py-2 text-right font-semibold tabular-nums text-gray-900 dark:text-gray-100">
-                                            {{ (kitDescuadrado(kit) || kitSinStock(kit)) ? '—' : cantidadKit(kit.cantidad_requerida) }}
+                                            {{ cantidadRestaKit(kit) }}
                                         </td>
                                         <td class="px-3 py-2 text-gray-500 dark:text-gray-400">
                                             {{ kit.unidad || '—' }}
@@ -728,6 +858,22 @@ watch(() => props.show, (visible) => {
                         </p>
                     </div>
 
+                    <div class="mt-3 grid gap-3 sm:grid-cols-[minmax(0,220px)_1fr] sm:items-end">
+                        <div>
+                            <InputLabel for="fecha_recepcion" value="Fecha de recepción *" />
+                            <TextInput
+                                id="fecha_recepcion"
+                                type="date"
+                                class="mt-1 block w-full"
+                                v-model="form.fecha_recepcion"
+                            />
+                            <InputError class="mt-1" :message="form.errors.fecha_recepcion" />
+                        </div>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 sm:pb-2">
+                            Se guardará en todas las tallas de esta recepción.
+                        </p>
+                    </div>
+
                     <div class="mt-3 overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
                         <div class="overflow-x-auto">
                             <table class="w-full min-w-[820px] text-sm">
@@ -780,10 +926,16 @@ watch(() => props.show, (visible) => {
                                         <td class="px-3 py-2 text-right">
                                             <span
                                                 class="font-semibold tabular-nums"
-                                                :class="filaCuadra(fila)
-                                                    ? 'text-gray-900 dark:text-gray-100'
-                                                    : 'text-amber-600 dark:text-amber-400'"
-                                                :title="filaCuadra(fila) ? '' : `Debe sumar ${fila.esperada}`"
+                                                :class="filaSuperada(fila)
+                                                    ? 'text-rose-600 dark:text-rose-400'
+                                                    : filaCuadra(fila)
+                                                        ? 'text-emerald-600 dark:text-emerald-400'
+                                                        : 'text-gray-900 dark:text-gray-100'"
+                                                :title="filaSuperada(fila)
+                                                    ? `Supera el máximo (${fila.esperada})`
+                                                    : filaCuadra(fila)
+                                                        ? 'Cuadra exacto'
+                                                        : `Máximo: ${fila.esperada}`"
                                             >
                                                 {{ sumaFila(fila) }}
                                             </span>
@@ -805,17 +957,35 @@ watch(() => props.show, (visible) => {
                         <p class="text-gray-500 dark:text-gray-400">
                             Recibidas:
                             <span class="font-semibold tabular-nums"
-                                :class="totalRecibido === totalEsperado
-                                    ? 'text-gray-900 dark:text-gray-100'
-                                    : 'text-amber-600 dark:text-amber-400'">
+                                :class="totalRecibido > totalEsperado
+                                    ? 'text-rose-600 dark:text-rose-400'
+                                    : totalRecibido === totalEsperado
+                                        ? 'text-emerald-600 dark:text-emerald-400'
+                                        : 'text-gray-900 dark:text-gray-100'">
                                 {{ totalRecibido }}
                             </span>
                             de
                             <span class="font-semibold tabular-nums text-gray-900 dark:text-gray-100">{{ totalEsperado }}</span>
                         </p>
-                        <p v-if="!filasCompletas" class="text-amber-600 dark:text-amber-400">
-                            Cuadre las tres cantidades en cada talla para continuar.
-                        </p>
+                        <div class="flex items-center gap-3">
+                            <p v-if="form.recepciones.some(filaSuperada)" class="text-rose-600 dark:text-rose-400">
+                                Una o más filas superan la cantidad esperada.
+                            </p>
+                            <p v-else-if="!filasListas" class="text-amber-600 dark:text-amber-400">
+                                Puede guardar avance o completar las cantidades para enviar.
+                            </p>
+                            <span v-if="avanceRecepcionGuardado" class="text-xs font-medium text-emerald-700 dark:text-emerald-300">
+                                Avance guardado
+                            </span>
+                            <SecondaryButton
+                                v-if="!form.recepciones.some(filaSuperada)"
+                                type="button"
+                                :disabled="form.processing || !form.fecha_recepcion"
+                                @click="guardarAvanceRecepcion"
+                            >
+                                Guardar avance
+                            </SecondaryButton>
+                        </div>
                     </div>
 
                     <p v-if="clavesDuplicadas.length" class="mt-1 text-sm text-red-600 dark:text-red-400">

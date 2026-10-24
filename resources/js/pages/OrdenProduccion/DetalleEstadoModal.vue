@@ -86,7 +86,7 @@ const fechaRecepcion = computed(() => {
                     <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100">
                         Detalle del estado
                         <span v-if="props.op?.numero_op" class="text-sm font-normal text-gray-500 dark:text-gray-400">
-                            — OP {{ props.op.numero_op }}
+                            — {{ props.op.numero_op }}
                         </span>
                     </h2>
                     <span

@@ -33,29 +33,22 @@ Route::middleware('auth', 'verified')->group(function () {
 	
 	//<editor-fold desc="User">
 	Route::resource('/user', UserController::class);
-	// Route::resource('/user', UserController::class)->except('create', 'show', 'edit');
 	Route::post('/user/destroy-bulk', [UserController::class, 'destroyBulk'])->name('user.destroy-bulk');
-//	Route::get('/IndexTrashed', [UserController::class, 'IndexTrashed'])->name('IndexTrashed');
 	
-    
 
-	Route::resource("/Presupuesto", \App\Http\Controllers\PresupuestoController::class);
     require __DIR__.'/pagoszilef.php';
+    require __DIR__.'/solozilef.php';
 
 	Route::resource("/Producto", \App\Http\Controllers\ProductoController::class);
 	Route::post("/Producto/upload-excel", [\App\Http\Controllers\ProductoController::class, 'uploadExcel'])->name('Producto.upload-excel');
 	Route::put("/Producto/{id}/distribucion", [\App\Http\Controllers\ProductoController::class, 'syncDistribucion'])->name('Producto.distribucion');
-	Route::get('/notificar-prueba', function (\Illuminate\Http\Request $request) {
-            $noti = app(\Alejo\Notificaciones\NotificacionesManager::class);
-    		$noti->crear('Nuevo pedido recibido #1001', 'alta', $request->user()?->id);
-
-            return 'Notificación enviada correctamente';
-	})->name('notificar.prueba');
+	
 	Route::resource("/Talla", \App\Http\Controllers\TallaController::class);
 	Route::resource("/OrdenProduccion", \App\Http\Controllers\OrdenProduccionController::class);
 	Route::put("/OrdenProduccion/{id}/distribucion", [\App\Http\Controllers\OrdenProduccionController::class, 'syncDistribucion'])->name('OrdenProduccion.distribucion');
 	Route::put("/OrdenProduccion/{id}/estado", [\App\Http\Controllers\OrdenProduccionController::class, 'cambiarEstado'])->name('OrdenProduccion.cambiarEstado');
 	Route::put("/OrdenProduccion/{id}/cierre", [\App\Http\Controllers\OrdenProduccionController::class, 'guardarCierre'])->name('OrdenProduccion.cierre');
+	Route::put("/OrdenProduccion/{id}/recepcion-borrador", [\App\Http\Controllers\OrdenProduccionController::class, 'guardarRecepcionBorrador'])->name('OrdenProduccion.recepcionBorrador');
 	Route::post("/OrdenProduccion/borrador", [\App\Http\Controllers\OrdenProduccionController::class, 'guardarBorrador'])->name('OrdenProduccion.borrador');
 	Route::get("/ProcesoExterno/materiales-op/{orden}", [\App\Http\Controllers\ProcesoExternoController::class, 'materialesOp'])->name('ProcesoExterno.materialesOp');
 	Route::post("/ProcesoExterno/salida-op", [\App\Http\Controllers\ProcesoExternoController::class, 'salidaOp'])->name('ProcesoExterno.salidaOp');
@@ -86,6 +79,15 @@ Route::middleware('auth', 'verified')->group(function () {
 	Route::resource("/Merma", \App\Http\Controllers\MermaController::class);
 	Route::resource("/FichaEnsamble", \App\Http\Controllers\FichaEnsambleController::class);
 	Route::resource("/FichaEnsambleMaterial", \App\Http\Controllers\FichaEnsambleMaterialController::class);
+
+	// Reglas del sistema explicadas (categoría y subcategoría por query).
+	Route::get('/Explicaciones', function (\Illuminate\Http\Request $request) {
+		return Inertia::render('Explicaciones/Index', [
+			'title' => 'Explicaciones',
+			'categoria' => $request->query('categoria'),
+			'subcategoria' => $request->query('subcategoria'),
+		]);
+	})->name('Explicaciones.index');
 	//aquipues
 }); //fin verified
 

@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StoreDistribucion_por_tallasRequest extends FormRequest
 {
@@ -23,7 +24,15 @@ class StoreDistribucion_por_tallasRequest extends FormRequest
     public function rules(): array
     {
         return [
-            //
+            'talla' => [
+                'required',
+                'string',
+                'max:255',
+                Rule::unique('distribucion_por_tallas', 'talla')->ignore($this->route('distribucion_por_tallas')?->id),
+            ],
+            'cantidad_planificada' => 'required|integer|min:0',
+            'cantidad_recibida_buena' => 'nullable|integer|min:0',
+            'cantidad_pendiente_reparacion' => 'nullable|integer|min:0',
         ];
     }
 }

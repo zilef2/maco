@@ -20,7 +20,7 @@ const emit = defineEmits(["close"]);
                 <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100">
                     {{ lang().t('app.label.observaciones') || 'Observaciones' }}
                     <span v-if="props.numeroOp" class="text-sm font-normal text-gray-500 dark:text-gray-400">
-                        — OP {{ props.numeroOp }}
+                        — {{ props.numeroOp }}
                     </span>
                 </h2>
                 <p class="mt-4 text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-words max-h-96 overflow-y-auto">

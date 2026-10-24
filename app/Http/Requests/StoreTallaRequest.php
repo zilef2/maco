@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StoreTallaRequest extends FormRequest
 {
@@ -23,7 +24,16 @@ class StoreTallaRequest extends FormRequest
     public function rules(): array
     {
         return [
-            //
+            'referencia' => 'required|string|max:255',
+            'nombre' => [
+                'required',
+                'string',
+                'max:255',
+                Rule::unique('tallas', 'nombre'),
+            ],
+            'descripcion' => 'nullable|string',
+            'tipo' => 'required|string|max:255',
+            'estado' => 'nullable|integer',
         ];
     }
 }

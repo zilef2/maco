@@ -47,9 +47,10 @@ use Illuminate\Database\Eloquent\SoftDeletes;
      * OP + producto + talla.
      *
      * @param  array<int, array{producto_id: int|null, talla: string, cantidad_esperada: int, cantidad_recibida: int, cantidad_aprobada: int, cantidad_en_reparacion: int, cantidad_no_recuperable: int}>  $filas
+     * @param  string|null  $fechaRecepcion  Fecha con la que se registra la recepción.
      * @return int cantidad de tallas procesadas
      */
-    public static function generarDesdeOrden(OrdenProduccion $orden, array $filas = []): int
+    public static function generarDesdeOrden(OrdenProduccion $orden, array $filas = [], ?string $fechaRecepcion = null): int
     {
         $generadas = 0;
 
@@ -66,7 +67,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
                     'cantidad_aprobada'       => (int) $fila['cantidad_aprobada'],
                     'cantidad_en_reparacion'  => (int) $fila['cantidad_en_reparacion'],
                     'cantidad_no_recuperable' => (int) $fila['cantidad_no_recuperable'],
-                    'fecha_recepcion'         => now(),
+                    'fecha_recepcion'         => $fechaRecepcion ?: now(),
                 ]
             );
 
