@@ -87,6 +87,15 @@ watchEffect(() => {
             form[names['order']] = props.Materiala[names['order']]
         });
         form.estado = estadoActivo(form.estado) ? 'Activo' : 'Inactivo';
+        
+        // Cargar precio de última compra
+        if (props.Materiala && props.Materiala.last_purchase_price) {
+            form.last_purchase_price = props.Materiala.last_purchase_price;
+            form.last_purchase_date = props.Materiala.last_purchase_date || new Date().toISOString().split('T')[0];
+        } else {
+            form.last_purchase_price = '';
+            form.last_purchase_date = new Date().toISOString().split('T')[0];
+        }
     }
 })
 
@@ -249,6 +258,48 @@ const update = () => {
                                     <span class="inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform duration-200"
                                         :class="toggleActivo(atributosform.idd, form[atributosform.idd]) ? 'translate-x-6' : 'translate-x-1'" />
                                 </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Precio de última compra -->
+                    <div>
+                        <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-1.5 mb-4">
+                            <span class="inline-flex h-4 w-4 items-center justify-center rounded bg-indigo-600 text-white text-[10px]">
+                                $
+                            </span>
+                            Precio de última compra
+                        </h3>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mb-4 pl-6">
+                            Modifique el precio si ha cambiado. Se registrará una nueva entrada en el histórico.
+                        </p>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+                            <div>
+                                <InputLabel for="last_purchase_price" value="Precio" />
+                                <TextInput id="last_purchase_price"
+                                    type="number"
+                                    class="mt-1 block w-full"
+                                    v-model="form.last_purchase_price"
+                                    placeholder="0.00"
+                                    :error="form.errors.last_purchase_price"
+                                    step="0.01"
+                                    min="0" />
+                                <InputError class="mt-2" :message="form.errors.last_purchase_price" />
+                                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                    Ingrese el precio unitario del último pedido
+                                </p>
+                            </div>
+                            <div>
+                                <InputLabel for="last_purchase_date" value="Fecha" />
+                                <TextInput id="last_purchase_date"
+                                    type="date"
+                                    class="mt-1 block w-full"
+                                    v-model="form.last_purchase_date"
+                                    :error="form.errors.last_purchase_date" />
+                                <InputError class="mt-2" :message="form.errors.last_purchase_date" />
+                                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                    Fecha de la última compra
+                                </p>
                             </div>
                         </div>
                     </div>

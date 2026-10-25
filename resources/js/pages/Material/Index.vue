@@ -26,6 +26,7 @@ import {
     ClockIcon,
     CubeIcon,
     EllipsisVerticalIcon,
+    ExclamationTriangleIcon,
     FunnelIcon,
     MagnifyingGlassIcon,
     PencilIcon,
@@ -35,6 +36,14 @@ import {
 } from '@heroicons/vue/24/solid';
 
 import { formatDate, zilef_nuber_format } from '@/global.ts';
+
+// Función para formatear precios
+const formatPrice = (price: any): string => {
+    if (price === null || price === undefined || price === '') {
+        return '—';
+    }
+    return zilef_nuber_format(price, 2, false);
+};
 
 const props = defineProps({
     materiales: { type: Array as () => any[], default: () => [] },
@@ -61,6 +70,7 @@ const proveedorFiltro = ref<number | 'todos'>('todos');
 const estadoFiltro = ref<string | 'todos'>('todos');
 const unidadFiltro = ref<string | 'todos'>('todos');
 const varianteFiltro = ref<string | 'todos'>('todos');
+const precioFiltro = ref<string | 'sin_precio' | 'con_precio'>('todos');
 const boolFiltros = reactive<Record<string, '' | '1' | '0'>>({
     maneja_color: '',
     maneja_talla: '',
@@ -182,6 +192,13 @@ const filtradas = computed(() =>
         if (varianteFiltro.value !== 'todos' && normalizar(m.variante_atributo_sugerido) !== normalizar(varianteFiltro.value)) {
             return false;
         }
+        // Filtro por precio
+        if (precioFiltro.value === 'sin_precio' && m.last_purchase_price !== null && m.last_purchase_price !== undefined) {
+            return false;
+        }
+        if (precioFiltro.value === 'con_precio' && (m.last_purchase_price === null || m.last_purchase_price === undefined)) {
+            return false;
+        }
         for (const campo of Object.keys(boolFiltros)) {
             const activo = boolFiltros[campo];
             if (activo !== '' && Number(!!m[campo]) !== Number(activo)) {
@@ -200,6 +217,8 @@ const valorOrden = (m: any, key: string): any => {
             return m.nombre_base ?? '';
         case 'proveedor':
             return m.proveedor_nombre ?? '';
+        case 'last_purchase_price':
+            return m.last_purchase_price ?? -1; // Poner los sin precio al final
         default:
             return m[key];
     }
@@ -295,6 +314,14 @@ const filtrosDropdown = computed(
 
 const hayFiltros = computed(() => filtrosBarra.value + filtrosDropdown.value > 0);
 
+// Contar materiales con y sin precio
+const materialesConPrecio = computed(() => {
+    return filas.value.filter((m: any) => m.last_purchase_price !== null && m.last_purchase_price !== undefined).length;
+});
+const materialesSinPrecio = computed(() => {
+    return filas.value.filter((m: any) => m.last_purchase_price === null || m.last_purchase_price === undefined).length;
+});
+
 const limpiarFiltros = () => {
     busqueda.value = '';
     categoriaFiltro.value = 'todos';
@@ -302,6 +329,7 @@ const limpiarFiltros = () => {
     estadoFiltro.value = 'todos';
     unidadFiltro.value = 'todos';
     varianteFiltro.value = 'todos';
+    precioFiltro.value = 'todos';
     Object.keys(boolFiltros).forEach((campo) => (boolFiltros[campo] = ''));
 };
 
@@ -353,6 +381,7 @@ const chipClass = (activo: boolean) => [
 const columnas = [
     { key: 'codigo_material', label: 'Código', sortable: true, align: 'left', headerClass: 'min-w-[120px]', cellClass: 'min-w-[120px]' },
     { key: 'material', label: 'Material', sortable: true, align: 'left', headerClass: 'min-w-[200px]', cellClass: 'min-w-[200px]' },
+    { key: 'last_purchase_price', label: 'Último precio', sortable: true, align: 'right', headerClass: 'min-w-[140px]', cellClass: 'min-w-[140px]' },
     { key: 'existencia_actual', label: 'Existencia', sortable: true, align: 'right', headerClass: 'w-[120px]', cellClass: 'w-[120px]' },
     { key: 'estado', label: 'Estado', sortable: true, align: 'left', headerClass: 'min-w-[130px]', cellClass: 'min-w-[130px]' },
     { key: 'material_procesado', label: 'Procesado', sortable: true, align: 'left', headerClass: 'min-w-[110px]', cellClass: 'min-w-[110px]' },
@@ -599,6 +628,30 @@ const titulos = [
                             </option>
                         </select>
 
+                        <select
+                            v-model="precioFiltro"
+                            aria-label="Filtrar por precio"
+                            :class="[selectClass, 'max-w-[190px]']"
+                        >
+                            <option value="todos">Todos los precios</option>
+                            <option value="con_precio">Con precio</option>
+                            <option value="sin_precio">Sin precio</option>
+                        </select>
+
+                        <!-- Banner rojo para materiales sin precio -->
+                        <div v-if="materialesSinPrecio > 0" class="inline-flex items-center gap-2 rounded-full border border-red-500/30 bg-red-50/80 px-3 py-1.5 text-xs font-medium text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+                            <ExclamationTriangleIcon class="h-4 w-4" />
+                            {{ materialesSinPrecio }} materiales sin precio
+                            <button
+                                type="button"
+                                @click="precioFiltro = 'sin_precio'"
+                                class="ml-1 rounded px-1.5 py-0.5 hover:bg-red-200 dark:hover:bg-red-500/20"
+                                title="Filtrar materiales sin precio"
+                            >
+                                Filtrar
+                            </button>
+                        </div>
+
                         <DropdownMenu>
                             <DropdownMenuTrigger
                                 type="button"
@@ -745,7 +798,7 @@ const titulos = [
 
                                 <th
                                     scope="col"
-                                    class="sticky right-0 z-30 w-[104px] border-l border-border bg-muted px-2 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground"
+                                    class="sticky right-0 z-30 w-[136px] border-l border-border bg-muted px-2 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground"
                                 >
                                     Acciones
                                 </th>
@@ -803,6 +856,23 @@ const titulos = [
                                     </div>
                                 </td>
 
+                                <!-- Último precio -->
+                                <td class="px-3 py-3 text-right align-top">
+                                    <div class="flex flex-col items-end gap-0.5">
+                                        <span class="font-semibold tabular-nums text-foreground">
+                                            {{ formatPrice(material.last_purchase_price) }}
+                                        </span>
+                                        <!-- Mostrar los últimos 3 precios si existen -->
+                                        <span v-if="material.recent_prices && material.recent_prices.length > 1" class="text-[10px] text-muted-foreground">
+                                            Últimos {{ material.recent_prices.length }}: 
+                                            {{ material.recent_prices.map((p: any) => formatPrice(p.precio)).join(' | ') }}
+                                        </span>
+                                        <span v-else class="text-[10px] text-muted-foreground">
+                                            {{ material.recent_prices && material.recent_prices.length === 1 ? 'Último registro' : 'Sin histórico' }}
+                                        </span>
+                                    </div>
+                                </td>
+
                                 <!-- Existencia -->
                                 <td class="px-3 py-3 text-right align-top">
                                     <div class="flex flex-col items-end gap-0.5">
@@ -834,6 +904,19 @@ const titulos = [
                                             ? 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-300'
                                             : 'border-border bg-muted text-muted-foreground'"
                                     >
+                                        <!-- SVG de máquina de manufactura -->
+                                        <svg v-if="estaProcesado(material.material_procesado)" class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                            <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+                                            <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+                                            <line x1="6" y1="6" x2="6.01" y2="6"></line>
+                                            <line x1="6" y1="18" x2="6.01" y2="18"></line>
+                                            <line x1="10" y1="2" x2="10" y2="4"></line>
+                                            <line x1="10" y1="20" x2="10" y2="22"></line>
+                                            <line x1="14" y1="2" x2="14" y2="4"></line>
+                                            <line x1="14" y1="20" x2="14" y2="22"></line>
+                                            <line x1="18" y1="6" x2="18" y2="8"></line>
+                                            <line x1="18" y1="18" x2="18" y2="20"></line>
+                                        </svg>
                                         <span
                                             class="h-1.5 w-1.5 rounded-full"
                                             :class="estaProcesado(material.material_procesado) ? 'bg-violet-500' : 'bg-muted-foreground/50'"
@@ -876,7 +959,7 @@ const titulos = [
 
                                 <!-- Acciones -->
                                 <td
-                                    class="sticky right-0 z-10 w-[104px] border-l border-border/60 bg-card px-2 py-2 align-middle shadow-[-8px_0_16px_-16px_rgba(0,0,0,0.35)] transition-colors group-hover:bg-muted/40"
+                                    class="sticky right-0 z-10 w-[136px] border-l border-border/60 bg-card px-2 py-2 align-middle shadow-[-8px_0_16px_-16px_rgba(0,0,0,0.35)] transition-colors group-hover:bg-muted/40"
                                 >
                                     <div class="flex items-center justify-end gap-1">
                                         <button
@@ -889,6 +972,16 @@ const titulos = [
                                         >
                                             <PencilIcon class="h-4 w-4" />
                                         </button>
+                                        <button
+                                            v-if="can(['update Material'])"
+                                            type="button"
+                                            @click="accionFila('alterar', material)"
+                                            title="Alterar existencia"
+                                            :aria-label="`Alterar existencia de ${material.codigo_material || material.nombre_base}`"
+                                            class="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                                        >
+                                            <ArrowUpTrayIcon class="h-4 w-4 rotate-180" />
+                                        </button>
                                         <DropdownMenu>
                                             <DropdownMenuTrigger
                                                 type="button"
@@ -899,14 +992,6 @@ const titulos = [
                                                 <EllipsisVerticalIcon class="h-4 w-4" />
                                             </DropdownMenuTrigger>
                                             <DropdownMenuContent align="end" class="w-60 p-1">
-                                                <DropdownMenuItem
-                                                    v-if="can(['update Material'])"
-                                                    @click="accionFila('alterar', material)"
-                                                    class="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-xs font-medium"
-                                                >
-                                                    <ArrowUpTrayIcon class="h-4 w-4 rotate-180" />
-                                                    <span>Alterar existencia</span>
-                                                </DropdownMenuItem>
                                                 <DropdownMenuItem
                                                     v-if="can(['read Material'])"
                                                     @click="accionFila('historial', material)"

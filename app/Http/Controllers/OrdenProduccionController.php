@@ -50,7 +50,7 @@ class OrdenProduccionController extends Controller {
 
         // Listado completo: la tabla filtra, ordena y pagina en el frontend.
         // La clave solo depende de la versión, que se incrementa al escribir.
-        $claveListado = 'op_index_v7_' . $this->versionCache();
+        $claveListado = 'op_index_v8_' . $this->versionCache();
         $OrdenProduccions = Cache::remember($claveListado, now()->addMinutes(10), function () {
             return OrdenProduccion::query()
                 ->with(['productoReferencia', 'taller', 'empresaExterna', 'estadoOp', 'responsable', 'distribucionesPorTallas.producto', 'productos', 'recepcionesCalidad', 'compromisosReparacion', 'kitProcesos.material', 'procesosExternos.materialOrigen', 'procesosExternos.proveedorDestino', 'cierres'])
@@ -138,6 +138,8 @@ class OrdenProduccionController extends Controller {
                         ->map(fn ($c) => [
                             'id'                     => $c->id,
                             'producto_id'            => $c->producto_referencia_id,
+                            'producto_nombre'        => $nombresProductos[$c->producto_referencia_id]
+                                ?? ((int) $c->producto_referencia_id === (int) $producto?->id ? $nombreProducto($producto) : null),
                             'talla'                  => $c->talla,
                             'cantidad_en_reparacion' => $c->cantidad_en_reparacion,
                             'fecha_compromiso'       => $c->fecha_compromiso?->toDateString(),
@@ -802,8 +804,9 @@ class OrdenProduccionController extends Controller {
      *
      * "Cerrada" no se elige a mano: cuando la recepción deja cada talla completa
      * y sin pares en reparación, el sistema cierra la OP en la misma operación.
-     * Cada talla que queda en reparación exige su fecha de compromiso pendiente
-     * y genera los avisos programados (dos días antes y el día del compromiso).
+     * Todos los pares que quedan en reparación comparten una única fecha de
+     * compromiso pendiente y generan los avisos programados (dos días antes y
+     * el día del compromiso).
      */
     /** Único par de estados que puede coexistir en una OP al mismo tiempo. */
     private const PAR_COEXISTENCIA = ['Esperando materiales', 'Procesos externos'];
@@ -813,6 +816,7 @@ class OrdenProduccionController extends Controller {
             'estado_op_id' => ['required', 'integer', 'exists:estado_operacions,id'],
             'estado_op_secundario_id' => ['nullable', 'integer', 'exists:estado_operacions,id', 'different:estado_op_id'],
             'fecha_recepcion' => ['nullable', 'date'],
+            'fecha_compromiso' => ['nullable', 'date'],
             'recepciones' => ['nullable', 'array'],
             'recepciones.*.distribucion_id' => ['required', 'integer'],
             'recepciones.*.cantidad_aprobada' => ['nullable', 'integer', 'min:0'],
@@ -906,7 +910,11 @@ class OrdenProduccionController extends Controller {
             || $nuevoEstado?->nombre === 'Recibiendo';
 
         $recepciones = $esRecepcion
-            ? $this->recepcionesDeCalidad($OrdenProduccion, $datos['recepciones'] ?? [])
+            ? $this->recepcionesDeCalidad(
+                $OrdenProduccion,
+                $datos['recepciones'] ?? [],
+                $datos['fecha_compromiso'] ?? null
+            )
             : [];
 
         $totalEnReparacion = collect($recepciones)
@@ -1327,9 +1335,16 @@ class OrdenProduccionController extends Controller {
      * tres cantidades de calidad debe ser igual a la cantidad esperada de esa
      * talla, y el producto debe pertenecer a la OP.
      *
+     * Si se recibe una fecha de compromiso general, se aplica a todas las
+     * tallas con pares en reparación para que compartan la misma fecha.
+     *
      * @return array<int, array<string, mixed>>
      */
-    private function recepcionesDeCalidad(OrdenProduccion $orden, array $filas): array {
+    private function recepcionesDeCalidad(
+        OrdenProduccion $orden,
+        array $filas,
+        ?string $fechaCompromisoGeneral = null
+    ): array {
         $distribuciones = $orden->distribucionesPorTallas()->get()->keyBy('id');
         if ($distribuciones->isEmpty()) {
             return [];
@@ -1360,7 +1375,8 @@ class OrdenProduccionController extends Controller {
             $aprobada = (int) ($fila['cantidad_aprobada'] ?? 0);
             $reparacion = (int) ($fila['cantidad_en_reparacion'] ?? 0);
             $noRecuperable = (int) ($fila['cantidad_no_recuperable'] ?? 0);
-            $fechaCompromiso = $fila['fecha_compromiso'] ?? null;
+            // Una sola fecha de compromiso para todo lo que queda en reparación.
+            $fechaCompromiso = $fechaCompromisoGeneral ?: ($fila['fecha_compromiso'] ?? null);
             $suma = $aprobada + $reparacion + $noRecuperable;
             $esperada = (int) $distribucion->cantidad_planificada;
 

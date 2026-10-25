@@ -61,6 +61,7 @@ const form = useForm({
     descripcion: '',
     precio_predicho: '' as string | number,
     precio_preventa: '' as string | number,
+    precio_estimado: '' as string | number,
     materiales: [] as any[],
 });
 
@@ -387,6 +388,15 @@ watchEffect(() => {
                                     v-model="form.precio_preventa" placeholder="$0"
                                     :error="form.errors.precio_preventa" />
                                 <InputError class="mt-2" :message="form.errors.precio_preventa" />
+                            </div>
+
+                            <div>
+                                <InputLabel for="precio_estimado" :value="lang().t('app.label.precio_estimado') || 'Precio estimado'" />
+                                <TextInput id="precio_estimado" type="number" step="0.01" min="0"
+                                    class="mt-1 block w-full text-right tabular-nums"
+                                    v-model="form.precio_estimado" placeholder="0.00"
+                                    :error="form.errors.precio_estimado" />
+                                <InputError class="mt-2" :message="form.errors.precio_estimado" />
                             </div>
 
                             <div class="md:col-span-3">

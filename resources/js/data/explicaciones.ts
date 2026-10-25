@@ -20,6 +20,7 @@
 
 export type BloqueExplicacion =
     | { tipo: 'texto'; texto: string }
+    | { tipo: 'subtitulo'; texto: string }
     | { tipo: 'lista'; items: string[] }
     | { tipo: 'pasos'; items: string[] }
     | { tipo: 'tabla'; columnas: string[]; filas: string[][] }
@@ -66,18 +67,17 @@ export const explicaciones: Explicacion[] = [
             'en taller',
             'lista para taller',
             'recibiendo',
-            'pendiente',
             'cerrada',
             'retroceder',
             'avanzar',
             'máquina de estados',
         ],
-        actualizada: '2026-10-22',
+        actualizada: '2026-10-23',
         bloques: [
             {
                 tipo: 'texto',
                 texto:
-                    'Una Orden de Producción (OP) recorre un flujo de 9 estados. Cada estado responde por una parte del inventario, así que el formulario de edición abre o cierra campos según el punto del flujo en el que esté la orden.',
+                    'Una Orden de Producción (OP) recorre un flujo de 8 estados. Cada estado responde por una parte del inventario, así que el formulario de edición abre o cierra campos según el punto del flujo en el que esté la orden.',
             },
             {
                 tipo: 'pasos',
@@ -88,9 +88,8 @@ export const explicaciones: Explicacion[] = [
                     'Procesos externos: el material sale a un proveedor pero sigue siendo propiedad de Macondas.',
                     'Lista para taller: el sistema valida que no haya faltantes antes de entregar.',
                     'En taller: la orden está en producción; el kit salió de bodega y quedó registrado en los movimientos.',
-                    'Recibiendo: recepción de calidad por talla; solo lo aprobado entra a inventario.',
-                    'Pendiente: hay pares en reparación que no ingresan al inventario disponible.',
-                    'Cerrada: estado final. Los movimientos no se editan sin un procedimiento de ajuste.',
+                    'Recibiendo: recepción de calidad por talla; solo lo aprobado entra a inventario y los pares en reparación quedan pendientes de un compromiso.',
+                    'Cerrada: estado final, registrado por el sistema cuando la recepción queda completa. Los movimientos no se editan sin un procedimiento de ajuste.',
                 ],
             },
             {
@@ -146,6 +145,16 @@ export const explicaciones: Explicacion[] = [
                         respuesta:
                             'No. Antes de «En taller» el plan está abierto: lo único fijo en cualquier estado es el número de la OP, el tipo y el responsable.',
                     },
+                    {
+                        pregunta: '¿Por qué ya no aparece el estado «Pendiente»?',
+                        respuesta:
+                            'Dejó de existir. Los pares que se van a reparación se siguen controlando desde «Recibiendo», donde cada talla registra su fecha de compromiso pendiente.',
+                    },
+                    {
+                        pregunta: '¿Cómo cierro una OP?',
+                        respuesta:
+                            'No se cierra a mano: «Recibiendo» no ofrece la opción «Cerrada». El sistema cierra la OP al guardar cuando cada talla quedó completa (aprobada + en reparación + no recuperable = esperada), no quedan pares en reparación y los datos del cierre están registrados.',
+                    },
                 ],
             },
             {
@@ -163,6 +172,119 @@ export const explicaciones: Explicacion[] = [
             'resources/js/pages/OrdenProduccion/CambiarEstadoModal.vue',
             'app/Http/Controllers/OrdenProduccionController.php (update, cambiarEstado)',
             'tabla estado_operacions: nombre, puede_pasar_a, regla_clave',
+        ],
+    },
+    {
+        id: 'op-recepcion-y-cierre-automatico',
+        categoria: 'OP',
+        categoriaLabel: 'Órdenes de producción',
+        subcategoria: 'Estado de la OP',
+        titulo: 'Recepción de calidad, compromiso de reparación y cierre automático',
+        resumen:
+            'En «Recibiendo» se registra la calidad por talla; lo que se va a reparación exige una fecha de compromiso pendiente con sus avisos, y la OP se cierra sola cuando ya no queda nada pendiente.',
+        etiquetas: [
+            'recepción de calidad',
+            'recibiendo',
+            'aprobada',
+            'en reparación',
+            'no recuperable',
+            'cuadrar tallas',
+            'fecha de compromiso pendiente',
+            'compromiso de reparación',
+            'avisos',
+            'notificaciones',
+            'cierre automático',
+            'cerrar op',
+            'cierre de op',
+            'costo real final',
+        ],
+        actualizada: '2026-10-23',
+        bloques: [
+            {
+                tipo: 'texto',
+                texto:
+                    'La recepción de calidad se diligencia en el modal «Cambiar estado» cuando la OP está en «Recibiendo». Hay una fila por talla (con su producto) y se registran tres cantidades: aprobada, en reparación y no recuperable. La suma de las tres es la cantidad recibida y debe cuadrar con la cantidad esperada de la talla.',
+            },
+            {
+                tipo: 'tabla',
+                columnas: ['Cantidad', 'Qué significa', 'Efecto'],
+                filas: [
+                    ['Aprobada', 'El par pasó el control de calidad.', 'Es lo único que entra al inventario disponible.'],
+                    ['En reparación', 'El par vuelve al taller a corregirse.', 'No entra a inventario y todos los pares en reparación comparten una fecha de compromiso pendiente.'],
+                    ['No recuperable', 'El par se perdió o no tiene arreglo.', 'Sale de la cuenta de la OP; queda como merma de producción.'],
+                ],
+            },
+            {
+                tipo: 'subtitulo',
+                texto: 'Cuándo se cierra la OP',
+            },
+            {
+                tipo: 'pasos',
+                items: [
+                    'Cada talla registró exactamente su cantidad esperada (aprobada + en reparación + no recuperable = esperada).',
+                    'No quedó ningún par en reparación.',
+                    'Están registrados los tres datos del cierre: materiales sobrantes o recuperados, pérdidas en mermas y costo real final.',
+                    'Al presionar «Guardar», el sistema pone la OP en «Cerrada». El usuario no elige «Cerrada»: desde «En taller» solo se puede ir a «Recibiendo», y «Recibiendo» no ofrece salidas manuales.',
+                ],
+            },
+            {
+                tipo: 'nota',
+                tono: 'info',
+                texto:
+                    'Ejemplo: el producto 1 tiene 3 tallas pendientes. Si se marca 1 en aprobada y 2 en no recuperable, la talla quedó completa y sin pares en reparación; al guardar, la OP pasa a «Cerrada».',
+            },
+            {
+                tipo: 'subtitulo',
+                texto: 'Compromiso de reparación',
+            },
+            {
+                tipo: 'texto',
+                texto:
+                    'Si la recepción deja pares en reparación, se registra una sola fecha de compromiso pendiente para todos ellos. Cada vez que la OP se va a reparación se abre un episodio nuevo por producto + talla en la tabla compromisos_reparacion, todos con la misma fecha, así que el historial de los viajes al taller se conserva. Cuando esa talla se queda sin pares en reparación, el episodio se marca como atendido.',
+            },
+            {
+                tipo: 'lista',
+                items: [
+                    'Aviso 1: dos días antes de la fecha de compromiso, prioridad media.',
+                    'Aviso 2: el día de la fecha de compromiso, prioridad alta.',
+                    'Los dos avisos se le envían al responsable de la OP y quedan programados en la campana de notificaciones: solo aparecen cuando llega su fecha.',
+                ],
+            },
+            {
+                tipo: 'preguntas',
+                pares: [
+                    {
+                        pregunta: 'La recepción no cuadra todavía. ¿Pierdo lo digitado?',
+                        respuesta:
+                            'No. «Guardar avance» conserva las cantidades sin exigir que cuadren y sin cambiar el estado; puede seguir ajustando la recepción otros días.',
+                    },
+                    {
+                        pregunta: 'Quedaron pares en reparación y quiero cerrar la OP.',
+                        respuesta:
+                            'No se puede: mientras haya pares en reparación la OP sigue en «Recibiendo». Cuando el taller devuelva esos pares y la talla quede completa sin reparación, el cierre se produce solo.',
+                    },
+                    {
+                        pregunta: '¿Puedo cambiar la fecha de compromiso de un episodio?',
+                        respuesta:
+                            'Sí. Al guardar con una fecha distinta se actualiza el episodio abierto y se generan de nuevo los dos avisos con la fecha nueva.',
+                    },
+                ],
+            },
+            {
+                tipo: 'lista',
+                items: [
+                    'Recepción y cierre automático: app/Http/Controllers/OrdenProduccionController.php (cambiarEstado, recepcionesDeCalidad, recepcionCompleta).',
+                    'Compromisos y avisos: app/Models/CompromisoReparacion.php y OrdenProduccionController.php (registrarCompromisosReparacion, avisarCompromisoReparacion).',
+                    'Avisos programados: packages/notificacion/src/NotificacionesManager.php (crear con fecha_programada, noLeidas).',
+                    'Formulario: resources/js/pages/OrdenProduccion/CambiarEstadoModal.vue.',
+                ],
+            },
+        ],
+        fuentes: [
+            'app/Http/Controllers/OrdenProduccionController.php (cambiarEstado)',
+            'app/Models/CompromisoReparacion.php',
+            'tablas recepcion_calidads, compromisos_reparacion, notificaciones (columna fecha_programada)',
+            'resources/js/pages/OrdenProduccion/CambiarEstadoModal.vue',
         ],
     },
 ];

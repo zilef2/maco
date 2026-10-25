@@ -33,6 +33,9 @@ const justNames = props.titulos.map(names => {
         return names['order']
 })
 const form = useForm({ ...Object.fromEntries(justNames.map(field => [field, ''])) });
+// Agregar campos para precio de última compra
+form.last_purchase_price = '';
+form.last_purchase_date = new Date().toISOString().split('T')[0];
 onMounted(() => {
     if (props.numberPermissions === 100) {
 
@@ -113,6 +116,10 @@ function ValidarVacios() {
             faltantes.push(element.idd);
         }
     });
+    // Validar precio de última compra (obligatorio)
+    if (!form.last_purchase_price || form.last_purchase_price === '' || Number(form.last_purchase_price) < 0) {
+        faltantes.push('last_purchase_price');
+    }
     camposFaltantes.value = faltantes;
     return faltantes.length === 0;
 }
@@ -306,6 +313,50 @@ watchEffect(() => {
                                     <span class="inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform duration-200"
                                         :class="toggleActivo(atributosform.idd, form[atributosform.idd]) ? 'translate-x-6' : 'translate-x-1'" />
                                 </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Precio de última compra -->
+                    <div>
+                        <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-1.5 mb-4">
+                            <span class="inline-flex h-4 w-4 items-center justify-center rounded bg-indigo-600 text-white text-[10px]">
+                                $
+                            </span>
+                            Precio de última compra
+                        </h3>
+                        <p class="text-xs text-gray-500 dark:text-gray-400 mb-4 pl-6">
+                            Este campo es obligatorio. Registre el precio de la última compra del material.
+                        </p>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+                            <div>
+                                <InputLabel for="last_purchase_price" value="Precio" />
+                                <TextInput id="last_purchase_price"
+                                    type="number"
+                                    class="mt-1 block w-full"
+                                    v-model="form.last_purchase_price"
+                                    placeholder="0.00"
+                                    :error="form.errors.last_purchase_price"
+                                    required
+                                    step="0.01"
+                                    min="0" />
+                                <InputError class="mt-2" :message="form.errors.last_purchase_price" />
+                                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                    Ingrese el precio unitario del último pedido
+                                </p>
+                            </div>
+                            <div>
+                                <InputLabel for="last_purchase_date" value="Fecha" />
+                                <TextInput id="last_purchase_date"
+                                    type="date"
+                                    class="mt-1 block w-full"
+                                    v-model="form.last_purchase_date"
+                                    :error="form.errors.last_purchase_date"
+                                    required />
+                                <InputError class="mt-2" :message="form.errors.last_purchase_date" />
+                                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                    Fecha de la última compra
+                                </p>
                             </div>
                         </div>
                     </div>

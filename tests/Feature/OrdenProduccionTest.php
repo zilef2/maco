@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\CompromisoReparacion;
 use App\Models\Distribucion_por_tallas;
 use App\Models\EmpresaExterna;
 use App\Models\EstadoOpMaterial;
@@ -78,9 +79,9 @@ class OrdenProduccionTest extends TestCase
 
     /**
      * Al recibir una OP sin pares en reparación, la recepción se guarda y la
-     * OP pasa automáticamente de "En taller" a "Pendiente".
+     * OP se cierra automáticamente con su cierre registrado.
      */
-    public function test_al_recibir_sin_reparaciones_la_op_pasa_a_pendiente(): void
+    public function test_al_recibir_sin_reparaciones_la_op_se_cierra(): void
     {
         [$user, $op, $estados, $tallaS, $tallaM] = $this->contextoRecepcion('En taller');
 
@@ -90,12 +91,17 @@ class OrdenProduccionTest extends TestCase
                 ['distribucion_id' => $tallaS->id, 'cantidad_aprobada' => 2, 'cantidad_en_reparacion' => 0, 'cantidad_no_recuperable' => 0],
                 ['distribucion_id' => $tallaM->id, 'cantidad_aprobada' => 2, 'cantidad_en_reparacion' => 0, 'cantidad_no_recuperable' => 0],
             ],
+            'cierre' => [
+                'materiales_sobrantes' => 0,
+                'perdidas_mermas' => 0,
+                'costo_real_final' => 100,
+            ],
         ]);
 
         $response->assertSessionHasNoErrors();
 
         $op->refresh();
-        $this->assertSame($estados['Pendiente']->id, (int) $op->estado_op_id);
+        $this->assertSame($estados['Cerrada']->id, (int) $op->estado_op_id);
         $this->assertDatabaseCount('recepcion_calidads', 2);
         $this->assertDatabaseHas('recepcion_calidads', [
             'orden_produccion_id' => $op->id,
@@ -113,6 +119,7 @@ class OrdenProduccionTest extends TestCase
 
         $response = $this->actingAs($user)->put(route('OrdenProduccion.cambiarEstado', $op->id), [
             'estado_op_id' => $estados['Recibiendo']->id,
+            'fecha_compromiso' => '2026-11-10',
             'recepciones' => [
                 ['distribucion_id' => $tallaS->id, 'cantidad_aprobada' => 1, 'cantidad_en_reparacion' => 1, 'cantidad_no_recuperable' => 0],
                 ['distribucion_id' => $tallaM->id, 'cantidad_aprobada' => 2, 'cantidad_en_reparacion' => 0, 'cantidad_no_recuperable' => 0],
@@ -129,17 +136,23 @@ class OrdenProduccionTest extends TestCase
             'talla' => 'S',
             'cantidad_en_reparacion' => 1,
         ]);
+        $this->assertDatabaseHas('compromisos_reparacion', [
+            'orden_produccion_id' => $op->id,
+            'talla' => 'S',
+            'cantidad_en_reparacion' => 1,
+            'fecha_compromiso' => '2026-11-10',
+        ]);
     }
 
     /**
      * Una OP que ya está en "Recibiendo" puede abrir la recepción, corregir
-     * las cantidades y, si ya no queda nada en reparación, pasa a "Pendiente".
+     * las cantidades y, si ya no queda nada en reparación, se cierra.
      */
-    public function test_desde_recibiendo_actualiza_la_recepcion_y_pasa_a_pendiente(): void
+    public function test_desde_recibiendo_actualiza_la_recepcion_y_la_cierra(): void
     {
         [$user, $op, $estados, $tallaS, $tallaM] = $this->contextoRecepcion('Recibiendo');
 
-        // Simula una entrada anterior a recepción: al pasar a Pendiente debe limpiarse.
+        // Simula una entrada anterior a recepción: al cerrar debe limpiarse.
         $op->forceFill(['recepcion_desde' => now()->subDay()])->save();
 
         RecepcionCalidad::create([
@@ -171,12 +184,17 @@ class OrdenProduccionTest extends TestCase
                 ['distribucion_id' => $tallaS->id, 'cantidad_aprobada' => 2, 'cantidad_en_reparacion' => 0, 'cantidad_no_recuperable' => 0],
                 ['distribucion_id' => $tallaM->id, 'cantidad_aprobada' => 2, 'cantidad_en_reparacion' => 0, 'cantidad_no_recuperable' => 0],
             ],
+            'cierre' => [
+                'materiales_sobrantes' => 0,
+                'perdidas_mermas' => 0,
+                'costo_real_final' => 100,
+            ],
         ]);
 
         $response->assertSessionHasNoErrors();
 
         $op->refresh();
-        $this->assertSame($estados['Pendiente']->id, (int) $op->estado_op_id);
+        $this->assertSame($estados['Cerrada']->id, (int) $op->estado_op_id);
         $this->assertNull($op->recepcion_desde);
         $this->assertDatabaseHas('recepcion_calidads', [
             'orden_produccion_id' => $op->id,
@@ -208,12 +226,24 @@ class OrdenProduccionTest extends TestCase
             'fecha_recepcion' => now(),
         ]);
 
+        CompromisoReparacion::create([
+            'orden_produccion_id' => $op->id,
+            'producto_referencia_id' => $op->producto_referencia_id,
+            'talla' => 'S',
+            'cantidad_en_reparacion' => 1,
+            'fecha_compromiso' => '2026-11-10',
+            'atendido' => false,
+        ]);
+
         $response = $this->actingAs($user)->get(route('OrdenProduccion.index'));
 
         $response->assertInertia(fn (Assert $page) => $page
             ->component('OrdenProduccion/Index')
             ->where('ordenes.0.recepciones_detalle.0.talla', 'S')
             ->where('ordenes.0.recepciones_detalle.0.cantidad_en_reparacion', 1)
+            ->where('ordenes.0.compromisos_detalle.0.talla', 'S')
+            ->where('ordenes.0.compromisos_detalle.0.fecha_compromiso', '2026-11-10')
+            ->where('ordenes.0.compromisos_detalle.0.producto_nombre', fn ($valor) => is_string($valor) && $valor !== '')
             ->whereNotNull('ordenes.0.recepcion_desde'));
     }
 
@@ -264,6 +294,7 @@ class OrdenProduccionTest extends TestCase
 
         $response = $this->actingAs($user)->put(route('OrdenProduccion.cambiarEstado', $op->id), [
             'estado_op_id' => $estados['Cerrada']->id,
+            'fecha_compromiso' => '2026-11-10',
             'recepciones' => [
                 ['distribucion_id' => $tallaS->id, 'cantidad_aprobada' => 1, 'cantidad_en_reparacion' => 1, 'cantidad_no_recuperable' => 0],
                 ['distribucion_id' => $tallaM->id, 'cantidad_aprobada' => 2, 'cantidad_en_reparacion' => 0, 'cantidad_no_recuperable' => 0],

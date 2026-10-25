@@ -25,7 +25,8 @@ class Producto extends Model
          'Observaciones',
          'descripcion',
          'precio_predicho',
-         'precio_preventa'
+         'precio_preventa',
+         'precio_estimado'
         ];
 
 //     05 ficha ensamble

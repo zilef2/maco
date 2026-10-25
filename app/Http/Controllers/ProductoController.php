@@ -60,6 +60,10 @@ class ProductoController extends Controller {
                     ->map(fn ($estado, $numeroOp) => $numeroOp . ' (' . $estado . ')')
                     ->implode(', ');
 
+                // Cantidad total del producto: la suma de lo planificado por talla,
+                // el mismo total que muestra el modal «Distribución por Tallas».
+                $producto->cantidad = (int) $producto->distribucionesPorTallas->sum('cantidad_planificada');
+
                 return $producto;
             });
         $listasDesplegables = array_change_key_case($this->listaDesplegableService->getOptionsByCategoriaGrouped('producto'), CASE_LOWER);
@@ -179,7 +183,7 @@ class ProductoController extends Controller {
             $datos[$campo] = (string) ($datos[$campo] ?? '');
         }
         $datos['Estado'] = ($datos['Estado'] ?? '') === '' ? 1 : (int) $datos['Estado'];
-        foreach (['precio_predicho', 'precio_preventa'] as $campo) {
+        foreach (['precio_predicho', 'precio_preventa', 'precio_estimado'] as $campo) {
             if (($datos[$campo] ?? null) === '') {
                 $datos[$campo] = null;
             }
@@ -248,7 +252,7 @@ class ProductoController extends Controller {
             $datos[$campo] = (string) ($datos[$campo] ?? '');
         }
         $datos['Estado'] = ($datos['Estado'] ?? '') === '' ? 1 : (int) $datos['Estado'];
-        foreach (['precio_predicho', 'precio_preventa'] as $campo) {
+        foreach (['precio_predicho', 'precio_preventa', 'precio_estimado'] as $campo) {
             if (($datos[$campo] ?? null) === '') {
                 $datos[$campo] = null;
             }
@@ -295,6 +299,7 @@ class ProductoController extends Controller {
             'descripcion'          => ['nullable', 'string', 'max:5000'],
             'precio_predicho'      => ['nullable', 'numeric', 'min:0'],
             'precio_preventa'      => ['nullable', 'numeric', 'min:0'],
+            'precio_estimado'      => ['nullable', 'numeric', 'min:0'],
             // Ficha técnica (opcional): se registra junto al producto.
             'materiales'           => ['nullable', 'array'],
             'materiales.*.material_componente_id' => ['required', 'integer', 'exists:materials,id'],
@@ -362,15 +367,52 @@ class ProductoController extends Controller {
         DB::beginTransaction();
 
         $Producto = Producto::findOrFail($id);
+        
+        // Snapshot del estado actual para historial
+        $estadoAnterior = $Producto->distribucionesPorTallas()
+            ->get()
+            ->map(fn ($d) => [
+                'id' => $d->id,
+                'talla' => $d->talla,
+                'cantidad_planificada' => $d->cantidad_planificada,
+            ])
+            ->keyBy('id')
+            ->toArray();
+        
         $conservados = [];
         foreach ($request->input('distribucion_tallas', []) as $talla) {
             if (!empty($talla['id'])) {
                 $distribucion = Distribucion_por_tallas::find($talla['id']);
                 if ($distribucion) {
+                    $datosAnteriores = [
+                        'talla' => $distribucion->talla,
+                        'cantidad_planificada' => $distribucion->cantidad_planificada,
+                    ];
+                    
+                    $nuevaTalla = $talla['talla'] ?? $distribucion->talla;
+                    $nuevaCantidad = (int) ($talla['cantidad_planificada'] ?? 0);
+                    
+                    // Detectar cambios para historial
+                    $huboCambios = $distribucion->talla !== $nuevaTalla 
+                        || $distribucion->cantidad_planificada !== $nuevaCantidad;
+                    
                     $distribucion->update([
-                        'talla' => $talla['talla'] ?? $distribucion->talla,
-                        'cantidad_planificada' => (int) ($talla['cantidad_planificada'] ?? 0),
+                        'talla' => $nuevaTalla,
+                        'cantidad_planificada' => $nuevaCantidad,
                     ]);
+                    
+                    // Registrar en historial si hubo cambios
+                    if ($huboCambios) {
+                        \App\Models\ProductoTallasHistory::registrar(
+                            $Producto->id,
+                            $nuevaTalla,
+                            $nuevaCantidad,
+                            'update',
+                            $datosAnteriores,
+                            ['talla' => $nuevaTalla, 'cantidad_planificada' => $nuevaCantidad]
+                        );
+                    }
+                    
                     $conservados[] = $distribucion->id;
                 }
                 continue;
@@ -385,7 +427,33 @@ class ProductoController extends Controller {
                 'cantidad_planificada' => (int) ($talla['cantidad_planificada'] ?? 0),
             ]);
             $conservados[] = $nueva->id;
+            
+            // Registrar creación en historial
+            \App\Models\ProductoTallasHistory::registrar(
+                $Producto->id,
+                $nueva->talla,
+                $nueva->cantidad_planificada,
+                'create',
+                null,
+                ['talla' => $nueva->talla, 'cantidad_planificada' => $nueva->cantidad_planificada]
+            );
         }
+        
+        // Detectar tallas eliminadas (desvinculadas) para historial
+        $idsAnteriores = array_keys($estadoAnterior);
+        $eliminadas = array_diff($idsAnteriores, $conservados);
+        foreach ($eliminadas as $idEliminado) {
+            $distribucionEliminada = $estadoAnterior[$idEliminado];
+            \App\Models\ProductoTallasHistory::registrar(
+                $Producto->id,
+                $distribucionEliminada['talla'],
+                $distribucionEliminada['cantidad_planificada'],
+                'delete',
+                $distribucionEliminada,
+                null
+            );
+        }
+        
         $Producto->distribucionesPorTallas()->sync($conservados);
 
         DB::commit();

@@ -32,7 +32,7 @@ const normalizar = (valor: unknown): string =>
 const textoIndexable = (explicacion: Explicacion): string => {
     const partes: string[] = [explicacion.titulo, explicacion.resumen, explicacion.categoria, explicacion.subcategoria, ...(explicacion.etiquetas || [])];
     explicacion.bloques.forEach((bloque) => {
-        if (bloque.tipo === 'texto' || bloque.tipo === 'nota') partes.push(bloque.texto);
+        if (bloque.tipo === 'texto' || bloque.tipo === 'nota' || bloque.tipo === 'subtitulo') partes.push(bloque.texto);
         if (bloque.tipo === 'lista' || bloque.tipo === 'pasos') partes.push(...bloque.items);
         if (bloque.tipo === 'tabla') partes.push(...bloque.columnas, ...bloque.filas.flat());
         if (bloque.tipo === 'preguntas') bloque.pares.forEach((par) => partes.push(par.pregunta, par.respuesta));
@@ -227,6 +227,11 @@ const copiar = async (explicacion: Explicacion) => {
                                 <p v-if="bloque.tipo === 'texto'" class="text-sm text-gray-700 dark:text-gray-300">
                                     {{ bloque.texto }}
                                 </p>
+
+                                <h4 v-else-if="bloque.tipo === 'subtitulo'"
+                                    class="pt-1 text-[11px] font-semibold uppercase tracking-[0.08em] text-gray-500 dark:text-gray-400">
+                                    {{ bloque.texto }}
+                                </h4>
 
                                 <ol v-else-if="bloque.tipo === 'pasos'" class="space-y-1.5">
                                     <li v-for="(paso, i) in bloque.items" :key="i" class="flex gap-2 text-sm text-gray-700 dark:text-gray-300">

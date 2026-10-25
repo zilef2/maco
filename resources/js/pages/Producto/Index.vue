@@ -66,10 +66,12 @@ const hayFiltros = computed(() => params.search.trim() !== '');
 const columnas = [
     { key: 'Codigo_interno', label: 'Código', sortable: true, align: 'left', headerClass: 'min-w-[120px]', cellClass: 'min-w-[120px]' },
     { key: 'Titulo_Shopify', label: 'Producto', sortable: true, align: 'left', headerClass: 'min-w-[260px]', cellClass: 'min-w-[260px]' },
+    { key: 'cantidad', label: 'Cantidad', sortable: false, align: 'right', headerClass: 'w-[100px]', cellClass: 'w-[100px]' },
     { key: 'Categoria_original', label: 'Categoría', sortable: true, align: 'left', headerClass: 'hidden min-w-[190px] lg:table-cell', cellClass: 'hidden min-w-[190px] lg:table-cell' },
     { key: 'Control_de_variante', label: 'Variante', sortable: true, align: 'left', headerClass: 'hidden min-w-[170px] xl:table-cell', cellClass: 'hidden min-w-[170px] xl:table-cell' },
     { key: 'Estado', label: 'Estado', sortable: true, align: 'left', headerClass: 'w-[110px]', cellClass: 'w-[110px]' },
     { key: 'precio_preventa', label: 'Precio', sortable: true, align: 'right', headerClass: 'w-[140px]', cellClass: 'w-[140px]' },
+    { key: 'precio_estimado', label: 'Precio estimado', sortable: true, align: 'right', headerClass: 'w-[150px]', cellClass: 'w-[150px]' },
     { key: 'tallas', label: 'Tallas', sortable: false, align: 'left', headerClass: 'hidden min-w-[150px] md:table-cell', cellClass: 'hidden min-w-[150px] md:table-cell' },
 ] as const;
 
@@ -86,6 +88,7 @@ const titulos = [
     { order: 'descripcion', label: 'descripcion', type: 'text' },
     { order: 'precio_predicho', label: 'precio_predicho', type: 'number' },
     { order: 'precio_preventa', label: 'precio_preventa', type: 'number' },
+    { order: 'precio_estimado', label: 'precio_estimado', type: 'number' },
 ];
 
 const data = reactive({
@@ -127,8 +130,12 @@ const ESTADO_ESTILOS = {
 const estadoEstilo = (valor: any) =>
     ESTADO_ESTILOS[estadoNormalizado(valor) === 'Activo' ? 'activo' : 'inactivo'];
 
-const formatearPrecio = (valor: any): string =>
-    valor === null || valor === undefined || valor === '' ? '—' : zilef_nuber_format(valor, 0, true);
+const formatearPrecio = (valor: any, decimales = 0): string =>
+    valor === null || valor === undefined || valor === '' ? '—' : zilef_nuber_format(valor, decimales, true);
+
+// El precio estimado es decimal: solo muestra centavos cuando realmente los trae.
+const decimalesDe = (valor: any): number =>
+    Number.isFinite(Number(valor)) && Math.round(Number(valor) * 100) % 100 !== 0 ? 2 : 0;
 
 const texto = (valor: any, fallback = '—'): string => {
     const resultado = String(valor ?? '').trim();
@@ -145,6 +152,20 @@ const tallasDe = (producto: any): string[] => {
                 .filter((talla: string) => talla !== ''),
         ),
     );
+};
+
+// Desglose que valida la columna Cantidad: «S 10 · M 5».
+const detalleTallasDe = (producto: any): string => {
+    const lista = producto?.distribuciones_por_tallas ?? producto?.distribucionesPorTallas ?? [];
+    if (!Array.isArray(lista)) return '';
+    return lista
+        .map((item: any) => {
+            const talla = String(item?.talla ?? '').trim();
+            const cantidad = Number(item?.cantidad_planificada ?? 0);
+            return talla === '' || Number.isNaN(cantidad) ? '' : `${talla} ${cantidad}`;
+        })
+        .filter(Boolean)
+        .join(' · ');
 };
 
 const indicador = (key: string) => (sortKey.value === key ? sortDir.value : null);
@@ -335,7 +356,7 @@ watch(
                 </div>
 
                 <div class="mat-scroll max-h-[68vh] overflow-auto overscroll-contain">
-                    <table class="w-full min-w-[1080px] border-collapse text-sm">
+                    <table class="w-full min-w-[1330px] border-collapse text-sm">
                         <thead>
                             <tr>
                                 <th
@@ -422,6 +443,21 @@ watch(
                                     </div>
                                 </td>
 
+                                <td class="px-3 py-3 text-right align-top">
+                                    <div class="flex flex-col items-end gap-0.5">
+                                        <span class="font-semibold tabular-nums text-foreground">
+                                            {{ Number(producto.cantidad ?? 0) }}
+                                        </span>
+                                        <span
+                                            v-if="detalleTallasDe(producto)"
+                                            class="max-w-[130px] truncate text-[11px] tabular-nums text-muted-foreground"
+                                            :title="detalleTallasDe(producto)"
+                                        >
+                                            {{ detalleTallasDe(producto) }}
+                                        </span>
+                                    </div>
+                                </td>
+
                                 <td class="hidden px-3 py-3 align-top lg:table-cell">
                                     <div class="flex max-w-[210px] flex-col gap-0.5">
                                         <span class="truncate text-sm text-foreground" :title="producto.Categoria_original">
@@ -463,6 +499,12 @@ watch(
                                             Predicho {{ formatearPrecio(producto.precio_predicho) }}
                                         </span>
                                     </div>
+                                </td>
+
+                                <td class="px-3 py-3 text-right align-top">
+                                    <span class="font-medium tabular-nums text-foreground">
+                                        {{ formatearPrecio(producto.precio_estimado, decimalesDe(producto.precio_estimado)) }}
+                                    </span>
                                 </td>
 
                                 <td class="hidden px-3 py-3 align-top md:table-cell">

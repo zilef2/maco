@@ -41,11 +41,22 @@ class MaterialController extends Controller {
         $claveListado = 'material_index_' . $this->versionCache();
         $Materiales = Cache::remember($claveListado, now()->addMinutes(10), function () {
             return Material::query()
-                ->with('proveedorHabitual')
+                ->with(['proveedorHabitual', 'prices'])
                 ->orderByDesc('updated_at')
                 ->get()
                 ->map(function ($material) {
                     $material->proveedor_nombre = $material->proveedorHabitual?->nombre ?? null;
+                    // Obtener último precio
+                    $lastPrice = $material->prices()->first();
+                    $material->last_purchase_price = $lastPrice?->precio ?? null;
+                    $material->last_purchase_date = $lastPrice?->fecha ?? null;
+                    // Obtener los últimos 3 precios
+                    $material->recent_prices = $material->prices()->limit(3)->get()->map(function($price) {
+                        return [
+                            'precio' => $price->precio,
+                            'fecha' => $price->fecha
+                        ];
+                    })->toArray();
                     return $material;
                 })
                 ->values();
@@ -122,8 +133,24 @@ class MaterialController extends Controller {
         DB::beginTransaction();
 //        $no_nada = $request->no_nada['id'];
 //        $request->merge(['no_nada_id' => $request->no_nada['id']]);
+        
+        // Validar precio de última compra (obligatorio)
+        $request->validate([
+            'last_purchase_price' => 'required|numeric|min:0',
+            'last_purchase_date' => 'required|date',
+        ]);
+        
         $Material = Material::create($request->all());
         $this->registrarMovimientoCreacion($Material);
+        
+        // Guardar precio de última compra
+        $price = $request->input('last_purchase_price');
+        $date = $request->input('last_purchase_date');
+        
+        $Material->prices()->create([
+            'precio' => $price,
+            'fecha' => $date
+        ]);
 
         DB::commit();
         $this->invalidarCache();
@@ -163,6 +190,23 @@ class MaterialController extends Controller {
         }
         $Material->update($datos);
         $this->registrarMovimientoActualizacion($Material, $existenciaAnterior, $request->input('motivo'));
+        
+        // Actualizar precio de última compra si se proporciona
+        if ($request->has('last_purchase_price') && $request->filled('last_purchase_price')) {
+            $price = $request->input('last_purchase_price');
+            $date = $request->input('last_purchase_date', now()->toDateString());
+            
+            // Si ya existe un precio hoy, actualizarlo; de lo contrario, crear uno nuevo
+            $existingPrice = $Material->prices()->whereDate('fecha', $date)->first();
+            if ($existingPrice) {
+                $existingPrice->update(['precio' => $price]);
+            } else {
+                $Material->prices()->create([
+                    'precio' => $price,
+                    'fecha' => $date
+                ]);
+            }
+        }
 
         DB::commit();
         $this->invalidarCache();

@@ -39,6 +39,16 @@ class Material extends Model
         return $this->belongsTo(Proveedor::class, 'proveedor_habitual');
     }
 
+    public function prices()
+    {
+        return $this->hasMany(MaterialPrice::class, 'material_id')->orderBy('fecha', 'desc');
+    }
+
+    public function lastPrice()
+    {
+        return $this->hasOne(MaterialPrice::class, 'material_id')->orderBy('fecha', 'desc');
+    }
+
     protected static array $booleanFields = [
         'maneja_color',
         'maneja_talla',

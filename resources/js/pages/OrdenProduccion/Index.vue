@@ -18,6 +18,7 @@ import {
     ArrowDownTrayIcon,
     ArrowPathIcon,
     ArrowUturnLeftIcon,
+    CalendarDaysIcon,
     ChartBarIcon,
     CheckCircleIcon,
     ChevronDoubleLeftIcon,
@@ -249,6 +250,58 @@ const opsConFaltantes = computed(() => ordenadas.value.filter(faltantesVigentes)
 const opsEnTaller = computed(() => ordenadas.value.filter((op: any) => estadoCoincide(op, 'En taller')));
 const opsRecibiendo = computed(() => ordenadas.value.filter((op: any) => estadoCoincide(op, 'Recibiendo')));
 const opsSinFaltantes = computed(() => ordenadas.value.length - opsConFaltantes.value.length);
+
+// Fecha local en formato YYYY-MM-DD para comparar sin desfases de zona horaria.
+const hoyISO = (): string => {
+    const fecha = new Date();
+    fecha.setMinutes(fecha.getMinutes() - fecha.getTimezoneOffset());
+    return fecha.toISOString().slice(0, 10);
+};
+
+// Compromisos de reparación abiertos cuya fecha es hoy o futura. Cada entrada
+// conserva la OP y el producto para poder identificarla en el resumen.
+const compromisosProximos = computed(() => {
+    const hoy = hoyISO();
+
+    return ordenadas.value
+        .flatMap((op: any) =>
+            ((op.compromisos_detalle || []) as any[])
+                .filter((compromiso: any) =>
+                    compromiso?.fecha_compromiso
+                    && String(compromiso.fecha_compromiso).slice(0, 10) >= hoy
+                )
+                .map((compromiso: any) => ({ ...compromiso, op }))
+        )
+        .sort((a: any, b: any) =>
+            String(a.fecha_compromiso).localeCompare(String(b.fecha_compromiso))
+            || etiquetaOp(a.op).localeCompare(etiquetaOp(b.op), 'es')
+        );
+});
+
+// Agrupa los compromisos próximos por OP para ver de un vistazo todo lo que
+// tiene pendiente cada orden.
+const compromisosPorOp = computed(() => {
+    const grupos = new Map<string, { op: any; compromisos: any[] }>();
+
+    for (const compromiso of compromisosProximos.value) {
+        const clave = String(compromiso.op?.id ?? '');
+        if (!clave) continue;
+
+        if (!grupos.has(clave)) {
+            grupos.set(clave, { op: compromiso.op, compromisos: [] });
+        }
+
+        grupos.get(clave)!.compromisos.push(compromiso);
+    }
+
+    return Array.from(grupos.values()).sort((a, b) => {
+        const fechaA = String(a.compromisos[0]?.fecha_compromiso ?? '');
+        const fechaB = String(b.compromisos[0]?.fecha_compromiso ?? '');
+        return fechaA.localeCompare(fechaB)
+            || etiquetaOp(a.op).localeCompare(etiquetaOp(b.op), 'es');
+    });
+});
+
 const totalUnidades = computed(() =>
     ordenadas.value.reduce((total: number, op: any) => total + (Number(op.cantidad_planificada) || 0), 0),
 );
@@ -1378,6 +1431,72 @@ const titulos = [
                             </div>
                             <p v-else class="mt-2 text-xs text-muted-foreground">Ninguna orden está en recepción.</p>
                         </div>
+                    </div>
+
+                    <!-- Compromisos de reparación próximos -->
+                    <div class="rounded-lg border border-violet-200/70 bg-violet-50/40 p-3 dark:border-violet-500/20 dark:bg-violet-500/5">
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <h3 class="inline-flex items-center gap-1.5 text-xs font-semibold text-violet-800 dark:text-violet-300">
+                                <CalendarDaysIcon class="h-4 w-4" />
+                                Compromisos pendientes
+                            </h3>
+                            <span class="rounded-full border border-violet-200 bg-white/60 px-2 py-0.5 text-[10px] font-semibold tabular-nums text-violet-700 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-300">
+                                {{ compromisosPorOp.length }}
+                                {{ compromisosPorOp.length === 1 ? 'OP' : 'OPs' }}
+                                · {{ compromisosProximos.length }}
+                                {{ compromisosProximos.length === 1 ? 'fecha' : 'fechas' }}
+                            </span>
+                        </div>
+                        <p class="mt-0.5 text-[11px] text-violet-700/80 dark:text-violet-300/80">
+                            Fechas de compromiso de hoy en adelante, agrupadas por OP.
+                        </p>
+
+                        <div v-if="compromisosPorOp.length" class="mt-2 max-h-56 space-y-1.5 overflow-y-auto pr-1">
+                            <div
+                                v-for="grupo in compromisosPorOp"
+                                :key="grupo.op.id"
+                                class="overflow-hidden rounded-md border border-violet-200 bg-white/70 dark:border-violet-500/30 dark:bg-violet-500/10"
+                            >
+                                <div class="flex flex-wrap items-center justify-between gap-1.5 border-b border-violet-200/70 bg-violet-100/50 px-2 py-1 dark:border-violet-500/20 dark:bg-violet-500/10">
+                                    <span class="text-[11px] font-semibold text-violet-900 dark:text-violet-200">
+                                        {{ etiquetaOp(grupo.op) }}
+                                    </span>
+                                    <span class="rounded-full bg-white/70 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-violet-700 dark:bg-black/20 dark:text-violet-300">
+                                        {{ grupo.compromisos.length }}
+                                        {{ grupo.compromisos.length === 1 ? 'pendiente' : 'pendientes' }}
+                                    </span>
+                                </div>
+
+                                <ul class="divide-y divide-violet-100/70 dark:divide-violet-500/20">
+                                    <li
+                                        v-for="compromiso in grupo.compromisos"
+                                        :key="compromiso.id"
+                                        class="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-2 py-1 text-[11px] text-violet-900 dark:text-violet-200"
+                                    >
+                                        <span class="font-semibold tabular-nums">
+                                            {{ formatFecha(compromiso.fecha_compromiso) }}
+                                        </span>
+                                        <span class="text-violet-400 dark:text-violet-500">·</span>
+                                        <span class="font-medium">
+                                            {{ compromiso.producto_nombre || 'Producto sin nombre' }}
+                                        </span>
+                                        <span v-if="compromiso.talla" class="text-violet-700/70 dark:text-violet-300/70">
+                                            · Talla {{ compromiso.talla }}
+                                        </span>
+                                        <span
+                                            v-if="compromiso.cantidad_en_reparacion"
+                                            class="text-violet-700/70 dark:text-violet-300/70"
+                                        >
+                                            · {{ compromiso.cantidad_en_reparacion }} par(es)
+                                        </span>
+                                    </li>
+                                </ul>
+                            </div>
+                        </div>
+                        <p v-else class="mt-2 inline-flex items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-300">
+                            <CheckCircleIcon class="h-3.5 w-3.5" />
+                            No hay fechas futuras de compromiso pendiente.
+                        </p>
                     </div>
 
                     <!-- Distribución por estado -->
