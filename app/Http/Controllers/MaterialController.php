@@ -140,8 +140,10 @@ class MaterialController extends Controller {
             'last_purchase_price' => 'required|numeric|min:0',
             'last_purchase_date' => 'required|date',
         ]);
-        
-        $Material = Material::create($request->all());
+
+        $datos = $request->all();
+        $datos['proveedor_habitual'] = $this->normalizarProveedorHabitual($datos['proveedor_habitual'] ?? null);
+        $Material = Material::create($datos);
         $this->registrarMovimientoCreacion($Material);
         
         // Guardar precio de última compra
@@ -173,6 +175,22 @@ class MaterialController extends Controller {
     public function edit($id) {
     }
 
+    /**
+     * El frontend puede enviar el proveedor como objeto completo (select de Inertia)
+     * o como id; la columna guarda solo el id.
+     */
+    private function normalizarProveedorHabitual(mixed $proveedor): ?int {
+        if (is_array($proveedor)) {
+            $proveedor = $proveedor['id'] ?? null;
+        } elseif (is_object($proveedor)) {
+            $proveedor = $proveedor->id ?? null;
+        }
+        if ($proveedor === null || $proveedor === '') {
+            return null;
+        }
+        return is_numeric($proveedor) ? (int) $proveedor : null;
+    }
+
     public function update(Request $request, $id): RedirectResponse {
         $permissions = Myhelp::EscribirEnLog($this, ' Begin UPDATE:Materials');
         DB::beginTransaction();
@@ -186,6 +204,9 @@ class MaterialController extends Controller {
         $existenciaAnterior = (float) ($Material->existencia_actual ?? 0);
 //        $request->merge(['no_nada_id' => $request->no_nada['id']]);
         $datos = $request->except(['codigo_material', 'existencia_actual', 'motivo', 'alterar_existencia']);
+        if (array_key_exists('proveedor_habitual', $datos)) {
+            $datos['proveedor_habitual'] = $this->normalizarProveedorHabitual($datos['proveedor_habitual']);
+        }
         if ($request->boolean('alterar_existencia') && $request->has('existencia_actual')) {
             $datos['existencia_actual'] = (float) $request->input('existencia_actual');
         }

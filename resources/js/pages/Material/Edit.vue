@@ -31,7 +31,12 @@ const justNames = props.titulos.map(names => {
     )
         return names['order']
 })
-const form = useForm({ ...Object.fromEntries(justNames.map(field => [field, ''])) });
+const form = useForm({
+    ...Object.fromEntries(justNames.map(field => [field, ''])),
+    // Deben existir desde el inicio: useForm solo envía las claves iniciales.
+    last_purchase_price: '',
+    last_purchase_date: new Date().toISOString().split('T')[0],
+});
 
 const printForm: Array<{ idd: string; label: string; type: string }> = [];
 props.titulos.forEach((names: any) => {
@@ -312,8 +317,7 @@ const update = () => {
                     <SecondaryButton :disabled="form.processing" @click="emit('close')"> {{ lang().t('app.button.close')
                         }}
                     </SecondaryButton>
-                    <PrimaryButton class="ml-3" :class="{ 'opacity-25': form.processing }" :disabled="form.processing"
-                        @click="update">
+                    <PrimaryButton class="ml-3" :class="{ 'opacity-25': form.processing }" :disabled="form.processing">
                         {{ lang().t('app.button.save') }} {{ form.processing ? '...' : '' }}
                     </PrimaryButton>
                 </div>

@@ -42,7 +42,7 @@ const formatPrice = (price: any): string => {
     if (price === null || price === undefined || price === '') {
         return '—';
     }
-    return zilef_nuber_format(price, 2, false);
+    return zilef_nuber_format(price, 0, false);
 };
 
 const props = defineProps({

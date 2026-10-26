@@ -32,10 +32,12 @@ const justNames = props.titulos.map(names => {
     )
         return names['order']
 })
-const form = useForm({ ...Object.fromEntries(justNames.map(field => [field, ''])) });
-// Agregar campos para precio de última compra
-form.last_purchase_price = '';
-form.last_purchase_date = new Date().toISOString().split('T')[0];
+const form = useForm({
+    ...Object.fromEntries(justNames.map(field => [field, ''])),
+    // Deben existir desde el inicio: useForm solo envía las claves iniciales.
+    last_purchase_price: '',
+    last_purchase_date: new Date().toISOString().split('T')[0],
+});
 onMounted(() => {
     if (props.numberPermissions === 100) {
 
@@ -49,7 +51,7 @@ onMounted(() => {
         form.maneja_otra_variante = false;
         form.estado = 'Activo';
         form.variante_atributo_sugerido = props.losSelect?.variante_atributo_sugerido?.[0]?.nombre ?? ('variante genenerica ' + (valueRAn));
-        form.proveedor_habitual = props.losSelect?.proveedor_habitual?.[0]?.nombre ?? ('proveedor genenerico ' + (valueRAn));
+        form.proveedor_habitual = props.losSelect?.proveedor_habitual?.[0]?.id ?? null;
         form.observaciones = 'observaciones genenericas ' + (valueRAn);
 
         // form.hora_inicial = '0'+valueRAn+':00'//temp
@@ -374,7 +376,7 @@ watchEffect(() => {
                             }}
                         </SecondaryButton>
                         <PrimaryButton class="ml-3" :class="{ 'opacity-25': form.processing || !hayProveedores }"
-                            :disabled="form.processing || !hayProveedores" @click="create">
+                            :disabled="form.processing || !hayProveedores">
                             {{ lang().t('app.button.add') }} {{ form.processing ? '...' : '' }}
                         </PrimaryButton>
                     </div>
