@@ -8,6 +8,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Bell, CheckCheck } from 'lucide-vue-next';
 import { onMounted, onUnmounted, reactive } from 'vue';
+import { router } from '@inertiajs/vue3';
 
 interface NotificacionItem {
     id: number;
@@ -20,6 +21,7 @@ const state = reactive({
     notificaciones: [] as NotificacionItem[],
     cargando: false,
     timer: null as any,
+    quitarListener: null as null | (() => void),
 });
 
 const formatFecha = (fecha: string) => {
@@ -94,12 +96,16 @@ const marcarTodasLeidas = async () => {
 onMounted(() => {
     cargarNotificaciones();
     state.timer = setInterval(cargarNotificaciones, 20000);
+    // Al terminar una acción (por ejemplo crear una OP con faltantes) la
+    // campana se refresca de inmediato en vez de esperar al siguiente sondeo.
+    state.quitarListener = router.on('success', () => cargarNotificaciones());
 });
 
 onUnmounted(() => {
     if (state.timer) {
         clearInterval(state.timer);
     }
+    state.quitarListener?.();
 });
 </script>
 

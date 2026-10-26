@@ -52,16 +52,16 @@ const props = defineProps({
 const filas = computed<any[]>(() => props.productos ?? []);
 
 const busqueda = ref('');
-const estadoFiltro = ref('todos');
-const categoriaFiltro = ref('todos');
-const familiaFiltro = ref('todos');
-const controlVarianteFiltro = ref('todos');
+const estadoFiltro = ref('');
+const categoriaFiltro = ref('');
+const familiaFiltro = ref('');
+const controlVarianteFiltro = ref('');
 const opcionFiltro = ref('');
-const precioPreventaFiltro = ref('todos');
-const precioEstimadoFiltro = ref('todos');
-const tallasFiltro = ref('todos');
-const cantidadFiltro = ref('todos');
-const fichaFiltro = ref('todos');
+const precioPreventaFiltro = ref('');
+const precioEstimadoFiltro = ref('');
+const tallasFiltro = ref('');
+const cantidadFiltro = ref('');
+const fichaFiltro = ref('');
 
 const sortKey = ref('updated_at');
 const sortDir = ref<'asc' | 'desc'>('desc');
@@ -136,57 +136,11 @@ const ESTADO_ESTILOS = {
 const estadoEstilo = (valor: any) =>
     ESTADO_ESTILOS[estadoNormalizado(valor) === 'Activo' ? 'activo' : 'inactivo'];
 
-const opcionesDeFiltro = (campo: string): Array<{ value: string; label: string }> => {
-    const items = ((props.opcionesFiltro as any)?.[campo] ?? []) as any[];
-    const vistos = new Set<string>();
-
-    return items
-        .map((item: any) => String(item ?? '').trim())
-        .filter((valor: string) => {
-            if (valor === '') return false;
-
-            const clave = normalizar(valor);
-            if (vistos.has(clave)) return false;
-
-            vistos.add(clave);
-            return true;
-        })
-        .sort((a: string, b: string) => a.localeCompare(b, 'es'))
-        .map((valor: string) => ({ value: valor, label: valor }));
-};
-
-const categoriasDisponibles = computed(() => opcionesDeFiltro('categorias'));
-const familiasDisponibles = computed(() => opcionesDeFiltro('familias'));
-const controlesVarianteDisponibles = computed(() => opcionesDeFiltro('controles_variante'));
-
-const opcionesEstado = [
-    { value: '', label: 'Ambos' },
-    { value: 'activo', label: 'Activos' },
-    { value: 'inactivo', label: 'Inactivos' },
-];
-
-const opcionesPrecio = [
-    { value: '', label: 'Todos' },
-    { value: 'con_precio', label: 'Con precio' },
-    { value: 'sin_precio', label: 'Sin precio' },
-];
-
-const opcionesTallas = [
-    { value: '', label: 'Todas' },
-    { value: 'con', label: 'Con tallas' },
-    { value: 'sin', label: 'Sin tallas' },
-];
-
-const opcionesCantidad = [
-    { value: '', label: 'Todas' },
-    { value: 'con', label: 'Con cantidad' },
-    { value: 'sin', label: 'Sin cantidad' },
-];
-
-const opcionesFicha = [
-    { value: '', label: 'Todas' },
-    { value: 'con', label: 'Con ficha' },
-    { value: 'sin', label: 'Sin ficha' },
+const segmentoClass = (activo: boolean) => [
+    'whitespace-nowrap border-l border-border px-2.5 text-xs font-medium transition first:border-l-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+    activo
+        ? 'bg-foreground text-background shadow-sm'
+        : 'text-muted-foreground hover:bg-muted hover:text-foreground',
 ];
 
 const formatearPrecio = (valor: any, decimales = 0): string =>
@@ -227,9 +181,190 @@ const detalleTallasDe = (producto: any): string => {
         .join(' · ');
 };
 
-const indicador = (key: string) => (sortKey.value === key ? sortDir.value : null);
-const ariaSort = (key: string): 'ascending' | 'descending' | 'none' =>
-    sortKey.value !== key ? 'none' : sortDir.value === 'asc' ? 'ascending' : 'descending';
+const distribucionesDe = (producto: any): any[] => {
+    const lista = producto?.distribuciones_por_tallas ?? producto?.distribucionesPorTallas ?? [];
+    return Array.isArray(lista) ? lista : [];
+};
+
+const tieneTallas = (producto: any): boolean => tallasDe(producto).length > 0;
+
+const tieneCantidad = (producto: any): boolean =>
+    distribucionesDe(producto).some((item: any) => Number(item?.cantidad_planificada ?? 0) > 0);
+
+const tienePrecio = (valor: any): boolean =>
+    valor !== null && valor !== undefined && valor !== '' && Number(valor) > 0;
+
+// Cada fila trae lo que necesitan los filtros sin volver a recorrer la BD.
+const preparadas = computed(() =>
+    filas.value.map((producto: any) => ({
+        ...producto,
+        _estado: estadoNormalizado(producto.Estado),
+        _tieneTallas: tieneTallas(producto),
+        _tieneCantidad: tieneCantidad(producto),
+        _tieneFicha: Number(producto.ficha_id ?? 0) > 0,
+        _busqueda: normalizar(
+            [producto.Codigo_interno, producto.ID_producto_Shopify, producto.Titulo_Shopify].join(' '),
+        ),
+    })),
+);
+
+// Búsqueda y categoría reducen el universo; las listas del desplegable
+// «Más filtros» se calculan sobre este subconjunto, como en Materiales.
+// El estado se aplica más adelante para que sus chips siempre muestren
+// el total real y no se auto-excluyan al elegir uno.
+const baseFiltrada = computed(() =>
+    preparadas.value.filter((producto: any) => {
+        if (busqueda.value.trim() && !producto._busqueda.includes(normalizar(busqueda.value))) {
+            return false;
+        }
+        if (categoriaFiltro.value && normalizar(producto.Categoria_original) !== normalizar(categoriaFiltro.value)) {
+            return false;
+        }
+        return true;
+    }),
+);
+
+const opcionesDe = (campo: string): Array<{ value: string; label: string; count: number }> => {
+    const grupos = new Map<string, { value: string; label: string; count: number }>();
+    baseFiltrada.value.forEach((producto: any) => {
+        const raw = String(producto[campo] ?? '').trim();
+        if (!raw) return;
+        const clave = normalizar(raw);
+        const previo = grupos.get(clave);
+        if (previo) {
+            previo.count++;
+        } else {
+            grupos.set(clave, { value: raw, label: raw, count: 1 });
+        }
+    });
+    return Array.from(grupos.values()).sort((a, b) => a.value.localeCompare(b.value, 'es'));
+};
+
+const categoriasDisponibles = computed(() => opcionesDe('Categoria_original'));
+const familiasDisponibles = computed(() => opcionesDe('Familia_normalizada'));
+const controlesVarianteDisponibles = computed(() => opcionesDe('Control_de_variante'));
+
+const opcionesEstado = computed(() => [
+    { value: '', label: 'Ambos', count: baseFiltrada.value.length },
+    { value: 'Activo', label: 'Activos', count: baseFiltrada.value.filter((p: any) => p._estado === 'Activo').length },
+    { value: 'Inactivo', label: 'Inactivos', count: baseFiltrada.value.filter((p: any) => p._estado === 'Inactivo').length },
+]);
+
+const opcionesPrecio = (campo: string) => [
+    { value: '', label: 'Todos' },
+    { value: 'con_precio', label: `Con precio (${baseFiltrada.value.filter((p: any) => tienePrecio(p[campo])).length})` },
+    { value: 'sin_precio', label: `Sin precio (${baseFiltrada.value.filter((p: any) => !tienePrecio(p[campo])).length})` },
+];
+
+const opcionesBinarias = (campo: string, textos: { con: string; sin: string }) => [
+    { value: '', label: 'Todas' },
+    { value: 'con', label: `${textos.con} (${baseFiltrada.value.filter((p: any) => p[campo]).length})` },
+    { value: 'sin', label: `${textos.sin} (${baseFiltrada.value.filter((p: any) => !p[campo]).length})` },
+];
+
+const opcionesTallas = computed(() => opcionesBinarias('_tieneTallas', { con: 'Con tallas', sin: 'Sin tallas' }));
+const opcionesCantidad = computed(() => opcionesBinarias('_tieneCantidad', { con: 'Con cantidad', sin: 'Sin cantidad' }));
+const opcionesFicha = computed(() => opcionesBinarias('_tieneFicha', { con: 'Con ficha', sin: 'Sin ficha' }));
+const opcionesPrecioPreventa = computed(() => opcionesPrecio('precio_preventa'));
+const opcionesPrecioEstimado = computed(() => opcionesPrecio('precio_estimado'));
+
+const filtradas = computed(() =>
+    baseFiltrada.value.filter((producto: any) => {
+        if (estadoFiltro.value && producto._estado !== estadoFiltro.value) {
+            return false;
+        }
+        if (familiaFiltro.value && normalizar(producto.Familia_normalizada) !== normalizar(familiaFiltro.value)) {
+            return false;
+        }
+        if (
+            controlVarianteFiltro.value
+            && normalizar(producto.Control_de_variante) !== normalizar(controlVarianteFiltro.value)
+        ) {
+            return false;
+        }
+        if (
+            opcionFiltro.value.trim()
+            && !normalizar(producto.Opciones).includes(normalizar(opcionFiltro.value))
+        ) {
+            return false;
+        }
+        if (precioPreventaFiltro.value === 'con_precio' && !tienePrecio(producto.precio_preventa)) return false;
+        if (precioPreventaFiltro.value === 'sin_precio' && tienePrecio(producto.precio_preventa)) return false;
+        if (precioEstimadoFiltro.value === 'con_precio' && !tienePrecio(producto.precio_estimado)) return false;
+        if (precioEstimadoFiltro.value === 'sin_precio' && tienePrecio(producto.precio_estimado)) return false;
+        if (tallasFiltro.value === 'con' && !tieneTallas(producto)) return false;
+        if (tallasFiltro.value === 'sin' && tieneTallas(producto)) return false;
+        if (cantidadFiltro.value === 'con' && !tieneCantidad(producto)) return false;
+        if (cantidadFiltro.value === 'sin' && tieneCantidad(producto)) return false;
+        if (fichaFiltro.value === 'con' && !Number(producto.ficha_id ?? 0)) return false;
+        if (fichaFiltro.value === 'sin' && Number(producto.ficha_id ?? 0)) return false;
+        return true;
+    }),
+);
+
+const collator = new Intl.Collator('es', { numeric: true, sensitivity: 'base' });
+
+const valorOrden = (producto: any, key: string): any =>
+    key === 'Estado' ? producto._estado : producto[key];
+
+const ordenadas = computed(() => {
+    const dir = sortDir.value === 'asc' ? 1 : -1;
+    const key = sortKey.value;
+
+    return [...filtradas.value].sort((a: any, b: any) => {
+        const va = valorOrden(a, key);
+        const vb = valorOrden(b, key);
+        const nuloA = va === null || va === undefined || va === '';
+        const nuloB = vb === null || vb === undefined || vb === '';
+
+        if (nuloA && nuloB) return 0;
+        if (nuloA) return 1;
+        if (nuloB) return -1;
+        if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
+        return collator.compare(String(va), String(vb)) * dir;
+    });
+});
+
+const totalFiltrado = computed(() => ordenadas.value.length);
+const totalRegistros = computed(() => totalFiltrado.value);
+const totalProductos = computed(() => filas.value.length);
+const paginas = computed(() => Math.max(1, Math.ceil(totalFiltrado.value / porPagina.value)));
+const paginaActual = computed(() => Math.min(pagina.value, paginas.value));
+const ultimaPagina = computed(() => paginas.value);
+const desde = computed(() => (totalFiltrado.value === 0 ? 0 : (paginaActual.value - 1) * porPagina.value + 1));
+const hasta = computed(() => Math.min(paginaActual.value * porPagina.value, totalFiltrado.value));
+
+const visibles = computed(() => {
+    const inicio = (paginaActual.value - 1) * porPagina.value;
+    return ordenadas.value.slice(inicio, inicio + porPagina.value);
+});
+const filtrosAvanzados = computed(
+    () =>
+        [
+            familiaFiltro.value,
+            controlVarianteFiltro.value,
+            opcionFiltro.value,
+            precioPreventaFiltro.value,
+            precioEstimadoFiltro.value,
+            tallasFiltro.value,
+            cantidadFiltro.value,
+            fichaFiltro.value,
+        ].filter((valor) => String(valor ?? '').trim() !== '').length,
+);
+
+const filtrosActivos = computed(
+    () =>
+        filtrosAvanzados.value
+        + (busqueda.value.trim() !== '' ? 1 : 0)
+        + (estadoFiltro.value !== '' ? 1 : 0)
+        + (categoriaFiltro.value !== '' ? 1 : 0),
+);
+
+const hayFiltros = computed(() => filtrosActivos.value > 0);
+
+const cambiarPagina = (p: number) => {
+    pagina.value = Math.min(Math.max(1, p), paginas.value);
+};
 
 const ordenarPor = (key: string) => {
     if (sortKey.value === key) {
@@ -238,7 +373,36 @@ const ordenarPor = (key: string) => {
         sortKey.value = key;
         sortDir.value = 'asc';
     }
+    pagina.value = 1;
 };
+
+const indicador = (key: string) => (sortKey.value === key ? sortDir.value : null);
+const ariaSort = (key: string): 'ascending' | 'descending' | 'none' =>
+    sortKey.value !== key ? 'none' : sortDir.value === 'asc' ? 'ascending' : 'descending';
+
+watch(
+    [
+        busqueda,
+        estadoFiltro,
+        categoriaFiltro,
+        familiaFiltro,
+        controlVarianteFiltro,
+        opcionFiltro,
+        precioPreventaFiltro,
+        precioEstimadoFiltro,
+        tallasFiltro,
+        cantidadFiltro,
+        fichaFiltro,
+        porPagina,
+    ],
+    () => {
+        pagina.value = 1;
+    },
+);
+
+watch(paginas, (n) => {
+    if (pagina.value > n) pagina.value = n;
+});
 
 const accionFila = (accion: string, producto: any) => {
     data.Productoo = producto;
@@ -252,17 +416,17 @@ const accionFila = (accion: string, producto: any) => {
 };
 
 const limpiarFiltros = () => {
-    params.search = '';
-    params.estado = '';
-    params.categoria = '';
-    params.familia = '';
-    params.control_variante = '';
-    params.opcion = '';
-    params.precio_preventa = '';
-    params.precio_estimado = '';
-    params.tallas = '';
-    params.cantidad = '';
-    params.ficha = '';
+    busqueda.value = '';
+    estadoFiltro.value = '';
+    categoriaFiltro.value = '';
+    familiaFiltro.value = '';
+    controlVarianteFiltro.value = '';
+    opcionFiltro.value = '';
+    precioPreventaFiltro.value = '';
+    precioEstimadoFiltro.value = '';
+    tallasFiltro.value = '';
+    cantidadFiltro.value = '';
+    fichaFiltro.value = '';
 };
 
 const rutaIndex = new URL(String(route('Producto.index')), window.location.origin).pathname;
@@ -277,28 +441,8 @@ router.on('finish', () => {
 });
 
 const recargar = () => {
-    router.reload({ only: ['fromController', 'total', 'filters', 'perPage', 'opcionesFiltro'], preserveScroll: true });
+    router.reload({ only: ['productos', 'total', 'perPage'], preserveScroll: true });
 };
-
-const cambiarPagina = (page: number) => {
-    router.get(
-        route('Producto.index'),
-        pickBy({ ...params, field: sortKey.value, order: sortDir.value, page }),
-        { preserveState: true, preserveScroll: true, replace: true },
-    );
-};
-
-watch(
-    () => ({ ...params, field: sortKey.value, order: sortDir.value }),
-    debounce(() => {
-        router.get(
-            route('Producto.index'),
-            pickBy({ ...params, field: sortKey.value, order: sortDir.value }),
-            { replace: true, preserveState: true, preserveScroll: true },
-        );
-    }, 200),
-    { deep: true },
-);
 </script>
 
 <template>
@@ -335,9 +479,13 @@ watch(
                                 <span class="font-medium text-foreground">{{ totalRegistros }}</span>
                                 {{ totalRegistros === 1 ? 'producto' : 'productos' }}
                             </span>
-                            <span v-if="totalRegistros !== filas.length" class="text-border">·</span>
-                            <span v-if="totalRegistros !== filas.length" class="tabular-nums">
-                                <span class="font-medium text-foreground">{{ filas.length }}</span>
+                            <span v-if="hayFiltros" class="text-border">·</span>
+                            <span v-if="hayFiltros" class="tabular-nums">
+                                de <span class="font-medium text-foreground">{{ totalProductos }}</span>
+                            </span>
+                            <span v-if="totalRegistros !== visibles.length" class="text-border">·</span>
+                            <span v-if="totalRegistros !== visibles.length" class="tabular-nums">
+                                <span class="font-medium text-foreground">{{ visibles.length }}</span>
                                 en esta página
                             </span>
                             <span
@@ -392,16 +540,16 @@ watch(
                         <div class="relative min-w-[220px] flex-1">
                             <MagnifyingGlassIcon class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                             <input
-                                v-model="params.search"
+                                v-model="busqueda"
                                 type="search"
                                 aria-label="Buscar productos"
                                 placeholder="Buscar por código o título…"
                                 class="h-9 w-full rounded-md border border-input bg-background pl-9 pr-9 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30"
                             />
                             <button
-                                v-if="params.search"
+                                v-if="busqueda"
                                 type="button"
-                                @click="params.search = ''"
+                                @click="busqueda = ''"
                                 aria-label="Limpiar búsqueda"
                                 class="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                             >
@@ -410,7 +558,7 @@ watch(
                         </div>
 
                         <select
-                            v-model="params.categoria"
+                            v-model="categoriaFiltro"
                             aria-label="Filtrar por categoría"
                             :class="[selectClass, 'max-w-[220px]']"
                         >
@@ -431,11 +579,12 @@ watch(
                                     v-for="opcion in opcionesEstado"
                                     :key="opcion.value || 'todos'"
                                     type="button"
-                                    @click="params.estado = opcion.value"
-                                    :aria-pressed="params.estado === opcion.value"
-                                    :class="segmentoClass(params.estado === opcion.value)"
+                                    @click="estadoFiltro = opcion.value"
+                                    :aria-pressed="estadoFiltro === opcion.value"
+                                    :class="segmentoClass(estadoFiltro === opcion.value)"
                                 >
                                     {{ opcion.label }}
+                                    <span class="ml-1 tabular-nums opacity-70">{{ opcion.count }}</span>
                                 </button>
                             </div>
                         </div>
@@ -456,7 +605,7 @@ watch(
                                 <div class="flex flex-col gap-2.5" @click.stop>
                                     <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
                                         Familia
-                                        <select v-model="params.familia" :class="selectClass">
+                                        <select v-model="familiaFiltro" :class="selectClass">
                                             <option value="">Todas</option>
                                             <option v-for="opcion in familiasDisponibles" :key="opcion.value" :value="opcion.value">
                                                 {{ opcion.label }}
@@ -466,7 +615,7 @@ watch(
 
                                     <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
                                         Control de variante
-                                        <select v-model="params.control_variante" :class="selectClass">
+                                        <select v-model="controlVarianteFiltro" :class="selectClass">
                                             <option value="">Todos</option>
                                             <option v-for="opcion in controlesVarianteDisponibles" :key="opcion.value" :value="opcion.value">
                                                 {{ opcion.label }}
@@ -477,7 +626,7 @@ watch(
                                     <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
                                         Opciones contiene
                                         <input
-                                            v-model="params.opcion"
+                                            v-model="opcionFiltro"
                                             type="search"
                                             placeholder="Ej. S, M, L o 21-30"
                                             :class="selectClass"
@@ -486,8 +635,8 @@ watch(
 
                                     <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
                                         Precio preventa
-                                        <select v-model="params.precio_preventa" :class="selectClass">
-                                            <option v-for="opcion in opcionesPrecio" :key="opcion.value" :value="opcion.value">
+                                        <select v-model="precioPreventaFiltro" :class="selectClass">
+                                            <option v-for="opcion in opcionesPrecioPreventa" :key="opcion.value" :value="opcion.value">
                                                 {{ opcion.label }}
                                             </option>
                                         </select>
@@ -495,8 +644,8 @@ watch(
 
                                     <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
                                         Precio estimado
-                                        <select v-model="params.precio_estimado" :class="selectClass">
-                                            <option v-for="opcion in opcionesPrecio" :key="opcion.value" :value="opcion.value">
+                                        <select v-model="precioEstimadoFiltro" :class="selectClass">
+                                            <option v-for="opcion in opcionesPrecioEstimado" :key="opcion.value" :value="opcion.value">
                                                 {{ opcion.label }}
                                             </option>
                                         </select>
@@ -504,7 +653,7 @@ watch(
 
                                     <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
                                         Tallas
-                                        <select v-model="params.tallas" :class="selectClass">
+                                        <select v-model="tallasFiltro" :class="selectClass">
                                             <option v-for="opcion in opcionesTallas" :key="opcion.value" :value="opcion.value">
                                                 {{ opcion.label }}
                                             </option>
@@ -513,7 +662,7 @@ watch(
 
                                     <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
                                         Cantidad planificada
-                                        <select v-model="params.cantidad" :class="selectClass">
+                                        <select v-model="cantidadFiltro" :class="selectClass">
                                             <option v-for="opcion in opcionesCantidad" :key="opcion.value" :value="opcion.value">
                                                 {{ opcion.label }}
                                             </option>
@@ -522,7 +671,7 @@ watch(
 
                                     <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
                                         Ficha técnica
-                                        <select v-model="params.ficha" :class="selectClass">
+                                        <select v-model="fichaFiltro" :class="selectClass">
                                             <option v-for="opcion in opcionesFicha" :key="opcion.value" :value="opcion.value">
                                                 {{ opcion.label }}
                                             </option>
@@ -532,7 +681,7 @@ watch(
                             </DropdownMenuContent>
                         </DropdownMenu>
 
-                        <select v-model.number="params.perPage" aria-label="Registros por página" :class="selectClass">
+                        <select v-model.number="porPagina" aria-label="Registros por página" :class="selectClass">
                             <option v-for="n in [10, 25, 50, 100]" :key="n" :value="n">{{ n }} / página</option>
                         </select>
 
@@ -604,9 +753,9 @@ watch(
                             </tr>
                         </tbody>
 
-                        <tbody v-else-if="filas.length" :key="paginaActual" class="mat-page">
+                        <tbody v-else-if="visibles.length" :key="paginaActual" class="mat-page">
                             <tr
-                                v-for="producto in filas"
+                                v-for="producto in visibles"
                                 :key="producto.id"
                                 class="group border-b border-border/60 transition-colors last:border-0 hover:bg-muted/40"
                             >

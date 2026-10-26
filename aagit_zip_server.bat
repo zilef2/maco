@@ -18,7 +18,7 @@ echo [📦] Comprimiendo archivos...
 if exist "%DEST%" del "%DEST%"
 if exist "public\hot" del /F /S "public\hot" 2>nul
 
-"C:\Program Files\7-Zip\7z.exe" a -r -x!"vendor" -x!"storage" -x!"node_modules" -x!"public\hot.*" "%DEST%" "app" "resources" "routes" "database" "public" "lang"
+"C:\Program Files\7-Zip\7z.exe" a -r -x!"vendor" -x!"storage" -x!"node_modules" -x!"public\hot.*" "%DEST%" "app" "resources" "routes" "database" "public" "lang" "config"
 
 :: 4. Generador de Commits (11x11x11 = 1331 combinaciones + random ID)
 set "w1_0=Mejorando" & set "w1_1=Ajustando" & set "w1_2=Optimizando" & set "w1_3=Puliendo" & set "w1_4=Refactorizando" & set "w1_5=Potenciando" & set "w1_6=Sincronizando" & set "w1_7=Desplegando" & set "w1_8=Magia en" & set "w1_9=Limpiando" & set "w1_10=Fixeando"
@@ -36,7 +36,7 @@ git push
 
 :: 6. Subir por SCP
 echo [🚀] Subiendo al servidor de zilef...
-scp -P 212 -i C:\Users\alejo\.ssh\id_rsa "%DEST%" zilef@162.24.47.19:/home/zilef
+scp -P 22022 -i C:\Users\alejo\.ssh\id_rsa "%DEST%" zilef@162.240.147.79:/home/zilef
 
 :: 7. Levantar entorno dev
 echo [💻] Levantando entorno local...

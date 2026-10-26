@@ -596,15 +596,29 @@ class OrdenProduccionController extends Controller {
             (int) ($data['cantidad_planificada'] ?? 0),
             array_map('floatval', (array) $request->input('productos_cantidad', []))
         );
+        $avisoFaltantes = null;
         if (!empty($faltantes)) {
             $detalle = collect($faltantes)
                 ->map(fn ($f) => $f['nombre'] . ': faltan ' . round($f['faltante'], 2) . ' (necesita ' . round($f['necesita'], 2) . ', hay ' . round($f['hay'], 2) . ')')
                 ->implode(' | ');
-            app(\Alejo\Notificaciones\NotificacionesManager::class)->crear(
-                ($data['numero_op'] ?? ('OP #' . $OrdenProduccion->id)) . ': material insuficiente — ' . $detalle,
-                'alta',
-                $data['user_id'] ?? null
-            );
+            $avisoFaltantes = ($data['numero_op'] ?? ('OP #' . $OrdenProduccion->id))
+                . ': material insuficiente — ' . $detalle;
+
+            // El creador debe enterarse de inmediato aunque haya asignado la OP
+            // a otro responsable; el responsable también recibe el aviso.
+            $notificaciones = app(\Alejo\Notificaciones\NotificacionesManager::class);
+            $destinatarios = array_values(array_unique(array_filter([
+                $request->user()?->id,
+                $data['user_id'] ?? null,
+            ])));
+
+            if (empty($destinatarios)) {
+                $notificaciones->crear($avisoFaltantes, 'alta');
+            } else {
+                foreach ($destinatarios as $destinatario) {
+                    $notificaciones->crear($avisoFaltantes, 'alta', (int) $destinatario);
+                }
+            }
         }
 
         // El kit de procesos se genera automáticamente con la OP;
@@ -622,7 +636,18 @@ class OrdenProduccionController extends Controller {
         $this->invalidarCache();
         $identificador = $OrdenProduccion->numero_op ?? $OrdenProduccion->id;
         Myhelp::EscribirEnLog($this, 'STORE:OrdenProduccions EXITOSO', 'OrdenProduccion id:' . $OrdenProduccion->id . ' | ' . $identificador, false);
-        return back()->with('success', __('app.label.created_successfully', ['name' => $identificador]));
+        $respuesta = back()->with('success', __('app.label.created_successfully', ['name' => $identificador]));
+
+        // Además de la campana, el aviso se muestra de inmediato al terminar
+        // de crear la OP: si hay faltantes y solo se guarda la notificación,
+        // el usuario no lo nota hasta que abre la campana.
+        if ($avisoFaltantes) {
+            $respuesta->with('warning', 'Material insuficiente en ' . $identificador . ': ' . collect($faltantes)
+                ->map(fn ($f) => $f['nombre'] . ' (faltan ' . round($f['faltante'], 2) . ')')
+                ->implode(' · ') . '. Revisa el resumen de materiales faltantes.');
+        }
+
+        return $respuesta;
     }
 
     /**
