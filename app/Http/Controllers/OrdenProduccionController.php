@@ -20,6 +20,8 @@ use App\Models\Proveedor;
 use App\Models\RecepcionCalidad;
 use App\Models\Taller;
 use App\Http\Requests\StoreOrdenProduccionRequest;
+use App\Services\CostoMaterialOpService;
+use App\Services\CostoRecepcionOpService;
 use App\Traits\MaterialMovimientoTrait;
 use App\helpers\Myhelp;
 use App\helpers\MyModels;
@@ -41,7 +43,10 @@ class OrdenProduccionController extends Controller {
     public array $thisAtributos;
     public string $FromController = 'OrdenProduccion';
 
-    public function __construct() {
+    public function __construct(
+        protected CostoMaterialOpService $costosMateriales,
+        protected CostoRecepcionOpService $costosRecepcion
+    ) {
         $this->thisAtributos = (new OrdenProduccion())->getFillable();
     }
 
@@ -50,10 +55,10 @@ class OrdenProduccionController extends Controller {
 
         // Listado completo: la tabla filtra, ordena y pagina en el frontend.
         // La clave solo depende de la versión, que se incrementa al escribir.
-        $claveListado = 'op_index_v8_' . $this->versionCache();
+        $claveListado = 'op_index_v11_' . $this->versionCache();
         $OrdenProduccions = Cache::remember($claveListado, now()->addMinutes(10), function () {
             return OrdenProduccion::query()
-                ->with(['productoReferencia', 'taller', 'empresaExterna', 'estadoOp', 'responsable', 'distribucionesPorTallas.producto', 'productos', 'recepcionesCalidad', 'compromisosReparacion', 'kitProcesos.material', 'procesosExternos.materialOrigen', 'procesosExternos.proveedorDestino', 'cierres'])
+                ->with(['productoReferencia.fichaTecnica.materiales', 'taller', 'empresaExterna', 'estadoOp', 'responsable', 'distribucionesPorTallas.producto', 'productos.fichaTecnica.materiales', 'recepcionesCalidad', 'compromisosReparacion', 'kitProcesos.material', 'procesosExternos.materialOrigen', 'procesosExternos.proveedorDestino', 'cierres', 'costosMateriales.material', 'costosCambios.material', 'costosCambios.usuario'])
                 ->orderByDesc('updated_at')
                 ->get()
                 ->map(function ($op) {
@@ -73,6 +78,27 @@ class OrdenProduccionController extends Controller {
                         fn ($p) => [$p->id => $nombreProducto($p)]
                     );
 
+                    // Relación material -> productos que lo usan según la ficha
+                    // técnica de cada producto. Permite mostrar a qué producto
+                    // pertenece cada material faltante.
+                    $productosPorMaterial = [];
+                    foreach ($op->productos as $productoKit) {
+                        $ficha = $productoKit->fichaTecnica->first();
+                        if (!$ficha) {
+                            continue;
+                        }
+
+                        $nombreKit = $nombreProducto($productoKit) ?: ('Producto #' . $productoKit->id);
+                        foreach ($ficha->materiales as $filaMaterial) {
+                            $materialId = $filaMaterial->material_componente_id;
+                            if (!$materialId) {
+                                continue;
+                            }
+
+                            $productosPorMaterial[$materialId][$productoKit->id] = $nombreKit;
+                        }
+                    }
+
                     // Detalle por talla con su producto, para la recepción de calidad.
                     $op->distribuciones_detalle = $op->distribucionesPorTallas->map(function ($d) use ($nombreProducto, $nombresProductos) {
                         return [
@@ -88,7 +114,7 @@ class OrdenProduccionController extends Controller {
 
                     // Materiales del kit, con la necesidad total y la existencia
                     // actual. Se usan en el detalle al hacer clic en el estado.
-                    $op->materiales_detalle = $op->kitProcesos->map(function ($kit) {
+                    $op->materiales_detalle = $op->kitProcesos->map(function ($kit) use ($productosPorMaterial) {
                         $requerida = (float) ($kit->cantidad_requerida ?? 0);
                         $disponible = (float) ($kit->material?->existencia_actual ?? 0);
                         $nombre = trim(
@@ -103,6 +129,7 @@ class OrdenProduccionController extends Controller {
                             'requerida'   => round($requerida, 4),
                             'disponible'  => round($disponible, 4),
                             'proveedor_id' => $kit->proveedor_id,
+                            'productos'   => array_values($productosPorMaterial[$kit->material_id] ?? []),
                         ];
                     })->values()->all();
 
@@ -112,6 +139,55 @@ class OrdenProduccionController extends Controller {
                         ])
                         ->filter(fn ($fila) => $fila['faltante'] > 0)
                         ->values()->all();
+
+                    // Costo de los materiales de la OP. El precio unitario de
+                    // cada material queda guardado en la OP según el parámetro
+                    // costos_promedio; si la OP aún no tiene su precio guardado
+                    // se calcula en vivo con ese mismo método.
+                    $op->costo_fichas = $op->costoFichasTecnicas();
+
+                    $nombresMateriales = $op->materiales_detalle;
+                    $nombrePorMaterial = collect($nombresMateriales)
+                        ->mapWithKeys(fn ($fila) => [$fila['material_id'] => $fila['nombre']]);
+
+                    // Precio guardado por material, para el detalle de la OP.
+                    $op->costos_detalle = $op->costosMateriales
+                        ->sortBy('material_id')
+                        ->map(function ($fila) use ($nombrePorMaterial) {
+                            return [
+                                'material_id' => $fila->material_id,
+                                'nombre' => $nombrePorMaterial[$fila->material_id]
+                                    ?? trim(($fila->material?->codigo_material ? $fila->material->codigo_material . ' — ' : '') . $fila->material?->nombre_base)
+                                    ?: ('Material #' . $fila->material_id),
+                                'metodo_costo' => (int) $fila->metodo_costo,
+                                'precio_unitario' => (float) $fila->precio_unitario,
+                                'cantidad' => (float) $fila->cantidad,
+                                'costo_total' => (float) $fila->costo_total,
+                            ];
+                        })->values()->all();
+
+                    // Historial de los precios que cambió el material en esta OP.
+                    $op->costos_cambios_detalle = $op->costosCambios
+                        ->sortByDesc('id')
+                        ->map(function ($cambio) use ($nombrePorMaterial) {
+                            return [
+                                'id' => $cambio->id,
+                                'material_id' => $cambio->material_id,
+                                'nombre' => $nombrePorMaterial[$cambio->material_id]
+                                    ?? trim(($cambio->material?->codigo_material ? $cambio->material->codigo_material . ' — ' : '') . $cambio->material?->nombre_base)
+                                    ?: ('Material #' . $cambio->material_id),
+                                'metodo_costo' => (int) $cambio->metodo_costo,
+                                'precio_anterior' => $cambio->precio_anterior !== null ? (float) $cambio->precio_anterior : null,
+                                'precio_nuevo' => (float) $cambio->precio_nuevo,
+                                'usuario' => $cambio->usuario?->name,
+                                'fecha' => $cambio->created_at ? substr((string) $cambio->created_at, 0, 16) : null,
+                            ];
+                        })->values()->all();
+
+                    // Costo de materiales de una unidad de cada producto de la OP,
+                    // con los precios guardados. Lo usa el formulario de recepción
+                    // para costear aprobados y no recuperables.
+                    $op->costo_unitario_productos = $this->costosRecepcion->unitarios($op);
 
                     // Recepciones ya registradas, para precargar el formulario
                     // de calidad y para el detalle de solo lectura del estado.
@@ -160,13 +236,12 @@ class OrdenProduccionController extends Controller {
                             'fecha_prevista_regreso'  => $pe->fecha_prevista_regreso?->toDateString(),
                         ])->values()->all();
 
-                    // Cierre registrado (borrador o definitivo) para precargar
-                    // el formulario al seleccionar «Cerrada».
+                    // Último cierre registrado, para mostrarlo en el detalle de
+                    // la OP y en el resumen de cierre.
                     $cierre = $op->cierres->sortByDesc('id')->first();
                     $op->cierre_detalle = $cierre ? [
                         'id'                  => $cierre->id,
-                        'materiales_sobrantes' => $cierre->materiales_sobrantes,
-                        'perdidas_mermas'     => $cierre->perdidas_mermas,
+                        'perdidas_mermas'     => $cierre->perdidas_mermas !== null ? (float) $cierre->perdidas_mermas : null,
                         'costo_real_final'    => $cierre->costo_real_final !== null ? (float) $cierre->costo_real_final : null,
                         'completado'          => (bool) $cierre->completado,
                     ] : null;
@@ -204,6 +279,9 @@ class OrdenProduccionController extends Controller {
             // Si es verdadero, el cambio de estado a «En taller» muestra
             // cuánto se resta de inventario por material.
             'mostrarRestaMateriales' => Parametro::bool(Parametro::MOSTRAR_RESTA_MATERIALES_TALLER, true),
+            // Cómo se tomó el precio de los materiales guardado en las OPs.
+            'metodoCostos' => $this->costosMateriales->metodo(),
+            'metodoCostosLabel' => $this->costosMateriales->labelMetodo(),
 
         ]);
     }
@@ -276,8 +354,19 @@ class OrdenProduccionController extends Controller {
                 ];
             });
 
+        // Precio que tendrá cada material en la OP según el parámetro
+        // costos_promedio, para que la vista previa coincida con lo guardado.
+        $metodoCostos = $this->costosMateriales->metodo();
+        $preciosPorMaterial = Material::query()
+            ->with('lastPrice')
+            ->withAvg('prices', 'precio')
+            ->get()
+            ->mapWithKeys(fn ($material) => [
+                $material->id => $this->costosMateriales->precioUnitario($material, $metodoCostos),
+            ]);
+
         $productos = Producto::with(['fichaTecnica.materiales.material', 'distribucionesPorTallas'])->get(['id', 'Titulo_Shopify', 'Codigo_interno', 'Opciones'])
-            ->map(function ($producto) {
+            ->map(function ($producto) use ($preciosPorMaterial, $metodoCostos) {
                 $nombre = $producto->Titulo_Shopify ?: ($producto->Codigo_interno ?: 'Producto #' . $producto->id);
                 $ficha = $producto->fichaTecnica->first();
                 return [
@@ -300,6 +389,9 @@ class OrdenProduccionController extends Controller {
                         'consumo_estandar'  => (float) $fila->consumo_estandar,
                         'unidad_medida'     => $fila->unidad_medida,
                         'costo_asociado_teorico' => (float) $fila->costo_asociado_teorico,
+                        // Precio usado por el parámetro costos_promedio.
+                        'precio_unitario'   => (float) ($preciosPorMaterial[$fila->material_componente_id] ?? 0),
+                        'metodo_costos'     => $metodoCostos,
                         'existencia_actual' => (float) ($fila->material?->existencia_actual ?? 0),
                     ])->values()->all() ?? [],
                 ];
@@ -524,6 +616,8 @@ class OrdenProduccionController extends Controller {
             array_map('floatval', (array) $request->input('productos_cantidad', []))
         );
 
+        $this->guardarCostosMateriales($OrdenProduccion);
+
         DB::commit();
         $this->invalidarCache();
         $identificador = $OrdenProduccion->numero_op ?? $OrdenProduccion->id;
@@ -599,6 +693,8 @@ class OrdenProduccionController extends Controller {
         if ($request->has('productos')) {
             $OrdenProduccion->productos()->sync(array_map('intval', (array) $request->input('productos', [])));
         }
+
+        $this->guardarCostosMateriales($OrdenProduccion);
 
         DB::commit();
         $this->invalidarCache();
@@ -676,11 +772,31 @@ class OrdenProduccionController extends Controller {
             array_map('floatval', (array) $request->input('productos_cantidad', []))
         );
 
+        $this->guardarCostosMateriales($OrdenProduccion);
+
         DB::commit();
         $this->invalidarCache();
         $identificador = $OrdenProduccion->numero_op ?? $OrdenProduccion->id;
         Myhelp::EscribirEnLog($this, 'UPDATE:OrdenProduccions EXITOSO', 'OrdenProduccion id:' . $OrdenProduccion->id . ' | ' . $identificador, false);
         return back()->with('success', __('app.label.updated_successfully2', ['nombre' => $identificador]));
+    }
+
+    /**
+     * Renueva y guarda en la OP el precio de sus materiales, según el método
+     * vigente del parámetro costos_promedio. Se vuelve a cargar la orden para
+     * que las cantidades recién sincronizadas sean las que se costean.
+     */
+    private function guardarCostosMateriales(OrdenProduccion $op): void {
+        $recargada = $op->fresh([
+            'productos.fichaTecnica.materiales',
+            'productoReferencia.fichaTecnica.materiales',
+            'distribucionesPorTallas',
+            'costosMateriales',
+        ]);
+
+        if ($recargada) {
+            $this->costosMateriales->recalcular($recargada);
+        }
     }
 
     /**
@@ -835,10 +951,6 @@ class OrdenProduccionController extends Controller {
             'proceso_externo.items.*.cantidad_salida' => ['nullable', 'numeric', 'gt:0'],
             'proceso_externo.items.*.unidad_medida' => ['nullable', 'string', 'max:255'],
             'fecha_regreso_real' => ['nullable', 'date'],
-            'cierre' => ['nullable', 'array'],
-            'cierre.materiales_sobrantes' => ['nullable', 'integer', 'min:0'],
-            'cierre.perdidas_mermas' => ['nullable', 'integer', 'min:0'],
-            'cierre.costo_real_final' => ['nullable', 'numeric', 'min:0'],
         ]);
 
         // Si la petición no envía fecha, se registra la fecha del guardado.
@@ -959,30 +1071,26 @@ class OrdenProduccionController extends Controller {
         // una sola vez (reenviar el mismo estado no vuelve a restar).
         $entraEnTaller = $estadoFinalNombre === 'En taller' && $estadoActual?->nombre !== 'En taller';
 
-        // Cerrar la OP exige los tres datos del cierre.
+        // El cierre no se digita: las pérdidas y el costo real final se
+        // calculan con los productos recibidos y el costo guardado en la OP.
         $esCierre = $estadoFinalNombre === 'Cerrada';
-        $cierreDatos = $datos['cierre'] ?? [];
+        $cierreDatos = [];
 
         if ($esCierre) {
-            $faltantes = [];
-            foreach ([
-                'materiales_sobrantes' => 'materiales sobrantes o recuperados',
-                'perdidas_mermas'      => 'pérdidas en mermas (0 si no hubo)',
-                'costo_real_final'     => 'costo real final',
-            ] as $campo => $etiqueta) {
-                if (!isset($cierreDatos[$campo]) || $cierreDatos[$campo] === '' || $cierreDatos[$campo] === null) {
-                    $faltantes[] = $etiqueta;
-                }
+            $filasCierre = $recepciones;
+
+            if (empty($filasCierre)) {
+                $filasCierre = $OrdenProduccion->recepcionesCalidad()
+                    ->get()
+                    ->map(fn ($recepcion) => [
+                        'producto_id' => $recepcion->producto_referencia_id,
+                        'cantidad_aprobada' => $recepcion->cantidad_aprobada,
+                        'cantidad_no_recuperable' => $recepcion->cantidad_no_recuperable,
+                    ])
+                    ->all();
             }
 
-            if (!empty($faltantes)) {
-                return back()->withErrors([
-                    'cierre' => ($seCierraAutomatica
-                        ? 'La recepción quedó completa y la OP se cerrará: registre el cierre, falta '
-                        : 'Complete el cierre antes de cerrar la OP: falta ')
-                        . implode(', ', $faltantes) . '.',
-                ]);
-            }
+            $cierreDatos = $this->costosRecepcion->resumenCierre($OrdenProduccion, $filasCierre);
         }
 
         // Materiales del kit que se registrarán como salida al proceso externo.
@@ -1044,8 +1152,7 @@ class OrdenProduccionController extends Controller {
                 CierreOrdenProduccion::updateOrCreate(
                     ['orden_produccion_id' => $OrdenProduccion->id],
                     [
-                        'materiales_sobrantes' => (int) $cierreDatos['materiales_sobrantes'],
-                        'perdidas_mermas'      => (int) $cierreDatos['perdidas_mermas'],
+                        'perdidas_mermas'      => round((float) $cierreDatos['perdidas_mermas'], 2),
                         'costo_real_final'     => round((float) $cierreDatos['costo_real_final'], 2),
                         'completado'           => true,
                         'estado_accion'        => 'cerrado',
@@ -1142,45 +1249,6 @@ class OrdenProduccionController extends Controller {
     }
 
     /**
-     * Guarda un avance del cierre de la OP sin cambiar su estado.
-     * Permite dejar el formulario incompleto y terminarlo antes de cerrar.
-     */
-    public function guardarCierre(Request $request, $id): RedirectResponse {
-        $datos = $request->validate([
-            'materiales_sobrantes' => ['nullable', 'integer', 'min:0'],
-            'perdidas_mermas'      => ['nullable', 'integer', 'min:0'],
-            'costo_real_final'     => ['nullable', 'numeric', 'min:0'],
-        ]);
-
-        $orden = OrdenProduccion::findOrFail($id);
-
-        if ($orden->estadoOp?->nombre === 'Cerrada') {
-            return back()->withErrors(['cierre' => 'La OP ya está cerrada.']);
-        }
-
-        CierreOrdenProduccion::updateOrCreate(
-            ['orden_produccion_id' => $orden->id],
-            [
-                'materiales_sobrantes' => $datos['materiales_sobrantes'] ?? null,
-                'perdidas_mermas'      => $datos['perdidas_mermas'] ?? null,
-                'costo_real_final'     => $datos['costo_real_final'] ?? null,
-                'completado'           => false,
-                'estado_accion'        => 'borrador',
-                'control_cierre'       => 'Cierre de OP',
-                'responsable_id'       => Auth::id() ?: $orden->user_id,
-                'fecha_cierre'         => null,
-            ]
-        );
-
-        $this->invalidarCache();
-
-        $identificador = $orden->numero_op ?? $orden->id;
-        Myhelp::EscribirEnLog($this, 'CIERRE-BORRADOR:OrdenProduccions', 'OrdenProduccion id:' . $orden->id . ' | ' . $identificador, false);
-
-        return back()->with('success', 'Avance del cierre guardado. Esta información se conservará cuando cierre la OP.');
-    }
-
-    /**
      * Guarda un borrador de la recepción de calidad (Aprobada / En reparación /
      * No recuperable) sin cambiar el estado de la OP ni exigir que la suma
      * cuadre exactamente con la cantidad esperada. Permite al usuario guardar
@@ -1189,6 +1257,7 @@ class OrdenProduccionController extends Controller {
     public function guardarRecepcionBorrador(Request $request, $id): RedirectResponse {
         $datos = $request->validate([
             'fecha_recepcion'                        => ['nullable', 'date'],
+            'fecha_compromiso'                       => ['nullable', 'date'],
             'recepciones'                            => ['nullable', 'array'],
             'recepciones.*.distribucion_id'          => ['required', 'integer'],
             'recepciones.*.cantidad_aprobada'        => ['nullable', 'integer', 'min:0'],
@@ -1198,12 +1267,14 @@ class OrdenProduccionController extends Controller {
 
         $orden = OrdenProduccion::findOrFail($id);
         $fechaRecepcion = $datos['fecha_recepcion'] ?? now()->toDateString();
+        $fechaCompromiso = $datos['fecha_compromiso'] ?? null;
 
         $distribuciones = $orden->distribucionesPorTallas()->get()->keyBy('id');
 
         $productosOp = $orden->productos()->pluck('productos.id')->map(fn ($pid) => (int) $pid)->all();
 
         $guardadas = 0;
+        $filasCompromiso = [];
         foreach ($datos['recepciones'] ?? [] as $fila) {
             $distribucion = $distribuciones->get((int) ($fila['distribucion_id'] ?? 0));
             if (!$distribucion) {
@@ -1243,15 +1314,32 @@ class OrdenProduccionController extends Controller {
                 ]
             );
 
+            $filasCompromiso[] = [
+                'producto_id'            => $productoId ?: null,
+                'talla'                  => $distribucion->talla,
+                'cantidad_en_reparacion' => $reparacion ?? 0,
+                'fecha_compromiso'       => $fechaCompromiso,
+            ];
+
             $guardadas++;
         }
+
+        // El borrador también conserva la fecha de compromiso pendiente, para
+        // que al reabrir el formulario no se pierda lo ya digitado.
+        $compromisosAvisados = $this->registrarCompromisosReparacion($orden, $filasCompromiso);
 
         $this->invalidarCache();
 
         $identificador = $orden->numero_op ?? $orden->id;
         Myhelp::EscribirEnLog($this, 'RECEPCION-BORRADOR:OrdenProduccions', 'OrdenProduccion id:' . $orden->id . ' | ' . $identificador . ' | ' . $guardadas . ' fila(s)', false);
 
-        return back()->with('success', 'Avance de recepción guardado. Los valores se conservarán al terminar.');
+        $mensaje = 'Avance de recepción guardado. Los valores se conservarán al terminar.';
+        if ($compromisosAvisados > 0) {
+            $mensaje .= ' Se crearon los avisos de ' . $compromisosAvisados
+                . ' fecha(s) de compromiso pendiente.';
+        }
+
+        return back()->with('success', $mensaje);
     }
 
     /**
@@ -1469,6 +1557,14 @@ class OrdenProduccionController extends Controller {
                 continue;
             }
 
+            // En un borrador puede no haberse indicado todavía la fecha. No se
+            // crea un compromiso sin fecha; si ya existe, se conserva la suya y
+            // solo se actualiza la cantidad pendiente.
+            if (empty($fila['fecha_compromiso'])) {
+                $compromiso?->update(['cantidad_en_reparacion' => $enReparacion]);
+                continue;
+            }
+
             $nuevo = $compromiso === null;
             $cambioFecha = ! $nuevo
                 && $compromiso->fecha_compromiso?->toDateString() !== (string) $fila['fecha_compromiso'];
@@ -1501,6 +1597,10 @@ class OrdenProduccionController extends Controller {
      * Un aviso dos días antes del compromiso y otro el día del compromiso.
      */
     private function avisarCompromisoReparacion(OrdenProduccion $orden, CompromisoReparacion $compromiso): void {
+        if (! $compromiso->fecha_compromiso) {
+            return;
+        }
+
         $identificador = $orden->numero_op ?? ('OP #' . $orden->id);
         $detalle = $compromiso->cantidad_en_reparacion . ' par(es) en reparación'
             . ($compromiso->talla ? ' (talla ' . $compromiso->talla . ')' : '');

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Material;
 use App\Models\Proveedor;
 use App\Services\ListaDesplegableService;
+use App\Services\CostoMaterialOpService;
 use App\helpers\Myhelp;
 use App\helpers\MyModels;
 use Illuminate\Database\Eloquent\Collection;
@@ -25,7 +26,7 @@ class MaterialController extends Controller {
 
 
     //<editor-fold desc="Construc | filtro and dependencia">
-    public function __construct(protected ListaDesplegableService $listaDesplegableService) {
+    public function __construct(protected ListaDesplegableService $listaDesplegableService, protected CostoMaterialOpService $costosMateriales) {
 //        $this->middleware('permission:create Material', ['only' => ['create', 'store']]);
 //        $this->middleware('permission:read Material', ['only' => ['index', 'show']]);
 //        $this->middleware('permission:update Material', ['only' => ['edit', 'update']]);
@@ -207,6 +208,10 @@ class MaterialController extends Controller {
                 ]);
             }
         }
+
+        // El nuevo precio también afecta el costo de las OPs abiertas que usan
+        // este material: se renueva el precio guardado y se anota el cambio.
+        $this->costosMateriales->recalcularPorMaterial((int) $Material->id);
 
         DB::commit();
         $this->invalidarCache();

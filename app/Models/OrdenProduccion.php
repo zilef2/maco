@@ -108,6 +108,23 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     }
 
     /**
+     * Precio de cada material guardado en la OP, según el parámetro
+     * costos_promedio.
+     */
+    public function costosMateriales()
+    {
+        return $this->hasMany(OrdenProduccionCostoMaterial::class, 'orden_produccion_id');
+    }
+
+    /**
+     * Cambios de precio que tuvo cada material dentro de la OP.
+     */
+    public function costosCambios()
+    {
+        return $this->hasMany(OrdenProduccionCostoCambio::class, 'orden_produccion_id');
+    }
+
+    /**
      * Kits de materiales generados desde la ficha técnica de los productos.
      */
     public function kitProcesos()
@@ -137,6 +154,20 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     public function cierres()
     {
         return $this->hasMany(CierreOrdenProduccion::class, 'orden_produccion_id');
+    }
+
+    /**
+     * Costo de los materiales de los productos de la OP.
+     *
+     * El precio unitario de cada material lo define el parámetro
+     * costos_promedio (1 = promedio de sus cambios de precio, 2 = el último
+     * precio digitado) y queda guardado en la OP. La cantidad de cada producto
+     * sale de su distribución por tallas; las OPs antiguas sin distribución usa
+     * la cantidad planificada total de su producto de referencia.
+     */
+    public function costoFichasTecnicas(): float
+    {
+        return app(\App\Services\CostoMaterialOpService::class)->costo($this);
     }
 
     public static function getFillableWithTypes(): array

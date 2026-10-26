@@ -16,7 +16,6 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     use HasFillableWithTypes;
     protected $fillable = [
         'orden_produccion_id',
-        'materiales_sobrantes',
         'perdidas_mermas',
         'costo_real_final',
         'completado',
@@ -32,6 +31,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
     protected $casts = [
         'completado' => 'boolean',
+        'perdidas_mermas' => 'decimal:2',
         'costo_real_final' => 'decimal:2',
         'fecha_cierre' => 'datetime',
     ];

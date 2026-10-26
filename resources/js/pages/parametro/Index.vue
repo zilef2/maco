@@ -1,7 +1,7 @@
 <script setup>
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, useForm, Link } from '@inertiajs/vue3';
-import { reactive } from 'vue';
+import { computed, reactive } from 'vue';
 import { PlusIcon } from '@heroicons/vue/24/solid';
 import { ArrowRightIcon } from '@heroicons/vue/24/outline';
 import vSelect from 'vue-select';
@@ -18,6 +18,7 @@ const props = defineProps({
     listasAgrupadas: Object,
     isSuperadmin: Boolean,
     modelNames: Array,
+    costosPromedio: Object,
 })
 
 const data = reactive({
@@ -30,6 +31,24 @@ const data = reactive({
         { nombre: 'Presupuesto', href: '/Presupuesto', desc: 'Administración de presupuestos' },
     ],
 })
+
+// Parámetro entero costos_promedio: decide cómo se toma el precio de un
+// material al costear una OP.
+const costosForm = useForm({
+    valor_int: Number(props.costosPromedio?.valor ?? 1),
+})
+
+const costoGuardado = computed(() => Number(props.costosPromedio?.valor ?? 1))
+const costoSinCambios = computed(() => costosForm.valor_int === costoGuardado.value)
+const opcionElegida = computed(() =>
+    (props.costosPromedio?.opciones ?? []).find((opcion) => Number(opcion.value) === Number(costosForm.valor_int))
+)
+
+const guardarCostos = () => {
+    costosForm.post(route('parametros.costos-promedio'), {
+        preserveScroll: true,
+    })
+}
 
 const addForm = useForm({
     nombre: '',
@@ -92,6 +111,79 @@ const submitLista = () => {
                         </tr>
                     </tbody>
                 </table>
+            </div>
+
+            <!-- ─── Costos de materiales en las OPs ────────────────────────── -->
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow overflow-hidden">
+                <div class="flex justify-between items-center px-5 py-3 border-b border-gray-200 dark:border-gray-700">
+                    <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wide">
+                        Costos de materiales en las OPs
+                    </h2>
+                    <span class="text-xs text-gray-400 dark:text-gray-500">
+                        parámetro entero · {{ props.costosPromedio?.nombre }}
+                    </span>
+                </div>
+
+                <form class="p-5 space-y-4" @submit.prevent="guardarCostos">
+                    <p class="text-sm text-gray-600 dark:text-gray-300">
+                        Así se toma el precio unitario de cada material al calcular el costo de un producto
+                        construido con los materiales de su ficha técnica.
+                    </p>
+
+                    <div class="grid gap-3 sm:grid-cols-2">
+                        <label
+                            v-for="opcion in props.costosPromedio?.opciones ?? []"
+                            :key="opcion.value"
+                            class="flex gap-3 rounded-xl border p-4 transition cursor-pointer"
+                            :class="Number(costosForm.valor_int) === Number(opcion.value)
+                                ? 'border-sky-500 bg-sky-50 dark:border-sky-400 dark:bg-sky-900/30'
+                                : 'border-gray-200 hover:border-gray-300 dark:border-gray-700 dark:hover:border-gray-600'"
+                        >
+                            <input
+                                type="radio"
+                                name="costos_promedio"
+                                :value="opcion.value"
+                                v-model="costosForm.valor_int"
+                                class="mt-1"
+                            />
+                            <span class="min-w-0">
+                                <span class="block text-sm font-semibold text-gray-900 dark:text-gray-100">
+                                    {{ opcion.label }}
+                                </span>
+                                <span class="block mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                    {{ opcion.desc }}
+                                </span>
+                            </span>
+                        </label>
+                    </div>
+
+                    <p v-if="costosForm.errors.valor_int" class="text-xs text-red-600 dark:text-red-400">
+                        {{ costosForm.errors.valor_int }}
+                    </p>
+
+                    <div class="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-4 dark:border-gray-700">
+                        <p class="text-xs text-gray-500 dark:text-gray-400">
+                            Guardado:
+                            <b class="text-gray-800 dark:text-gray-100">{{ props.costosPromedio?.nombre }} = {{ costoGuardado }}</b>
+                            <span v-if="opcionElegida && costoSinCambios"> · {{ opcionElegida.desc }}</span>
+                            <span v-if="!costoSinCambios" class="ml-2 font-medium text-amber-600 dark:text-amber-400">
+                                Cambio sin guardar
+                            </span>
+                        </p>
+                        <button
+                            type="submit"
+                            :disabled="costosForm.processing || costoSinCambios || !can(['edit parametro', 'issuperadmin'])"
+                            class="text-xs px-4 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {{ costosForm.processing ? 'Guardando...' : 'Guardar' }}
+                        </button>
+                    </div>
+
+                    <p class="text-[11px] text-gray-400 dark:text-gray-500">
+                        Al cambiar el método se recalculan y quedan guardados los precios de las OPs abiertas;
+                        cada cambio de precio se anota en el historial de la OP. Las OPs cerradas no se tocan.
+                    </p>
+                </form>
             </div>
 
             <!-- ─── Listas Desplegables ──────────────────────────────────── -->

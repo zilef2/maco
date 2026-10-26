@@ -223,7 +223,7 @@ export const explicaciones: Explicacion[] = [
                 items: [
                     'Cada talla registró exactamente su cantidad esperada (aprobada + en reparación + no recuperable = esperada).',
                     'No quedó ningún par en reparación.',
-                    'Están registrados los tres datos del cierre: materiales sobrantes o recuperados, pérdidas en mermas y costo real final.',
+                    'El sistema calcula automáticamente las pérdidas en mermas y el costo real final con los productos recibidos; no hay que digitarlos.',
                     'Al presionar «Guardar», el sistema pone la OP en «Cerrada». El usuario no elige «Cerrada»: desde «En taller» solo se puede ir a «Recibiendo», y «Recibiendo» no ofrece salidas manuales.',
                 ],
             },
@@ -285,6 +285,167 @@ export const explicaciones: Explicacion[] = [
             'app/Models/CompromisoReparacion.php',
             'tablas recepcion_calidads, compromisos_reparacion, notificaciones (columna fecha_programada)',
             'resources/js/pages/OrdenProduccion/CambiarEstadoModal.vue',
+        ],
+    },
+    {
+        id: 'op-costos-materiales-parametro',
+        categoria: 'OP',
+        categoriaLabel: 'Órdenes de producción',
+        subcategoria: 'Costos de materiales',
+        titulo: 'Cómo se toma el precio de un material al costear una OP',
+        resumen:
+            'El parámetro entero «costos_promedio» de /parametros decide si el costo de un producto usa el promedio de los cambios de precio de sus materiales (1) o el último precio digitado (2). El precio usado queda guardado en la OP y cada cambio se anota en su historial.',
+        etiquetas: [
+            'costos_promedio',
+            'costo de la op',
+            'precio promedio',
+            'ultimo precio del material',
+            'costo de materiales',
+            'ficha tecnica costo',
+            'costo_asociado_teorico',
+            'material prices',
+            'porque cambio el costo',
+            'parametro de costos',
+        ],
+        actualizada: '2026-10-25',
+        bloques: [
+            {
+                tipo: 'texto',
+                texto:
+                    'El costo de un producto sale de su ficha técnica: cada línea aporta el consumo estándar del material multiplicado por el precio unitario del material. Como el precio de un material cambia con las compras, el parámetro «costos_promedio» define de dónde se toma ese precio.',
+            },
+            {
+                tipo: 'tabla',
+                columnas: ['costos_promedio', 'Precio unitario que se usa', 'De dónde sale'],
+                filas: [
+                    ['1', 'Promedio de los cambios de precio del material', 'Promedio de todas las filas del material en material_prices'],
+                    ['2', 'Último precio digitado del material', 'El precio más reciente registrado en la app'],
+                ],
+            },
+            {
+                tipo: 'subtitulo',
+                texto: 'El precio queda guardado en la OP',
+            },
+            {
+                tipo: 'lista',
+                items: [
+                    'Al crear, guardar como borrador o editar una OP se calcula el precio de cada material y se guarda en orden_produccion_costos_materiales (precio unitario, cantidad y costo), con el método (1 o 2) que lo produjo.',
+                    'Si el precio guardado de un material cambia, el cambio se anota en orden_produccion_costos_cambios con el precio anterior, el nuevo, el método, la fecha y quién lo registró. La primera vez que se guarda un precio se anota sin precio anterior.',
+                    'El total de la columna «Costo fichas» de la tabla de OPs es la suma de esos costos guardados.',
+                ],
+            },
+            {
+                tipo: 'subtitulo',
+                texto: 'Cuándo se recalcula solo',
+            },
+            {
+                tipo: 'lista',
+                items: [
+                    'Al guardar una OP (nueva, borrador o edición).',
+                    'Al cambiar el precio de un material en su ficha de Material: se renuevan las OPs abiertas que lo usan y queda el cambio en el historial de cada OP.',
+                    'Al cambiar el parámetro costos_promedio en /parametros: se renuevan todas las OPs abiertas.',
+                    'Las OPs cerradas no se recalculan: conservan el precio con el que cerraron.',
+                ],
+            },
+            {
+                tipo: 'preguntas',
+                pares: [
+                    {
+                        pregunta: '¿Dónde veo el precio guardado y sus cambios?',
+                        respuesta:
+                            'En la tabla de OPs, haciendo clic en el chip del estado: el detalle muestra «Costo de los materiales» con el precio y el método usado, y «Cambios de precio en esta OP» con el historial.',
+                    },
+                    {
+                        pregunta: 'Una OP antigua no tiene precios guardados. ¿Qué muestra?',
+                        respuesta:
+                            'Muestra el costo calculado en vivo con el método vigente. El precio queda guardado en cuanto esa OP se guarda de nuevo o le cambian el precio a uno de sus materiales.',
+                    },
+                    {
+                        pregunta: '¿El «costo teórico» de la ficha técnica todavía sirve?',
+                        respuesta:
+                            'Sí, es el valor digitado en la ficha para cada línea. El parámetro solo decide si, al costear una OP, se usa ese precio o el promedio/último precio histórico del material; la vista previa de nueva OP y de edición usan el precio del método vigente.',
+                    },
+                ],
+            },
+            {
+                tipo: 'nota',
+                tono: 'info',
+                texto:
+                    'El parámetro es un entero (valor_int del registro costos_promedio de la tabla parametros) y se edita en /parametros, en la tarjeta «Costos de materiales en las OPs».',
+            },
+        ],
+        fuentes: [
+            'app/Services/CostoMaterialOpService.php',
+            'app/Models/Parametro.php (COSTOS_PROMEDIO, entero)',
+            'app/Models/Material.php (costoUnitarioPromedio, costoUnitarioActual)',
+            'app/Http/Controllers/ParametrosController.php (actualizarCostosPromedio)',
+            'tablas orden_produccion_costos_materiales, orden_produccion_costos_cambios, material_prices',
+            'resources/js/pages/parametro/Index.vue y resources/js/pages/OrdenProduccion/DetalleEstadoModal.vue',
+        ],
+    },
+    {
+        id: 'producto-tallas-solo-lectura',
+        categoria: 'Producto',
+        categoriaLabel: 'Productos',
+        subcategoria: 'Tallas',
+        titulo: 'Las tallas de un producto solo se pueden ver desde Productos',
+        resumen:
+            'El botón «Tallas» del listado de Productos abre la distribución por tallas en modo solo lectura e informa en qué órdenes de producción se está usando; los cambios se hacen desde Órdenes de Producción.',
+        etiquetas: [
+            'tallas',
+            'distribución por tallas',
+            'cantidades planificadas',
+            'plantilla de tallas',
+            'solo lectura',
+            'producto',
+            'OP que usa las tallas',
+        ],
+        actualizada: '2026-10-25',
+        bloques: [
+            {
+                tipo: 'texto',
+                texto:
+                    'La distribución por tallas del producto es la plantilla que toman las órdenes de producción. Cuando una talla ya está usada por una OP, modificarla desde Productos cambiaría algo que forma parte de una orden en curso, así que la pantalla solo la muestra.',
+            },
+            {
+                tipo: 'subtitulo',
+                texto: 'Qué se ve en el modal',
+            },
+            {
+                tipo: 'lista',
+                items: [
+                    'Cada talla con su cantidad planificada y el total planificado del producto.',
+                    'El historial de cambios de tallas (quién, cuándo y qué cambió).',
+                    'Un resumen al pie con las OPs que pertenecen a esas tallas, por ejemplo «Estas tallas pertenecen a 3 órdenes de producción (OP-100, OP-101, OP-102). Si desea modificarlas, diríjase al apartado de Órdenes de Producción.».',
+                ],
+            },
+            {
+                tipo: 'preguntas',
+                pares: [
+                    {
+                        pregunta: 'Entonces, ¿dónde cambio las cantidades por talla?',
+                        respuesta:
+                            'En la orden de producción: el formulario de nueva OP y de edición tienen su propio editor de distribución por tallas, que es donde se ajusta lo que cada OP va a fabricar.',
+                    },
+                    {
+                        pregunta: 'El resumen dice que no hay ninguna OP usando las tallas. ¿Pasa algo?',
+                        respuesta:
+                            'No. Significa que la plantilla todavía no está comprometida en ninguna orden; sigue sin editarse desde Productos, pero no hay riesgo de tocar una orden en curso.',
+                    },
+                    {
+                        pregunta: '¿Y si el producto necesita tallas nuevas?',
+                        respuesta:
+                            'Las tallas disponibles salen del control de variante del producto; se configuran ahí y la distribución se materializa al usar el producto en una OP.',
+                    },
+                ],
+            },
+        ],
+        fuentes: [
+            'resources/js/pages/Producto/DistribucionTallas.vue (modal de solo lectura y aviso de OPs)',
+            'app/Http/Controllers/ProductoController.php (index: ordenes_con_tallas)',
+            'app/Http/Controllers/FichaTecnicaMaterialesController.php (index de productos sin ficha: ordenes_con_tallas)',
+            'tablas distribucion_por_tallas, distribucion_producto, distribucion_orden_produccion',
+            'resources/js/pages/OrdenProduccion/DistribucionTallasEditor.vue (edición desde la OP)',
         ],
     },
 ];

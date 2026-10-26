@@ -30,6 +30,7 @@ Route::middleware('auth', 'verified')->group(function () {
 	Route::post('/permission/destroy-bulk', [PermissionController::class, 'destroyBulk'])->name('permission.destroy-bulk');
 	Route::resource('/Parametros', ParametrosController::class);
 	Route::post('/Parametros/lista', [ParametrosController::class, 'storeLista'])->name('parametros.lista.store');
+	Route::post('/Parametros/costos-promedio', [ParametrosController::class, 'actualizarCostosPromedio'])->name('parametros.costos-promedio');
 	
 	//<editor-fold desc="User">
 	Route::resource('/user', UserController::class);
@@ -42,12 +43,12 @@ Route::middleware('auth', 'verified')->group(function () {
 	Route::resource("/Producto", \App\Http\Controllers\ProductoController::class);
 	Route::post("/Producto/upload-excel", [\App\Http\Controllers\ProductoController::class, 'uploadExcel'])->name('Producto.upload-excel');
 	Route::put("/Producto/{id}/distribucion", [\App\Http\Controllers\ProductoController::class, 'syncDistribucion'])->name('Producto.distribucion');
+	Route::get("/Producto/{id}/tallas-history", [\App\Http\Controllers\ProductoController::class, 'tallasHistory'])->name('Producto.tallas-history');
 	
 	Route::resource("/Talla", \App\Http\Controllers\TallaController::class);
 	Route::resource("/OrdenProduccion", \App\Http\Controllers\OrdenProduccionController::class);
 	Route::put("/OrdenProduccion/{id}/distribucion", [\App\Http\Controllers\OrdenProduccionController::class, 'syncDistribucion'])->name('OrdenProduccion.distribucion');
 	Route::put("/OrdenProduccion/{id}/estado", [\App\Http\Controllers\OrdenProduccionController::class, 'cambiarEstado'])->name('OrdenProduccion.cambiarEstado');
-	Route::put("/OrdenProduccion/{id}/cierre", [\App\Http\Controllers\OrdenProduccionController::class, 'guardarCierre'])->name('OrdenProduccion.cierre');
 	Route::put("/OrdenProduccion/{id}/recepcion-borrador", [\App\Http\Controllers\OrdenProduccionController::class, 'guardarRecepcionBorrador'])->name('OrdenProduccion.recepcionBorrador');
 	Route::post("/OrdenProduccion/borrador", [\App\Http\Controllers\OrdenProduccionController::class, 'guardarBorrador'])->name('OrdenProduccion.borrador');
 	Route::get("/ProcesoExterno/materiales-op/{orden}", [\App\Http\Controllers\ProcesoExternoController::class, 'materialesOp'])->name('ProcesoExterno.materialesOp');

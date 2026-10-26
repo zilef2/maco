@@ -31,7 +31,7 @@ class UserSeeder extends Seeder
         $liliana = User::create([
             'name' => 'liliana',
             'email' => $genPa[2],
-            'password' => bcrypt($genPa[0].'+'.$genPa[0]), //
+            'password' => bcrypt('macondas+-'), //
             'email_verified_at' => date('Y-m-d H:i'),
             'sexo' => $sexos[1],
         ]);

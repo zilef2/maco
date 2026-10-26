@@ -7,6 +7,7 @@ import { computed } from 'vue';
 const props = defineProps({
     show: Boolean,
     op: Object,
+    metodoCostosLabel: String,
 });
 
 const emit = defineEmits(['close']);
@@ -18,6 +19,24 @@ const esRecepcion = computed(() => estado.value === 'Recibiendo');
 
 const materiales = computed<any[]>(() => (props.op as any)?.materiales_detalle ?? []);
 const faltantes = computed<any[]>(() => (props.op as any)?.materiales_faltantes ?? []);
+
+// Precio de cada material tal como quedó guardado en la OP, y sus cambios.
+const costos = computed<any[]>(() => (props.op as any)?.costos_detalle ?? []);
+const cambios = computed<any[]>(() => (props.op as any)?.costos_cambios_detalle ?? []);
+
+const totalCostos = computed(() =>
+    costos.value.reduce((suma, fila) => suma + (Number(fila.costo_total) || 0), 0)
+);
+
+const dinero = (valor: any): string => {
+    if (valor === null || valor === undefined || valor === '') return '—';
+    const numero = Number(valor);
+    if (!Number.isFinite(numero)) return '—';
+    return zilef_nuber_format(numero, Math.round(numero * 100) % 100 === 0 ? 0 : 2, true);
+};
+
+const metodoTexto = (metodo: any): string =>
+    Number(metodo) === 2 ? 'Último precio digitado' : 'Promedio de los cambios';
 
 const cantidad = (valor: any, decimales = 0) => {
     if (valor === null || valor === undefined || valor === '') return '—';
@@ -288,6 +307,98 @@ const fechaRecepcion = computed(() => {
                     </p>
                 </section>
             </template>
+
+            <!-- Costo guardado en la OP: precio de cada material y sus cambios -->
+            <section v-if="costos.length" class="mt-6">
+                <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Costo de los materiales</h3>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Precio guardado en esta OP.
+                    <span v-if="props.metodoCostosLabel" class="font-medium text-gray-600 dark:text-gray-300">
+                        Método vigente: {{ props.metodoCostosLabel }}.
+                    </span>
+                </p>
+
+                <div class="mt-3 overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
+                    <div class="overflow-x-auto">
+                        <table class="w-full min-w-[720px] text-sm">
+                            <thead>
+                                <tr class="border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-400">
+                                    <th scope="col" class="px-3 py-2 font-semibold">Material</th>
+                                    <th scope="col" class="w-36 px-3 py-2 font-semibold">Precio tomado</th>
+                                    <th scope="col" class="w-28 px-3 py-2 text-right font-semibold">Precio</th>
+                                    <th scope="col" class="w-28 px-3 py-2 text-right font-semibold">Cantidad</th>
+                                    <th scope="col" class="w-32 px-3 py-2 text-right font-semibold">Costo</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100 dark:divide-gray-700/60">
+                                <tr v-for="fila in costos" :key="fila.material_id">
+                                    <td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300">{{ fila.nombre }}</td>
+                                    <td class="px-3 py-2 text-[11px] text-gray-500 dark:text-gray-400">
+                                        {{ metodoTexto(fila.metodo_costo) }}
+                                    </td>
+                                    <td class="px-3 py-2 text-right tabular-nums font-medium text-gray-900 dark:text-gray-100">
+                                        {{ dinero(fila.precio_unitario) }}
+                                    </td>
+                                    <td class="px-3 py-2 text-right tabular-nums text-gray-500 dark:text-gray-400">
+                                        {{ cantidad(fila.cantidad, 2) }}
+                                    </td>
+                                    <td class="px-3 py-2 text-right tabular-nums font-semibold text-gray-900 dark:text-gray-100">
+                                        {{ dinero(fila.costo_total) }}
+                                    </td>
+                                </tr>
+                                <tr class="border-t border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/40">
+                                    <td colspan="4" class="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                        Total
+                                    </td>
+                                    <td class="px-3 py-2 text-right tabular-nums font-semibold text-gray-900 dark:text-gray-100">
+                                        {{ dinero(totalCostos) }}
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <section v-if="cambios.length" class="mt-6">
+                <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Cambios de precio en esta OP</h3>
+                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Cada vez que el precio guardado de un material es otro, se anota aquí.
+                </p>
+
+                <div class="mt-3 overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
+                    <div class="overflow-x-auto">
+                        <table class="w-full min-w-[680px] text-sm">
+                            <thead>
+                                <tr class="border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-400">
+                                    <th scope="col" class="px-3 py-2 font-semibold">Fecha</th>
+                                    <th scope="col" class="px-3 py-2 font-semibold">Material</th>
+                                    <th scope="col" class="w-32 px-3 py-2 text-right font-semibold">Antes</th>
+                                    <th scope="col" class="w-32 px-3 py-2 text-right font-semibold">Ahora</th>
+                                    <th scope="col" class="w-40 px-3 py-2 font-semibold">Registrado por</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-gray-100 dark:divide-gray-700/60">
+                                <tr v-for="cambio in cambios" :key="cambio.id">
+                                    <td class="px-3 py-2 text-xs tabular-nums text-gray-500 dark:text-gray-400">
+                                        {{ cambio.fecha || '—' }}
+                                    </td>
+                                    <td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300">{{ cambio.nombre }}</td>
+                                    <td class="px-3 py-2 text-right tabular-nums text-gray-500 dark:text-gray-400">
+                                        {{ cambio.precio_anterior === null ? 'Precio inicial guardado' : dinero(cambio.precio_anterior) }}
+                                    </td>
+                                    <td class="px-3 py-2 text-right tabular-nums font-semibold text-gray-900 dark:text-gray-100">
+                                        {{ dinero(cambio.precio_nuevo) }}
+                                    </td>
+                                    <td class="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">
+                                        {{ cambio.usuario || 'Sistema' }}
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
         </div>
     </Modal>
 </template>

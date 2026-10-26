@@ -20,6 +20,7 @@ class DatabaseSeeder extends Seeder
             UserSeeder::class,
             ParametrosSeeder::class,
             SeederParametroMaterialesTaller::class,
+            SeederParametroCostosPromedio::class,
             ListaDesplegableSeeder::class,
             EstadoOperacionSeeder::class,
             MaterialSeeder::class,

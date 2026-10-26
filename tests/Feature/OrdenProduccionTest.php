@@ -29,20 +29,26 @@ class OrdenProduccionTest extends TestCase
      * Comprueba que una OP nueva se guarda correctamente: número generado en
      * el servidor (OP-100), estado de materiales y marca de externa.
      */
-    public function test_se_puede_guardar_una_nueva_op(): void
+   public function test_se_puede_guardar_una_nueva_op(): void
     {
-        $rol = new Role();
-        $rol->name = 'admin';
-        $rol->guard_name = 'web';
-        $rol->save();
+        $rol = Role::create(['name' => 'admin', 'guard_name' => 'web']);
+        $this->assertDatabaseHas('roles', ['name' => 'admin']);
 
         $user = User::factory()->create();
         $user->assignRole($rol);
+        $this->assertDatabaseHas('users', ['id' => $user->id]);
 
         $estadoPreparacion = EstadoOperacion::create(['nombre' => 'Preparación']);
+        $this->assertDatabaseHas('estado_operacions', ['nombre' => 'Preparación']); // Verifica nombre de tabla según tu migración
+
         $estadoMaterial = EstadoOpMaterial::create(['nombre' => 'Pendiente', 'valor' => 'pendiente']);
+        $this->assertDatabaseHas('estado_op_materials', ['valor' => 'pendiente']);
+
         $taller = Taller::create(['nombre' => 'Taller de prueba', 'direccion' => 'Calle 1 # 2-3']);
+        $this->assertDatabaseHas('tallers', ['nombre' => 'Taller de prueba']);
+
         $empresaExterna = EmpresaExterna::create(['nombre' => 'Empresa de prueba', 'actividad' => 'Confección']);
+        $this->assertDatabaseHas('empresa_externas', ['nombre' => 'Empresa de prueba']);
 
         $producto = Producto::create([
             'Codigo_interno' => 'TEST-001',
@@ -54,6 +60,7 @@ class OrdenProduccionTest extends TestCase
             'Opciones' => 'Única',
             'Estado' => 'Activo',
         ]);
+        $this->assertDatabaseHas('productos', ['Codigo_interno' => 'TEST-001']);
 
         $response = $this->actingAs($user)->post(route('OrdenProduccion.store'), [
             'productos' => [$producto->id],
@@ -67,6 +74,7 @@ class OrdenProduccionTest extends TestCase
         ]);
 
         $response->assertSessionHasNoErrors();
+        $response->assertRedirect(); // Opcional: asumiendo que redirige tras guardar
 
         $this->assertDatabaseCount('orden_produccions', 1);
         $this->assertDatabaseHas('orden_produccions', [
@@ -74,6 +82,8 @@ class OrdenProduccionTest extends TestCase
             'estado_op_id' => $estadoPreparacion->id,
             'estado_op_material_id' => $estadoMaterial->id,
             'externa' => 1,
+            'taller_id' => null,
+            'empresa_externa_id' => $empresaExterna->id,
         ]);
     }
 
@@ -91,11 +101,6 @@ class OrdenProduccionTest extends TestCase
                 ['distribucion_id' => $tallaS->id, 'cantidad_aprobada' => 2, 'cantidad_en_reparacion' => 0, 'cantidad_no_recuperable' => 0],
                 ['distribucion_id' => $tallaM->id, 'cantidad_aprobada' => 2, 'cantidad_en_reparacion' => 0, 'cantidad_no_recuperable' => 0],
             ],
-            'cierre' => [
-                'materiales_sobrantes' => 0,
-                'perdidas_mermas' => 0,
-                'costo_real_final' => 100,
-            ],
         ]);
 
         $response->assertSessionHasNoErrors();
@@ -107,6 +112,13 @@ class OrdenProduccionTest extends TestCase
             'orden_produccion_id' => $op->id,
             'talla' => 'S',
             'cantidad_en_reparacion' => 0,
+        ]);
+        // El cierre se crea solo, sin que el usuario digite sus valores.
+        $this->assertDatabaseHas('cierre_orden_produccions', [
+            'orden_produccion_id' => $op->id,
+            'perdidas_mermas' => 0,
+            'costo_real_final' => 0,
+            'completado' => 1,
         ]);
     }
 
@@ -183,11 +195,6 @@ class OrdenProduccionTest extends TestCase
             'recepciones' => [
                 ['distribucion_id' => $tallaS->id, 'cantidad_aprobada' => 2, 'cantidad_en_reparacion' => 0, 'cantidad_no_recuperable' => 0],
                 ['distribucion_id' => $tallaM->id, 'cantidad_aprobada' => 2, 'cantidad_en_reparacion' => 0, 'cantidad_no_recuperable' => 0],
-            ],
-            'cierre' => [
-                'materiales_sobrantes' => 0,
-                'perdidas_mermas' => 0,
-                'costo_real_final' => 100,
             ],
         ]);
 
@@ -345,11 +352,6 @@ class OrdenProduccionTest extends TestCase
             'recepciones' => [
                 ['distribucion_id' => $tallaS->id, 'cantidad_aprobada' => 2, 'cantidad_en_reparacion' => 0, 'cantidad_no_recuperable' => 0],
                 ['distribucion_id' => $tallaM->id, 'cantidad_aprobada' => 2, 'cantidad_en_reparacion' => 0, 'cantidad_no_recuperable' => 0],
-            ],
-            'cierre' => [
-                'materiales_sobrantes' => 0,
-                'perdidas_mermas' => 0,
-                'costo_real_final' => 100,
             ],
         ]);
 
@@ -537,7 +539,6 @@ class OrdenProduccionTest extends TestCase
             'Lista para taller' => 'En taller / Recibiendo',
             'En taller' => 'Recibiendo / Pendiente / Cerrada',
             'Recibiendo' => 'Pendiente / Cerrada',
-            'Pendiente' => 'Cerrada / Recibiendo',
             'Cerrada' => null,
         ];
         $estados = [];

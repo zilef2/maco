@@ -169,6 +169,16 @@ const estadosDisponibles = computed(() => {
     }));
 });
 
+// Filtro de estado como botón de sí/no/ambos.
+const opcionesEstado = computed(() => [
+    { value: 'todos', label: 'Ambos', count: baseFiltrada.value.length },
+    ...estadosDisponibles.value.map((estado) => ({
+        value: estado.value,
+        label: estado.value === 'Activo' ? 'Activos' : 'Inactivos',
+        count: estado.count,
+    })),
+]);
+
 const proveedoresDisponibles = computed(() => {
     const mapa = new Map<number, string>();
     filas.value.forEach((m: any) => {
@@ -302,6 +312,7 @@ const filtrosBarra = computed(
         (busqueda.value.trim() !== '' ? 1 : 0) +
         (categoriaFiltro.value !== 'todos' ? 1 : 0) +
         (proveedorFiltro.value !== 'todos' ? 1 : 0) +
+        (precioFiltro.value !== 'todos' ? 1 : 0) +
         (estadoFiltro.value !== 'todos' ? 1 : 0),
 );
 
@@ -333,7 +344,7 @@ const limpiarFiltros = () => {
     Object.keys(boolFiltros).forEach((campo) => (boolFiltros[campo] = ''));
 };
 
-watch([busqueda, categoriaFiltro, proveedorFiltro, estadoFiltro, unidadFiltro, varianteFiltro, porPagina], () => {
+watch([busqueda, categoriaFiltro, proveedorFiltro, estadoFiltro, unidadFiltro, varianteFiltro, precioFiltro, porPagina], () => {
     pagina.value = 1;
 });
 watch(boolFiltros, () => {
@@ -376,6 +387,13 @@ const chipClass = (activo: boolean) => [
     activo
         ? 'border-foreground/15 bg-foreground text-background shadow-sm'
         : 'border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground',
+];
+
+const segmentoClass = (activo: boolean) => [
+    'whitespace-nowrap border-l border-border px-2.5 text-[11px] font-medium transition first:border-l-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+    activo
+        ? 'bg-foreground text-background shadow-sm'
+        : 'text-muted-foreground hover:bg-muted hover:text-foreground',
 ];
 
 const columnas = [
@@ -638,6 +656,27 @@ const titulos = [
                             <option value="sin_precio">Sin precio</option>
                         </select>
 
+                        <div class="flex items-center gap-1.5">
+                            <span class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Estado</span>
+                            <div
+                                class="inline-flex h-9 items-stretch overflow-hidden rounded-md border border-border bg-card shadow-sm"
+                                role="group"
+                                aria-label="Filtrar materiales por estado"
+                            >
+                                <button
+                                    v-for="opcion in opcionesEstado"
+                                    :key="opcion.value"
+                                    type="button"
+                                    @click="estadoFiltro = opcion.value"
+                                    :aria-pressed="estadoFiltro === opcion.value"
+                                    :class="segmentoClass(estadoFiltro === opcion.value)"
+                                >
+                                    {{ opcion.label }}
+                                    <span class="tabular-nums opacity-70">{{ opcion.count }}</span>
+                                </button>
+                            </div>
+                        </div>
+
                         <!-- Banner rojo para materiales sin precio -->
                         <div v-if="materialesSinPrecio > 0" class="inline-flex items-center gap-2 rounded-full border border-red-500/30 bg-red-50/80 px-3 py-1.5 text-xs font-medium text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
                             <ExclamationTriangleIcon class="h-4 w-4" />
@@ -725,34 +764,10 @@ const titulos = [
                         </button>
                     </div>
 
-                    <!-- Filtro por estado con conteos -->
-                    <div class="mat-scroll flex items-center gap-1.5 overflow-x-auto pb-0.5" role="group" aria-label="Filtrar por estado">
-                        <button
-                            type="button"
-                            @click="estadoFiltro = 'todos'"
-                            :aria-pressed="estadoFiltro === 'todos'"
-                            :class="chipClass(estadoFiltro === 'todos')"
-                        >
-                            Todos
-                            <span class="tabular-nums opacity-70">{{ baseFiltrada.length }}</span>
-                        </button>
-                        <button
-                            v-for="estado in estadosDisponibles"
-                            :key="estado.value"
-                            type="button"
-                            @click="estadoFiltro = estado.value"
-                            :aria-pressed="estadoFiltro === estado.value"
-                            :class="chipClass(estadoFiltro === estado.value)"
-                        >
-                            <span class="h-1.5 w-1.5 rounded-full" :class="estiloEstado(estado.value).dot"></span>
-                            {{ estado.value }}
-                            <span class="tabular-nums opacity-70">{{ estado.count }}</span>
-                        </button>
-                    </div>
                 </div>
 
                 <!-- Tabla -->
-                <div class="mat-scroll max-h-[68vh] overflow-auto overscroll-contain">
+                <div class="mat-scroll max-h-[68vh] overflow-auto">
                     <table class="w-full min-w-[1080px] border-collapse text-sm">
                         <thead>
                             <tr>

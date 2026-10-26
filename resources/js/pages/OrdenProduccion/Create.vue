@@ -11,6 +11,7 @@ import { useForm } from '@inertiajs/vue3';
 import { computed, nextTick, reactive, ref, watch, watchEffect } from 'vue';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
+import { formatdinero } from '@/global.ts';
 
 const props = defineProps({
     show: Boolean,
@@ -111,6 +112,26 @@ const resumenMateriales = computed(() => {
     });
     return Array.from(mapa.values()).sort((a, b) => b.necesita - b.hay - (a.necesita - a.hay));
 });
+
+// Costo de los materiales por las cantidades distribuidas de cada producto.
+// El precio es el que usa el parámetro costos_promedio (promedio o último);
+// sin él, se conserva el costo teórico digitado en la ficha.
+const precioMaterial = (m: any) =>
+    m.precio_unitario !== undefined && m.precio_unitario !== null
+        ? Number(m.precio_unitario) || 0
+        : Number(m.costo_asociado_teorico) || 0;
+
+const costoFichas = computed(() =>
+    productosSel.reduce((total, p) => {
+        const op: any = opcionesProducto.value.find((o: any) => o.id === p.id);
+        const cantidad = totalCantidadDistribucionProducto(p.id);
+        const costoUnitario = (op?.ficha_materiales || []).reduce(
+            (suma: number, m: any) => suma + (Number(m.consumo_estandar) || 0) * precioMaterial(m),
+            0,
+        );
+        return total + costoUnitario * cantidad;
+    }, 0),
+);
 
 const productosSinFicha = computed(() =>
     productosSel.filter((p) => {
@@ -761,6 +782,10 @@ watch(
                         <span>
                             Total de tallas:
                             <b class="text-gray-900 dark:text-gray-100">{{ totalTallas }}</b>
+                        </span>
+                        <span>
+                            Costo fichas:
+                            <b class="text-gray-900 dark:text-gray-100">{{ formatdinero(costoFichas) }}</b>
                         </span>
                     </div>
                     <div class="flex flex-wrap items-center gap-3">

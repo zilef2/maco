@@ -20,21 +20,26 @@ class FichaTecnicaService
     public const ESTADOS_FICHA_EDITABLE = ['Borrador', 'Preparación', 'Cerrada'];
 
     public function __construct(
-        protected ListaDesplegableService $listaDesplegableService
+        protected ListaDesplegableService $listaDesplegableService,
+        protected CostoMaterialOpService $costosMateriales
     ) {}
 
     /**
-     * Opciones para las líneas de material (material + unidad).
+     * Opciones para las líneas de material (material, unidad y costo vigente).
      */
     public function opcionesMateriales(): array
     {
-        $materiales = Material::orderBy('nombre_base')
+        $materiales = Material::with('lastPrice')
+            ->orderBy('nombre_base')
             ->get(['id', 'codigo_material', 'nombre_base', 'unidad_inventario'])
             ->map(fn ($m) => [
                 'id'    => $m->id,
                 'value' => $m->id,
                 'name'  => trim(($m->codigo_material ? $m->codigo_material . ' — ' : '') . $m->nombre_base) ?: ('Material #' . $m->id),
                 'unidad_inventario' => $m->unidad_inventario,
+                'unidad_medida' => $m->unidad_inventario,
+                'costo_unitario' => $m->costoUnitarioActual(),
+                'precio_registrado' => $m->lastPrice !== null,
             ])->values()->all();
 
         $opcionesMaterial = $this->listaDesplegableService->getOptionsByCategoriaGrouped('material');
@@ -168,6 +173,19 @@ class FichaTecnicaService
             ? $ficha->materiales()->pluck('costo_asociado_real', 'material_componente_id')
             : collect();
 
+        // Unidad y costo unitario son datos del material, no de la ficha.
+        $materialesPorId = Material::with('lastPrice')
+            ->whereIn(
+                'id',
+                collect($datos['materiales'])
+                    ->pluck('material_componente_id')
+                    ->map(fn ($id) => (int) $id)
+                    ->filter()
+                    ->unique()
+            )
+            ->get()
+            ->keyBy('id');
+
         if (!$ficha) {
             $ficha = FichaTecnica::create(['nombre' => $datos['nombre']]);
         } else {
@@ -177,11 +195,16 @@ class FichaTecnicaService
         $ficha->materiales()->delete();
         foreach ($datos['materiales'] as $fila) {
             $materialId = (int) $fila['material_componente_id'];
+            $material = $materialesPorId->get($materialId);
+
             $ficha->materiales()->create([
                 'material_componente_id'   => $materialId,
                 'consumo_estandar'         => $fila['consumo_estandar'],
-                'unidad_medida'            => $fila['unidad_medida'] ?? null,
-                'costo_asociado_teorico'   => $fila['costo_asociado_teorico'] ?? 0,
+                // La ficha conserva una copia para el histórico; el origen es el material.
+                'unidad_medida'            => $material?->unidad_inventario ?? ($fila['unidad_medida'] ?? null),
+                'costo_asociado_teorico'   => $material
+                    ? $material->costoUnitarioActual()
+                    : ($fila['costo_asociado_teorico'] ?? 0),
                 'costo_asociado_real'      => array_key_exists('costo_asociado_real', $fila)
                     ? $fila['costo_asociado_real']
                     : ($costosRealesPrevios[$materialId] ?? null),
@@ -189,6 +212,10 @@ class FichaTecnicaService
         }
 
         $ficha->productos()->sync($productoIds);
+
+        // Las OPs abiertas que usan estos productos deben costearse con la ficha
+        // nueva: su precio guardado y su historial de cambios se renuevan.
+        $this->costosMateriales->recalcularPorProductos($productoIds);
 
         return $ficha->refresh();
     }

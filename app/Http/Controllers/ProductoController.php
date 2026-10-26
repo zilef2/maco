@@ -39,8 +39,12 @@ class ProductoController extends Controller {
         $numberPermissions = MyModels::getPermissionToNumber(Myhelp::EscribirEnLog($this, ' Productos '));
         // Fichas con sus materiales y OPs que impiden editarlas.
         $bloqueos = $this->fichaTecnicaService->bloqueosPorProducto();
-        $Productos = $this->Filtros($request)
-            ->with(['distribucionesPorTallas', 'fichaTecnica.materiales'])
+        // Listado completo: la búsqueda, los filtros, el orden y la paginación
+        // viven en el frontend (igual que Materiales), así que aquí no se lee
+        // ningún parámetro de filtro.
+        $Productos = Producto::query()
+            ->with(['distribucionesPorTallas.ordenesProduccion', 'fichaTecnica.materiales'])
+            ->orderByDesc('updated_at')
             ->get()
             ->map(function ($producto) use ($bloqueos) {
                 $ficha = $producto->fichaTecnica->first();
@@ -64,6 +68,17 @@ class ProductoController extends Controller {
                 // el mismo total que muestra el modal «Distribución por Tallas».
                 $producto->cantidad = (int) $producto->distribucionesPorTallas->sum('cantidad_planificada');
 
+                // OPs que ya usan estas tallas: el modal solo las muestra y avisa
+                // dónde se cambian.
+                $producto->ordenes_con_tallas = $producto->distribucionesPorTallas
+                    ->flatMap->ordenesProduccion
+                    ->unique('id')
+                    ->sortBy('numero_op')
+                    ->pluck('numero_op')
+                    ->filter()
+                    ->values()
+                    ->all();
+
                 return $producto;
             });
         $listasDesplegables = array_change_key_case($this->listaDesplegableService->getOptionsByCategoriaGrouped('producto'), CASE_LOWER);
@@ -72,11 +87,10 @@ class ProductoController extends Controller {
 
         $perPage = $request->has('perPage') ? $request->perPage : 10;
         return Inertia::render($this->FromController . '/Index', [
-            'fromController' => $this->PerPageAndPaginate($request, $Productos),
+            'productos' => $Productos->values(),
             'total' => $Productos->count(),
             'breadcrumbs' => [['label' => __('app.label.' . $this->FromController), 'href' => route($this->FromController . '.index')]],
             'title' => __('app.label.' . $this->FromController),
-            'filters' => $request->all(['search', 'field', 'order']),
             'perPage' => (int)$perPage,
             'numberPermissions' => $numberPermissions,
             // 'losSelect'         => $this->losSelect(Producto::class, ' Producto','proveeNombre'),
@@ -88,7 +102,7 @@ class ProductoController extends Controller {
                  'materiales'          => $fichaOpciones['materiales'],
                  'unidad_medida'       => $fichaOpciones['unidad_medida'],
              ],
- 	        'titulos'           => Producto::getFillableWithTypes(),
+            'titulos'           => Producto::getFillableWithTypes(),
 
         ]);
     }
@@ -114,20 +128,101 @@ class ProductoController extends Controller {
 	}
     public function Filtros($request): Builder {
         $Productos = Producto::query();
-        if ($request->has('search')) {
-            $Productos = $Productos->where(function ($query) use ($request) {
-                $query->where('Codigo_interno', 'LIKE', "%" . $request->search . "%")
-                    ->orWhere('ID_producto_Shopify', 'LIKE', "%" . $request->search . "%")
-                    ->orWhere('Categoria_original', 'LIKE', "%" . $request->search . "%")
-                    ->orWhere('Titulo_Shopify', 'LIKE', "%" . $request->search . "%")
-                ;
+
+        // La búsqueda libre es solo por código y título.
+        $busqueda = trim((string) $request->input('search', ''));
+        if ($busqueda !== '') {
+            $like = '%' . $busqueda . '%';
+            $Productos->where(function ($query) use ($like) {
+                $query->where('Codigo_interno', 'LIKE', $like)
+                    ->orWhere('ID_producto_Shopify', 'LIKE', $like)
+                    ->orWhere('Titulo_Shopify', 'LIKE', $like);
             });
         }
 
+        foreach ([
+            'categoria'         => 'Categoria_original',
+            'familia'           => 'Familia_normalizada',
+            'control_variante'  => 'Control_de_variante',
+        ] as $parametro => $columna) {
+            $valor = trim((string) $request->input($parametro, ''));
+            if ($valor !== '') {
+                $Productos->where($columna, $valor);
+            }
+        }
+
+        // «Opciones» es el detalle variable (tallas, colores, rangos…), por eso
+        // se filtra como texto y no con una lista cerrada.
+        $opcion = trim((string) $request->input('opcion', ''));
+        if ($opcion !== '') {
+            $Productos->where('Opciones', 'LIKE', '%' . $opcion . '%');
+        }
+
+        // El estado se guarda como 1/0, pero también hay textos históricos
+        // («Activo», «Sí», etc.). Se comparan todos de la misma forma.
+        $estado = strtolower(trim((string) $request->input('estado', '')));
+        if (in_array($estado, ['activo', 'inactivo'], true)) {
+            $activos = ['1', 'activo', 'activa', 'true', 'si', 'sí'];
+            $marcadores = implode(',', array_fill(0, count($activos), '?'));
+
+            if ($estado === 'activo') {
+                $Productos->whereRaw("LOWER(TRIM(Estado)) IN ($marcadores)", $activos);
+            } else {
+                $Productos->where(function ($query) use ($marcadores, $activos) {
+                    $query->whereRaw("LOWER(TRIM(Estado)) NOT IN ($marcadores)", $activos)
+                        ->orWhereNull('Estado');
+                });
+            }
+        }
+
+        foreach (['precio_preventa', 'precio_estimado'] as $columna) {
+            $precio = (string) $request->input($columna, '');
+            if ($precio === 'con_precio') {
+                $Productos->whereNotNull($columna);
+            } elseif ($precio === 'sin_precio') {
+                $Productos->whereNull($columna);
+            }
+        }
+
+        $tallas = (string) $request->input('tallas', '');
+        if ($tallas === 'con') {
+            $Productos->whereHas(
+                'distribucionesPorTallas',
+                fn ($query) => $query->where('talla', '<>', '')
+            );
+        } elseif ($tallas === 'sin') {
+            $Productos->whereDoesntHave(
+                'distribucionesPorTallas',
+                fn ($query) => $query->where('talla', '<>', '')
+            );
+        }
+
+        $cantidad = (string) $request->input('cantidad', '');
+        if ($cantidad === 'con') {
+            $Productos->whereHas(
+                'distribucionesPorTallas',
+                fn ($query) => $query->where('cantidad_planificada', '>', 0)
+            );
+        } elseif ($cantidad === 'sin') {
+            $Productos->whereDoesntHave(
+                'distribucionesPorTallas',
+                fn ($query) => $query->where('cantidad_planificada', '>', 0)
+            );
+        }
+
+        $ficha = (string) $request->input('ficha', '');
+        if ($ficha === 'con') {
+            $Productos->whereHas('fichaTecnica');
+        } elseif ($ficha === 'sin') {
+            $Productos->whereDoesntHave('fichaTecnica');
+        }
+
         if ($request->has(['field', 'order'])) {
-            $Productos = $Productos->orderBy($request->field, $request->order);
-        } else
-            $Productos = $Productos->orderBy('updated_at', 'DESC');
+            $Productos->orderBy($request->field, $request->order);
+        } else {
+            $Productos->orderBy('updated_at', 'DESC');
+        }
+
         return $Productos;
     }
 
@@ -459,6 +554,24 @@ class ProductoController extends Controller {
         DB::commit();
         Myhelp::EscribirEnLog($this, 'SYNC-DISTRIBUCION:Productos EXITOSO', 'Producto id:' . $Producto->id . ' | ' . $Producto->Codigo_interno, false);
         return back()->with('success', __('app.label.updated_successfully2', ['nombre' => $Producto->Codigo_interno]));
+    }
+
+    /**
+     * Obtiene el historial de cambios de tallas de un producto.
+     */
+    public function tallasHistory($id)
+    {
+        $producto = Producto::findOrFail($id);
+        $historial = \App\Models\ProductoTallasHistory::porProducto($producto->id, 50);
+
+        return response()->json([
+            'producto' => [
+                'id' => $producto->id,
+                'codigo' => $producto->Codigo_interno,
+                'titulo' => $producto->Titulo_Shopify,
+            ],
+            'historial' => $historial,
+        ]);
     }
 
     /**

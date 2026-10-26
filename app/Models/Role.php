@@ -8,10 +8,7 @@ use Spatie\Permission\Models\Role as ModelsRole;
 class Role extends ModelsRole
 {
     use HasFactory;
-    protected $fillable = [
-        'id',
-    ];
-
+    protected $fillable = ['name', 'guard_name'];
 
     public function getCreatedAtAttribute() {
         return date('d-m-Y H:i', strtotime($this->attributes['created_at']));

@@ -2,15 +2,15 @@
 import InputError from '@/components/InputError.vue';
 import SecondaryButton from '@/components/SecondaryButton.vue';
 import TextInput from '@/components/TextInput.vue';
+import { dineroANumero, formatdinero } from '@/global.ts';
 import { CubeIcon, PlusIcon, TrashIcon } from '@heroicons/vue/24/solid';
 import { computed } from 'vue';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
-import { dineroANumero, formatdinero } from '@/global.ts';
 
 /**
- * Líneas de material de una ficha técnica: material, consumo, unidad y costo
- * teórico. El costo real todavía no se captura, así que no se muestra.
+ * Líneas de material de una ficha técnica. La unidad y el costo unitario se
+ * toman del material seleccionado; solo se capturan material y consumo.
  */
 const filas = defineModel<any[]>({ required: true });
 
@@ -25,14 +25,14 @@ const props = withDefaults(
         opciones: () => ({}),
         errors: () => ({}),
         disabled: false,
-    }
+    },
 );
 
 const filaVacia = () => ({
     material_componente_id: '' as string | number,
     consumo_estandar: 1 as string | number,
     unidad_medida: '',
-    costo_asociado_teorico: '' as string | number,
+    costo_asociado_teorico: 0 as string | number,
 });
 
 const agregar = () => {
@@ -43,21 +43,36 @@ const quitar = (index: number) => {
     filas.value = filas.value.filter((_, i) => i !== index);
 };
 
+const materialDe = (fila: any) =>
+    (props.opciones?.materiales || []).find((material: any) => String(material.id) === String(fila.material_componente_id));
+
 const alElegirMaterial = (fila: any, material: any) => {
     fila.unidad_medida = material?.unidad_inventario ?? '';
+    fila.costo_asociado_teorico = Number(material?.costo_unitario) || 0;
 };
 
-const alEntrarDinero = (fila: any) => {
-    fila.costo_asociado_teorico = dineroANumero(fila.costo_asociado_teorico);
+const unidad = (fila: any) => {
+    const material = materialDe(fila);
+    return material?.unidad_inventario || material?.unidad_medida || fila.unidad_medida || '';
 };
 
-const alSalirDinero = (fila: any) => {
-    fila.costo_asociado_teorico = formatdinero(fila.costo_asociado_teorico);
+const costoUnitario = (fila: any) => {
+    const material = materialDe(fila);
+    return material ? Number(material.costo_unitario) || 0 : dineroANumero(fila.costo_asociado_teorico);
 };
 
-const total = computed(() =>
-    filas.value.reduce((suma, fila: any) => suma + dineroANumero(fila.costo_asociado_teorico), 0)
-);
+const tienePrecio = (fila: any) => {
+    const material = materialDe(fila);
+    if (material) {
+        return Boolean(material.precio_registrado) || Number(material.costo_unitario) > 0;
+    }
+    return Number(fila.costo_asociado_teorico) > 0;
+};
+
+// Costo de la línea: costo unitario del material × consumo estándar.
+const subtotal = (fila: any) => (Number(fila.consumo_estandar) || 0) * costoUnitario(fila);
+
+const total = computed(() => filas.value.reduce((suma, fila: any) => suma + subtotal(fila), 0));
 
 const errorDe = (index: number, campo: string) => props.errors?.[`materiales.${index}.${campo}`];
 </script>
@@ -65,10 +80,10 @@ const errorDe = (index: number, campo: string) => props.errors?.[`materiales.${i
 <template>
     <div class="overflow-hidden rounded-xl border border-gray-200 dark:border-gray-700">
         <div class="overflow-x-auto">
-            <table class="w-full min-w-[720px] text-sm">
+            <table class="w-full min-w-[780px] text-sm">
                 <thead>
                     <tr
-                        class="border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-400"
+                        class="border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold tracking-wider text-gray-500 uppercase dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-400"
                     >
                         <th scope="col" class="px-3 py-2.5 font-semibold">
                             {{ lang().t('app.label.material') }}
@@ -80,7 +95,10 @@ const errorDe = (index: number, campo: string) => props.errors?.[`materiales.${i
                             {{ lang().t('app.label.unidad') }}
                         </th>
                         <th scope="col" class="w-40 px-3 py-2.5 font-semibold">
-                            {{ lang().t('app.label.costo_teorico', 'Costo teórico') }}
+                            {{ lang().t('app.label.costo_teorico', 'Costo unitario') }}
+                        </th>
+                        <th scope="col" class="w-36 px-3 py-2.5 text-right font-semibold">
+                            {{ lang().t('app.label.subtotal', 'Subtotal') }}
                         </th>
                         <th scope="col" class="w-11 px-2 py-2.5">
                             <span class="sr-only">{{ lang().t('app.tooltip.delete') }}</span>
@@ -120,32 +138,34 @@ const errorDe = (index: number, campo: string) => props.errors?.[`materiales.${i
                         </td>
 
                         <td class="px-3 py-2">
-                            <v-select
-                                :options="props.opciones?.unidad_medida || []"
-                                label="name"
-                                :reduce="(item: any) => item.value"
-                                v-model="fila.unidad_medida"
-                                :placeholder="lang().t('app.label.unidad')"
-                                class="block w-full"
-                                :taggable="true"
-                                append-to-body
-                                :disabled="props.disabled"
-                            />
-                            <InputError class="mt-1" :message="errorDe(index, 'unidad_medida')" />
+                            <span
+                                class="inline-flex h-9 w-full items-center rounded-md border border-transparent px-1 text-sm text-gray-600 dark:text-gray-300"
+                                :aria-label="lang().t('app.label.unidad')"
+                            >
+                                {{ unidad(fila) || '—' }}
+                            </span>
                         </td>
 
-                        <td class="px-3 py-2">
-                            <TextInput
-                                type="text"
-                                inputmode="decimal"
-                                class="block h-9 w-full px-2 text-right tabular-nums"
-                                v-model="fila.costo_asociado_teorico"
-                                :aria-label="lang().t('app.label.costo_asociado_teorico')"
-                                :disabled="props.disabled"
-                                @focus="alEntrarDinero(fila)"
-                                @blur="alSalirDinero(fila)"
-                            />
-                            <InputError class="mt-1" :message="errorDe(index, 'costo_asociado_teorico')" />
+                        <td class="px-3 py-2 text-right">
+                            <span
+                                v-if="tienePrecio(fila)"
+                                class="inline-flex h-9 items-center justify-end text-sm font-medium text-gray-700 tabular-nums dark:text-gray-200"
+                            >
+                                {{ formatdinero(costoUnitario(fila)) }}
+                            </span>
+                            <span
+                                v-else
+                                class="inline-flex h-9 items-center justify-end text-xs font-medium text-amber-600 dark:text-amber-400"
+                                :title="lang().t('app.label.material_sin_precio', 'El material no tiene precio registrado')"
+                            >
+                                {{ lang().t('app.label.sin_precio', 'Sin precio') }}
+                            </span>
+                        </td>
+
+                        <td class="px-3 py-2 text-right">
+                            <span class="inline-flex h-9 items-center justify-end text-sm font-medium text-gray-700 tabular-nums dark:text-gray-200">
+                                {{ formatdinero(subtotal(fila)) }}
+                            </span>
                         </td>
 
                         <td v-if="!props.disabled" class="px-2 py-2">
@@ -162,13 +182,18 @@ const errorDe = (index: number, campo: string) => props.errors?.[`materiales.${i
                     </tr>
 
                     <tr v-if="!filas.length">
-                        <td colspan="5" class="px-3 py-7 text-center">
+                        <td colspan="6" class="px-3 py-7 text-center">
                             <CubeIcon class="mx-auto h-5 w-5 text-gray-300 dark:text-gray-600" />
                             <p class="mt-1.5 text-sm font-medium text-gray-600 dark:text-gray-300">
                                 {{ lang().t('app.label.sin_materiales', 'Sin materiales todavía') }}
                             </p>
                             <p class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">
-                                {{ lang().t('app.label.sin_materiales_ayuda', 'Agrega el primer material para definir el consumo estándar de la referencia.') }}
+                                {{
+                                    lang().t(
+                                        'app.label.sin_materiales_ayuda',
+                                        'Agrega el primer material para definir el consumo estándar de la referencia.',
+                                    )
+                                }}
                             </p>
                         </td>
                     </tr>
@@ -179,17 +204,22 @@ const errorDe = (index: number, campo: string) => props.errors?.[`materiales.${i
         <div
             class="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 bg-gray-50/60 px-3 py-2.5 dark:border-gray-700 dark:bg-gray-900/30"
         >
-            <SecondaryButton v-if="!props.disabled" type="button" class="text-xs" @click="agregar">
-                <PlusIcon class="mr-1 inline h-3.5 w-3.5" />
-                {{ lang().t('app.label.agregar_material') }}
-            </SecondaryButton>
-            <span v-else class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
-                Ficha técnica en solo lectura
-            </span>
+            <div class="flex flex-col items-start gap-1">
+                <SecondaryButton v-if="!props.disabled" type="button" class="text-xs" @click="agregar">
+                    <PlusIcon class="mr-1 inline h-3.5 w-3.5" />
+                    {{ lang().t('app.label.agregar_material') }}
+                </SecondaryButton>
+                <span v-else class="text-xs font-medium tracking-wide text-gray-400 uppercase dark:text-gray-500">
+                    Ficha técnica en solo lectura
+                </span>
+                <span class="text-[11px] text-gray-400 dark:text-gray-500">
+                    {{ lang().t('app.label.costo_unidad_desde_material', 'La unidad y el costo unitario se toman del material.') }}
+                </span>
+            </div>
 
             <p v-if="filas.length" class="text-sm text-gray-500 dark:text-gray-400">
-                {{ lang().t('app.label.costo_teorico_total', 'Costo teórico total') }}:
-                <span class="ml-1 font-semibold tabular-nums text-gray-900 dark:text-gray-100">
+                {{ lang().t('app.label.costo_teorico_total', 'Costo total de materiales') }}:
+                <span class="ml-1 font-semibold text-gray-900 tabular-nums dark:text-gray-100">
                     {{ formatdinero(total) }}
                 </span>
             </p>

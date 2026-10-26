@@ -42,7 +42,7 @@ import {
     XMarkIcon,
 } from '@heroicons/vue/24/solid';
 
-import { formatDate, zilef_nuber_format } from '@/global.ts';
+import { formatDate, formatdinero, zilef_nuber_format } from '@/global.ts';
 
 const props = defineProps({
     ordenes: { type: Array as () => any[], default: () => [] },
@@ -54,6 +54,8 @@ const props = defineProps({
     losSelect: Object,
     borradorUltimo: Object,
     mostrarRestaMateriales: { type: Boolean, default: false },
+    metodoCostos: Number,
+    metodoCostosLabel: String,
 });
 
 /* --------------------------------------------------------------------------
@@ -80,6 +82,10 @@ const normalizar = (valor: any): string =>
         .toLowerCase()
         .replace(/\s+/g, ' ')
         .trim();
+
+const esCerrada = (op: any): boolean =>
+    normalizar(op?.estado_nombre) === 'cerrada'
+    || normalizar(op?.estado_secundario_nombre) === 'cerrada';
 
 const preparadas = computed(() =>
     filas.value.map((op: any) => ({
@@ -153,8 +159,31 @@ const estadosDisponibles = computed(() => {
     });
 });
 
+const estadoCerradaId = computed(() =>
+    estadosDisponibles.value.find((estado) => normalizar(estado.nombre) === 'cerrada')?.id ?? null,
+);
+
+// Las OP cerradas se ocultan por defecto. Solo aparecen cuando el usuario
+// filtra explícitamente por el estado "Cerrada".
+const filtrandoCerradas = computed(
+    () => estadoCerradaId.value !== null && Number(estadoFiltro.value) === estadoCerradaId.value,
+);
+
+const cerradasOcultas = computed(
+    () => !filtrandoCerradas.value
+        && estadoFiltro.value === 'todos'
+        && baseFiltrada.value.some((op: any) => esCerrada(op)),
+);
+
+const mostrarCerradas = () => {
+    if (estadoCerradaId.value !== null) {
+        estadoFiltro.value = estadoCerradaId.value;
+    }
+};
+
 const filtradas = computed(() =>
     baseFiltrada.value.filter((op: any) => {
+        if (esCerrada(op) && !filtrandoCerradas.value) return false;
         if (estadoFiltro.value === 'todos') return true;
         // Coincide con el estado principal o con el secundario (coexistencia).
         return Number(op.estado_op_id) === Number(estadoFiltro.value)
@@ -294,6 +323,12 @@ const compromisosPorOp = computed(() => {
         grupos.get(clave)!.compromisos.push(compromiso);
     }
 
+    for (const grupo of grupos.values()) {
+        grupo.compromisos.sort((a, b) =>
+            String(a.fecha_compromiso).localeCompare(String(b.fecha_compromiso))
+        );
+    }
+
     return Array.from(grupos.values()).sort((a, b) => {
         const fechaA = String(a.compromisos[0]?.fecha_compromiso ?? '');
         const fechaB = String(b.compromisos[0]?.fecha_compromiso ?? '');
@@ -302,8 +337,70 @@ const compromisosPorOp = computed(() => {
     });
 });
 
+// Cada OP se muestra compacta; al hacer clic se despliegan todos sus pendientes.
+const compromisosExpandidos = reactive<Record<string, boolean>>({});
+
+const alternarCompromisosOp = (id: number | string) => {
+    const clave = String(id);
+    compromisosExpandidos[clave] = !compromisosExpandidos[clave];
+};
+
+// Materiales que faltan, agrupados por nombre + unidad para mostrarlos de forma
+// compacta. Cada grupo guarda las OP que los necesitan.
+const materialesFaltantes = computed(() => {
+    const grupos = new Map<string, {
+        clave: string;
+        nombre: string;
+        unidad: string;
+        faltante: number;
+        ops: Array<{ op: any; faltante: number; productos: string[] }>;
+    }>();
+
+    for (const op of opsConFaltantes.value) {
+        for (const material of ((op as any).materiales_faltantes || [])) {
+            const nombre = String(material?.nombre || 'Material');
+            const unidad = String(material?.unidad || '').trim();
+            const clave = `${material?.material_id ?? nombre}|${unidad}`;
+            const faltante = Number(material?.faltante) || 0;
+            const productos = Array.isArray(material?.productos)
+                ? material.productos.map((producto: any) => String(producto)).filter(Boolean)
+                : [];
+
+            if (!grupos.has(clave)) {
+                grupos.set(clave, { clave, nombre, unidad, faltante: 0, ops: [] });
+            }
+
+            const grupo = grupos.get(clave)!;
+            grupo.faltante += faltante;
+
+            const detalle = grupo.ops.find((item) => item.op.id === op.id);
+            if (detalle) {
+                detalle.faltante += faltante;
+                detalle.productos = Array.from(new Set([...detalle.productos, ...productos]));
+            } else {
+                grupo.ops.push({ op, faltante, productos });
+            }
+        }
+    }
+
+    return Array.from(grupos.values()).sort((a, b) =>
+        a.nombre.localeCompare(b.nombre, 'es')
+        || a.unidad.localeCompare(b.unidad, 'es')
+    );
+});
+
+const materialesExpandidos = reactive<Record<string, boolean>>({});
+
+const alternarMaterialFaltante = (clave: string) => {
+    materialesExpandidos[clave] = !materialesExpandidos[clave];
+};
+
 const totalUnidades = computed(() =>
     ordenadas.value.reduce((total: number, op: any) => total + (Number(op.cantidad_planificada) || 0), 0),
+);
+
+const totalCostoFichas = computed(() =>
+    ordenadas.value.reduce((total: number, op: any) => total + (Number(op.costo_fichas) || 0), 0),
 );
 
 const resumenEstados = computed(() => {
@@ -484,7 +581,7 @@ const GUIA_ESTADOS: Record<string, { area: string; texto: string }> = {
     },
     cerrada: {
         area: 'Administración',
-        texto: 'concilia sobrantes, mermas y costo real final. La OP ya no cambia de estado.',
+        texto: 'el sistema calcula las mermas y el costo real final con los productos recibidos. La OP ya no cambia de estado.',
     },
 };
 
@@ -496,7 +593,6 @@ const ENTIDADES = [
     'proveedor externo',
     'materiales',
     'inventario',
-    'sobrantes',
     'material',
     'mermas',
     'taller',
@@ -544,6 +640,7 @@ const columnas = [
     { key: 'numero_op', label: 'Orden', sortable: true, align: 'left', headerClass: 'min-w-[130px]', cellClass: 'min-w-[130px]' },
     { key: 'producto', label: 'Producto', sortable: true, align: 'left', headerClass: 'min-w-[200px]', cellClass: 'min-w-[200px]' },
     { key: 'cantidad_planificada', label: 'Cantidad', sortable: true, align: 'right', headerClass: 'w-[100px]', cellClass: 'w-[100px]' },
+    { key: 'costo_fichas', label: 'Costo fichas', sortable: true, align: 'right', headerClass: 'w-[120px]', cellClass: 'w-[120px]' },
     { key: 'taller', label: 'Envío taller', sortable: true, align: 'left', headerClass: 'hidden min-w-[150px] md:table-cell', cellClass: 'hidden min-w-[150px] md:table-cell' },
     { key: 'estado', label: 'Estado', sortable: true, align: 'left', headerClass: 'min-w-[150px]', cellClass: 'min-w-[150px]' },
     { key: 'contexto', label: '-', sortable: false, align: 'left', headerClass: 'min-w-[160px]', cellClass: 'min-w-[160px]' },
@@ -671,7 +768,11 @@ const tooltipFaltantes = (op: any) => {
     const lineas = (op?.materiales_faltantes || []).map((m: any) => {
         const cantidad = zilef_nuber_format(m.faltante ?? 0, 2, false);
         const unidad = escapar(String(m.unidad ?? '')).trim();
-        return `${escapar(String(m.nombre ?? 'Material'))}: faltan ${cantidad}${unidad ? ' ' + unidad : ''}`;
+        const productos = Array.isArray(m.productos)
+            ? m.productos.map((producto: any) => escapar(String(producto))).filter(Boolean)
+            : [];
+        const detalleProducto = productos.length ? ` · ${productos.join(', ')}` : '';
+        return `${escapar(String(m.nombre ?? 'Material'))}: faltan ${cantidad}${unidad ? ' ' + unidad : ''}${detalleProducto}`;
     });
     if (!lineas.length) return undefined;
     return { content: lineas.join('<br>'), html: true, delay: { show: 200, hide: 100 } };
@@ -853,7 +954,7 @@ const titulos = [
                             aria-label="Filtrar por estado"
                             class="h-9 max-w-[190px] rounded-md border border-input bg-background px-2 text-sm text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30"
                         >
-                            <option value="todos">Todos los estados</option>
+                            <option value="todos">Todos (sin cerradas)</option>
                             <option v-for="estado in estadosDisponibles" :key="estado.id" :value="estado.id">
                                 {{ estado.nombre }} ({{ estado.count }})
                             </option>
@@ -902,8 +1003,8 @@ const titulos = [
                 </div>
 
                 <!-- Tabla -->
-                <div class="op-scroll max-h-[68vh] overflow-auto overscroll-contain">
-                    <table class="w-full min-w-[1140px] border-collapse text-sm">
+                <div class="op-scroll max-h-[68vh] overflow-auto">
+                    <table class="w-full min-w-[1260px] border-collapse text-sm">
                         <thead>
                             <tr>
                                 <th
@@ -1005,6 +1106,18 @@ const titulos = [
                                         </span>
                                         <span class="text-[11px] tabular-nums text-muted-foreground">
                                             {{ (op.distribuciones_por_tallas || []).length }} tallas
+                                        </span>
+                                    </div>
+                                </td>
+
+                                <!-- Costo de las fichas técnicas de sus productos -->
+                                <td class="px-3 py-3 text-right align-top">
+                                    <div class="flex flex-col items-end gap-0.5">
+                                        <span class="font-semibold tabular-nums text-foreground">
+                                            {{ formatdinero(op.costo_fichas) }}
+                                        </span>
+                                        <span class="text-[11px] text-muted-foreground">
+                                            {{ props.metodoCostos === 2 ? 'materiales · último precio' : 'materiales · promedio' }}
                                         </span>
                                     </div>
                                 </td>
@@ -1165,21 +1278,38 @@ const titulos = [
                                 <td :colspan="columnas.length + 1" class="px-6 py-16">
                                     <div class="mx-auto flex max-w-sm flex-col items-center text-center">
                                         <div class="flex h-12 w-12 items-center justify-center rounded-full border border-border bg-muted/60">
-                                            <FunnelIcon v-if="hayFiltros" class="h-5 w-5 text-muted-foreground" />
+                                            <FunnelIcon v-if="hayFiltros || cerradasOcultas" class="h-5 w-5 text-muted-foreground" />
                                             <ClipboardDocumentListIcon v-else class="h-5 w-5 text-muted-foreground" />
                                         </div>
                                         <h3 class="mt-4 text-sm font-semibold text-foreground">
-                                            {{ hayFiltros ? 'No hay órdenes que coincidan' : 'Aún no hay órdenes de producción' }}
+                                            {{
+                                                cerradasOcultas
+                                                    ? 'No hay órdenes abiertas'
+                                                    : hayFiltros
+                                                      ? 'No hay órdenes que coincidan'
+                                                      : 'Aún no hay órdenes de producción'
+                                            }}
                                         </h3>
                                         <p class="mt-1 text-sm text-muted-foreground">
                                             {{
-                                                hayFiltros
-                                                    ? 'Ajusta la búsqueda o limpia los filtros para ver más resultados.'
-                                                    : 'Crea la primera orden para empezar a planificar la producción.'
+                                                cerradasOcultas
+                                                    ? 'Las órdenes cerradas están ocultas. Activa el filtro «Cerrada» para verlas.'
+                                                    : hayFiltros
+                                                      ? 'Ajusta la búsqueda o limpia los filtros para ver más resultados.'
+                                                      : 'Crea la primera orden para empezar a planificar la producción.'
                                             }}
                                         </p>
                                         <button
-                                            v-if="hayFiltros"
+                                            v-if="cerradasOcultas"
+                                            type="button"
+                                            @click="mostrarCerradas"
+                                            class="mt-4 inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                                        >
+                                            <FunnelIcon class="h-3.5 w-3.5" />
+                                            Ver cerradas
+                                        </button>
+                                        <button
+                                            v-else-if="hayFiltros"
                                             type="button"
                                             @click="limpiarFiltros"
                                             class="mt-4 inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
@@ -1295,12 +1425,12 @@ const titulos = [
 
                 <div class="flex flex-col gap-3 p-4">
                     <!-- Totales principales -->
-                    <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-5">
+                    <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                         <div class="rounded-lg border border-border bg-background p-3">
                             <p class="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Órdenes</p>
                             <p class="mt-1 text-2xl font-semibold tabular-nums text-foreground">{{ totalFiltrado }}</p>
                             <p class="mt-0.5 text-[11px] text-muted-foreground">
-                                {{ hayFiltros ? `de ${filas.length} en total` : 'registradas' }}
+                                {{ filas.length > totalFiltrado ? `de ${filas.length} en total` : 'registradas' }}
                             </p>
                         </div>
 
@@ -1313,6 +1443,14 @@ const titulos = [
                                 <CubeIcon class="h-3 w-3" />
                                 planificadas
                             </span>
+                        </div>
+
+                        <div class="rounded-lg border border-border bg-background p-3">
+                            <p class="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Costo fichas</p>
+                            <p class="mt-1 text-xl font-semibold tabular-nums text-foreground">
+                                {{ formatdinero(totalCostoFichas) }}
+                            </p>
+                            <p class="mt-0.5 text-[11px] text-muted-foreground">materiales por ficha técnica</p>
                         </div>
 
                         <div class="rounded-lg border border-cyan-200/70 bg-cyan-50/40 p-3 dark:border-cyan-500/20 dark:bg-cyan-500/5">
@@ -1355,28 +1493,76 @@ const titulos = [
                     </div>
 
                     <!-- Listados por situación -->
-                    <div class="grid gap-2.5 lg:grid-cols-3">
-                        <div class="rounded-lg border border-rose-200/70 bg-rose-50/40 p-3 dark:border-rose-500/20 dark:bg-rose-500/5">
-                            <div class="flex items-center justify-between gap-2">
+                    <div class="grid gap-2.5 lg:grid-cols-2">
+                        <div class="contents">
+                        <div class="order-2 rounded-lg border border-rose-200/70 bg-rose-50/40 p-3 dark:border-rose-500/20 dark:bg-rose-500/5">
+                            <div class="flex flex-wrap items-center justify-between gap-2">
                                 <h3 class="inline-flex items-center gap-1.5 text-xs font-semibold text-rose-800 dark:text-rose-300">
                                     <ExclamationTriangleIcon class="h-4 w-4" />
                                     Materiales faltantes
                                 </h3>
                                 <span class="rounded-full border border-rose-200 bg-white/60 px-2 py-0.5 text-[10px] font-semibold tabular-nums text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">
-                                    {{ opsConFaltantes.length }}
+                                    {{ materialesFaltantes.length }}
+                                    {{ materialesFaltantes.length === 1 ? 'material' : 'materiales' }}
                                 </span>
                             </div>
+                            <p class="mt-0.5 text-[11px] text-rose-700/80 dark:text-rose-300/80">
+                                Faltante total por material. Haz clic para ver las OP.
+                            </p>
 
-                            <div v-if="opsConFaltantes.length" class="mt-2 flex max-h-32 flex-wrap gap-1.5 overflow-y-auto pr-1">
-                                <span
-                                    v-for="op in opsConFaltantes"
-                                    :key="op.id"
-                                    v-tooltip="tooltipFaltantes(op)"
-                                    :title="op.producto_nombre || etiquetaOp(op)"
-                                    class="inline-flex items-center rounded-full border border-rose-200 bg-white/70 px-2 py-0.5 text-[11px] font-medium tabular-nums text-rose-800 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300"
+                            <div v-if="materialesFaltantes.length" class="mt-2 max-h-56 space-y-1.5 overflow-y-auto pr-1">
+                                <div
+                                    v-for="(material, indiceMaterial) in materialesFaltantes"
+                                    :key="material.clave"
+                                    class="overflow-hidden rounded-md border border-rose-200 bg-white/70 dark:border-rose-500/30 dark:bg-rose-500/10"
                                 >
-                                    {{ etiquetaOp(op) }}
-                                </span>
+                                    <button
+                                        type="button"
+                                        @click="alternarMaterialFaltante(material.clave)"
+                                        class="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left transition hover:bg-rose-100/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring dark:hover:bg-rose-500/15"
+                                        :aria-expanded="materialesExpandidos[material.clave] ? 'true' : 'false'"
+                                        :aria-controls="`faltantes-material-${indiceMaterial}`"
+                                        :title="materialesExpandidos[material.clave] ? 'Ocultar órdenes' : 'Ver órdenes con este faltante'"
+                                    >
+                                        <span class="truncate text-[11px] font-semibold text-rose-900 dark:text-rose-200" :title="material.nombre">
+                                            {{ material.nombre }}
+                                        </span>
+                                        <span class="flex shrink-0 items-center gap-1.5">
+                                            <span class="text-[11px] font-medium tabular-nums text-rose-700 dark:text-rose-300">
+                                                Faltan {{ zilef_nuber_format(material.faltante, 2, false) }}<template v-if="material.unidad"> {{ material.unidad }}</template>
+                                            </span>
+                                            <ChevronDownIcon
+                                                class="h-3.5 w-3.5 text-rose-500 transition-transform dark:text-rose-300"
+                                                :class="{ 'rotate-180': materialesExpandidos[material.clave] }"
+                                            />
+                                        </span>
+                                    </button>
+
+                                    <div
+                                        v-if="materialesExpandidos[material.clave]"
+                                        :id="`faltantes-material-${indiceMaterial}`"
+                                        class="border-t border-rose-200/70 dark:border-rose-500/20"
+                                    >
+                                        <ul class="divide-y divide-rose-100/70 dark:divide-rose-500/20">
+                                            <li
+                                                v-for="detalle in material.ops"
+                                                :key="detalle.op.id"
+                                                class="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-2 py-1 text-[11px] text-rose-900 dark:text-rose-200"
+                                            >
+                                                <span class="font-semibold">{{ etiquetaOp(detalle.op) }}</span>
+                                                <template v-if="detalle.productos.length || detalle.op.productos_nombres || detalle.op.producto_nombre">
+                                                    <span class="text-rose-400 dark:text-rose-500">·</span>
+                                                    <span class="font-medium">
+                                                        {{ detalle.productos.length ? detalle.productos.join(', ') : (detalle.op.productos_nombres || detalle.op.producto_nombre) }}
+                                                    </span>
+                                                </template>
+                                                <span class="ml-auto tabular-nums text-rose-700/70 dark:text-rose-300/70">
+                                                    Faltan {{ zilef_nuber_format(detalle.faltante, 2, false) }}<template v-if="material.unidad"> {{ material.unidad }}</template>
+                                                </span>
+                                            </li>
+                                        </ul>
+                                    </div>
+                                </div>
                             </div>
                             <p v-else class="mt-2 inline-flex items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-300">
                                 <CheckCircleIcon class="h-3.5 w-3.5" />
@@ -1384,7 +1570,7 @@ const titulos = [
                             </p>
                         </div>
 
-                        <div class="rounded-lg border border-cyan-200/70 bg-cyan-50/40 p-3 dark:border-cyan-500/20 dark:bg-cyan-500/5">
+                        <div class="order-3 rounded-lg border border-cyan-200/70 bg-cyan-50/40 p-3 dark:border-cyan-500/20 dark:bg-cyan-500/5">
                             <div class="flex items-center justify-between gap-2">
                                 <h3 class="inline-flex items-center gap-1.5 text-xs font-semibold text-cyan-800 dark:text-cyan-300">
                                     <WrenchScrewdriverIcon class="h-4 w-4" />
@@ -1408,7 +1594,7 @@ const titulos = [
                             <p v-else class="mt-2 text-xs text-muted-foreground">Ninguna orden está en taller.</p>
                         </div>
 
-                        <div class="rounded-lg border border-amber-200/70 bg-amber-50/40 p-3 dark:border-amber-500/20 dark:bg-amber-500/5">
+                        <div class="order-4 rounded-lg border border-amber-200/70 bg-amber-50/40 p-3 dark:border-amber-500/20 dark:bg-amber-500/5">
                             <div class="flex items-center justify-between gap-2">
                                 <h3 class="inline-flex items-center gap-1.5 text-xs font-semibold text-amber-800 dark:text-amber-300">
                                     <ClipboardDocumentCheckIcon class="h-4 w-4" />
@@ -1434,7 +1620,7 @@ const titulos = [
                     </div>
 
                     <!-- Compromisos de reparación próximos -->
-                    <div class="rounded-lg border border-violet-200/70 bg-violet-50/40 p-3 dark:border-violet-500/20 dark:bg-violet-500/5">
+                    <div class="order-1 rounded-lg border border-violet-200/70 bg-violet-50/40 p-3 dark:border-violet-500/20 dark:bg-violet-500/5">
                         <div class="flex flex-wrap items-center justify-between gap-2">
                             <h3 class="inline-flex items-center gap-1.5 text-xs font-semibold text-violet-800 dark:text-violet-300">
                                 <CalendarDaysIcon class="h-4 w-4" />
@@ -1448,7 +1634,7 @@ const titulos = [
                             </span>
                         </div>
                         <p class="mt-0.5 text-[11px] text-violet-700/80 dark:text-violet-300/80">
-                            Fechas de compromiso de hoy en adelante, agrupadas por OP.
+                            Fecha más próxima por OP. Haz clic en una OP para ver todos sus pendientes.
                         </p>
 
                         <div v-if="compromisosPorOp.length" class="mt-2 max-h-56 space-y-1.5 overflow-y-auto pr-1">
@@ -1457,46 +1643,68 @@ const titulos = [
                                 :key="grupo.op.id"
                                 class="overflow-hidden rounded-md border border-violet-200 bg-white/70 dark:border-violet-500/30 dark:bg-violet-500/10"
                             >
-                                <div class="flex flex-wrap items-center justify-between gap-1.5 border-b border-violet-200/70 bg-violet-100/50 px-2 py-1 dark:border-violet-500/20 dark:bg-violet-500/10">
+                                <button
+                                    type="button"
+                                    @click="alternarCompromisosOp(grupo.op.id)"
+                                    class="flex w-full items-center justify-between gap-2 px-2 py-1.5 text-left transition hover:bg-violet-100/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring dark:hover:bg-violet-500/15"
+                                    :aria-expanded="compromisosExpandidos[grupo.op.id] ? 'true' : 'false'"
+                                    :aria-controls="`compromisos-op-${grupo.op.id}`"
+                                    :title="compromisosExpandidos[grupo.op.id] ? 'Ocultar compromisos' : 'Ver todos los compromisos'"
+                                >
                                     <span class="text-[11px] font-semibold text-violet-900 dark:text-violet-200">
                                         {{ etiquetaOp(grupo.op) }}
                                     </span>
-                                    <span class="rounded-full bg-white/70 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-violet-700 dark:bg-black/20 dark:text-violet-300">
-                                        {{ grupo.compromisos.length }}
-                                        {{ grupo.compromisos.length === 1 ? 'pendiente' : 'pendientes' }}
-                                    </span>
-                                </div>
-
-                                <ul class="divide-y divide-violet-100/70 dark:divide-violet-500/20">
-                                    <li
-                                        v-for="compromiso in grupo.compromisos"
-                                        :key="compromiso.id"
-                                        class="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-2 py-1 text-[11px] text-violet-900 dark:text-violet-200"
-                                    >
-                                        <span class="font-semibold tabular-nums">
-                                            {{ formatFecha(compromiso.fecha_compromiso) }}
-                                        </span>
-                                        <span class="text-violet-400 dark:text-violet-500">·</span>
-                                        <span class="font-medium">
-                                            {{ compromiso.producto_nombre || 'Producto sin nombre' }}
-                                        </span>
-                                        <span v-if="compromiso.talla" class="text-violet-700/70 dark:text-violet-300/70">
-                                            · Talla {{ compromiso.talla }}
-                                        </span>
+                                    <span class="flex items-center gap-1.5">
                                         <span
-                                            v-if="compromiso.cantidad_en_reparacion"
-                                            class="text-violet-700/70 dark:text-violet-300/70"
+                                            class="text-[11px] font-medium tabular-nums text-violet-700 dark:text-violet-300"
+                                            title="Fecha de compromiso más próxima"
                                         >
-                                            · {{ compromiso.cantidad_en_reparacion }} par(es)
+                                            {{ formatFecha(grupo.compromisos[0]?.fecha_compromiso) }}
                                         </span>
-                                    </li>
-                                </ul>
+                                        <ChevronDownIcon
+                                            class="h-3.5 w-3.5 text-violet-500 transition-transform dark:text-violet-300"
+                                            :class="{ 'rotate-180': compromisosExpandidos[grupo.op.id] }"
+                                        />
+                                    </span>
+                                </button>
+
+                                <div
+                                    v-if="compromisosExpandidos[grupo.op.id]"
+                                    :id="`compromisos-op-${grupo.op.id}`"
+                                    class="border-t border-violet-200/70 dark:border-violet-500/20"
+                                >
+                                    <ul class="divide-y divide-violet-100/70 dark:divide-violet-500/20">
+                                        <li
+                                            v-for="compromiso in grupo.compromisos"
+                                            :key="compromiso.id"
+                                            class="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-2 py-1 text-[11px] text-violet-900 dark:text-violet-200"
+                                        >
+                                            <span class="font-semibold tabular-nums">
+                                                {{ formatFecha(compromiso.fecha_compromiso) }}
+                                            </span>
+                                            <span class="text-violet-400 dark:text-violet-500">·</span>
+                                            <span class="font-medium">
+                                                {{ compromiso.producto_nombre || compromiso.op?.productos_nombres || compromiso.op?.producto_nombre || 'Producto de la OP' }}
+                                            </span>
+                                            <span v-if="compromiso.talla" class="text-violet-700/70 dark:text-violet-300/70">
+                                                · Talla {{ compromiso.talla }}
+                                            </span>
+                                            <span
+                                                v-if="compromiso.cantidad_en_reparacion"
+                                                class="text-violet-700/70 dark:text-violet-300/70"
+                                            >
+                                                · {{ compromiso.cantidad_en_reparacion }} par(es)
+                                            </span>
+                                        </li>
+                                    </ul>
+                                </div>
                             </div>
                         </div>
                         <p v-else class="mt-2 inline-flex items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-300">
                             <CheckCircleIcon class="h-3.5 w-3.5" />
                             No hay fechas futuras de compromiso pendiente.
                         </p>
+                    </div>
                     </div>
 
                     <!-- Distribución por estado -->
@@ -1593,6 +1801,7 @@ const titulos = [
             :show="data.detalleEstadoOpen"
             @close="data.detalleEstadoOpen = false"
             :op="data.detalleEstadoOp"
+            :metodo-costos-label="props.metodoCostosLabel"
         />
 
         <SacarMaterialesModal :show="data.salidaOpen" @close="data.salidaOpen = false" :op="data.salidaOp" />

@@ -26,12 +26,23 @@ class FichaTecnica extends Model
         return $this->belongsToMany(Producto::class, 'ficha_tecnica_producto', 'ficha_tecnica_id', 'producto_id')->withTimestamps();
     }
 
+    /**
+     * Costo total de la ficha por unidad de producto.
+     *
+     * Cada línea aporta su costo unitario multiplicado por el consumo
+     * estándar. Ejemplo: un material de 1.000 con consumo 2 aporta 2.000.
+     */
     public function getValorTotalFichaAttribute(): float
     {
         if ($this->relationLoaded('materiales')) {
-            return (float) $this->materiales->sum('costo_asociado_teorico');
+            return (float) $this->materiales->sum(
+                fn (FichaTecnicaMateriales $material) => (float) $material->costo_total
+            );
         }
-        return (float) $this->materiales()->sum('costo_asociado_teorico');
+
+        return (float) $this->materiales()
+            ->get()
+            ->sum(fn (FichaTecnicaMateriales $material) => (float) $material->costo_total);
     }
 
     /**

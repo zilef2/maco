@@ -41,12 +41,42 @@ class Material extends Model
 
     public function prices()
     {
-        return $this->hasMany(MaterialPrice::class, 'material_id')->orderBy('fecha', 'desc');
+        return $this->hasMany(MaterialPrice::class, 'material_id')
+            ->orderByDesc('fecha')
+            ->orderByDesc('id');
     }
 
     public function lastPrice()
     {
-        return $this->hasOne(MaterialPrice::class, 'material_id')->orderBy('fecha', 'desc');
+        return $this->hasOne(MaterialPrice::class, 'material_id')
+            ->orderByDesc('fecha')
+            ->orderByDesc('id');
+    }
+
+    /**
+     * Costo unitario vigente: el precio de la compra más reciente.
+     * Es la fuente que usa la ficha técnica al elegir este material.
+     */
+    public function costoUnitarioActual(): float
+    {
+        $precio = $this->relationLoaded('lastPrice')
+            ? $this->getRelation('lastPrice')
+            : $this->lastPrice()->first();
+
+        return round((float) ($precio?->precio ?? 0), 2);
+    }
+
+    /**
+     * Costo unitario promedio: el promedio de todos los precios registrados
+     * del material (cada cambio de precio es una fila en material_prices).
+     */
+    public function costoUnitarioPromedio(): float
+    {
+        if ($this->relationLoaded('prices')) {
+            return round((float) $this->getRelation('prices')->avg('precio'), 2);
+        }
+
+        return round((float) $this->prices()->avg('precio'), 2);
     }
 
     protected static array $booleanFields = [

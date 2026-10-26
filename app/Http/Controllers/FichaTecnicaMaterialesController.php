@@ -3,9 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\FichaTecnica;
+use App\Models\Producto;
 use App\helpers\Myhelp;
 use App\helpers\MyModels;
 use App\Services\FichaTecnicaService;
+use App\Services\ListaDesplegableService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -19,10 +21,17 @@ class FichaTecnicaMaterialesController extends Controller {
     public string $FromController = 'FichaTecnicaMateriales';
 
     public function __construct(
-        protected FichaTecnicaService $fichaTecnicaService
+        protected FichaTecnicaService $fichaTecnicaService,
+        protected ListaDesplegableService $listaDesplegableService
     ) {
         $this->thisAtributos = (new FichaTecnica())->getFillable();
     }
+
+    /** Columnas de productos ordenables desde la tabla «sin ficha». */
+    private const PRODUCTO_COLUMNAS_ORDENABLES = [
+        'Codigo_interno', 'Titulo_Shopify', 'Categoria_original', 'Control_de_variante',
+        'Estado', 'precio_preventa', 'precio_estimado', 'created_at', 'updated_at',
+    ];
 
     public function index(Request $request) {
         $numberPermissions = MyModels::getPermissionToNumber(Myhelp::EscribirEnLog($this, ' FichaTecnicaMaterialess '));
@@ -40,11 +49,76 @@ class FichaTecnicaMaterialesController extends Controller {
             'total' => $fichas->count(),
             'breadcrumbs' => [['label' => __('app.label.' . $this->FromController), 'href' => route($this->FromController . '.index')]],
             'title' => __('app.label.' . $this->FromController),
-            'filters' => $request->all(['search', 'field', 'order']),
+            'filters' => $request->all(['search', 'field', 'order', 'psearch', 'pfield', 'porder', 'pperPage', 'ppage']),
             'perPage' => (int)$perPage,
             'numberPermissions' => $numberPermissions,
             'losSelect'         => $this->losSelect(),
+            'productosSinFicha' => $this->productosSinFicha($request),
+            'selectProducto'    => $this->selectProducto(),
+            'titulosProducto'   => Producto::getFillableWithTypes(),
         ]);
+    }
+
+    /**
+     * Productos que aún no tienen ficha técnica, con lo que muestra la tabla de
+     * Productos (cantidad por talla y sus acciones de fila).
+     */
+    private function productosSinFicha(Request $request): LengthAwarePaginator {
+        $busqueda = trim((string) $request->input('psearch', ''));
+        $campo = (string) $request->input('pfield', 'Codigo_interno');
+        if (!in_array($campo, self::PRODUCTO_COLUMNAS_ORDENABLES, true)) {
+            $campo = 'Codigo_interno';
+        }
+        $direccion = $request->input('porder') === 'desc' ? 'desc' : 'asc';
+        $porPagina = max(1, (int) $request->input('pperPage', 10));
+
+        $productos = Producto::query()
+            ->whereDoesntHave('fichaTecnica')
+            ->with('distribucionesPorTallas.ordenesProduccion')
+            ->when($busqueda !== '', function ($consulta) use ($busqueda) {
+                $consulta->where(function ($q) use ($busqueda) {
+                    $q->where('Codigo_interno', 'LIKE', "%$busqueda%")
+                        ->orWhere('Titulo_Shopify', 'LIKE', "%$busqueda%")
+                        ->orWhere('Categoria_original', 'LIKE', "%$busqueda%");
+                });
+            })
+            ->orderBy($campo, $direccion);
+
+        $paginados = $productos->paginate($porPagina, ['*'], 'ppage')->withQueryString();
+        $paginados->getCollection()->each(function ($producto) {
+            $producto->cantidad = (int) $producto->distribucionesPorTallas->sum('cantidad_planificada');
+            // OPs que ya usan estas tallas: el modal solo las muestra y avisa dónde
+            // se cambian.
+            $producto->ordenes_con_tallas = $producto->distribucionesPorTallas
+                ->flatMap->ordenesProduccion
+                ->unique('id')
+                ->sortBy('numero_op')
+                ->pluck('numero_op')
+                ->filter()
+                ->values()
+                ->all();
+            $producto->ficha_id = null;
+            $producto->ficha_materiales = [];
+            $producto->ficha_bloqueada = false;
+            $producto->ficha_bloqueo_detalle = '';
+        });
+
+        return $paginados;
+    }
+
+    /** Selects que necesita el formulario de Producto (mismo origen que ProductoController). */
+    private function selectProducto(): array {
+        $listas = array_change_key_case($this->listaDesplegableService->getOptionsByCategoriaGrouped('producto'), CASE_LOWER);
+        $opciones = $this->fichaTecnicaService->opcionesMateriales();
+
+        return [
+            'Categoria_original'  => $listas['categoria_original'] ?? [],
+            'Familia_normalizada' => $listas['familia_normalizada'] ?? [],
+            'Control_de_variante' => $listas['control_de_variante'] ?? [],
+            'Opciones'            => $listas['opciones'] ?? [],
+            'materiales'          => $opciones['materiales'],
+            'unidad_medida'       => $opciones['unidad_medida'],
+        ];
     }
 
     private function losSelect(): array {

@@ -6,11 +6,12 @@ import PrimaryButton from '@/components/PrimaryButton.vue';
 import SecondaryButton from '@/components/SecondaryButton.vue';
 import TextInput from '@/components/TextInput.vue';
 import { useForm } from '@inertiajs/vue3';
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import vSelect from "vue-select";
 import "vue-select/dist/vue-select.css";
 import { zilef_nuber_format } from '@/global.ts';
 import { rangoFlujo } from '@/composables/flujoEstadosOp';
+import { resumenRecepcionCosto } from '@/composables/costoRecepcionOp';
 
 const props = defineProps({
     show: Boolean,
@@ -41,11 +42,6 @@ const form = useForm({
         items: [] as any[],
     },
     fecha_regreso_real: '',
-    cierre: {
-        materiales_sobrantes: '' as string | number | null,
-        perdidas_mermas: '' as string | number | null,
-        costo_real_final: '' as string | number | null,
-    },
 });
 
 const normalizar = (valor: any) => String(valor ?? '').trim().toLowerCase();
@@ -176,39 +172,84 @@ const destinoEsCerrada = computed(() =>
 );
 
 // ── Cierre de la OP ──────────────────────────────────────────────────────
-// El cierre se pide al elegir «Cerrada» y también cuando la recepción queda
-// completa: en ambos casos hay que conciliar antes de guardar.
+// El resumen de cierre se muestra al elegir «Cerrada» y también cuando la
+// recepción queda completa. Los valores se calculan solos antes de guardar.
 const mostrarCierre = computed(() =>
     estadoSeleccionado.value?.name === 'Cerrada' || seCierraAutomatica.value
 );
 
-const avanceGuardado = ref(false);
 const avanceRecepcionGuardado = ref(false);
 
-const cierreLleno = (valor: any) =>
-    valor !== '' && valor !== null && valor !== undefined;
+// Fila cuya suma se está animando cuando el Enter encuentra una fila que no cuadra.
+const filaSumaAnimada = ref<string | null>(null);
+let temporizadorSumaAnimada: ReturnType<typeof setTimeout> | null = null;
+let tokenSumaAnimada = 0;
 
-const cierreCompleto = computed(() =>
-    cierreLleno(form.cierre.materiales_sobrantes)
-    && cierreLleno(form.cierre.perdidas_mermas)
-    && cierreLleno(form.cierre.costo_real_final)
-);
+// La fila completa se tiñe de rojo durante 1 s y luego tarda 3 s en volver
+// a su color original (4 s en total).
+const filaErrorAnimada = ref<string | null>(null);
+let temporizadorErrorFila: ReturnType<typeof setTimeout> | null = null;
+let tokenErrorFila = 0;
 
-const faltanCierre = computed(() => {
-    const faltan: string[] = [];
-    if (!cierreLleno(form.cierre.materiales_sobrantes)) faltan.push('materiales sobrantes o recuperados');
-    if (!cierreLleno(form.cierre.perdidas_mermas)) faltan.push('pérdidas en mermas (0 si no hubo)');
-    if (!cierreLleno(form.cierre.costo_real_final)) faltan.push('costo real final');
-    return faltan;
-});
+const claveFilaRecepcion = (fila: any, indice: number): string =>
+    String(fila?.distribucion_id ?? indice);
+
+const animarSumaFila = async (fila: any, indice: number) => {
+    const token = ++tokenSumaAnimada;
+
+    if (temporizadorSumaAnimada) {
+        clearTimeout(temporizadorSumaAnimada);
+        temporizadorSumaAnimada = null;
+    }
+
+    // Se quita y se vuelve a poner para que la animación se reinicie si el
+    // usuario presiona Enter varias veces sobre la misma fila.
+    filaSumaAnimada.value = null;
+    await nextTick();
+
+    if (token !== tokenSumaAnimada) return;
+
+    filaSumaAnimada.value = claveFilaRecepcion(fila, indice);
+    temporizadorSumaAnimada = setTimeout(() => {
+        if (token !== tokenSumaAnimada) return;
+
+        filaSumaAnimada.value = null;
+        temporizadorSumaAnimada = null;
+    }, 650);
+};
+
+const animarErrorFila = async (fila: any, indice: number) => {
+    const token = ++tokenErrorFila;
+
+    if (temporizadorErrorFila) {
+        clearTimeout(temporizadorErrorFila);
+        temporizadorErrorFila = null;
+    }
+
+    filaErrorAnimada.value = null;
+    await nextTick();
+
+    if (token !== tokenErrorFila) return;
+
+    filaErrorAnimada.value = claveFilaRecepcion(fila, indice);
+    temporizadorErrorFila = setTimeout(() => {
+        if (token !== tokenErrorFila) return;
+
+        filaErrorAnimada.value = null;
+        temporizadorErrorFila = null;
+    }, 4000);
+};
 
 watch(
-    () => [form.cierre.materiales_sobrantes, form.cierre.perdidas_mermas, form.cierre.costo_real_final],
-    () => { avanceGuardado.value = false; }
-);
-
-watch(
-    () => form.recepciones.map((f: any) => [f.cantidad_aprobada, f.cantidad_en_reparacion, f.cantidad_no_recuperable]),
+    () => [
+        form.fecha_recepcion,
+        form.fecha_compromiso,
+        form.recepciones.map((f: any) => [
+            f.cantidad_aprobada,
+            f.cantidad_en_reparacion,
+            f.cantidad_no_recuperable,
+        ]),
+    ],
     () => { avanceRecepcionGuardado.value = false; },
     { deep: true }
 );
@@ -217,6 +258,9 @@ const guardarAvanceRecepcion = () => {
     form
         .transform((datos) => ({
             fecha_recepcion: datos.fecha_recepcion || null,
+            // La fecha de compromiso es una sola para todos los pares en
+            // reparación, igual que en el guardado definitivo.
+            fecha_compromiso: datos.fecha_compromiso || null,
             recepciones: datos.recepciones.map((fila: any) => ({
                 distribucion_id: fila.distribucion_id,
                 cantidad_aprobada: numeroONulo(fila.cantidad_aprobada),
@@ -230,28 +274,6 @@ const guardarAvanceRecepcion = () => {
             onSuccess: () => { avanceRecepcionGuardado.value = true; },
             onError: () => { avanceRecepcionGuardado.value = false; },
         });
-};
-
-// Guarda el avance del cierre sin cerrar la OP.
-const guardarAvance = () => {
-    form
-        .transform((datos) => ({
-            materiales_sobrantes: datos.cierre.materiales_sobrantes === '' ? null : datos.cierre.materiales_sobrantes,
-            perdidas_mermas: datos.cierre.perdidas_mermas === '' ? null : datos.cierre.perdidas_mermas,
-            costo_real_final: datos.cierre.costo_real_final === '' ? null : datos.cierre.costo_real_final,
-        }))
-        .put(route('OrdenProduccion.cierre', props.op?.id), {
-            preserveScroll: true,
-            preserveState: true,
-            onSuccess: () => { avanceGuardado.value = true; },
-            onError: () => { avanceGuardado.value = false; },
-        });
-};
-
-const numeroDecimalONulo = (valor: any): number | null => {
-    if (valor === '' || valor === null || valor === undefined) return null;
-    const numero = Number(valor);
-    return Number.isFinite(numero) && numero >= 0 ? numero : null;
 };
 
 // Coexistencia permitida solo para el par {Esperando materiales, Procesos externos}.
@@ -353,6 +375,14 @@ const problemasResta = computed(() =>
 
 const cantidadKit = (valor: any) => zilef_nuber_format(valor ?? 0, 2, false);
 
+// Moneda sin centavos cuando el valor es redondo, como en el detalle del estado.
+const dinero = (valor: any): string => {
+    if (valor === null || valor === undefined || valor === '') return '—';
+    const numero = Number(valor);
+    if (!Number.isFinite(numero)) return '—';
+    return zilef_nuber_format(numero, Math.round(numero * 100) % 100 === 0 ? 0 : 2, true);
+};
+
 // Lo preparado es la cantidad que hay en el material; si se registró una
 // preparación explícita en el kit, esa manda.
 const cantidadPreparadaKit = (kit: any) =>
@@ -453,13 +483,6 @@ const abrirModal = () => {
         items: materialesProceso.value.map((material: any) => ({ ...material })),
     };
     form.fecha_regreso_real = procesosPendientes.value.length ? hoy() : '';
-    const cierre: any = (props.op as any)?.cierre_detalle;
-    form.cierre = {
-        materiales_sobrantes: cierre?.materiales_sobrantes ?? '',
-        perdidas_mermas: cierre?.perdidas_mermas ?? '',
-        costo_real_final: cierre?.costo_real_final ?? '',
-    };
-    avanceGuardado.value = false;
 };
 
 const alCambiarEstado = () => {
@@ -522,9 +545,6 @@ const filasListas = computed(() => form.recepciones.every(filaCuadra));
 const puedeGuardar = computed(() => {
     if (destinoEsCerrada.value && totalEnReparacionEfectivo.value > 0) return false;
 
-    // Cerrar exige los tres datos del cierre.
-    if (mostrarCierre.value && !cierreCompleto.value) return false;
-
     // Para pasar a «En taller» el kit debe cuadrar y tener existencia.
     if (mostrarRestaMateriales.value && (cargandoResta.value || problemasResta.value.length)) {
         return false;
@@ -569,6 +589,47 @@ const totalRecibido = computed(() =>
 const totalEnReparacion = computed(() =>
     form.recepciones.reduce(
         (suma, fila: any) => suma + (numeroONulo(fila.cantidad_en_reparacion) ?? 0),
+        0
+    )
+);
+
+// Si la tabla de recepción está visible manda lo digitado; si no, lo que ya
+// quedó guardado en la OP.
+const filasCosto = computed(() => {
+    if (form.recepciones.length) return form.recepciones;
+
+    return ((props.op as any)?.recepciones_detalle || []).map((recepcion: any) => ({
+        producto_id: recepcion.producto_id,
+        cantidad_aprobada: recepcion.cantidad_aprobada,
+        cantidad_en_reparacion: recepcion.cantidad_en_reparacion,
+        cantidad_no_recuperable: recepcion.cantidad_no_recuperable,
+    }));
+});
+
+// Costo de la OP con lo que se va digitando: aprobadas y no recuperables valen
+// sus materiales, las en reparación aún no se suman.
+const costoRecepcion = computed(() =>
+    resumenRecepcionCosto(
+        filasCosto.value,
+        (props.op as any)?.costo_unitario_productos as Record<string, number> | undefined
+    )
+);
+
+// El cierre se calcula con lo recibido; no se digita.
+const costoRealFinal = computed(() => costoRecepcion.value.costoOp);
+const perdidasMermas = computed(() => costoRecepcion.value.costoNoRecuperables);
+const costoCalculadoOp = computed(() => Number((props.op as any)?.costo_fichas) || 0);
+
+const totalAprobadas = computed(() =>
+    form.recepciones.reduce(
+        (suma, fila: any) => suma + (numeroONulo(fila.cantidad_aprobada) ?? 0),
+        0
+    )
+);
+
+const totalNoRecuperables = computed(() =>
+    form.recepciones.reduce(
+        (suma, fila: any) => suma + (numeroONulo(fila.cantidad_no_recuperable) ?? 0),
         0
     )
 );
@@ -655,17 +716,42 @@ const guardar = () => {
                     })),
             } : undefined,
             fecha_regreso_real: mostrarRegresoReal.value ? datos.fecha_regreso_real : undefined,
-            cierre: mostrarCierre.value ? {
-                materiales_sobrantes: numeroONulo(datos.cierre.materiales_sobrantes),
-                perdidas_mermas: numeroONulo(datos.cierre.perdidas_mermas),
-                costo_real_final: numeroDecimalONulo(datos.cierre.costo_real_final),
-            } : undefined,
         }))
         .put(route('OrdenProduccion.cambiarEstado', props.op?.id), {
             preserveScroll: true,
             onSuccess: () => emit("close"),
             onError: () => null,
         });
+};
+
+const enfocarFilaRecepcion = (indice: number) => {
+    const input = document.getElementById(`recepcion-aprobada-${indice}`) as HTMLInputElement | null;
+    input?.focus();
+    input?.select();
+};
+
+// Enter recorre la recepción fila por fila. Si la fila no cuadra, se anima su
+// suma y no se avanza; en la última fila, Enter guarda como el botón.
+const manejarEnterRecepcion = (indice: number) => {
+    if (!mostrarTablaRecepcion.value) return;
+
+    const fila = form.recepciones[indice];
+    if (!fila) return;
+
+    if (!filaCuadra(fila)) {
+        animarSumaFila(fila, indice);
+        animarErrorFila(fila, indice);
+        return;
+    }
+
+    if (indice < form.recepciones.length - 1) {
+        enfocarFilaRecepcion(indice + 1);
+        return;
+    }
+
+    if (!form.processing && puedeEnviar.value && puedeGuardar.value) {
+        guardar();
+    }
 };
 
 watch(() => props.show, (visible) => {
@@ -697,6 +783,53 @@ watch(() => props.show, (visible) => {
                     <p v-if="estadoActual?.regla_clave" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                         {{ estadoActual.regla_clave }}
                     </p>
+
+                    <!-- Recepción de calidad: totales por columna y costo real final. -->
+                    <div
+                        v-if="mostrarTablaRecepcion"
+                        class="mt-3 border-t border-gray-200 pt-3 dark:border-gray-700"
+                    >
+                        <div class="grid gap-x-4 gap-y-2 sm:grid-cols-4">
+                            <div>
+                                <span class="block text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                                    Aprobadas
+                                </span>
+                                <span class="font-semibold tabular-nums text-emerald-700 dark:text-emerald-300">
+                                    {{ costoRecepcion.aprobadas }}
+                                </span>
+                            </div>
+                            <div>
+                                <span class="block text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                                    En reparación
+                                </span>
+                                <span class="font-semibold tabular-nums text-amber-700 dark:text-amber-300">
+                                    {{ costoRecepcion.enReparacion }}
+                                </span>
+                            </div>
+                            <div>
+                                <span class="block text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                                    No recuperables
+                                </span>
+                                <span class="font-semibold tabular-nums text-rose-700 dark:text-rose-300">
+                                    {{ costoRecepcion.noRecuperables }}
+                                </span>
+                            </div>
+                            <div>
+                                <span class="block text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                                    Costo real final
+                                </span>
+                                <span class="font-semibold tabular-nums text-gray-900 dark:text-gray-100">
+                                    {{ dinero(costoRealFinal) }}
+                                </span>
+                            </div>
+                        </div>
+                        <p class="mt-2 text-[11px] text-gray-500 dark:text-gray-400">
+                            Los {{ costoRecepcion.aprobadas }} aprobados ({{ dinero(costoRecepcion.costoAprobadas) }})
+                            y los {{ costoRecepcion.noRecuperables }} no recuperables ({{ dinero(costoRecepcion.costoNoRecuperables) }})
+                            valen sus materiales de la OP; los {{ costoRecepcion.enReparacion }} en reparación no se suman
+                            hasta que regresen aprobados.
+                        </p>
+                    </div>
                 </div>
 
                 <div class="mt-4">
@@ -855,7 +988,7 @@ watch(() => props.show, (visible) => {
                                             </span>
                                             <span v-else
                                                 class="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300">
-                                                Se resta
+                                                Listo
                                             </span>
                                         </td>
                                     </tr>
@@ -945,7 +1078,13 @@ watch(() => props.show, (visible) => {
                                     </tr>
                                 </thead>
                                 <tbody class="divide-y divide-gray-100 dark:divide-gray-700/60">
-                                    <tr v-for="(fila, indice) in form.recepciones" :key="fila.distribucion_id ?? indice">
+                                    <tr
+                                        v-for="(fila, indice) in form.recepciones"
+                                        :key="fila.distribucion_id ?? indice"
+                                        :class="filaErrorAnimada === claveFilaRecepcion(fila, indice)
+                                            ? 'fila-recibida-error'
+                                            : ''"
+                                    >
                                         <td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300">
                                             {{ fila.producto_nombre || '—' }}
                                         </td>
@@ -957,9 +1096,11 @@ watch(() => props.show, (visible) => {
                                         </td>
                                         <td class="px-3 py-2">
                                             <TextInput
+                                                :id="`recepcion-aprobada-${indice}`"
                                                 type="number" min="0" step="1" placeholder="0"
                                                 class="block h-9 w-20 px-2 text-right tabular-nums"
                                                 v-model="fila.cantidad_aprobada"
+                                                @keydown.enter.prevent="manejarEnterRecepcion(indice)"
                                                 :aria-label="`Cantidad aprobada talla ${fila.talla}`"
                                             />
                                         </td>
@@ -968,6 +1109,7 @@ watch(() => props.show, (visible) => {
                                                 type="number" min="0" step="1" placeholder="0"
                                                 class="block h-9 w-20 px-2 text-right tabular-nums"
                                                 v-model="fila.cantidad_en_reparacion"
+                                                @keydown.enter.prevent="manejarEnterRecepcion(indice)"
                                                 :aria-label="`Cantidad en reparación talla ${fila.talla}`"
                                             />
                                         </td>
@@ -976,17 +1118,23 @@ watch(() => props.show, (visible) => {
                                                 type="number" min="0" step="1" placeholder="0"
                                                 class="block h-9 w-20 px-2 text-right tabular-nums"
                                                 v-model="fila.cantidad_no_recuperable"
+                                                @keydown.enter.prevent="manejarEnterRecepcion(indice)"
                                                 :aria-label="`Cantidad no recuperable talla ${fila.talla}`"
                                             />
                                         </td>
                                         <td class="px-3 py-2 text-right">
                                             <span
-                                                class="font-semibold tabular-nums"
-                                                :class="filaSuperada(fila)
-                                                    ? 'text-rose-600 dark:text-rose-400'
-                                                    : filaCuadra(fila)
-                                                        ? 'text-emerald-600 dark:text-emerald-400'
-                                                        : 'text-gray-900 dark:text-gray-100'"
+                                                class="inline-block font-semibold tabular-nums"
+                                                :class="[
+                                                    filaSuperada(fila)
+                                                        ? 'text-rose-600 dark:text-rose-400'
+                                                        : filaCuadra(fila)
+                                                            ? 'text-emerald-600 dark:text-emerald-400'
+                                                            : 'text-gray-900 dark:text-gray-100',
+                                                    filaSumaAnimada === claveFilaRecepcion(fila, indice)
+                                                        ? 'suma-recibida-pop'
+                                                        : '',
+                                                ]"
                                                 :title="filaSuperada(fila)
                                                     ? `Supera el máximo (${fila.esperada})`
                                                     : filaCuadra(fila)
@@ -1005,6 +1153,16 @@ watch(() => props.show, (visible) => {
                                         </td>
                                     </tr>
                                 </tbody>
+                                <tfoot v-if="form.recepciones.length">
+                                    <tr class="border-t border-gray-200 bg-gray-50 text-[11px] font-semibold uppercase tracking-wider text-gray-600 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-300">
+                                        <td class="px-3 py-2" colspan="2">Totales</td>
+                                        <td class="px-3 py-2 text-right tabular-nums">{{ totalEsperado }}</td>
+                                        <td class="px-3 py-2 tabular-nums text-emerald-700 dark:text-emerald-300">{{ totalAprobadas }}</td>
+                                        <td class="px-3 py-2 tabular-nums text-amber-700 dark:text-amber-300">{{ totalEnReparacion }}</td>
+                                        <td class="px-3 py-2 tabular-nums text-rose-700 dark:text-rose-300">{{ totalNoRecuperables }}</td>
+                                        <td class="px-3 py-2 text-right tabular-nums">{{ totalRecibido }}</td>
+                                    </tr>
+                                </tfoot>
                             </table>
                         </div>
                     </div>
@@ -1259,91 +1417,57 @@ watch(() => props.show, (visible) => {
                     </div>
                 </div>
 
-                <!-- Cierre de la OP -->
+                <!-- Cierre de la OP: valores calculados, sin digitación -->
                 <div v-if="mostrarCierre" class="mt-5">
-                    <div class="rounded-lg border border-amber-200 bg-amber-50/70 px-4 py-3 dark:border-amber-800 dark:bg-amber-900/20" role="status">
-                        <p class="text-sm font-medium text-amber-900 dark:text-amber-100">
+                    <div class="rounded-lg border border-emerald-200 bg-emerald-50/70 px-4 py-3 dark:border-emerald-800 dark:bg-emerald-900/20" role="status">
+                        <p class="text-sm font-medium text-emerald-900 dark:text-emerald-100">
                             Cierre de la orden de producción
                         </p>
-                        <p class="mt-1 text-xs text-amber-800/80 dark:text-amber-200/80">
-                            Para cerrar la OP deben quedar registrados los materiales sobrantes o recuperados,
-                            las pérdidas en mermas y el costo real final. Esta información se guardará en el
-                            cierre de la OP.
+                        <p class="mt-1 text-xs text-emerald-800/80 dark:text-emerald-200/80">
+                            Las pérdidas en mermas y el costo real final se calculan automáticamente
+                            con los productos recibidos y los costos guardados en la OP.
                         </p>
                     </div>
 
-                    <div class="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-3">
-                        <div>
-                            <InputLabel for="materiales_sobrantes" value="Materiales sobrantes o recuperados *" />
-                            <TextInput
-                                id="materiales_sobrantes"
-                                type="number"
-                                min="0"
-                                step="1"
-                                class="mt-1 block w-full"
-                                v-model="form.cierre.materiales_sobrantes"
-                                placeholder="Cantidad"
-                            />
-                            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Cantidad total registrada.</p>
-                            <InputError class="mt-1" :message="form.errors.materiales_sobrantes" />
-                        </div>
-
-                        <div>
-                            <InputLabel for="perdidas_mermas" value="Pérdidas en mermas *" />
-                            <TextInput
-                                id="perdidas_mermas"
-                                type="number"
-                                min="0"
-                                step="1"
-                                class="mt-1 block w-full"
-                                v-model="form.cierre.perdidas_mermas"
-                                placeholder="0 si no hubo"
-                            />
-                            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">Si no hubo pérdidas, deja 0.</p>
-                            <InputError class="mt-1" :message="form.errors.perdidas_mermas" />
-                        </div>
-
-                        <div>
-                            <InputLabel for="costo_real_final" value="Costo real final *" />
-                            <TextInput
-                                id="costo_real_final"
-                                type="number"
-                                min="0"
-                                step="any"
-                                class="mt-1 block w-full"
-                                v-model="form.cierre.costo_real_final"
-                                placeholder="Costo"
-                            />
-                            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                                Aún no se calcula automáticamente; ingrésalo tú.
+                    <dl class="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                        <div class="rounded-lg border border-rose-200 bg-rose-50/50 p-3 dark:border-rose-500/30 dark:bg-rose-500/10">
+                            <dt class="text-[11px] font-semibold uppercase tracking-wider text-rose-700 dark:text-rose-300">
+                                Pérdidas en mermas
+                            </dt>
+                            <dd class="mt-1 text-lg font-semibold tabular-nums text-rose-800 dark:text-rose-200">
+                                {{ dinero(perdidasMermas) }}
+                            </dd>
+                            <p class="mt-1 text-[11px] text-rose-700/80 dark:text-rose-300/80">
+                                {{ costoRecepcion.noRecuperables }}
+                                {{ costoRecepcion.noRecuperables === 1 ? 'producto no recuperable' : 'productos no recuperables' }}
+                                por su costo unitario.
                             </p>
-                            <InputError class="mt-1" :message="form.errors.costo_real_final" />
                         </div>
-                    </div>
 
-                    <div class="mt-3 flex flex-wrap items-center justify-between gap-3">
-                        <p v-if="!cierreCompleto" class="text-sm text-amber-700 dark:text-amber-300">
-                            Completa {{ faltanCierre.join(', ') }} para poder cerrar la OP.
-                        </p>
-                        <p v-else class="text-sm text-emerald-700 dark:text-emerald-300">
-                            Cierre completo: la OP puede cerrarse.
-                        </p>
-
-                        <div class="flex items-center gap-3">
-                            <span v-if="avanceGuardado" class="text-xs font-medium text-emerald-700 dark:text-emerald-300">
-                                Avance guardado
-                            </span>
-                            <SecondaryButton type="button" :disabled="form.processing" @click="guardarAvance">
-                                Guardar avance
-                            </SecondaryButton>
+                        <div class="rounded-lg border border-gray-200 bg-gray-50/70 p-3 dark:border-gray-700 dark:bg-gray-900/40">
+                            <dt class="text-[11px] font-semibold uppercase tracking-wider text-gray-600 dark:text-gray-300">
+                                Costo real final
+                            </dt>
+                            <dd class="mt-1 text-lg font-semibold tabular-nums text-gray-900 dark:text-gray-100">
+                                {{ dinero(costoRealFinal) }}
+                            </dd>
+                            <p class="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                                Suma de los productos aprobados y no recuperables recibidos.
+                            </p>
                         </div>
-                    </div>
 
-                    <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                        «Guardar avance» conserva lo diligenciado sin cerrar la OP; podrás terminarlo después.
-                    </p>
-
-                    <InputError class="mt-2" :message="form.errors.cierre" />
+                        <div class="rounded-lg border border-indigo-200 bg-indigo-50/50 p-3 dark:border-indigo-500/30 dark:bg-indigo-500/10">
+                            <dt class="text-[11px] font-semibold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">
+                                Costo calculado al crear la OP
+                            </dt>
+                            <dd class="mt-1 text-lg font-semibold tabular-nums text-indigo-800 dark:text-indigo-200">
+                                {{ dinero(costoCalculadoOp) }}
+                            </dd>
+                            <p class="mt-1 text-[11px] text-indigo-700/80 dark:text-indigo-300/80">
+                                Al recibir todos los productos, ambos valores deben coincidir.
+                            </p>
+                        </div>
+                    </dl>
                 </div>
 
                 <div class="my-8 flex justify-end">
@@ -1364,3 +1488,53 @@ watch(() => props.show, (visible) => {
         </Modal>
     </section>
 </template>
+
+<style scoped>
+@keyframes fila-recibida-error {
+    0%,
+    25% {
+        background-color: var(--fila-error-bg);
+    }
+    100% {
+        background-color: transparent;
+    }
+}
+
+.fila-recibida-error {
+    --fila-error-bg: rgb(252 165 165);
+    animation: fila-recibida-error 4s linear;
+}
+
+:global(.dark) .fila-recibida-error {
+    --fila-error-bg: rgb(153 27 27 / 0.6);
+}
+
+@keyframes suma-recibida-pop {
+    0% {
+        transform: scale(1);
+    }
+    35% {
+        transform: scale(1.45);
+        color: rgb(225 29 72);
+    }
+    65% {
+        transform: scale(1.45);
+        color: rgb(225 29 72);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+.suma-recibida-pop {
+    animation: suma-recibida-pop 620ms ease-out;
+    transform-origin: right center;
+    will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .suma-recibida-pop {
+        animation: none;
+    }
+}
+</style>

@@ -25,6 +25,16 @@ class FichaTecnicaMateriales extends Model
         'fecha_fin_vigencia',
     ];
 
+    protected $appends = ['costo_total'];
+
+    /**
+     * Costo de la línea: costo unitario del material × consumo estándar.
+     */
+    public function getCostoTotalAttribute(): float
+    {
+        return (float) $this->consumo_estandar * (float) $this->costo_asociado_teorico;
+    }
+
     public function fichaTecnica()
     {
         return $this->belongsTo(FichaTecnica::class);

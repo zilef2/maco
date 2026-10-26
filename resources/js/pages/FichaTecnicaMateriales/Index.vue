@@ -15,6 +15,7 @@ import { ChevronUpDownIcon, PencilIcon, TrashIcon, EyeIcon, PlusIcon } from '@he
 import Edit from '@/pages/FichaTecnicaMateriales/Edit.vue';
 import Delete from '@/pages/FichaTecnicaMateriales/Delete.vue';
 import MaterialesModal from '@/pages/FichaTecnicaMateriales/MaterialesModal.vue';
+import ProductosSinFichaTabla from '@/pages/FichaTecnicaMateriales/ProductosSinFichaTabla.vue';
 
 import { zilef_nuber_format } from '@/global.ts';
 
@@ -30,6 +31,9 @@ const props = defineProps({
 
     numberPermissions: Number,
     losSelect: Object,
+    productosSinFicha: Object,
+    selectProducto: Object,
+    titulosProducto: Array,
 })
 
 const defaultPerPage = [
@@ -61,7 +65,17 @@ const order = (field: string) => {
 }
 
 watch(() => _.cloneDeep(data.params), debounce(() => {
-    const params = pickBy(data.params)
+    // Los filtros de la tabla de productos sin ficha se releen de la página para
+    // que buscar/ordenar fichas no los resetee.
+    const filtrosPagina = (usePage().props as any)?.filters ?? {};
+    const params = pickBy({
+        ...data.params,
+        psearch: filtrosPagina.psearch,
+        pfield: filtrosPagina.pfield,
+        porder: filtrosPagina.porder,
+        pperPage: filtrosPagina.pperPage,
+        ppage: filtrosPagina.ppage,
+    })
     router.get(route("FichaTecnicaMateriales.index"), params, {
         replace: true,
         preserveState: true,
@@ -196,6 +210,15 @@ watch(() => _.cloneDeep(data.params), debounce(() => {
                     <Pagination :links="props.fromController" :filters="data.params" />
                 </div>
             </div>
+
+            <ProductosSinFichaTabla
+                :productos="props.productosSinFicha"
+                :filters="props.filters"
+                :los-select="props.selectProducto"
+                :titulos="props.titulosProducto"
+                :number-permissions="props.numberPermissions"
+                :title="props.title"
+            />
         </div>
     </AppLayout>
 </template>

@@ -5,7 +5,6 @@ import PrimaryButton from '@/components/PrimaryButton.vue';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Head, Link, router } from '@inertiajs/vue3';
 import { computed, reactive, ref, watch } from 'vue';
-import pkg from 'lodash';
 
 import {
     ArrowPathIcon,
@@ -16,6 +15,7 @@ import {
     ChevronUpIcon,
     CubeIcon,
     EllipsisVerticalIcon,
+    FunnelIcon,
     MagnifyingGlassIcon,
     PencilIcon,
     PlusIcon,
@@ -32,12 +32,9 @@ import DistribucionTallas from '@/pages/Producto/DistribucionTallas.vue';
 
 import { zilef_nuber_format } from '@/global.ts';
 
-const { debounce, pickBy } = pkg;
-
 const props = defineProps({
-    fromController: { type: Object as () => any, default: () => ({}) },
+    productos: { type: Array as () => any[], default: () => [] },
     total: Number,
-    filters: { type: Object as () => any, default: () => ({}) },
     breadcrumbs: { type: Array as () => Array<{ label?: string; href?: string }>, default: () => [] },
     perPage: Number,
     title: String,
@@ -46,22 +43,31 @@ const props = defineProps({
     titulos: Array,
 });
 
-const params = reactive({
-    search: props.filters?.search ?? '',
-    perPage: props.perPage ?? 10,
-});
+/* --------------------------------------------------------------------------
+ * Tabla 100% en cliente: los productos llegan una sola vez y aquí se buscan,
+ * filtran, ordenan y paginan sin volver al backend. Solo las acciones de
+ * cada fila (tallas, editar, eliminar, cargar Excel) hablan con él.
+ * ------------------------------------------------------------------------ */
 
-const sortKey = ref(props.filters?.field ?? 'updated_at');
-const sortDir = ref<'asc' | 'desc'>(props.filters?.order === 'asc' ? 'asc' : 'desc');
+const filas = computed<any[]>(() => props.productos ?? []);
+
+const busqueda = ref('');
+const estadoFiltro = ref('todos');
+const categoriaFiltro = ref('todos');
+const familiaFiltro = ref('todos');
+const controlVarianteFiltro = ref('todos');
+const opcionFiltro = ref('');
+const precioPreventaFiltro = ref('todos');
+const precioEstimadoFiltro = ref('todos');
+const tallasFiltro = ref('todos');
+const cantidadFiltro = ref('todos');
+const fichaFiltro = ref('todos');
+
+const sortKey = ref('updated_at');
+const sortDir = ref<'asc' | 'desc'>('desc');
+const porPagina = ref<number>(props.perPage ?? 10);
+const pagina = ref(1);
 const cargando = ref(false);
-
-const filas = computed<any[]>(() => props.fromController?.data ?? []);
-const totalRegistros = computed(() => Number(props.fromController?.total ?? props.total ?? 0));
-const paginaActual = computed(() => Number(props.fromController?.current_page ?? 1));
-const ultimaPagina = computed(() => Number(props.fromController?.last_page ?? 1));
-const desde = computed(() => Number(props.fromController?.from ?? 0));
-const hasta = computed(() => Number(props.fromController?.to ?? 0));
-const hayFiltros = computed(() => params.search.trim() !== '');
 
 const columnas = [
     { key: 'Codigo_interno', label: 'Código', sortable: true, align: 'left', headerClass: 'min-w-[120px]', cellClass: 'min-w-[120px]' },
@@ -130,6 +136,59 @@ const ESTADO_ESTILOS = {
 const estadoEstilo = (valor: any) =>
     ESTADO_ESTILOS[estadoNormalizado(valor) === 'Activo' ? 'activo' : 'inactivo'];
 
+const opcionesDeFiltro = (campo: string): Array<{ value: string; label: string }> => {
+    const items = ((props.opcionesFiltro as any)?.[campo] ?? []) as any[];
+    const vistos = new Set<string>();
+
+    return items
+        .map((item: any) => String(item ?? '').trim())
+        .filter((valor: string) => {
+            if (valor === '') return false;
+
+            const clave = normalizar(valor);
+            if (vistos.has(clave)) return false;
+
+            vistos.add(clave);
+            return true;
+        })
+        .sort((a: string, b: string) => a.localeCompare(b, 'es'))
+        .map((valor: string) => ({ value: valor, label: valor }));
+};
+
+const categoriasDisponibles = computed(() => opcionesDeFiltro('categorias'));
+const familiasDisponibles = computed(() => opcionesDeFiltro('familias'));
+const controlesVarianteDisponibles = computed(() => opcionesDeFiltro('controles_variante'));
+
+const opcionesEstado = [
+    { value: '', label: 'Ambos' },
+    { value: 'activo', label: 'Activos' },
+    { value: 'inactivo', label: 'Inactivos' },
+];
+
+const opcionesPrecio = [
+    { value: '', label: 'Todos' },
+    { value: 'con_precio', label: 'Con precio' },
+    { value: 'sin_precio', label: 'Sin precio' },
+];
+
+const opcionesTallas = [
+    { value: '', label: 'Todas' },
+    { value: 'con', label: 'Con tallas' },
+    { value: 'sin', label: 'Sin tallas' },
+];
+
+const opcionesCantidad = [
+    { value: '', label: 'Todas' },
+    { value: 'con', label: 'Con cantidad' },
+    { value: 'sin', label: 'Sin cantidad' },
+];
+
+const opcionesFicha = [
+    { value: '', label: 'Todas' },
+    { value: 'con', label: 'Con ficha' },
+    { value: 'sin', label: 'Sin ficha' },
+];
+
 const formatearPrecio = (valor: any, decimales = 0): string =>
     valor === null || valor === undefined || valor === '' ? '—' : zilef_nuber_format(valor, decimales, true);
 
@@ -194,6 +253,16 @@ const accionFila = (accion: string, producto: any) => {
 
 const limpiarFiltros = () => {
     params.search = '';
+    params.estado = '';
+    params.categoria = '';
+    params.familia = '';
+    params.control_variante = '';
+    params.opcion = '';
+    params.precio_preventa = '';
+    params.precio_estimado = '';
+    params.tallas = '';
+    params.cantidad = '';
+    params.ficha = '';
 };
 
 const rutaIndex = new URL(String(route('Producto.index')), window.location.origin).pathname;
@@ -208,7 +277,7 @@ router.on('finish', () => {
 });
 
 const recargar = () => {
-    router.reload({ only: ['fromController', 'total', 'filters', 'perPage'], preserveScroll: true });
+    router.reload({ only: ['fromController', 'total', 'filters', 'perPage', 'opcionesFiltro'], preserveScroll: true });
 };
 
 const cambiarPagina = (page: number) => {
@@ -275,8 +344,9 @@ watch(
                                 v-if="hayFiltros"
                                 class="inline-flex items-center gap-1 rounded-full border border-border bg-muted/60 px-2 py-0.5 text-[11px] font-medium text-foreground"
                             >
-                                <MagnifyingGlassIcon class="h-3 w-3" />
-                                Búsqueda activa
+                                <FunnelIcon class="h-3 w-3" />
+                                {{ filtrosActivos }}
+                                {{ filtrosActivos === 1 ? 'filtro activo' : 'filtros activos' }}
                             </span>
                         </p>
                     </div>
@@ -325,7 +395,7 @@ watch(
                                 v-model="params.search"
                                 type="search"
                                 aria-label="Buscar productos"
-                                placeholder="Buscar código, título, categoría o Shopify…"
+                                placeholder="Buscar por código o título…"
                                 class="h-9 w-full rounded-md border border-input bg-background pl-9 pr-9 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30"
                             />
                             <button
@@ -338,6 +408,129 @@ watch(
                                 <XMarkIcon class="h-3.5 w-3.5" />
                             </button>
                         </div>
+
+                        <select
+                            v-model="params.categoria"
+                            aria-label="Filtrar por categoría"
+                            :class="[selectClass, 'max-w-[220px]']"
+                        >
+                            <option value="">Todas las categorías</option>
+                            <option v-for="opcion in categoriasDisponibles" :key="opcion.value" :value="opcion.value">
+                                {{ opcion.label }}
+                            </option>
+                        </select>
+
+                        <div class="flex items-center gap-1.5">
+                            <span class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Estado</span>
+                            <div
+                                class="inline-flex h-9 items-stretch overflow-hidden rounded-md border border-border bg-card shadow-sm"
+                                role="group"
+                                aria-label="Filtrar productos por estado"
+                            >
+                                <button
+                                    v-for="opcion in opcionesEstado"
+                                    :key="opcion.value || 'todos'"
+                                    type="button"
+                                    @click="params.estado = opcion.value"
+                                    :aria-pressed="params.estado === opcion.value"
+                                    :class="segmentoClass(params.estado === opcion.value)"
+                                >
+                                    {{ opcion.label }}
+                                </button>
+                            </div>
+                        </div>
+
+                        <DropdownMenu>
+                            <DropdownMenuTrigger
+                                type="button"
+                                :class="[
+                                    'inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-card px-3 text-xs font-medium text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+                                    filtrosAvanzados > 0 ? 'border-foreground/20 bg-muted' : '',
+                                ]"
+                            >
+                                <FunnelIcon class="h-3.5 w-3.5" />
+                                Más filtros
+                                <span v-if="filtrosAvanzados > 0" class="tabular-nums">{{ filtrosAvanzados }}</span>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" class="max-h-[70vh] w-72 overflow-y-auto p-3">
+                                <div class="flex flex-col gap-2.5" @click.stop>
+                                    <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                                        Familia
+                                        <select v-model="params.familia" :class="selectClass">
+                                            <option value="">Todas</option>
+                                            <option v-for="opcion in familiasDisponibles" :key="opcion.value" :value="opcion.value">
+                                                {{ opcion.label }}
+                                            </option>
+                                        </select>
+                                    </label>
+
+                                    <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                                        Control de variante
+                                        <select v-model="params.control_variante" :class="selectClass">
+                                            <option value="">Todos</option>
+                                            <option v-for="opcion in controlesVarianteDisponibles" :key="opcion.value" :value="opcion.value">
+                                                {{ opcion.label }}
+                                            </option>
+                                        </select>
+                                    </label>
+
+                                    <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                                        Opciones contiene
+                                        <input
+                                            v-model="params.opcion"
+                                            type="search"
+                                            placeholder="Ej. S, M, L o 21-30"
+                                            :class="selectClass"
+                                        />
+                                    </label>
+
+                                    <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                                        Precio preventa
+                                        <select v-model="params.precio_preventa" :class="selectClass">
+                                            <option v-for="opcion in opcionesPrecio" :key="opcion.value" :value="opcion.value">
+                                                {{ opcion.label }}
+                                            </option>
+                                        </select>
+                                    </label>
+
+                                    <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                                        Precio estimado
+                                        <select v-model="params.precio_estimado" :class="selectClass">
+                                            <option v-for="opcion in opcionesPrecio" :key="opcion.value" :value="opcion.value">
+                                                {{ opcion.label }}
+                                            </option>
+                                        </select>
+                                    </label>
+
+                                    <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                                        Tallas
+                                        <select v-model="params.tallas" :class="selectClass">
+                                            <option v-for="opcion in opcionesTallas" :key="opcion.value" :value="opcion.value">
+                                                {{ opcion.label }}
+                                            </option>
+                                        </select>
+                                    </label>
+
+                                    <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                                        Cantidad planificada
+                                        <select v-model="params.cantidad" :class="selectClass">
+                                            <option v-for="opcion in opcionesCantidad" :key="opcion.value" :value="opcion.value">
+                                                {{ opcion.label }}
+                                            </option>
+                                        </select>
+                                    </label>
+
+                                    <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                                        Ficha técnica
+                                        <select v-model="params.ficha" :class="selectClass">
+                                            <option v-for="opcion in opcionesFicha" :key="opcion.value" :value="opcion.value">
+                                                {{ opcion.label }}
+                                            </option>
+                                        </select>
+                                    </label>
+                                </div>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
 
                         <select v-model.number="params.perPage" aria-label="Registros por página" :class="selectClass">
                             <option v-for="n in [10, 25, 50, 100]" :key="n" :value="n">{{ n }} / página</option>
@@ -534,6 +727,16 @@ watch(
                                         <button
                                             v-if="can(['update Producto'])"
                                             type="button"
+                                            @click="accionFila('tallas', producto)"
+                                            title="Tallas"
+                                            :aria-label="`Editar tallas de ${producto.Codigo_interno || producto.Titulo_Shopify}`"
+                                            class="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                                        >
+                                            <SquaresPlusIcon class="h-4 w-4" />
+                                        </button>
+                                        <button
+                                            v-if="can(['update Producto'])"
+                                            type="button"
                                             @click="accionFila('edit', producto)"
                                             title="Editar"
                                             :aria-label="`Editar ${producto.Codigo_interno || producto.Titulo_Shopify}`"
@@ -551,14 +754,6 @@ watch(
                                                 <EllipsisVerticalIcon class="h-4 w-4" />
                                             </DropdownMenuTrigger>
                                             <DropdownMenuContent align="end" class="w-56 p-1">
-                                                <DropdownMenuItem
-                                                    v-if="can(['update Producto'])"
-                                                    @click="accionFila('tallas', producto)"
-                                                    class="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-xs font-medium"
-                                                >
-                                                    <SquaresPlusIcon class="h-4 w-4" />
-                                                    <span>Tallas</span>
-                                                </DropdownMenuItem>
                                                 <DropdownMenuItem
                                                     v-if="can(['delete Producto'])"
                                                     @click="accionFila('delete', producto)"
@@ -580,7 +775,8 @@ watch(
                                 <td :colspan="columnas.length + 1" class="px-6 py-16">
                                     <div class="mx-auto flex max-w-sm flex-col items-center text-center">
                                         <div class="flex h-12 w-12 items-center justify-center rounded-full border border-border bg-muted/60">
-                                            <CubeIcon class="h-5 w-5 text-muted-foreground" />
+                                            <FunnelIcon v-if="hayFiltros" class="h-5 w-5 text-muted-foreground" />
+                                            <CubeIcon v-else class="h-5 w-5 text-muted-foreground" />
                                         </div>
                                         <h3 class="mt-4 text-sm font-semibold text-foreground">
                                             {{ hayFiltros ? 'No hay productos que coincidan' : 'Aún no hay productos' }}
@@ -588,7 +784,7 @@ watch(
                                         <p class="mt-1 text-sm text-muted-foreground">
                                             {{
                                                 hayFiltros
-                                                    ? 'Ajusta la búsqueda o límpiala para ver más resultados.'
+                                                    ? 'Ajusta los filtros o límpialos para ver más resultados.'
                                                     : 'Crea el primer producto o carga un Excel para empezar.'
                                             }}
                                         </p>
@@ -599,7 +795,7 @@ watch(
                                             class="mt-4 inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                                         >
                                             <XMarkIcon class="h-3.5 w-3.5" />
-                                            Limpiar búsqueda
+                                            Limpiar filtros
                                         </button>
                                         <PrimaryButton
                                             v-else-if="can(['create Producto'])"
@@ -670,6 +866,7 @@ watch(
             :productoId="data.distribucionProducto?.id"
             :productoLabel="data.distribucionProducto?.Codigo_interno"
             :items="data.distribucionProducto?.distribuciones_por_tallas || []"
+            :ordenesTallas="data.distribucionProducto?.ordenes_con_tallas || []"
         />
     </AppLayout>
 </template>

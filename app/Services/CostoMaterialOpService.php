@@ -1,0 +1,415 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\EstadoOperacion;
+use App\Models\Material;
+use App\Models\OrdenProduccion;
+use App\Models\OrdenProduccionCostoCambio;
+use App\Models\OrdenProduccionCostoMaterial;
+use App\Models\Parametro;
+use App\Models\Producto;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Collection;
+
+/**
+ * Costo de los materiales de una OP.
+ *
+ * El parámetro «costos_promedio» decide de dónde sale el precio unitario de
+ * cada material:
+ * 1 = promedio de todos los precios registrados del material (sus cambios).
+ * 2 = el último precio digitado del material.
+ *
+ * El precio usado se guarda en la OP (orden_produccion_costos_materiales) y
+ * cada vez que ese precio guardado cambia se anota el cambio en
+ * orden_produccion_costos_cambios. Las OPs cerradas no se recalculan: su costo
+ * queda congelado con el precio que tenían al cerrarse.
+ */
+class CostoMaterialOpService
+{
+    /** Método vigente según el parámetro costos_promedio. */
+    public function metodo(): int
+    {
+        return Parametro::entero(Parametro::COSTOS_PROMEDIO, Parametro::COSTOS_PROMEDIO_PROMEDIO, [
+            Parametro::COSTOS_PROMEDIO_PROMEDIO,
+            Parametro::COSTOS_PROMEDIO_ULTIMO,
+        ]);
+    }
+
+    public function labelMetodo(?int $metodo = null): string
+    {
+        return ($metodo ?? $this->metodo()) === Parametro::COSTOS_PROMEDIO_ULTIMO
+            ? 'Último precio digitado del material'
+            : 'Promedio de los cambios de precio del material';
+    }
+
+    /**
+     * Precio unitario del material según el método. Acepta un material ya
+     * cargado con su promedio (prices_avg_precio) y su último precio, para no
+     * volver a consultar la base por cada línea.
+     */
+    public function precioUnitario(Material $material, int $metodo): float
+    {
+        if ($metodo === Parametro::COSTOS_PROMEDIO_ULTIMO) {
+            return $material->costoUnitarioActual();
+        }
+
+        if ($material->getAttribute('prices_avg_precio') !== null) {
+            return round((float) $material->getAttribute('prices_avg_precio'), 2);
+        }
+
+        return $material->costoUnitarioPromedio();
+    }
+
+    /**
+     * Unidades de cada producto de la OP. La cantidad sale de la distribución
+     * por tallas; las OPs antiguas sin distribución usan la cantidad
+     * planificada total de su producto de referencia.
+     *
+     * @return array<int, float>
+     */
+    public function cantidadesPorProducto(OrdenProduccion $op): array
+    {
+        $cantidades = [];
+        $sinProducto = 0.0;
+
+        foreach ($op->distribucionesPorTallas as $distribucion) {
+            $productoId = (int) ($distribucion->producto_id ?? 0);
+            $cantidad = (float) ($distribucion->cantidad_planificada ?? 0);
+
+            if ($productoId > 0) {
+                $cantidades[$productoId] = ($cantidades[$productoId] ?? 0) + $cantidad;
+            } else {
+                $sinProducto += $cantidad;
+            }
+        }
+
+        if ($sinProducto > 0) {
+            $destino = (int) ($op->producto_referencia_id ?? $op->productos->first()?->id ?? 0);
+            if ($destino > 0) {
+                $cantidades[$destino] = ($cantidades[$destino] ?? 0) + $sinProducto;
+            }
+        }
+
+        if (empty($cantidades)) {
+            $destino = (int) ($op->producto_referencia_id ?? $op->productos->first()?->id ?? 0);
+            if ($destino > 0) {
+                $cantidades[$destino] = (float) $op->cantidad_planificada;
+            }
+        }
+
+        return $cantidades;
+    }
+
+    /**
+     * Productos de la OP: los vinculados más el producto de referencia.
+     *
+     * @return Collection<int, Producto>
+     */
+    public function productos(OrdenProduccion $op): Collection
+    {
+        $productos = $op->productos;
+
+        if ($op->productoReferencia && !$productos->contains('id', $op->productoReferencia->id)) {
+            $productos = $productos->concat([$op->productoReferencia]);
+        }
+
+        return $productos->values();
+    }
+
+    /**
+     * Materiales que requieren los productos de la OP, con el precio del método
+     * vigente y su costo.
+     *
+     * @return array<int, array{material_id:int, nombre:string, unidad:string, cantidad:float, precio_unitario:float, costo_total:float}>
+     */
+    public function lineas(OrdenProduccion $op, ?int $metodo = null): array
+    {
+        $metodo ??= $this->metodo();
+        $cantidades = $this->cantidadesPorProducto($op);
+        $unidades = $this->unidadesPorMaterial($op);
+
+        // Consumo agregado por material: consumo_estandar de la ficha × unidades
+        // del producto en la OP.
+        $necesidad = [];
+        foreach ($this->productos($op) as $producto) {
+            $cantidad = (float) ($cantidades[$producto->id] ?? 0);
+            if ($cantidad <= 0) {
+                continue;
+            }
+
+            $ficha = $producto->fichaTecnica->first();
+            if (!$ficha) {
+                continue;
+            }
+
+            foreach ($ficha->materiales as $fila) {
+                $materialId = (int) $fila->material_componente_id;
+                if ($materialId <= 0) {
+                    continue;
+                }
+
+                $necesidad[$materialId] = ($necesidad[$materialId] ?? 0)
+                    + (float) $fila->consumo_estandar * $cantidad;
+            }
+        }
+
+        if (empty($necesidad)) {
+            return [];
+        }
+
+        $materiales = $this->materialesConPrecios(array_keys($necesidad));
+
+        $lineas = [];
+        foreach ($necesidad as $materialId => $cantidad) {
+            $material = $materiales->get($materialId);
+            $precio = $material ? $this->precioUnitario($material, $metodo) : 0.0;
+
+            $lineas[$materialId] = [
+                'material_id' => $materialId,
+                'nombre' => $this->nombreMaterial($material, $materialId),
+                'unidad' => $unidades[$materialId] ?? 'u',
+                'cantidad' => round($cantidad, 4),
+                'precio_unitario' => $precio,
+                'costo_total' => round($precio * $cantidad, 2),
+            ];
+        }
+
+        return $lineas;
+    }
+
+    /**
+     * Unidad declarada en la ficha técnica para cada material de la OP.
+     *
+     * @return array<int, string>
+     */
+    private function unidadesPorMaterial(OrdenProduccion $op): array
+    {
+        $unidades = [];
+
+        foreach ($this->productos($op) as $producto) {
+            foreach ($producto->fichaTecnica as $ficha) {
+                foreach ($ficha->materiales as $fila) {
+                    $materialId = (int) $fila->material_componente_id;
+                    if ($materialId > 0 && !isset($unidades[$materialId])) {
+                        $unidades[$materialId] = $fila->unidad_medida ?: 'u';
+                    }
+                }
+            }
+        }
+
+        return $unidades;
+    }
+
+    /**
+     * Materiales con su último precio y su promedio ya cargados.
+     *
+     * @param  list<int>  $ids
+     * @return Collection<int, Material>
+     */
+    private function materialesConPrecios(array $ids): Collection
+    {
+        return Material::query()
+            ->with('lastPrice')
+            ->withAvg('prices', 'precio')
+            ->whereIn('id', $ids)
+            ->get()
+            ->keyBy('id');
+    }
+
+    private function nombreMaterial(?Material $material, int $materialId): string
+    {
+        if (!$material) {
+            return 'Material #' . $materialId;
+        }
+
+        $nombre = trim(
+            ($material->codigo_material ? $material->codigo_material . ' — ' : '')
+            . ($material->nombre_base ?? '')
+        );
+
+        return $nombre !== '' ? $nombre : ('Material #' . $materialId);
+    }
+
+    /**
+     * Recalcula y guarda en la OP el precio de cada material, anotando en el
+     * historial los precios que cambiaron desde la última vez.
+     *
+     * @return float Costo total guardado.
+     */
+    public function recalcular(OrdenProduccion $op, ?int $metodo = null): float
+    {
+        $metodo ??= $this->metodo();
+        $lineas = $this->lineas($op, $metodo);
+        $guardados = $op->costosMateriales()->get()->keyBy('material_id');
+
+        $total = 0.0;
+        $materialesVigentes = [];
+
+        foreach ($lineas as $materialId => $linea) {
+            $materialesVigentes[] = $materialId;
+            $fila = $guardados->get($materialId);
+
+            $datos = [
+                'metodo_costo' => $metodo,
+                'precio_unitario' => $linea['precio_unitario'],
+                'cantidad' => $linea['cantidad'],
+                'costo_total' => $linea['costo_total'],
+                'user_id' => auth()->id(),
+            ];
+
+            if ($fila) {
+                // Solo se guarda un cambio cuando el precio unitario es otro;
+                // la cantidad puede moverse sin que el precio haya cambiado.
+                if (round((float) $fila->precio_unitario, 2) !== $linea['precio_unitario']) {
+                    $this->registrarCambio($op, $materialId, $metodo, (float) $fila->precio_unitario, $linea['precio_unitario']);
+                }
+
+                $fila->fill($datos)->save();
+            } else {
+                OrdenProduccionCostoMaterial::create($datos + [
+                    'orden_produccion_id' => $op->id,
+                    'material_id' => $materialId,
+                ]);
+
+                $this->registrarCambio($op, $materialId, $metodo, null, $linea['precio_unitario']);
+            }
+
+            $total += $linea['costo_total'];
+        }
+
+        // Materiales que la OP dejó de requerir: su precio guardado se retira.
+        if ($materialesVigentes) {
+            $op->costosMateriales()->whereNotIn('material_id', $materialesVigentes)->delete();
+        } else {
+            $op->costosMateriales()->delete();
+        }
+
+        return round($total, 2);
+    }
+
+    private function registrarCambio(
+        OrdenProduccion $op,
+        int $materialId,
+        int $metodo,
+        ?float $precioAnterior,
+        float $precioNuevo
+    ): void {
+        OrdenProduccionCostoCambio::create([
+            'orden_produccion_id' => $op->id,
+            'material_id' => $materialId,
+            'metodo_costo' => $metodo,
+            'precio_anterior' => $precioAnterior,
+            'precio_nuevo' => $precioNuevo,
+            'user_id' => auth()->id(),
+        ]);
+    }
+
+    /**
+     * Costo de los materiales de la OP: el precio guardado si la OP ya tiene su
+     * snapshot; si no, se calcula en vivo sin escribir en la base.
+     */
+    public function costo(OrdenProduccion $op): float
+    {
+        $guardados = $op->costosMateriales;
+
+        if ($guardados->isNotEmpty()) {
+            return round((float) $guardados->sum('costo_total'), 2);
+        }
+
+        return round(collect($this->lineas($op))->sum('costo_total'), 2);
+    }
+
+    /**
+     * Renueva el precio guardado de las OPs abiertas que usan un material, para
+     * que el cambio de precio del material quede registrado en cada una.
+     *
+     * @return int Cantidad de OPs recalculadas.
+     */
+    public function recalcularPorMaterial(int $materialId): int
+    {
+        $ids = OrdenProduccionCostoMaterial::query()
+            ->where('material_id', $materialId)
+            ->distinct()
+            ->pluck('orden_produccion_id');
+
+        return $this->recalcularLista($ids);
+    }
+
+    /**
+     * Renueva el precio guardado de todas las OPs abiertas. Se usa cuando cambia
+     * el parámetro costos_promedio y el método de cálculo es otro.
+     *
+     * @return int Cantidad de OPs recalculadas.
+     */
+    public function recalcularAbiertas(): int
+    {
+        return $this->recalcularLista(
+            OrdenProduccionCostoMaterial::query()->distinct()->pluck('orden_produccion_id')
+        );
+    }
+
+    /**
+     * Renueva las OPs abiertas que usan alguno de estos productos: se usa
+     * cuando la ficha técnica cambia y el consumo (o los materiales) de la OP
+     * deja de ser el que se costeó la última vez.
+     *
+     * @param  list<int>  $productoIds
+     * @return int Cantidad de OPs recalculadas.
+     */
+    public function recalcularPorProductos(array $productoIds): int
+    {
+        if (empty($productoIds)) {
+            return 0;
+        }
+
+        $cerradaId = EstadoOperacion::where('nombre', 'Cerrada')->value('id');
+
+        $ids = OrdenProduccion::query()
+            ->where(function ($consulta) use ($productoIds, $cerradaId) {
+                $consulta->whereNull('estado_op_id')
+                    ->orWhere('estado_op_id', '!=', $cerradaId);
+            })
+            ->where(function ($consulta) use ($productoIds) {
+                $consulta->whereIn('producto_referencia_id', $productoIds)
+                    ->orWhereHas('productos', function ($pivot) use ($productoIds) {
+                        $pivot->whereIn('productos.id', $productoIds);
+                    });
+            })
+            ->pluck('id');
+
+        return $this->recalcularLista($ids);
+    }
+
+    private function recalcularLista(Collection $opIds): int
+    {
+        $cerradaId = EstadoOperacion::where('nombre', 'Cerrada')->value('id');
+
+        $ops = OrdenProduccion::query()
+            ->with([
+                'productos.fichaTecnica.materiales',
+                'productoReferencia.fichaTecnica.materiales',
+                'distribucionesPorTallas',
+                'costosMateriales',
+            ])
+            ->whereIn('id', $opIds)
+            ->where(function ($consulta) use ($cerradaId) {
+                $consulta->whereNull('estado_op_id')
+                    ->orWhere('estado_op_id', '!=', $cerradaId);
+            })
+            ->get();
+
+        foreach ($ops as $op) {
+            $this->recalcular($op);
+        }
+
+        if ($ops->isNotEmpty()) {
+            // El listado de OPs se sirve en caché: sin esto el nuevo precio no
+            // se vería hasta que otra escritura invalide la versión.
+            Cache::increment('op_index_version');
+            Cache::forget('op_selects');
+        }
+
+        return $ops->count();
+    }
+}

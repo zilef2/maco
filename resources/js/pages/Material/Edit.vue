@@ -86,7 +86,9 @@ watchEffect(() => {
         props.titulos.forEach(names => {
             form[names['order']] = props.Materiala[names['order']]
         });
-        form.estado = estadoActivo(form.estado) ? 'Activo' : 'Inactivo';
+        // Se normaliza desde el prop, no desde form: leer form.estado aquí convertiría
+        // el efecto en dependiente de sí mismo y desharía el toggle al pulsarlo.
+        form.estado = estadoActivo(props.Materiala?.estado) ? 'Activo' : 'Inactivo';
         
         // Cargar precio de última compra
         if (props.Materiala && props.Materiala.last_purchase_price) {
