@@ -1,4 +1,4 @@
-@echo off
+@echo on
 setlocal enabledelayedexpansion
 
 :: 1. Definir rutas
@@ -9,7 +9,7 @@ cd /d "%DIR%"
 :: 2. Preguntar si se compilan los assets
 set /p do_build="¿Ejecutar npm run build para Macondas? (S/N): "
 if /I "%do_build%"=="S" (
-    echo [⚙️] Construyendo assets...
+    echo [⚙️] Construyendo las cositas wujuju...
     call npm run build
 )
 
