@@ -1,4 +1,6 @@
-@echo on
+@echo off
+:: Arreglar caracteres raros en la consola para los emojis
+chcp 65001 >nul
 setlocal enabledelayedexpansion
 
 :: 1. Definir rutas
@@ -39,5 +41,5 @@ echo [🚀] Subiendo al servidor de zilef...
 scp -P 22022 -i C:\Users\alejo\.ssh\id_rsa "%DEST%" zilef@162.240.147.79:/home/zilef
 
 :: 7. Levantar entorno dev
-echo [💻] Levantando entorno local...
-npm run dev
+echo [💻] Listo
+pause
