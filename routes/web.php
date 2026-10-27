@@ -4,7 +4,7 @@ require __DIR__ . '/settings.php';
 require __DIR__ . '/auth.php';
 
 use Alejo\Notificaciones\NotificacionesManager;
-use App\Http\Controllers\{ NotificacionesController, RoleController, ParametrosController, PermissionController};
+use App\Http\Controllers\{ DashboardController, NotificacionesController, RoleController, ParametrosController, PermissionController};
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -19,6 +19,10 @@ Route::get('/', function () {
 Route::get('dashboard', function () {
 	return Inertia::render('Dashboard');
 })->middleware(['auth', 'verified'])->name('dashboard');
+
+Route::get('dashboard/datos', [DashboardController::class, 'datos'])
+	->middleware(['auth', 'verified'])
+	->name('dashboard.datos');
 
 Route::middleware('auth', 'verified')->group(function () {
 	Route::resource('/role', RoleController::class)->except('create', 'show', 'edit');

@@ -234,7 +234,7 @@ const hayFaltantes = computed(() => resumenMateriales.value.some((m) => m.necesi
 const form = useForm({
     numero_op: '',
     cantidad_planificada: '',
-    costo_proceso: '0',
+    costo_proceso: 0,
     fecha_prevista_envio_taller: '',
     taller_id: '',
     tipo: 'taller',
@@ -248,6 +248,59 @@ const form = useForm({
     materiales: [] as number[],
     materiales_cantidad: {} as Record<number, number>,
 });
+
+// El input muestra el costo con separadores de miles mientras se escribe, pero
+// el formulario conserva y envía únicamente el número (ej. 1234567).
+const normalizarCostoProceso = (valor: number | string): number => {
+    const numero = Number(valor);
+    return Number.isFinite(numero) && numero > 0 ? Math.round(numero) : 0;
+};
+
+const formatearCostoProceso = (valor: number | string): string => {
+    const numero = normalizarCostoProceso(valor);
+    return numero ? '$' + String(numero).replace(/\B(?=(\d{3})+(?!\d))/g, '.') : '';
+};
+
+const posicionTrasDigitos = (texto: string, cantidad: number): number => {
+    if (cantidad <= 0) return 0;
+
+    let vistos = 0;
+    for (let i = 0; i < texto.length; i++) {
+        if (/\d/.test(texto[i])) {
+            vistos++;
+            if (vistos === cantidad) return i + 1;
+        }
+    }
+
+    return texto.length;
+};
+
+const costoProcesoTexto = ref('');
+
+watch(
+    () => form.costo_proceso,
+    () => {
+        costoProcesoTexto.value = formatearCostoProceso(form.costo_proceso);
+    },
+    { immediate: true },
+);
+
+const alEscribirCostoProceso = (event: Event) => {
+    const input = event.target as HTMLInputElement;
+    const digitosAntesDelCursor = input.value
+        .slice(0, input.selectionStart ?? input.value.length)
+        .replace(/\D/g, '').length;
+    const digitos = input.value.replace(/\D/g, '');
+    const numero = normalizarCostoProceso(digitos);
+
+    form.costo_proceso = numero;
+    costoProcesoTexto.value = formatearCostoProceso(numero);
+
+    const formateado = costoProcesoTexto.value;
+    input.value = formateado;
+    const posicion = posicionTrasDigitos(formateado, digitosAntesDelCursor);
+    input.setSelectionRange(posicion, posicion);
+};
 
 // El formulario muestra el número, el tipo y la fecha aunque estén bloqueados,
 // pero esos campos nunca viajan en el update: así el backend conserva el valor
@@ -422,7 +475,7 @@ const cargarOp = () => {
 
     form.numero_op = registro.numero_op ?? '';
     form.cantidad_planificada = registro.cantidad_planificada != null ? String(registro.cantidad_planificada) : '';
-    form.costo_proceso = registro.costo_proceso != null ? String(registro.costo_proceso) : '0';
+    form.costo_proceso = normalizarCostoProceso(registro.costo_proceso);
     form.fecha_prevista_envio_taller = String(registro.fecha_prevista_envio_taller ?? '').substring(0, 10);
     form.taller_id = registro.taller_id ?? '';
     form.tipo = registro.tipo ?? (registro.externa ? 'externa' : 'taller');
@@ -588,12 +641,13 @@ watch([() => props.show, () => op.value.id], cargarOp, { immediate: true, flush:
                         <InputLabel for="costo_proceso" value="Costo del proceso" />
                         <TextInput
                             id="costo_proceso"
-                            type="number"
-                            min="0"
-                            step="0.01"
+                            type="text"
+                            inputmode="numeric"
+                            autocomplete="off"
                             class="mt-1 block w-full"
-                            v-model="form.costo_proceso"
-                            placeholder="0"
+                            :model-value="costoProcesoTexto"
+                            placeholder="$0"
+                            @input="alEscribirCostoProceso"
                         />
                         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                             Se suma al costo de las fichas para obtener el total de la OP.
