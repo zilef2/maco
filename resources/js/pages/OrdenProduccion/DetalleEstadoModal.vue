@@ -45,16 +45,20 @@ const cantidad = (valor: any, decimales = 0) => {
     return zilef_nuber_format(numero, decimales, false);
 };
 
-// Agrupa las tallas distribuidas por producto, sumando cantidades repetidas.
+// Agrupa las tallas o materiales distribuidos, sumando cantidades repetidas.
 const tallasPorProducto = computed(() => {
     const grupos = new Map<string, { producto_id: any; producto_nombre: string; tallas: Map<string, number>; total: number }>();
 
     for (const distribucion of ((props.op as any)?.distribuciones_detalle ?? [])) {
-        const clave = String(distribucion.producto_id ?? 'sin-producto');
+        const clave = distribucion.material_id
+            ? `material:${distribucion.material_id}`
+            : String(distribucion.producto_id ?? 'sin-producto');
         if (!grupos.has(clave)) {
             grupos.set(clave, {
                 producto_id: distribucion.producto_id,
-                producto_nombre: distribucion.producto_nombre || 'Sin producto',
+                producto_nombre: distribucion.material_id
+                    ? (distribucion.material_nombre || 'Material procesado')
+                    : (distribucion.producto_nombre || 'Sin producto'),
                 tallas: new Map<string, number>(),
                 total: 0,
             });
@@ -289,8 +293,12 @@ const fechaRecepcion = computed(() => {
                                 </thead>
                                 <tbody class="divide-y divide-gray-100 dark:divide-gray-700/60">
                                     <tr v-for="recepcion in recepciones" :key="recepcion.id">
-                                        <td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300">{{ recepcion.producto_nombre || '—' }}</td>
-                                        <td class="px-3 py-2 text-sm font-medium text-gray-900 dark:text-gray-100">{{ recepcion.talla }}</td>
+                                        <td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300">
+                                            {{ recepcion.material_nombre || recepcion.producto_nombre || '-' }}
+                                        </td>
+                                        <td class="px-3 py-2 text-sm font-medium text-gray-900 dark:text-gray-100">
+                                            {{ recepcion.talla || '—' }}
+                                        </td>
                                         <td class="px-3 py-2 text-right tabular-nums text-gray-500 dark:text-gray-400">{{ cantidad(recepcion.cantidad_esperada) }}</td>
                                         <td class="px-3 py-2 text-right tabular-nums text-gray-700 dark:text-gray-300">{{ cantidad(recepcion.cantidad_aprobada) }}</td>
                                         <td class="px-3 py-2 text-right tabular-nums font-semibold text-amber-700 dark:text-amber-300">{{ cantidad(recepcion.cantidad_en_reparacion) }}</td>

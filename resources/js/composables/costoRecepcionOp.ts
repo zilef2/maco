@@ -13,6 +13,7 @@
 
 export interface FilaRecepcion {
     producto_id?: number | string | null;
+    material_id?: number | string | null;
     cantidad_aprobada?: number | string | null;
     cantidad_en_reparacion?: number | string | null;
     cantidad_no_recuperable?: number | string | null;
@@ -38,8 +39,20 @@ const enteros = (valor: unknown): number => {
 
 const redondear = (valor: number): number => Math.round(valor * 100) / 100;
 
-/** Costo unitario del producto de la fila; 0 si la OP no lo conoce. */
-export const costoUnitarioFila = (fila: FilaRecepcion, unitarios: CostosUnitarios): number => {
+/**
+ * Costo unitario del producto o material procesado de la fila; 0 si la OP no
+ * lo conoce. Las filas de material usan su propio mapa de costos.
+ */
+export const costoUnitarioFila = (
+    fila: FilaRecepcion,
+    unitarios: CostosUnitarios,
+    unitariosMateriales?: CostosUnitarios
+): number => {
+    if (fila.material_id !== null && fila.material_id !== undefined && fila.material_id !== '') {
+        if (!unitariosMateriales) return 0;
+        return Number(unitariosMateriales[String(fila.material_id)]) || 0;
+    }
+
     if (!unitarios || fila.producto_id === null || fila.producto_id === undefined) return 0;
     return Number(unitarios[String(fila.producto_id)]) || 0;
 };
@@ -50,11 +63,12 @@ export const costoUnitarioFila = (fila: FilaRecepcion, unitarios: CostosUnitario
  */
 export const resumenRecepcionCosto = (
     filas: FilaRecepcion[],
-    unitarios: CostosUnitarios
+    unitarios: CostosUnitarios,
+    unitariosMateriales?: CostosUnitarios
 ): ResumenRecepcion => {
     const total = filas.reduce(
         (acum, fila) => {
-            const unitario = costoUnitarioFila(fila, unitarios);
+            const unitario = costoUnitarioFila(fila, unitarios, unitariosMateriales);
             const aprobadas = enteros(fila.cantidad_aprobada);
             const noRecuperables = enteros(fila.cantidad_no_recuperable);
 

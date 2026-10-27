@@ -162,6 +162,7 @@ class MaterialController extends Controller {
     public function store(Request $request): RedirectResponse {
         $permissions = Myhelp::EscribirEnLog($this, ' Begin STORE:Materials');
         DB::beginTransaction();
+        try {
 //        $no_nada = $request->no_nada['id'];
 //        $request->merge(['no_nada_id' => $request->no_nada['id']]);
         
@@ -206,6 +207,10 @@ class MaterialController extends Controller {
         $this->invalidarCache();
         Myhelp::EscribirEnLog($this, 'STORE:Materials EXITOSO', 'Material id:' . $Material->id . ' | ' . $Material->nombre, false);
         return back()->with('success', __('app.label.created_successfully', ['name' => $Material->nombre]));
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            throw $e;
+        }
     }
 
     //! STORE - UPDATE - DELETE
@@ -350,6 +355,7 @@ class MaterialController extends Controller {
     public function update(Request $request, $id): RedirectResponse {
         $permissions = Myhelp::EscribirEnLog($this, ' Begin UPDATE:Materials');
         DB::beginTransaction();
+        try {
 
         $request->validate([
             'materiales' => 'nullable|array',
@@ -416,6 +422,10 @@ class MaterialController extends Controller {
         $this->invalidarCache();
         Myhelp::EscribirEnLog($this, 'UPDATE:Materials EXITOSO', 'Material id:' . $Material->id . ' | ' . $Material->nombre, false);
         return back()->with('success', __('app.label.updated_successfully2', ['nombre' => $Material->nombre]));
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            throw $e;
+        }
     }
 
     /**

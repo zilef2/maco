@@ -224,11 +224,20 @@ class FichaTecnicaService
         $productoIds = array_values(array_unique(array_map('intval', $datos['productos'] ?? [])));
         $materialProcesadoIds = array_values(array_unique(array_map('intval', $datos['materiales_procesados'] ?? [])));
 
+        // Los objetivos que ya tenía la ficha también cuentan: quitarlos es un
+        // cambio de ficha y no puede saltarse el bloqueo de una OP activa.
+        $productosPrevios = $ficha
+            ? $ficha->productos()->pluck('productos.id')->map(fn ($id) => (int) $id)->all()
+            : [];
+        $materialesPrevios = $ficha
+            ? $ficha->materialesProcesados()->pluck('materials.id')->map(fn ($id) => (int) $id)->all()
+            : [];
+
         $bloqueos = [];
-        foreach ($productoIds as $productoId) {
+        foreach (array_unique(array_merge($productoIds, $productosPrevios)) as $productoId) {
             $bloqueos += $this->operacionesQueBloquean($productoId);
         }
-        foreach ($materialProcesadoIds as $materialId) {
+        foreach (array_unique(array_merge($materialProcesadoIds, $materialesPrevios)) as $materialId) {
             $bloqueos += $this->operacionesQueBloqueanMaterial($materialId);
         }
         if (!empty($bloqueos)) {
@@ -329,9 +338,10 @@ class FichaTecnicaService
         }
 
         // Las OPs abiertas que usan estos objetivos deben costearse con la ficha
-        // nueva: su precio guardado y su historial de cambios se renuevan.
-        $this->costosMateriales->recalcularPorProductos($productoIds);
-        $this->costosMateriales->recalcularPorMateriales($materialProcesadoIds);
+        // nueva: su precio guardado y su historial de cambios se renuevan. Se
+        // incluyen los objetivos retirados para que dejen de costear la ficha.
+        $this->costosMateriales->recalcularPorProductos(array_unique(array_merge($productoIds, $productosPrevios)));
+        $this->costosMateriales->recalcularPorMateriales(array_unique(array_merge($materialProcesadoIds, $materialesPrevios)));
 
         return $ficha->refresh();
     }

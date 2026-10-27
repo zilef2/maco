@@ -7,6 +7,7 @@ use App\Models\Distribucion_por_tallas;
 use App\Models\EmpresaExterna;
 use App\Models\EstadoOpMaterial;
 use App\Models\EstadoOperacion;
+use App\Models\FichaTecnica;
 use App\Models\KitProceso;
 use App\Models\Material;
 use App\Models\OrdenProduccion;
@@ -517,6 +518,383 @@ class OrdenProduccionTest extends TestCase
     }
 
     /**
+     * Una OP puede producir un material procesado. Su cantidad sale del payload
+     * materiales_cantidad, no de cantidad_planificada, y debe crear su fila de
+     * distribución, su kit y su costo como una OP de producto.
+     */
+    public function test_se_puede_crear_una_op_de_materiales_procesados_con_ficha(): void
+    {
+        $contexto = $this->contextoMaterialProcesado();
+
+        $response = $this->actingAs($contexto['user'])->post(route('OrdenProduccion.store'), [
+            'productos' => [],
+            'materiales' => [$contexto['material']->id],
+            'materiales_cantidad' => [$contexto['material']->id => 3],
+            'cantidad_planificada' => 3,
+            'tipo' => 'taller',
+            'taller_id' => $contexto['taller']->id,
+            'user_id' => $contexto['user']->id,
+            'estado_op_material_id' => $contexto['estadoMaterial']->id,
+        ]);
+
+        $response->assertSessionHasNoErrors();
+
+        $op = OrdenProduccion::query()
+            ->whereHas('materiales', fn ($query) => $query->whereKey($contexto['material']->id))
+            ->firstOrFail();
+
+        $this->assertNull($op->producto_referencia_id);
+        $this->assertSame(3, (int) $op->cantidad_planificada);
+        $this->assertDatabaseHas('orden_produccion_material', [
+            'orden_produccion_id' => $op->id,
+            'material_id' => $contexto['material']->id,
+            'cantidad' => 3,
+        ]);
+        $this->assertDatabaseHas('distribucion_por_tallas', [
+            'material_id' => $contexto['material']->id,
+            'producto_id' => null,
+            'talla' => null,
+            'cantidad_planificada' => 3,
+        ]);
+        $this->assertDatabaseHas('kit_procesos', [
+            'orden_produccion_id' => $op->id,
+            'material_id' => $contexto['componente']->id,
+            'cantidad_requerida' => 6,
+        ]);
+        $this->assertDatabaseHas('orden_produccion_costos_materiales', [
+            'orden_produccion_id' => $op->id,
+            'material_id' => $contexto['componente']->id,
+            'cantidad' => 6,
+            'precio_unitario' => 10,
+            'costo_total' => 60,
+        ]);
+
+        $distribucion = $op->distribucionesPorTallas()->firstOrFail();
+        $this->assertSame($contexto['material']->id, (int) $distribucion->material_id);
+        $this->assertNull($distribucion->producto_id);
+        $this->assertNull($distribucion->talla);
+    }
+
+    /**
+     * La actualización de una OP de materiales también recalcula el pivote,
+     * la distribución, el kit y los costos.
+     */
+    public function test_se_puede_actualizar_la_cantidad_de_una_op_de_materiales(): void
+    {
+        $contexto = $this->contextoMaterialProcesado();
+        $op = $this->crearOpMaterial($contexto, 3);
+
+        $response = $this->actingAs($contexto['user'])->put(route('OrdenProduccion.update', $op->id), [
+            'materiales' => [$contexto['material']->id],
+            'materiales_cantidad' => [$contexto['material']->id => 5],
+            'cantidad_planificada' => 5,
+        ]);
+
+        $response->assertSessionHasNoErrors();
+
+        $op->refresh();
+        $this->assertSame(5, (int) $op->cantidad_planificada);
+        $this->assertDatabaseHas('orden_produccion_material', [
+            'orden_produccion_id' => $op->id,
+            'material_id' => $contexto['material']->id,
+            'cantidad' => 5,
+        ]);
+        $this->assertDatabaseHas('distribucion_por_tallas', [
+            'material_id' => $contexto['material']->id,
+            'cantidad_planificada' => 5,
+        ]);
+        $this->assertDatabaseHas('kit_procesos', [
+            'orden_produccion_id' => $op->id,
+            'material_id' => $contexto['componente']->id,
+            'cantidad_requerida' => 10,
+        ]);
+        $this->assertDatabaseHas('orden_produccion_costos_materiales', [
+            'orden_produccion_id' => $op->id,
+            'material_id' => $contexto['componente']->id,
+            'cantidad' => 10,
+            'costo_total' => 100,
+        ]);
+    }
+
+    /**
+     * Una OP no puede producir productos y materiales procesados al mismo
+     * tiempo, y un material sin ficha tampoco es elegible.
+     */
+    public function test_no_se_pueden_mezclar_productos_y_materiales_en_la_misma_op(): void
+    {
+        $contexto = $this->contextoMaterialProcesado();
+        $producto = $this->crearProducto('TEST-MEZCLA-001');
+
+        $response = $this->actingAs($contexto['user'])->post(route('OrdenProduccion.store'), [
+            'productos' => [$producto->id],
+            'materiales' => [$contexto['material']->id],
+            'materiales_cantidad' => [$contexto['material']->id => 1],
+            'cantidad_planificada' => 1,
+            'tipo' => 'taller',
+            'taller_id' => $contexto['taller']->id,
+            'user_id' => $contexto['user']->id,
+        ]);
+
+        $response->assertSessionHasErrors('materiales');
+        $this->assertDatabaseCount('orden_produccions', 0);
+    }
+
+    /**
+     * Un material que no está marcado como procesado (o no tiene ficha) no
+     * puede seleccionarse como objetivo de una OP.
+     */
+    public function test_no_se_puede_producir_un_material_sin_ficha(): void
+    {
+        $contexto = $this->contextoMaterialProcesado();
+        $sinFicha = Material::create([
+            'codigo_material' => 'MAT-SIN-FICHA-001',
+            'categoria' => 'Tela',
+            'nombre_base' => 'Material sin proceso',
+            'unidad_inventario' => 'm',
+            'estado' => 'Activo',
+        ]);
+
+        $response = $this->actingAs($contexto['user'])->post(route('OrdenProduccion.store'), [
+            'productos' => [],
+            'materiales' => [$sinFicha->id],
+            'materiales_cantidad' => [$sinFicha->id => 2],
+            'cantidad_planificada' => 2,
+            'tipo' => 'taller',
+            'taller_id' => $contexto['taller']->id,
+            'user_id' => $contexto['user']->id,
+        ]);
+
+        $response->assertSessionHasErrors('materiales');
+        $this->assertDatabaseCount('orden_produccions', 0);
+    }
+
+    /**
+     * La recepción de una OP de materiales usa la fila de distribución del
+     * material, no una talla, y calcula el cierre con el costo de su ficha.
+     */
+    public function test_al_recibir_un_material_procesado_la_op_se_cierra_y_cuesta_su_ficha(): void
+    {
+        $contexto = $this->contextoMaterialProcesado();
+        $op = $this->crearOpMaterial($contexto, 3, 'En taller');
+        $distribucion = $op->distribucionesPorTallas()->firstOrFail();
+
+        $response = $this->actingAs($contexto['user'])->put(route('OrdenProduccion.cambiarEstado', $op->id), [
+            'estado_op_id' => $contexto['estados']['Recibiendo']->id,
+            'recepciones' => [[
+                'distribucion_id' => $distribucion->id,
+                'cantidad_aprobada' => 3,
+                'cantidad_en_reparacion' => 0,
+                'cantidad_no_recuperable' => 0,
+            ]],
+        ]);
+
+        $response->assertSessionHasNoErrors();
+
+        $op->refresh();
+        $this->assertSame($contexto['estados']['Cerrada']->id, (int) $op->estado_op_id);
+        $this->assertDatabaseHas('recepcion_calidads', [
+            'orden_produccion_id' => $op->id,
+            'producto_referencia_id' => null,
+            'material_referencia_id' => $contexto['material']->id,
+            'talla' => null,
+            'cantidad_aprobada' => 3,
+        ]);
+        $this->assertDatabaseHas('cierre_orden_produccions', [
+            'orden_produccion_id' => $op->id,
+            'perdidas_mermas' => 0,
+            'costo_real_final' => 60,
+            'completado' => 1,
+        ]);
+    }
+
+    /**
+     * Si el material queda en reparación, la OP no se cierra y el compromiso
+     * se registra contra el material, no contra un producto.
+     */
+    public function test_un_material_en_reparacion_crea_compromiso_y_no_cierra_la_op(): void
+    {
+        $contexto = $this->contextoMaterialProcesado();
+        $op = $this->crearOpMaterial($contexto, 3, 'En taller');
+        $distribucion = $op->distribucionesPorTallas()->firstOrFail();
+
+        $response = $this->actingAs($contexto['user'])->put(route('OrdenProduccion.cambiarEstado', $op->id), [
+            'estado_op_id' => $contexto['estados']['Recibiendo']->id,
+            'fecha_compromiso' => '2026-11-15',
+            'recepciones' => [[
+                'distribucion_id' => $distribucion->id,
+                'cantidad_aprobada' => 2,
+                'cantidad_en_reparacion' => 1,
+                'cantidad_no_recuperable' => 0,
+            ]],
+        ]);
+
+        $response->assertSessionHasNoErrors();
+
+        $op->refresh();
+        $this->assertSame($contexto['estados']['Recibiendo']->id, (int) $op->estado_op_id);
+        $this->assertDatabaseHas('compromisos_reparacion', [
+            'orden_produccion_id' => $op->id,
+            'producto_referencia_id' => null,
+            'material_referencia_id' => $contexto['material']->id,
+            'talla' => null,
+            'cantidad_en_reparacion' => 1,
+            'fecha_compromiso' => '2026-11-15',
+            'atendido' => 0,
+        ]);
+    }
+
+    /**
+     * El index expone el nombre del material, su cantidad y el costo unitario
+     * para que la recepción y el detalle del estado funcionen como en productos.
+     */
+    public function test_el_index_expone_los_materiales_objetivo_y_sus_costos(): void
+    {
+        $contexto = $this->contextoMaterialProcesado();
+        $op = $this->crearOpMaterial($contexto, 3);
+
+        $response = $this->actingAs($contexto['user'])->get(route('OrdenProduccion.index'));
+
+        $response->assertInertia(fn (Assert $page) => $page
+            ->component('OrdenProduccion/Index')
+            ->where('ordenes.0.es_op_material', true)
+            ->where('ordenes.0.materiales_nombres', fn ($valor) => is_string($valor) && str_contains($valor, 'MAT-PROC-001'))
+            ->where('ordenes.0.objetivo_nombre', fn ($valor) => is_string($valor) && str_contains($valor, 'MAT-PROC-001'))
+            ->where('ordenes.0.materiales_objetivo.0.id', $contexto['material']->id)
+            ->where('ordenes.0.materiales_objetivo.0.cantidad', 3)
+            ->where('ordenes.0.distribuciones_detalle.0.material_id', $contexto['material']->id)
+            ->where('ordenes.0.distribuciones_detalle.0.material_nombre', fn ($valor) => is_string($valor) && str_contains($valor, 'MAT-PROC-001'))
+            ->where('ordenes.0.costo_unitario_materiales', fn ($costos) => (float) ($costos[$contexto['material']->id] ?? 0) === 20.0));
+    }
+
+    /**
+     * Contexto mínimo para una OP de un material procesado con una ficha de
+     * consumo 2 × componente de $10.
+     *
+     * @return array{user: User, estados: array<string, EstadoOperacion>, estadoMaterial: EstadoOpMaterial, taller: Taller, componente: Material, material: Material, ficha: FichaTecnica}
+     */
+    private function contextoMaterialProcesado(): array
+    {
+        $rol = Role::create(['name' => 'admin', 'guard_name' => 'web']);
+        $user = User::factory()->create();
+        $user->assignRole($rol);
+
+        $definiciones = [
+            'Borrador' => 'Preparación',
+            'Preparación' => 'Esperando materiales / Procesos externos / Lista para taller',
+            'Esperando materiales' => 'Preparación / Lista para taller',
+            'Procesos externos' => 'Lista para taller / Preparación',
+            'Lista para taller' => 'En taller / Recibiendo',
+            'En taller' => 'Recibiendo / Pendiente / Cerrada',
+            'Recibiendo' => 'Pendiente / Cerrada',
+            'Pendiente' => 'Cerrada',
+            'Cerrada' => null,
+        ];
+        $estados = [];
+        foreach ($definiciones as $nombre => $puedePasarA) {
+            $estados[$nombre] = EstadoOperacion::create([
+                'nombre' => $nombre,
+                'puede_pasar_a' => $puedePasarA,
+            ]);
+        }
+
+        $estadoMaterial = EstadoOpMaterial::create(['nombre' => 'Pendiente', 'valor' => 'pendiente']);
+        $taller = Taller::create(['nombre' => 'Taller de materiales', 'direccion' => 'Calle 10 # 20-30']);
+
+        $componente = Material::create([
+            'codigo_material' => 'MAT-COMP-001',
+            'categoria' => 'Tela',
+            'nombre_base' => 'Tela componente',
+            'unidad_inventario' => 'm',
+            'estado' => 'Activo',
+            'existencia_actual' => 100,
+        ]);
+        $componente->prices()->create(['precio' => 10, 'fecha' => now()->toDateString()]);
+
+        $material = Material::create([
+            'codigo_material' => 'MAT-PROC-001',
+            'categoria' => 'Semielaborado',
+            'nombre_base' => 'Material procesado',
+            'unidad_inventario' => 'u',
+            'estado' => 'Activo',
+            'material_procesado' => 1,
+            'existencia_actual' => 0,
+        ]);
+
+        $ficha = FichaTecnica::create(['nombre' => 'Ficha MAT-PROC-001']);
+        $ficha->materiales()->create([
+            'material_componente_id' => $componente->id,
+            'consumo_estandar' => 2,
+            'unidad_medida' => 'm',
+            'costo_asociado_teorico' => 10,
+        ]);
+        $ficha->materialesProcesados()->attach($material->id);
+
+        return compact('user', 'estados', 'estadoMaterial', 'taller', 'componente', 'material', 'ficha');
+    }
+
+    /**
+     * Crea una OP de material directamente (sin pasar por el formulario) para
+     * probar recepción e index.
+     *
+     * @param  array{user: User, estados: array<string, EstadoOperacion>, estadoMaterial: EstadoOpMaterial, taller: Taller, componente: Material, material: Material, ficha: FichaTecnica}  $contexto
+     */
+    private function crearOpMaterial(array $contexto, int $cantidad, string $estado = 'Preparación'): OrdenProduccion
+    {
+        $op = OrdenProduccion::create([
+            'numero_op' => 'OP-200',
+            'cantidad_planificada' => $cantidad,
+            'tipo' => 'taller',
+            'taller_id' => $contexto['taller']->id,
+            'estado_op_id' => $contexto['estados'][$estado]->id,
+            'user_id' => $contexto['user']->id,
+            'estado_op_material_id' => $contexto['estadoMaterial']->id,
+        ]);
+
+        $op->materiales()->attach($contexto['material']->id, ['cantidad' => $cantidad]);
+
+        $distribucion = Distribucion_por_tallas::create([
+            'producto_id' => null,
+            'material_id' => $contexto['material']->id,
+            'talla' => null,
+            'cantidad_planificada' => $cantidad,
+        ]);
+        $op->distribucionesPorTallas()->attach($distribucion->id);
+
+        KitProceso::create([
+            'orden_produccion_id' => $op->id,
+            'material_id' => $contexto['componente']->id,
+            'unidad' => 'm',
+            'cantidad_requerida' => $cantidad * 2,
+            'cantidad_disponible' => 100,
+        ]);
+
+        app(\App\Services\CostoMaterialOpService::class)->recalcular($op->fresh([
+            'materiales.fichaTecnica.materiales',
+            'distribucionesPorTallas',
+            'costosMateriales',
+        ]));
+
+        return $op;
+    }
+
+    /**
+     * Producto mínimo para probar la exclusividad de objetivos.
+     */
+    private function crearProducto(string $codigo): Producto
+    {
+        return Producto::create([
+            'Codigo_interno' => $codigo,
+            'ID_producto_Shopify' => 'shopify-' . strtolower($codigo),
+            'Categoria_original' => 'Prueba',
+            'Familia_normalizada' => 'Prueba',
+            'Titulo_Shopify' => 'Producto ' . $codigo,
+            'Control_de_variante' => 'Única',
+            'Opciones' => 'Única',
+            'Estado' => 'Activo',
+        ]);
+    }
+
+    /**
      * Contexto mínimo para probar la recepción de calidad: estados del flujo,
      * una OP con dos tallas y su producto.
      *
@@ -539,6 +917,7 @@ class OrdenProduccionTest extends TestCase
             'Lista para taller' => 'En taller / Recibiendo',
             'En taller' => 'Recibiendo / Pendiente / Cerrada',
             'Recibiendo' => 'Pendiente / Cerrada',
+            'Pendiente' => 'Cerrada',
             'Cerrada' => null,
         ];
         $estados = [];

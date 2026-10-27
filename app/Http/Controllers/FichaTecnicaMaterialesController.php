@@ -7,6 +7,7 @@ use App\Models\Material;
 use App\Models\Producto;
 use App\helpers\Myhelp;
 use App\helpers\MyModels;
+use App\Services\CostoMaterialOpService;
 use App\Services\FichaTecnicaService;
 use App\Services\ListaDesplegableService;
 use Illuminate\Database\Eloquent\Builder;
@@ -23,7 +24,8 @@ class FichaTecnicaMaterialesController extends Controller {
 
     public function __construct(
         protected FichaTecnicaService $fichaTecnicaService,
-        protected ListaDesplegableService $listaDesplegableService
+        protected ListaDesplegableService $listaDesplegableService,
+        protected CostoMaterialOpService $costosMateriales
     ) {
         $this->thisAtributos = (new FichaTecnica())->getFillable();
     }
@@ -160,13 +162,18 @@ class FichaTecnicaMaterialesController extends Controller {
     public function store(Request $request): RedirectResponse {
         $permissions = Myhelp::EscribirEnLog($this, ' Begin STORE:FichaTecnicaMaterialess');
         DB::beginTransaction();
-        $ficha = $this->guardarFicha($request);
-        DB::commit();
-        Cache::increment('material_index_version');
-        Cache::increment('op_index_version');
-        Cache::forget('op_selects');
-        Myhelp::EscribirEnLog($this, 'STORE:FichaTecnicaMaterialess EXITOSO', 'FichaTecnica id:' . $ficha->id . ' | ' . $ficha->nombre, false);
-        return back()->with('success', __('app.label.created_successfully', ['name' => $ficha->nombre]));
+        try {
+            $ficha = $this->guardarFicha($request);
+            DB::commit();
+            Cache::increment('material_index_version');
+            Cache::increment('op_index_version');
+            Cache::forget('op_selects');
+            Myhelp::EscribirEnLog($this, 'STORE:FichaTecnicaMaterialess EXITOSO', 'FichaTecnica id:' . $ficha->id . ' | ' . $ficha->nombre, false);
+            return back()->with('success', __('app.label.created_successfully', ['name' => $ficha->nombre]));
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            throw $e;
+        }
     }
 
     public function create() {
@@ -181,14 +188,19 @@ class FichaTecnicaMaterialesController extends Controller {
     public function update(Request $request, $id): RedirectResponse {
         $permissions = Myhelp::EscribirEnLog($this, ' Begin UPDATE:FichaTecnicaMaterialess');
         DB::beginTransaction();
-        $ficha = FichaTecnica::findOrFail($id);
-        $this->guardarFicha($request, $ficha);
-        DB::commit();
-        Cache::increment('material_index_version');
-        Cache::increment('op_index_version');
-        Cache::forget('op_selects');
-        Myhelp::EscribirEnLog($this, 'UPDATE:FichaTecnicaMaterialess EXITOSO', 'FichaTecnica id:' . $ficha->id . ' | ' . $ficha->nombre, false);
-        return back()->with('success', __('app.label.updated_successfully2', ['nombre' => $ficha->nombre]));
+        try {
+            $ficha = FichaTecnica::findOrFail($id);
+            $this->guardarFicha($request, $ficha);
+            DB::commit();
+            Cache::increment('material_index_version');
+            Cache::increment('op_index_version');
+            Cache::forget('op_selects');
+            Myhelp::EscribirEnLog($this, 'UPDATE:FichaTecnicaMaterialess EXITOSO', 'FichaTecnica id:' . $ficha->id . ' | ' . $ficha->nombre, false);
+            return back()->with('success', __('app.label.updated_successfully2', ['nombre' => $ficha->nombre]));
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            throw $e;
+        }
     }
 
     /**
@@ -230,21 +242,66 @@ class FichaTecnicaMaterialesController extends Controller {
         return $this->fichaTecnicaService->guardar($datos, $ficha);
     }
 
+    /**
+     * OPs activas que impiden modificar o borrar una ficha.
+     *
+     * @return array<string, string>
+     */
+    private function bloqueosDeFicha(FichaTecnica $ficha): array
+    {
+        $bloqueos = [];
+
+        foreach ($ficha->productos()->pluck('productos.id') as $productoId) {
+            $bloqueos += $this->fichaTecnicaService->operacionesQueBloquean((int) $productoId);
+        }
+        foreach ($ficha->materialesProcesados()->pluck('materials.id') as $materialId) {
+            $bloqueos += $this->fichaTecnicaService->operacionesQueBloqueanMaterial((int) $materialId);
+        }
+
+        return $bloqueos;
+    }
+
     public function destroy($FichaTecnicaMaterialesid) {
         $permissions = Myhelp::EscribirEnLog($this, 'DELETE:FichaTecnicaMaterialess');
         $ficha = FichaTecnica::findOrFail($FichaTecnicaMaterialesid);
+
+        $bloqueos = $this->bloqueosDeFicha($ficha);
+        if (!empty($bloqueos)) {
+            $detalle = collect($bloqueos)
+                ->map(fn ($estado, $numeroOp) => $numeroOp . ' (' . $estado . ')')
+                ->implode(', ');
+
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'ficha' => 'No se puede eliminar la ficha: está en la OP ' . $detalle
+                    . '. Solo se permite en Borrador, Preparación o Cerrada.',
+            ]);
+        }
+
         $elnombre = $ficha->nombre;
         DB::beginTransaction();
-        $ficha->materiales()->delete();
-        $ficha->productos()->detach();
-        $ficha->materialesProcesados()->detach();
-        $ficha->delete();
-        DB::commit();
-        Cache::increment('material_index_version');
-        Cache::increment('op_index_version');
-        Cache::forget('op_selects');
-        Myhelp::EscribirEnLog($this, 'DELETE:FichaTecnicaMaterialess', 'FichaTecnica id:' . $ficha->id . ' | ' . $elnombre . ' borrado', false);
-        return back()->with('success', __('app.label.deleted_successfully', ['name' => $elnombre]));
+        try {
+            $productoIds = $ficha->productos()->pluck('productos.id')->map(fn ($id) => (int) $id)->all();
+            $materialIds = $ficha->materialesProcesados()->pluck('materials.id')->map(fn ($id) => (int) $id)->all();
+
+            $ficha->materiales()->delete();
+            $ficha->productos()->detach();
+            $ficha->materialesProcesados()->detach();
+            $ficha->delete();
+
+            // Las OPs abiertas que usaban la ficha dejan de costear esos objetivos.
+            $this->costosMateriales->recalcularPorProductos($productoIds);
+            $this->costosMateriales->recalcularPorMateriales($materialIds);
+
+            DB::commit();
+            Cache::increment('material_index_version');
+            Cache::increment('op_index_version');
+            Cache::forget('op_selects');
+            Myhelp::EscribirEnLog($this, 'DELETE:FichaTecnicaMaterialess', 'FichaTecnica id:' . $ficha->id . ' | ' . $elnombre . ' borrado', false);
+            return back()->with('success', __('app.label.deleted_successfully', ['name' => $elnombre]));
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            throw $e;
+        }
     }
 
     public function destroyBulk(Request $request) {

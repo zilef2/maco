@@ -30,7 +30,15 @@ type ItemDistribucion = {
     talla: string;
     cantidad_planificada: number | string;
     producto_id?: number | null;
+    material_id?: number | null;
     _origen?: 'producto' | 'grupo' | 'manual';
+};
+
+type MaterialSeleccionado = {
+    id: number;
+    nombre: string;
+    unidad: string;
+    cantidad: string;
 };
 
 const op = computed<any>(() => (props.OrdenProducciona ?? {}) as any);
@@ -56,6 +64,10 @@ const distribucion = reactive({
 });
 
 const grupoTallas = ref<number | null>(null);
+
+// La OP puede producir productos o materiales procesados. El modo se deduce
+// de los objetivos adjuntos y no se cambia desde la edición.
+const esOpMaterial = ref(false);
 
 const modalProductoDistribucion = reactive({
     show: false,
@@ -94,6 +106,39 @@ const cerrarModalDistribucionProducto = () => {
 const productosSel = reactive([] as Array<{ id: number; nombre: string; opciones: string[]; cantidad: string }>);
 const selIds = ref<number[]>([]);
 
+const materialesSel = reactive([] as MaterialSeleccionado[]);
+const materialesSelIds = ref<number[]>([]);
+
+const opcionesMaterial = computed(() => {
+    const conFicha = (props.losSelect?.materiales_procesados || []).filter((m: any) => m.ficha);
+    const ids = new Set(conFicha.map((m: any) => Number(m.id)));
+    const adjuntos = ((op.value.materiales || []) as any[])
+        .filter((m) => !ids.has(Number(m.id)))
+        .map((m) => ({
+            id: Number(m.id),
+            name: m.codigo_material ? `${m.codigo_material} — ${m.nombre_base}` : (m.nombre_base || `Material #${m.id}`),
+            unidad_inventario: m.unidad_inventario || 'u',
+            ficha: { nombre: 'Ficha actual' },
+            ficha_materiales: [],
+        }));
+
+    return [...conFicha, ...adjuntos];
+});
+
+const materialDe = (id: number) => opcionesMaterial.value.find((m: any) => Number(m.id) === Number(id));
+
+const totalMateriales = computed(() =>
+    materialesSel.reduce((total, m) => total + (Number(m.cantidad) || 0), 0),
+);
+
+const cantidadPlanificada = computed(() =>
+    esOpMaterial.value ? totalMateriales.value : totalTallas.value,
+);
+
+const sinObjetivos = computed(() =>
+    esOpMaterial.value ? materialesSel.length === 0 : productosSel.length === 0,
+);
+
 // Como en el alta: solo los productos con ficha técnica generan requerimiento
 // de materiales. Se suman los que ya están adjuntos a esta OP (pueden no tener
 // ficha) para que editar no los desprenda del kit.
@@ -117,14 +162,10 @@ const totalCantidadDistribucionProducto = (productoId: number) =>
     distribucionPorProducto(productoId).reduce((acc, item) => acc + (Number(item.cantidad_planificada) || 0), 0);
 
 const resumenMateriales = computed(() => {
-    if (productosSel.length === 0) {
-        return [] as Array<{ material_id: number; nombre: string; necesita: number; hay: number; unidad: string }>;
-    }
     const mapa = new Map<number, { material_id: number; nombre: string; necesita: number; hay: number; unidad: string }>();
-    productosSel.forEach((p) => {
-        const op: any = opcionesProducto.value.find((o: any) => o.id === p.id);
-        const cantidad = totalCantidadDistribucionProducto(p.id);
-        (op?.ficha_materiales || []).forEach((m: any) => {
+
+    const sumarFicha = (ficha: any[], cantidad: number) => {
+        (ficha || []).forEach((m: any) => {
             const actual = mapa.get(m.material_id) ?? {
                 material_id: m.material_id,
                 nombre: m.nombre,
@@ -135,7 +176,18 @@ const resumenMateriales = computed(() => {
             actual.necesita += (Number(m.consumo_estandar) || 0) * cantidad;
             mapa.set(m.material_id, actual);
         });
+    };
+
+    productosSel.forEach((p) => {
+        const opcion: any = opcionesProducto.value.find((o: any) => o.id === p.id);
+        sumarFicha(opcion?.ficha_materiales, totalCantidadDistribucionProducto(p.id));
     });
+
+    materialesSel.forEach((m) => {
+        const opcion: any = materialDe(m.id);
+        sumarFicha(opcion?.ficha_materiales, Number(m.cantidad) || 0);
+    });
+
     return Array.from(mapa.values()).sort((a, b) => b.necesita - b.hay - (a.necesita - a.hay));
 });
 
@@ -147,17 +199,25 @@ const precioMaterial = (m: any) =>
         ? Number(m.precio_unitario) || 0
         : Number(m.costo_asociado_teorico) || 0;
 
-const costoFichas = computed(() =>
-    productosSel.reduce((total, p) => {
-        const op: any = opcionesProducto.value.find((o: any) => o.id === p.id);
-        const cantidad = totalCantidadDistribucionProducto(p.id);
-        const costoUnitario = (op?.ficha_materiales || []).reduce(
+const costoFichas = computed(() => {
+    const costoDeFicha = (ficha: any[]) =>
+        (ficha || []).reduce(
             (suma: number, m: any) => suma + (Number(m.consumo_estandar) || 0) * precioMaterial(m),
             0,
         );
-        return total + costoUnitario * cantidad;
-    }, 0),
-);
+
+    const costoProductos = productosSel.reduce((total, p) => {
+        const opcion: any = opcionesProducto.value.find((o: any) => o.id === p.id);
+        return total + costoDeFicha(opcion?.ficha_materiales) * totalCantidadDistribucionProducto(p.id);
+    }, 0);
+
+    const costoMateriales = materialesSel.reduce((total, m) => {
+        const opcion: any = materialDe(m.id);
+        return total + costoDeFicha(opcion?.ficha_materiales) * (Number(m.cantidad) || 0);
+    }, 0);
+
+    return costoProductos + costoMateriales;
+});
 
 const productosSinFicha = computed(() =>
     productosSel.filter((p) => {
@@ -181,6 +241,8 @@ const form = useForm({
     grupo_tallas: null as number | null,
     productos: [] as number[],
     productos_cantidad: {} as Record<number, number>,
+    materiales: [] as number[],
+    materiales_cantidad: {} as Record<number, number>,
 });
 
 // El formulario muestra el número, el tipo y la fecha aunque estén bloqueados,
@@ -194,6 +256,8 @@ const CAMPOS_DEL_PLAN = [
     'cantidad_planificada',
     'productos',
     'productos_cantidad',
+    'materiales',
+    'materiales_cantidad',
     'distribucion_tallas',
     'grupo_tallas',
 ];
@@ -205,8 +269,6 @@ form.transform((datos: any) => {
 });
 
 const totalTallas = computed(() => distribucion.items.reduce((acc, i) => acc + (Number(i.cantidad_planificada) || 0), 0));
-
-const sinProductos = computed(() => productosSel.length === 0);
 
 const parsearOpciones = (opciones: unknown): string[] => {
     const partes = String(opciones ?? '')
@@ -254,6 +316,29 @@ const sincronizarProductos = (ids: number[]) => {
 
 watch(selIds, (ids) => sincronizarProductos([...ids]));
 
+const sincronizarMateriales = (ids: number[]) => {
+    for (const id of ids) {
+        if (!materialesSel.some((m) => m.id === id)) {
+            const opcion = materialDe(id);
+            if (!opcion) continue;
+            materialesSel.push({
+                id,
+                nombre: opcion.name,
+                unidad: opcion.unidad_inventario || 'u',
+                cantidad: '1',
+            });
+        }
+    }
+
+    for (let i = materialesSel.length - 1; i >= 0; i--) {
+        if (!ids.includes(materialesSel[i].id)) {
+            materialesSel.splice(i, 1);
+        }
+    }
+};
+
+watch(materialesSelIds, (ids) => sincronizarMateriales([...ids]));
+
 const toggleProducto = (id: number) => {
     if (planBloqueado.value) return;
     const i = selIds.value.indexOf(id);
@@ -277,10 +362,28 @@ const closeModal = () => {
     modalProductoDistribucion.productoId = null;
     productosSel.length = 0;
     selIds.value = [];
+    materialesSel.length = 0;
+    materialesSelIds.value = [];
+    esOpMaterial.value = false;
 };
 
 const prepararPayload = () => {
     form.grupo_tallas = grupoTallas.value;
+
+    if (esOpMaterial.value) {
+        form.productos = [];
+        form.productos_cantidad = {};
+        form.materiales = [...materialesSelIds.value];
+        form.materiales_cantidad = Object.fromEntries(
+            materialesSel.map((m) => [m.id, Number(m.cantidad) || 1]),
+        );
+        form.cantidad_planificada = String(totalMateriales.value);
+        form.distribucion_tallas = [];
+        return;
+    }
+
+    form.materiales = [];
+    form.materiales_cantidad = {};
     form.productos = [...selIds.value];
     form.productos_cantidad = Object.fromEntries(productosSel.map((p: any) => [p.id, totalCantidadDistribucionProducto(p.id)]));
     form.cantidad_planificada = String(totalTallas.value);
@@ -310,6 +413,7 @@ const cargarOp = () => {
 
     cargandoDatos.value = true;
     productosSel.length = 0;
+    materialesSel.length = 0;
     distribucion.items = [];
 
     form.numero_op = registro.numero_op ?? '';
@@ -321,19 +425,38 @@ const cargarOp = () => {
     form.id_shopify_producto = registro.id_shopify_producto ?? '';
     form.observaciones = registro.observaciones ?? '';
 
-    const tallas = (registro.distribuciones_por_tallas || []) as any[];
-    distribucion.items = tallas.map((t) => ({
-        id: t.id,
-        grupo: t.grupo ?? null,
-        talla: t.talla ?? '',
-        cantidad_planificada: t.cantidad_planificada ?? 0,
-        producto_id: t.producto_id ?? null,
-        _origen: 'manual',
+    const materialesRegistro = ((registro.materiales || []) as any[]).map((m) => ({
+        id: Number(m.id),
+        nombre: m.codigo_material ? `${m.codigo_material} — ${m.nombre_base}` : (m.nombre_base || `Material #${m.id}`),
+        unidad: m.unidad_inventario || 'u',
+        cantidad: String(m.pivot?.cantidad ?? 1),
     }));
-    const conGrupo = tallas.find((t) => t.grupo != null);
-    grupoTallas.value = conGrupo ? conGrupo.grupo : null;
 
-    selIds.value = ((registro.productos || []) as any[]).map((p) => Number(p.id));
+    esOpMaterial.value = materialesRegistro.length > 0;
+
+    if (esOpMaterial.value) {
+        materialesSel.splice(0, materialesSel.length, ...materialesRegistro);
+        materialesSelIds.value = materialesRegistro.map((m) => m.id);
+        selIds.value = [];
+        distribucion.items = [];
+        grupoTallas.value = null;
+    } else {
+        materialesSel.splice(0, materialesSel.length);
+        materialesSelIds.value = [];
+        const tallas = ((registro.distribuciones_por_tallas || []) as any[]).filter((t) => !t.material_id);
+        distribucion.items = tallas.map((t) => ({
+            id: t.id,
+            grupo: t.grupo ?? null,
+            talla: t.talla ?? '',
+            cantidad_planificada: t.cantidad_planificada ?? 0,
+            producto_id: t.producto_id ?? null,
+            _origen: 'manual',
+        }));
+        const conGrupo = tallas.find((t) => t.grupo != null);
+        grupoTallas.value = conGrupo ? conGrupo.grupo : null;
+
+        selIds.value = ((registro.productos || []) as any[]).map((p) => Number(p.id));
+    }
 
     nextTick(() => {
         cargandoDatos.value = false;
@@ -517,8 +640,93 @@ watch([() => props.show, () => op.value.id], cargarOp, { immediate: true, flush:
                     </div>
                 </div>
 
+                <!-- Materiales procesados de la orden -->
+                <div v-if="esOpMaterial" class="mt-6 rounded-lg border border-amber-200 bg-amber-50/40 p-4 dark:border-amber-900/60 dark:bg-amber-950/20">
+                    <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+                        <h3 class="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                            Materiales procesados de la orden
+                            <span v-if="materialesSel.length" class="font-normal text-gray-500 dark:text-gray-400">
+                                ({{ materialesSel.length }})
+                            </span>
+                            <LockClosedIcon v-if="planBloqueado" class="ml-1 inline h-4 w-4 text-amber-500" />
+                        </h3>
+                        <div class="text-right">
+                            <span class="block text-xs text-gray-500 dark:text-gray-400">Cantidad planificada:</span>
+                            <span class="text-lg font-bold text-gray-900 dark:text-gray-100">{{ totalMateriales }}</span>
+                        </div>
+                    </div>
+
+                    <v-select
+                        v-if="!planBloqueado"
+                        multiple
+                        class="block w-full"
+                        :options="opcionesMaterial"
+                        label="name"
+                        :reduce="(item: any) => item.id"
+                        v-model="materialesSelIds"
+                        placeholder="Buscar y seleccionar materiales procesados..."
+                    />
+                    <p v-else class="text-xs text-gray-500 dark:text-gray-400">
+                        Lista en solo lectura: para cambiar los materiales hay que retroceder la OP antes de «En taller».
+                    </p>
+
+                    <div v-if="materialesSel.length" class="mt-3 overflow-x-auto">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="border-b border-amber-200 text-left text-xs tracking-wide text-gray-500 uppercase dark:border-amber-900/60 dark:text-gray-400">
+                                    <th class="py-2 pr-2">Material</th>
+                                    <th class="w-32 py-2 pr-2">Cantidad</th>
+                                    <th class="py-2 pr-2">Ficha técnica</th>
+                                    <th v-if="!planBloqueado" class="w-10 py-2"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="m in materialesSel" :key="m.id" class="border-b border-amber-100 align-top dark:border-amber-900/40">
+                                    <td class="py-3 pr-2 font-medium text-gray-800 dark:text-gray-200">{{ m.nombre }}</td>
+                                    <td class="py-3 pr-2">
+                                        <div class="flex items-center gap-1.5">
+                                            <input
+                                                v-model="m.cantidad"
+                                                type="number"
+                                                min="1"
+                                                step="1"
+                                                :disabled="planBloqueado"
+                                                class="w-20 rounded-md border-gray-300 text-sm shadow-sm focus:border-amber-500 focus:ring-amber-500 disabled:bg-gray-100 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-200 dark:disabled:bg-gray-800"
+                                            />
+                                            <span class="text-xs text-gray-500 dark:text-gray-400">{{ m.unidad }}</span>
+                                        </div>
+                                    </td>
+                                    <td class="py-3 pr-2 text-xs text-gray-600 dark:text-gray-300">
+                                        {{ materialDe(m.id)?.ficha?.nombre || '—' }}
+                                        <span class="block text-gray-400 dark:text-gray-500">
+                                            {{ (materialDe(m.id)?.ficha_materiales || []).length }} componente(s)
+                                        </span>
+                                    </td>
+                                    <td v-if="!planBloqueado" class="py-3">
+                                        <button
+                                            type="button"
+                                            @click="materialesSelIds = materialesSelIds.filter((id) => id !== m.id)"
+                                            class="rounded-md p-1.5 text-red-500 transition hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-900/20"
+                                            title="Quitar material"
+                                        >
+                                            <TrashIcon class="h-4 w-4" />
+                                        </button>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <p v-else class="mt-3 text-sm text-amber-600 dark:text-amber-400">
+                        Esta orden no tiene materiales procesados registrados.
+                    </p>
+
+                    <InputError class="mt-2" :message="form.errors.materiales" />
+                    <InputError class="mt-1" :message="form.errors.materiales_cantidad" />
+                    <InputError class="mt-1" :message="form.errors.cantidad_planificada" />
+                </div>
+
                 <!-- Productos de la orden -->
-                <div class="mt-6 rounded-lg border border-gray-200 bg-gray-50/50 p-4 dark:border-gray-700 dark:bg-gray-800/40">
+                <div v-else class="mt-6 rounded-lg border border-gray-200 bg-gray-50/50 p-4 dark:border-gray-700 dark:bg-gray-800/40">
                     <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
                         <h3 class="text-sm font-semibold text-gray-800 dark:text-gray-200">
                             Productos de la orden
@@ -629,57 +837,63 @@ watch([() => props.show, () => op.value.id], cargarOp, { immediate: true, flush:
                         Esta orden no tiene productos registrados. <b>No se puede guardar sin al menos un producto.</b>
                     </p>
 
-                    <!-- Materiales requeridos según la ficha técnica -->
-                    <div
-                        v-if="resumenMateriales.length"
-                        class="mt-3 rounded-md border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-900/40"
-                    >
-                        <h4 class="text-xs font-semibold tracking-wide text-gray-600 uppercase dark:text-gray-300">
-                            Materiales requeridos (consumo ficha × total de tallas)
-                        </h4>
-                        <table class="mt-2 w-full text-sm">
-                            <thead>
-                                <tr class="text-left text-xs text-gray-500 uppercase dark:text-gray-400">
-                                    <th class="py-1 pr-2">Material</th>
-                                    <th class="py-1 pr-2 text-right">Necesita</th>
-                                    <th class="py-1 pr-2 text-right">Hay</th>
-                                    <th class="py-1 text-right">Faltante</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr
-                                    v-for="m in resumenMateriales"
-                                    :key="m.material_id"
-                                    :class="
-                                        m.necesita > m.hay
-                                            ? 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400'
-                                            : 'text-gray-700 dark:text-gray-300'
-                                    "
-                                >
-                                    <td class="px-1 py-1 pr-2">{{ m.nombre }}</td>
-                                    <td class="px-1 py-1 pr-2 text-right">{{ m.necesita.toLocaleString() }} {{ m.unidad }}</td>
-                                    <td class="px-1 py-1 pr-2 text-right">{{ m.hay.toLocaleString() }}</td>
-                                    <td class="px-1 py-1 text-right font-semibold">
-                                        {{ m.necesita > m.hay ? 'Falta: ' + (m.necesita - m.hay).toLocaleString() : '—' }}
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                        <p v-if="hayFaltantes" class="mt-2 text-xs font-medium text-red-600 dark:text-red-400">
-                            Inventario insuficiente: al guardar la orden se generará una notificación de faltantes.
-                        </p>
-                        <p v-if="productosSinFicha.length" class="mt-1 text-xs text-amber-600 dark:text-amber-400">
-                            Sin ficha técnica (no generan requerimiento):
-                            {{ productosSinFicha.map((p) => p.nombre).join(', ') }}
-                        </p>
-                    </div>
-
                     <InputError class="mt-2" :message="form.errors.productos" />
                     <InputError class="mt-1" :message="form.errors.cantidad_planificada" />
                 </div>
 
+                <!-- Materiales requeridos según la ficha de los objetivos -->
+                <div
+                    v-if="resumenMateriales.length"
+                    class="mt-6 rounded-lg border border-gray-200 bg-gray-50/50 p-4 dark:border-gray-700 dark:bg-gray-800/40"
+                >
+                    <h4 class="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                        Materiales requeridos
+                        <span class="font-normal text-gray-500 dark:text-gray-400">
+                            (consumo ficha × {{ esOpMaterial ? 'cantidad del material' : 'total de tallas' }})
+                        </span>
+                    </h4>
+                    <table class="mt-2 w-full text-sm">
+                        <thead>
+                            <tr class="text-left text-xs text-gray-500 uppercase dark:text-gray-400">
+                                <th class="py-1 pr-2">Material</th>
+                                <th class="py-1 pr-2 text-right">Necesita</th>
+                                <th class="py-1 pr-2 text-right">Hay</th>
+                                <th class="py-1 text-right">Faltante</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr
+                                v-for="m in resumenMateriales"
+                                :key="m.material_id"
+                                :class="
+                                    m.necesita > m.hay
+                                        ? 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400'
+                                        : 'text-gray-700 dark:text-gray-300'
+                                "
+                            >
+                                <td class="px-1 py-1 pr-2">{{ m.nombre }}</td>
+                                <td class="px-1 py-1 pr-2 text-right">{{ m.necesita.toLocaleString() }} {{ m.unidad }}</td>
+                                <td class="px-1 py-1 pr-2 text-right">{{ m.hay.toLocaleString() }}</td>
+                                <td class="px-1 py-1 text-right font-semibold">
+                                    {{ m.necesita > m.hay ? 'Falta: ' + (m.necesita - m.hay).toLocaleString() : '—' }}
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <p v-if="hayFaltantes" class="mt-2 text-xs font-medium text-red-600 dark:text-red-400">
+                        Inventario insuficiente: al guardar la orden se generará una notificación de faltantes.
+                    </p>
+                    <p
+                        v-if="!esOpMaterial && productosSinFicha.length"
+                        class="mt-1 text-xs text-amber-600 dark:text-amber-400"
+                    >
+                        Sin ficha técnica (no generan requerimiento):
+                        {{ productosSinFicha.map((p) => p.nombre).join(', ') }}
+                    </p>
+                </div>
+
                 <!-- Distribución por tallas integrada -->
-                <div class="mt-6 rounded-lg border border-gray-200 bg-gray-50/50 p-4 dark:border-gray-700 dark:bg-gray-800/40">
+                <div v-if="!esOpMaterial" class="mt-6 rounded-lg border border-gray-200 bg-gray-50/50 p-4 dark:border-gray-700 dark:bg-gray-800/40">
                     <div class="mb-1 flex flex-wrap items-center justify-between gap-2">
                         <h3 class="text-sm font-semibold text-gray-800 dark:text-gray-200">
                             Distribución por tallas de la orden
@@ -756,12 +970,14 @@ watch([() => props.show, () => op.value.id], cargarOp, { immediate: true, flush:
                 <div class="my-8 flex flex-wrap items-center justify-between gap-3">
                     <div class="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-gray-600 dark:text-gray-400">
                         <span>
-                            Total de productos:
-                            <b class="text-gray-900 dark:text-gray-100">{{ productosSel.length }}</b>
+                            {{ esOpMaterial ? 'Materiales procesados:' : 'Total de productos:' }}
+                            <b class="text-gray-900 dark:text-gray-100">
+                                {{ esOpMaterial ? materialesSel.length : productosSel.length }}
+                            </b>
                         </span>
                         <span>
                             Cantidad planificada:
-                            <b class="text-gray-900 dark:text-gray-100">{{ totalTallas }}</b>
+                            <b class="text-gray-900 dark:text-gray-100">{{ cantidadPlanificada }}</b>
                         </span>
                         <span>
                             Costo fichas:
@@ -774,8 +990,8 @@ watch([() => props.show, () => op.value.id], cargarOp, { immediate: true, flush:
                         </SecondaryButton>
                         <PrimaryButton
                             class="ml-3"
-                            :class="{ 'opacity-25': form.processing || sinProductos }"
-                            :disabled="form.processing || sinProductos"
+                            :class="{ 'opacity-25': form.processing || sinObjetivos }"
+                            :disabled="form.processing || sinObjetivos"
                             type="submit"
                         >
                             {{ lang().t('app.button.save') }} {{ form.processing ? '...' : '' }}

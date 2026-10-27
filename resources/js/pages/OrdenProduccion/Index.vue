@@ -97,6 +97,8 @@ const preparadas = computed(() =>
                 op.numero_op,
                 op.producto_nombre,
                 op.productos_nombres,
+                op.materiales_nombres,
+                ...(op.materiales_objetivo || []).map((m: any) => m.nombre),
             ].join(' '),
         ),
     })),
@@ -746,9 +748,16 @@ const onAccionFila = (id: string, op: any) => {
 };
 
 // Una OP sin producto de referencia igual produce: su titular salen del kit de productos.
-const nombreProductoOp = (op: any) => op.producto_nombre || op.productos_nombres || '';
+const nombreProductoOp = (op: any) =>
+    op.producto_nombre || op.productos_nombres || op.materiales_nombres || '';
 
 const detalleProductoOp = (op: any) => {
+    if (op.materiales_nombres) {
+        const cantidad = (op.materiales_objetivo || []).length;
+        return cantidad
+            ? (cantidad === 1 ? 'material procesado' : 'materiales procesados')
+            : 'Material procesado';
+    }
     if (op.producto_nombre) return op.productos_nombres || 'Sin productos en el kit';
     const kit = (op.productos || []).length;
     return kit ? (kit === 1 ? 'producto del kit' : 'productos del kit') : 'Sin productos';
@@ -1684,7 +1693,7 @@ const titulos = [
                                             </span>
                                             <span class="text-violet-400 dark:text-violet-500">·</span>
                                             <span class="font-medium">
-                                                {{ compromiso.producto_nombre || compromiso.op?.productos_nombres || compromiso.op?.producto_nombre || 'Producto de la OP' }}
+                                                {{ compromiso.material_nombre || compromiso.producto_nombre || compromiso.op?.productos_nombres || compromiso.op?.materiales_nombres || compromiso.op?.producto_nombre || 'Producto de la OP' }}
                                             </span>
                                             <span v-if="compromiso.talla" class="text-violet-700/70 dark:text-violet-300/70">
                                                 · Talla {{ compromiso.talla }}

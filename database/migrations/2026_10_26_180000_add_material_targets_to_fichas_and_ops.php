@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -33,6 +34,10 @@ return new class extends Migration
         });
 
         Schema::table('distribucion_por_tallas', function (Blueprint $table) {
+            // Las filas de una OP de materiales no representan una talla: una
+            // fila por material, con la cantidad planificada de ese material.
+            $table->string('talla')->nullable()->change();
+
             $table->foreignId('material_id')
                 ->nullable()
                 ->after('producto_id')
@@ -41,6 +46,9 @@ return new class extends Migration
         });
 
         Schema::table('recepcion_calidads', function (Blueprint $table) {
+            // La recepción de un material no tiene talla.
+            $table->string('talla')->nullable()->change();
+
             $table->foreignId('material_referencia_id')
                 ->nullable()
                 ->after('producto_referencia_id')
@@ -59,16 +67,25 @@ return new class extends Migration
 
     public function down(): void
     {
+        DB::table('compromisos_reparacion')->whereNotNull('material_referencia_id')->delete();
+        DB::table('recepcion_calidads')->whereNotNull('material_referencia_id')->delete();
+
         Schema::table('compromisos_reparacion', function (Blueprint $table) {
             $table->dropConstrainedForeignId('material_referencia_id');
         });
 
         Schema::table('recepcion_calidads', function (Blueprint $table) {
             $table->dropConstrainedForeignId('material_referencia_id');
+            $table->string('talla')->nullable(false)->change();
         });
+
+        // Las filas de materiales no tienen talla; se eliminan antes de volver
+        // a exigir la columna.
+        DB::table('distribucion_por_tallas')->whereNotNull('material_id')->delete();
 
         Schema::table('distribucion_por_tallas', function (Blueprint $table) {
             $table->dropConstrainedForeignId('material_id');
+            $table->string('talla')->nullable(false)->change();
         });
 
         Schema::dropIfExists('orden_produccion_material');

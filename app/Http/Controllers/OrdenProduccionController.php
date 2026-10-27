@@ -71,14 +71,15 @@ class OrdenProduccionController extends Controller {
                             ?: ('Material #' . $m->id))
                         : null;
 
-                    $op->producto_nombre = $nombreProducto($producto)
-                        ?? ($op->producto_referencia_id ? '#' . $op->producto_referencia_id : '');
                     $op->productos_nombres = $op->productos
                         ->map(fn ($p) => $nombreProducto($p))
                         ->implode(', ');
                     $op->materiales_nombres = $op->materiales
                         ->map(fn ($m) => $nombreMaterial($m))
                         ->implode(', ');
+                    $op->producto_nombre = $nombreProducto($producto)
+                        ?? ($op->producto_referencia_id ? '#' . $op->producto_referencia_id : '')
+                        ?: $op->materiales_nombres;
                     $op->es_op_material = $op->materiales->isNotEmpty();
                     $op->objetivo_nombre = $op->materiales_nombres ?: $op->productos_nombres ?: $op->producto_nombre;
                     $op->materiales_objetivo = $op->materiales->map(fn ($m) => [

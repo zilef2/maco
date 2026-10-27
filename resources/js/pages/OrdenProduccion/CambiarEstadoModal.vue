@@ -420,14 +420,17 @@ const tallasOp = computed(() =>
         distribucion_id: d.id,
         talla: d.talla,
         esperada: Number(d.cantidad_planificada) || 0,
-        producto_id: d.producto_id ?? productoSuelto.value?.id ?? null,
-        producto_nombre: d.producto_nombre
-            ?? productoSuelto.value?.nombre
-            ?? null,
+        producto_id: d.material_id ? null : (d.producto_id ?? productoSuelto.value?.id ?? null),
+        producto_nombre: d.material_id
+            ? (d.material_nombre || 'Material procesado')
+            : (d.producto_nombre ?? productoSuelto.value?.nombre ?? null),
+        material_id: d.material_id ?? null,
+        material_nombre: d.material_nombre ?? null,
     }))
 );
 
-const claveRecepcion = (productoId: any, talla: any) => `${productoId ?? ''}|${talla ?? ''}`;
+const claveRecepcion = (productoId: any, talla: any, materialId: any = null) =>
+    `${materialId ? 'material:' + materialId : 'producto:' + (productoId ?? '')}|${talla ?? ''}`;
 
 const nuevaFila = (talla: any, existente?: any) => ({
     distribucion_id: talla.distribucion_id,
@@ -435,6 +438,8 @@ const nuevaFila = (talla: any, existente?: any) => ({
     esperada: talla.esperada,
     producto_id: talla.producto_id,
     producto_nombre: talla.producto_nombre,
+    material_id: talla.material_id,
+    material_nombre: talla.material_nombre,
     cantidad_aprobada: (existente?.cantidad_aprobada ?? null) as number | null,
     cantidad_en_reparacion: (existente?.cantidad_en_reparacion ?? null) as number | null,
     cantidad_no_recuperable: (existente?.cantidad_no_recuperable ?? null) as number | null,
@@ -445,11 +450,14 @@ const nuevaFila = (talla: any, existente?: any) => ({
 const filasRecepcion = computed(() => {
     const existentes = new Map<string, any>();
     for (const recepcion of ((props.op as any)?.recepciones_detalle || [])) {
-        existentes.set(claveRecepcion(recepcion.producto_id, recepcion.talla), recepcion);
+        existentes.set(
+            claveRecepcion(recepcion.producto_id, recepcion.talla, recepcion.material_id),
+            recepcion
+        );
     }
 
     return tallasOp.value.map((talla: any) => {
-        const clave = claveRecepcion(talla.producto_id, talla.talla);
+        const clave = claveRecepcion(talla.producto_id, talla.talla, talla.material_id);
         return nuevaFila(talla, existentes.get(clave));
     });
 });
@@ -504,11 +512,14 @@ const alCambiarEstado = () => {
 
     // Conserva lo que el usuario ya escribió al cambiar de estado.
     const actuales = new Map(
-        form.recepciones.map((fila: any) => [claveRecepcion(fila.producto_id, fila.talla), fila])
+        form.recepciones.map((fila: any) => [
+            claveRecepcion(fila.producto_id, fila.talla, fila.material_id),
+            fila,
+        ])
     );
 
     form.recepciones = filasRecepcion.value.map((fila: any) => {
-        const actual = actuales.get(claveRecepcion(fila.producto_id, fila.talla));
+        const actual = actuales.get(claveRecepcion(fila.producto_id, fila.talla, fila.material_id));
         return actual ? { ...fila, ...actual } : { ...fila };
     });
 };
@@ -543,7 +554,7 @@ const clavesDuplicadas = computed(() => {
     const vistas = new Set<string>();
     const repetidas = new Set<string>();
     for (const fila of form.recepciones) {
-        const clave = `${fila.producto_id ?? ''}|${fila.talla}`;
+        const clave = claveRecepcion(fila.producto_id, fila.talla, fila.material_id);
         if (vistas.has(clave)) repetidas.add(clave);
         vistas.add(clave);
     }
@@ -611,6 +622,7 @@ const filasCosto = computed(() => {
 
     return ((props.op as any)?.recepciones_detalle || []).map((recepcion: any) => ({
         producto_id: recepcion.producto_id,
+        material_id: recepcion.material_id,
         cantidad_aprobada: recepcion.cantidad_aprobada,
         cantidad_en_reparacion: recepcion.cantidad_en_reparacion,
         cantidad_no_recuperable: recepcion.cantidad_no_recuperable,
@@ -622,7 +634,8 @@ const filasCosto = computed(() => {
 const costoRecepcion = computed(() =>
     resumenRecepcionCosto(
         filasCosto.value,
-        (props.op as any)?.costo_unitario_productos as Record<string, number> | undefined
+        (props.op as any)?.costo_unitario_productos as Record<string, number> | undefined,
+        (props.op as any)?.costo_unitario_materiales as Record<string, number> | undefined
     )
 );
 
@@ -1150,7 +1163,7 @@ const posicionarScrollRecepcion = async () => {
                                             {{ fila.producto_nombre || '—' }}
                                         </td>
                                         <td class="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">
-                                            {{ fila.talla }}
+                                            {{ fila.talla || '—' }}
                                         </td>
                                         <td class="px-3 py-2 text-right tabular-nums text-gray-500 dark:text-gray-400">
                                             {{ fila.esperada }}
