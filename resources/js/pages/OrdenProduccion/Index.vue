@@ -229,6 +229,8 @@ const valorOrden = (op: any, key: string): any => {
             return op.estado_nombre ?? '';
         case 'responsable':
             return op.responsable_nombre ?? '';
+        case 'costo_total':
+            return Number(op.costo_total) || 0;
         default:
             return op[key];
     }
@@ -404,6 +406,12 @@ const totalUnidades = computed(() =>
 const totalCostoFichas = computed(() =>
     ordenadas.value.reduce((total: number, op: any) => total + (Number(op.costo_fichas) || 0), 0),
 );
+
+const totalCostoProceso = computed(() =>
+    ordenadas.value.reduce((total: number, op: any) => total + (Number(op.costo_proceso) || 0), 0),
+);
+
+const totalCostoOp = computed(() => totalCostoFichas.value + totalCostoProceso.value);
 
 const resumenEstados = computed(() => {
     const conteos = new Map<number, number>();
@@ -642,7 +650,7 @@ const columnas = [
     { key: 'numero_op', label: 'Orden', sortable: true, align: 'left', headerClass: 'min-w-[130px]', cellClass: 'min-w-[130px]' },
     { key: 'producto', label: 'Producto', sortable: true, align: 'left', headerClass: 'min-w-[200px]', cellClass: 'min-w-[200px]' },
     { key: 'cantidad_planificada', label: 'Cantidad', sortable: true, align: 'right', headerClass: 'w-[100px]', cellClass: 'w-[100px]' },
-    { key: 'costo_fichas', label: 'Costo fichas', sortable: true, align: 'right', headerClass: 'w-[120px]', cellClass: 'w-[120px]' },
+    { key: 'costo_total', label: 'Costo OP', sortable: true, align: 'right', headerClass: 'w-[175px]', cellClass: 'w-[175px]' },
     { key: 'taller', label: 'Envío taller', sortable: true, align: 'left', headerClass: 'hidden min-w-[150px] md:table-cell', cellClass: 'hidden min-w-[150px] md:table-cell' },
     { key: 'estado', label: 'Estado', sortable: true, align: 'left', headerClass: 'min-w-[150px]', cellClass: 'min-w-[150px]' },
     { key: 'contexto', label: '-', sortable: false, align: 'left', headerClass: 'min-w-[160px]', cellClass: 'min-w-[160px]' },
@@ -1119,15 +1127,29 @@ const titulos = [
                                     </div>
                                 </td>
 
-                                <!-- Costo de las fichas técnicas de sus productos -->
+                                <!-- Costos de la OP: fichas + proceso = total -->
                                 <td class="px-3 py-3 text-right align-top">
-                                    <div class="flex flex-col items-end gap-0.5">
-                                        <span class="font-semibold tabular-nums text-foreground">
-                                            {{ formatdinero(op.costo_fichas) }}
-                                        </span>
-                                        <span class="text-[11px] text-muted-foreground">
-                                            {{ props.metodoCostos === 2 ? 'materiales · último precio' : 'materiales · promedio' }}
-                                        </span>
+                                    <div class="flex flex-col gap-0.5">
+                                        <div class="flex items-baseline justify-between gap-2 text-[11px]">
+                                            <span class="text-muted-foreground">Costo fichas</span>
+                                            <span class="font-semibold tabular-nums text-foreground">
+                                                {{ formatdinero(op.costo_fichas) }}
+                                            </span>
+                                        </div>
+                                        <div class="flex items-baseline justify-between gap-2 text-[11px]">
+                                            <span class="text-muted-foreground">Costo proceso</span>
+                                            <span class="tabular-nums text-foreground">
+                                                {{ formatdinero(op.costo_proceso) }}
+                                            </span>
+                                        </div>
+                                        <div class="mt-1 flex items-baseline justify-between gap-2 border-t border-border pt-1">
+                                            <span class="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                                                Total
+                                            </span>
+                                            <span class="font-semibold tabular-nums text-foreground">
+                                                {{ formatdinero(op.costo_total) }}
+                                            </span>
+                                        </div>
                                     </div>
                                 </td>
 
@@ -1455,11 +1477,13 @@ const titulos = [
                         </div>
 
                         <div class="rounded-lg border border-border bg-background p-3">
-                            <p class="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Costo fichas</p>
+                            <p class="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Costo OP</p>
                             <p class="mt-1 text-xl font-semibold tabular-nums text-foreground">
-                                {{ formatdinero(totalCostoFichas) }}
+                                {{ formatdinero(totalCostoOp) }}
                             </p>
-                            <p class="mt-0.5 text-[11px] text-muted-foreground">materiales por ficha técnica</p>
+                            <p class="mt-0.5 text-[11px] text-muted-foreground">
+                                {{ formatdinero(totalCostoFichas) }} fichas + {{ formatdinero(totalCostoProceso) }} proceso
+                            </p>
                         </div>
 
                         <div class="rounded-lg border border-cyan-200/70 bg-cyan-50/40 p-3 dark:border-cyan-500/20 dark:bg-cyan-500/5">

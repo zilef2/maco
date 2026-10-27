@@ -185,6 +185,8 @@ class OrdenProduccionController extends Controller {
                     // costos_promedio; si la OP aún no tiene su precio guardado
                     // se calcula en vivo con ese mismo método.
                     $op->costo_fichas = $op->costoFichasTecnicas();
+                    $op->costo_proceso = round((float) ($op->costo_proceso ?? 0), 2);
+                    $op->costo_total = round($op->costo_fichas + $op->costo_proceso, 2);
 
                     $nombresMateriales = $op->materiales_detalle;
                     $nombrePorMaterial = collect($nombresMateriales)
@@ -658,7 +660,9 @@ class OrdenProduccionController extends Controller {
         $materialesPivot = $this->materialesPivotDesdeRequest($request);
         $esModoMaterial = !empty($materialesPivot);
 
-        $data = $request->only(['cantidad_planificada', 'fecha_prevista_envio_taller', 'taller_id', 'tipo', 'empresa_externa_id', 'user_id', 'id_shopify_producto', 'observaciones', 'estado_op_material_id', 'externa']);
+        $data = $request->only(['cantidad_planificada', 'costo_proceso', 'fecha_prevista_envio_taller', 'taller_id', 'tipo', 'empresa_externa_id', 'id_shopify_producto', 'observaciones', 'estado_op_material_id', 'externa']);
+        $data['costo_proceso'] = round((float) ($data['costo_proceso'] ?? 0), 2);
+        $data['user_id'] = $request->user()?->id;
         $data['producto_referencia_id'] = $request->filled('producto_referencia_id') ? $request->input('producto_referencia_id') : null;
         if ($esModoMaterial) {
             // La cantidad planificada de una OP de materiales es la suma de las
@@ -672,10 +676,6 @@ class OrdenProduccionController extends Controller {
         $data['fecha_prevista_envio_taller'] = ($data['fecha_prevista_envio_taller'] ?? '') === '' ? null : $data['fecha_prevista_envio_taller'];
         $data['estado_op_material_id'] = ($data['estado_op_material_id'] ?? '') === '' ? null : $data['estado_op_material_id'];
         $data = $this->normalizarTipo($data);
-
-        if (empty($data['user_id']) && $request->filled('responsable_id')) {
-            $data['user_id'] = $request->input('responsable_id');
-        }
 
         $data['estado_op_id'] = EstadoOperacion::where('nombre', 'Preparación')->value('id');
 
@@ -785,11 +785,11 @@ class OrdenProduccionController extends Controller {
             'id' => ['nullable', 'integer', 'exists:orden_produccions,id'],
             'numero_op' => ['nullable', 'string', 'regex:/^OP-\d+$/'],
             'cantidad_planificada' => ['nullable', 'numeric', 'min:0'],
+            'costo_proceso' => ['nullable', 'numeric', 'min:0'],
             'fecha_prevista_envio_taller' => ['nullable', 'date'],
             'taller_id' => ['nullable', 'integer', 'exists:tallers,id'],
             'tipo' => ['nullable', 'in:taller,externa'],
             'empresa_externa_id' => ['nullable', 'integer', 'exists:empresa_externas,id'],
-            'user_id' => ['nullable', 'integer', 'exists:users,id'],
             'id_shopify_producto' => ['nullable', 'string'],
             'observaciones' => ['nullable', 'string'],
             'estado_op_material_id' => ['nullable', 'integer', 'exists:estado_op_materials,id'],
@@ -813,8 +813,11 @@ class OrdenProduccionController extends Controller {
             ? !empty($materialesPivot)
             : ($request->filled('id') && OrdenProduccion::find((int) $request->input('id'))?->materiales()->exists());
 
-        $data = $request->only(['numero_op', 'cantidad_planificada', 'fecha_prevista_envio_taller', 'taller_id', 'tipo', 'empresa_externa_id', 'user_id', 'id_shopify_producto', 'observaciones', 'estado_op_material_id', 'externa']);
+        $data = $request->only(['numero_op', 'cantidad_planificada', 'costo_proceso', 'fecha_prevista_envio_taller', 'taller_id', 'tipo', 'empresa_externa_id', 'id_shopify_producto', 'observaciones', 'estado_op_material_id', 'externa']);
         $data = array_map(fn ($v) => $v === '' ? null : $v, $data);
+        if (array_key_exists('costo_proceso', $data)) {
+            $data['costo_proceso'] = round((float) ($data['costo_proceso'] ?? 0), 2);
+        }
         $data = $this->normalizarTipo($data);
         $data['estado_op_id'] = EstadoOperacion::where('nombre', 'Borrador')->value('id');
         if ($esModoMaterial) {
@@ -826,18 +829,14 @@ class OrdenProduccionController extends Controller {
         } elseif (empty($data['cantidad_planificada'])) {
             $data['cantidad_planificada'] = 0;
         }
-        if (empty($data['user_id']) && $request->filled('responsable_id')) {
-            $data['user_id'] = $request->input('responsable_id');
-        }
-        if (empty($data['user_id']) && $request->user()) {
-            $data['user_id'] = $request->user()->id;
-        }
-
         $OrdenProduccion = $request->filled('id')
             ? OrdenProduccion::findOrFail((int) $request->input('id'))
             : new OrdenProduccion();
 
         if (!$OrdenProduccion->exists) {
+            // El responsable de una OP nueva es siempre el usuario logeado.
+            $data['user_id'] = $request->user()?->id;
+            $data['costo_proceso'] = round((float) ($data['costo_proceso'] ?? 0), 2);
             // OP nueva: el número se calcula en el servidor (mayor registrado + 1)
             // y no se confía en el valor del formulario, para no repetir códigos.
             $data['numero_op'] = OrdenProduccion::siguienteNumeroOp();
@@ -909,6 +908,7 @@ class OrdenProduccionController extends Controller {
         DB::beginTransaction();
 
         $request->validate([
+            'costo_proceso' => ['nullable', 'numeric', 'min:0'],
             'materiales' => ['nullable', 'array'],
             'materiales.*' => ['integer', 'exists:materials,id'],
             'materiales_cantidad' => ['nullable', 'array'],
@@ -949,7 +949,10 @@ class OrdenProduccionController extends Controller {
             }
         }
 
-        $data = $request->only(['numero_op', 'cantidad_planificada', 'fecha_prevista_envio_taller', 'taller_id', 'tipo', 'empresa_externa_id', 'user_id', 'id_shopify_producto', 'observaciones', 'estado_op_material_id', 'externa']);
+        $data = $request->only(['numero_op', 'cantidad_planificada', 'costo_proceso', 'fecha_prevista_envio_taller', 'taller_id', 'tipo', 'empresa_externa_id', 'id_shopify_producto', 'observaciones', 'estado_op_material_id', 'externa']);
+        if (array_key_exists('costo_proceso', $data)) {
+            $data['costo_proceso'] = round((float) ($data['costo_proceso'] ?? 0), 2);
+        }
         $data['producto_referencia_id'] = $request->filled('producto_referencia_id') ? $request->input('producto_referencia_id') : null;
         if ($esModoMaterial) {
             $data['cantidad_planificada'] = array_sum(array_map(
@@ -961,10 +964,6 @@ class OrdenProduccionController extends Controller {
         $data['fecha_prevista_envio_taller'] = ($data['fecha_prevista_envio_taller'] ?? '') === '' ? null : $data['fecha_prevista_envio_taller'];
         $data['estado_op_material_id'] = ($data['estado_op_material_id'] ?? '') === '' ? null : $data['estado_op_material_id'];
         $data = $this->normalizarTipo($data);
-
-        if (empty($data['user_id']) && $request->filled('responsable_id')) {
-            $data['user_id'] = $request->input('responsable_id');
-        }
 
         if (!empty($data['numero_op'])
             && $data['numero_op'] !== $OrdenProduccion->numero_op

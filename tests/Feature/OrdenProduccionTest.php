@@ -51,6 +51,8 @@ class OrdenProduccionTest extends TestCase
         $empresaExterna = EmpresaExterna::create(['nombre' => 'Empresa de prueba', 'actividad' => 'Confección']);
         $this->assertDatabaseHas('empresa_externas', ['nombre' => 'Empresa de prueba']);
 
+        $otroUsuario = User::factory()->create();
+
         $producto = Producto::create([
             'Codigo_interno' => 'TEST-001',
             'ID_producto_Shopify' => 'shopify-test-001',
@@ -66,10 +68,12 @@ class OrdenProduccionTest extends TestCase
         $response = $this->actingAs($user)->post(route('OrdenProduccion.store'), [
             'productos' => [$producto->id],
             'cantidad_planificada' => 10,
+            'costo_proceso' => 150.75,
             'tipo' => 'externa',
             'taller_id' => $taller->id,
             'empresa_externa_id' => $empresaExterna->id,
-            'user_id' => $user->id,
+            'user_id' => $otroUsuario->id,
+            'responsable_id' => $otroUsuario->id,
             'estado_op_material_id' => $estadoMaterial->id,
             'externa' => true,
         ]);
@@ -85,6 +89,15 @@ class OrdenProduccionTest extends TestCase
             'externa' => 1,
             'taller_id' => null,
             'empresa_externa_id' => $empresaExterna->id,
+            'user_id' => $user->id,
+            'costo_proceso' => 150.75,
+            'costo_total' => 150.75,
+        ]);
+
+        $this->assertNotSame($otroUsuario->id, $user->id);
+        $this->assertDatabaseMissing('orden_produccions', [
+            'numero_op' => 'OP-100',
+            'user_id' => $otroUsuario->id,
         ]);
     }
 
@@ -531,6 +544,7 @@ class OrdenProduccionTest extends TestCase
             'materiales' => [$contexto['material']->id],
             'materiales_cantidad' => [$contexto['material']->id => 3],
             'cantidad_planificada' => 3,
+            'costo_proceso' => 25.50,
             'tipo' => 'taller',
             'taller_id' => $contexto['taller']->id,
             'user_id' => $contexto['user']->id,
@@ -545,6 +559,9 @@ class OrdenProduccionTest extends TestCase
 
         $this->assertNull($op->producto_referencia_id);
         $this->assertSame(3, (int) $op->cantidad_planificada);
+        $this->assertSame(60.0, $op->costoFichasTecnicas());
+        $this->assertSame(25.5, (float) $op->costo_proceso);
+        $this->assertSame(85.5, (float) $op->costo_total);
         $this->assertDatabaseHas('orden_produccion_material', [
             'orden_produccion_id' => $op->id,
             'material_id' => $contexto['material']->id,
@@ -588,12 +605,16 @@ class OrdenProduccionTest extends TestCase
             'materiales' => [$contexto['material']->id],
             'materiales_cantidad' => [$contexto['material']->id => 5],
             'cantidad_planificada' => 5,
+            'costo_proceso' => 15.25,
         ]);
 
         $response->assertSessionHasNoErrors();
 
         $op->refresh();
         $this->assertSame(5, (int) $op->cantidad_planificada);
+        $this->assertSame(100.0, $op->costoFichasTecnicas());
+        $this->assertSame(15.25, (float) $op->costo_proceso);
+        $this->assertSame(115.25, (float) $op->costo_total);
         $this->assertDatabaseHas('orden_produccion_material', [
             'orden_produccion_id' => $op->id,
             'material_id' => $contexto['material']->id,
@@ -751,12 +772,17 @@ class OrdenProduccionTest extends TestCase
     {
         $contexto = $this->contextoMaterialProcesado();
         $op = $this->crearOpMaterial($contexto, 3);
+        $op->forceFill(['costo_proceso' => 12.50])->save();
+        $op->actualizarCostoTotal();
 
         $response = $this->actingAs($contexto['user'])->get(route('OrdenProduccion.index'));
 
         $response->assertInertia(fn (Assert $page) => $page
             ->component('OrdenProduccion/Index')
             ->where('ordenes.0.es_op_material', true)
+            ->where('ordenes.0.costo_fichas', fn ($valor) => (float) $valor === 60.0)
+            ->where('ordenes.0.costo_proceso', fn ($valor) => (float) $valor === 12.5)
+            ->where('ordenes.0.costo_total', fn ($valor) => (float) $valor === 72.5)
             ->where('ordenes.0.materiales_nombres', fn ($valor) => is_string($valor) && str_contains($valor, 'MAT-PROC-001'))
             ->where('ordenes.0.objetivo_nombre', fn ($valor) => is_string($valor) && str_contains($valor, 'MAT-PROC-001'))
             ->where('ordenes.0.materiales_objetivo.0.id', $contexto['material']->id)

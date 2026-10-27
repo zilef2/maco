@@ -18,6 +18,8 @@ use Illuminate\Database\Eloquent\SoftDeletes;
         'numero_op',
          'producto_referencia_id',
          'cantidad_planificada',
+         'costo_proceso',
+         'costo_total',
          'fecha_prevista_envio_taller',
          'taller_id',
          'tipo',
@@ -30,6 +32,8 @@ use Illuminate\Database\Eloquent\SoftDeletes;
         'externa' => 'boolean',
         'empresa_externa_id' => 'integer',
         'estado_op_secundario_id' => 'integer',
+        'costo_proceso' => 'float',
+        'costo_total' => 'float',
         'recepcion_desde' => 'datetime',
     ];
 
@@ -180,6 +184,23 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     public function costoFichasTecnicas(): float
     {
         return app(\App\Services\CostoMaterialOpService::class)->costo($this);
+    }
+
+    /**
+     * Costo total de la OP: materiales de las fichas técnicas + costo del
+     * proceso. Se persiste para que el listado no dependa de recalcularlo y
+     * se renueva cada vez que cambian los costos de los materiales.
+     */
+    public function actualizarCostoTotal(?float $costoFichas = null): float
+    {
+        $costoFichas ??= $this->costoFichasTecnicas();
+        $total = round($costoFichas + (float) ($this->costo_proceso ?? 0), 2);
+
+        if (round((float) ($this->costo_total ?? 0), 2) !== $total) {
+            $this->forceFill(['costo_total' => $total])->saveQuietly();
+        }
+
+        return $total;
     }
 
     public static function getFillableWithTypes(): array

@@ -4,12 +4,10 @@ require __DIR__ . '/settings.php';
 require __DIR__ . '/auth.php';
 
 use Alejo\Notificaciones\NotificacionesManager;
-use App\Http\Controllers\{ LocaleController, NotificacionesController, RoleController, ParametrosController, PermissionController};
+use App\Http\Controllers\{ NotificacionesController, RoleController, ParametrosController, PermissionController};
 use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
-
-Route::post('/locale/{locale}', [LocaleController::class, 'update'])->name('locale.update');
 
 // Route::get('/', function () { return Inertia::render('Welcome'); })->name('home');
 Route::get('/', function () {

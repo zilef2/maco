@@ -219,6 +219,9 @@ const costoFichas = computed(() => {
     return costoProductos + costoMateriales;
 });
 
+const costoProceso = computed(() => Number(form.costo_proceso) || 0);
+const costoTotal = computed(() => costoFichas.value + costoProceso.value);
+
 const productosSinFicha = computed(() =>
     productosSel.filter((p) => {
         const op: any = opcionesProducto.value.find((o: any) => o.id === p.id);
@@ -231,6 +234,7 @@ const hayFaltantes = computed(() => resumenMateriales.value.some((m) => m.necesi
 const form = useForm({
     numero_op: '',
     cantidad_planificada: '',
+    costo_proceso: '0',
     fecha_prevista_envio_taller: '',
     taller_id: '',
     tipo: 'taller',
@@ -418,6 +422,7 @@ const cargarOp = () => {
 
     form.numero_op = registro.numero_op ?? '';
     form.cantidad_planificada = registro.cantidad_planificada != null ? String(registro.cantidad_planificada) : '';
+    form.costo_proceso = registro.costo_proceso != null ? String(registro.costo_proceso) : '0';
     form.fecha_prevista_envio_taller = String(registro.fecha_prevista_envio_taller ?? '').substring(0, 10);
     form.taller_id = registro.taller_id ?? '';
     form.tipo = registro.tipo ?? (registro.externa ? 'externa' : 'taller');
@@ -579,6 +584,23 @@ watch([() => props.show, () => op.value.id], cargarOp, { immediate: true, flush:
                         </p>
                     </div>
 
+                    <div>
+                        <InputLabel for="costo_proceso" value="Costo del proceso" />
+                        <TextInput
+                            id="costo_proceso"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            class="mt-1 block w-full"
+                            v-model="form.costo_proceso"
+                            placeholder="0"
+                        />
+                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            Se suma al costo de las fichas para obtener el total de la OP.
+                        </p>
+                        <InputError class="mt-2" :message="form.errors.costo_proceso" />
+                    </div>
+
                     <div v-if="form.tipo !== 'externa'">
                         <InputLabel for="taller_id" :value="lang().t('app.label.taller') || 'Taller'" />
                         <v-select
@@ -627,7 +649,7 @@ watch([() => props.show, () => op.value.id], cargarOp, { immediate: true, flush:
                         <InputError class="mt-2" :message="form.errors.id_shopify_producto" />
                     </div>
 
-                    <div class="md:col-span-2">
+                    <div class="md:col-span-3">
                         <InputLabel for="observaciones" :value="lang().t('app.label.observaciones') || 'Observaciones'" />
                         <textarea
                             id="observaciones"
@@ -982,6 +1004,14 @@ watch([() => props.show, () => op.value.id], cargarOp, { immediate: true, flush:
                         <span>
                             Costo fichas:
                             <b class="text-gray-900 dark:text-gray-100">{{ formatdinero(costoFichas) }}</b>
+                        </span>
+                        <span>
+                            Costo del proceso:
+                            <b class="text-gray-900 dark:text-gray-100">{{ formatdinero(costoProceso) }}</b>
+                        </span>
+                        <span>
+                            Costo total:
+                            <b class="text-gray-900 dark:text-gray-100">{{ formatdinero(costoTotal) }}</b>
                         </span>
                     </div>
                     <div class="flex flex-wrap items-center gap-3">

@@ -186,3 +186,43 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Selects (vue-select y nativos) en modo oscuro: texto blanco, no gris.
+   html.dark + reglas directas porque vue-select.css (importado por los
+   componentes) se carga después y su :root con las variables claras ganaría
+   la cascada con la misma especificidad. */
+html.dark {
+  --vs-colors--lightest: rgba(255, 255, 255, 0.16);
+  --vs-colors--light: rgba(255, 255, 255, 0.45);
+  --vs-colors--dark: #fff;
+  --vs-selected-bg: rgba(255, 255, 255, 0.08);
+  --vs-selected-color: #fff;
+  --vs-search-input-color: #fff;
+  --vs-search-input-placeholder-color: rgba(255, 255, 255, 0.5);
+  --vs-dropdown-bg: #1f2937;
+  --vs-dropdown-color: #fff;
+  --vs-dropdown-option-color: #fff;
+  --vs-state-disabled-color: rgba(255, 255, 255, 0.35);
+  --vs-controls-color: rgba(255, 255, 255, 0.55);
+}
+
+.dark select,
+.dark .vs__selected,
+.dark .vs__search,
+.dark .vs__dropdown-option {
+  color: #fff;
+}
+
+.dark .vs__selected {
+  background-color: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.dark .vs__deselect {
+  fill: rgba(255, 255, 255, 0.7);
+}
+
+.dark .vs__dropdown-menu {
+  background-color: #1f2937;
+  border-color: rgba(255, 255, 255, 0.16);
+}

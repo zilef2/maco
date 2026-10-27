@@ -277,7 +277,7 @@ watchEffect(() => {
                                     <InputLabel :for="atributosform.label"
                                         :value="lang().t('app.label')[atributosform.label]" />
                                     <TextInput :id="atributosform.idd" :type="atributosform.type" class="mt-1 block w-full"
-                                        v-model="form[atributosform.idd]" required :placeholder="atributosform.label"
+                                        v-model="form[atributosform.idd]" :required="atributosform.idd !== 'observaciones'" :placeholder="atributosform.label"
                                         :error="form.errors[atributosform.idd]" />
                                     <InputError class="mt-2" :message="form.errors[atributosform.idd]" />
                                 </div>

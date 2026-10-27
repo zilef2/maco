@@ -7,7 +7,7 @@ import SecondaryButton from '@/components/SecondaryButton.vue';
 import TextInput from '@/components/TextInput.vue';
 import DistribucionTallasEditor from '@/pages/OrdenProduccion/DistribucionTallasEditor.vue';
 import { PencilSquareIcon, TrashIcon } from '@heroicons/vue/24/solid';
-import { useForm } from '@inertiajs/vue3';
+import { useForm, usePage } from '@inertiajs/vue3';
 import { computed, nextTick, reactive, ref, watch, watchEffect } from 'vue';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
@@ -23,6 +23,9 @@ const props = defineProps({
     borrador: Object,
 });
 const emit = defineEmits(['close']);
+
+const usuarioActual = computed<any>(() => (usePage().props as any)?.auth?.user ?? null);
+const responsableNombre = computed(() => usuarioActual.value?.name || 'el usuario actual');
 
 type ItemDistribucion = {
     id?: number;
@@ -222,6 +225,9 @@ const costoFichas = computed(() => {
     return costoProductos + costoMateriales;
 });
 
+const costoProceso = computed(() => Number(form.costo_proceso) || 0);
+const costoTotal = computed(() => costoFichas.value + costoProceso.value);
+
 const productosSinFicha = computed(() =>
     productosSel.filter((p) => {
         const op: any = opcionesProducto.value.find((o: any) => o.id === p.id);
@@ -235,11 +241,11 @@ const form = useForm({
     id: null as number | null,
     numero_op: '',
     cantidad_planificada: '',
+    costo_proceso: '0',
     fecha_prevista_envio_taller: '',
     taller_id: '',
     tipo: 'taller',
     empresa_externa_id: '',
-    user_id: '',
     id_shopify_producto: '',
     observaciones: '',
     distribucion_tallas: [] as Array<{ id?: number; producto_id?: number | null; talla: string; cantidad_planificada: number }>,
@@ -445,11 +451,11 @@ watchEffect(() => {
             form.id = b.id;
             form.numero_op = b.numero_op ?? '';
             form.cantidad_planificada = b.cantidad_planificada != null ? String(b.cantidad_planificada) : '';
+            form.costo_proceso = b.costo_proceso != null ? String(b.costo_proceso) : '0';
             form.fecha_prevista_envio_taller = String(b.fecha_prevista_envio_taller ?? '').substring(0, 10);
             form.taller_id = b.taller_id ?? '';
             form.tipo = b.tipo === 'externa' ? 'externa' : 'taller';
             form.empresa_externa_id = b.empresa_externa_id ?? '';
-            form.user_id = b.user_id ?? '';
             form.id_shopify_producto = b.id_shopify_producto ?? '';
             form.observaciones = b.observaciones ?? '';
 
@@ -515,7 +521,6 @@ const aplicarSeleccionAleatoria = () => {
     form.tipo = usaExterna ? 'externa' : 'taller';
     form.taller_id = usaExterna ? '' : aleatorioDe(seleccion.taller_id || []);
     form.empresa_externa_id = usaExterna ? aleatorioDe(empresas) : '';
-    form.user_id = aleatorioDe(seleccion.user_id || seleccion.responsable_id || []);
 
     const productos = opcionesProducto.value || [];
     if (productos.length) {
@@ -541,9 +546,15 @@ watch(
         <Modal :show="props.show" @close="closeModal" :maxWidth="'xl6'">
             <form class="p-6" @submit.prevent="create">
                 <div class="mb-6 flex items-center justify-between">
-                    <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100">
-                        {{ form.id ? 'Continuar' : lang().t('app.label.add') }} {{ props.title }}
-                    </h2>
+                    <div>
+                        <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100">
+                            {{ form.id ? 'Continuar' : lang().t('app.label.add') }} {{ props.title }}
+                        </h2>
+                        <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                            El responsable de esta OP es
+                            <b class="font-semibold text-gray-700 dark:text-gray-200">{{ responsableNombre }}</b>.
+                        </p>
+                    </div>
                     <button
                         type="button"
                         @click="closeModal"
@@ -652,18 +663,20 @@ watch(
                     </div>
 
                     <div>
-                        <InputLabel for="user_id" :value="lang().t('app.label.responsable_id') || 'Responsable'" />
-                        <v-select
-                            id="user_id"
+                        <InputLabel for="costo_proceso" value="Costo del proceso" />
+                        <TextInput
+                            id="costo_proceso"
+                            type="number"
+                            min="0"
+                            step="0.01"
                             class="mt-1 block w-full"
-                            :options="props.losSelect?.user_id || props.losSelect?.responsable_id || []"
-                            label="name"
-                            :reduce="(item: any) => item.id"
-                            v-model="form.user_id"
-                            placeholder="Buscar responsable..."
-                            required
+                            v-model="form.costo_proceso"
+                            placeholder="0"
                         />
-                        <InputError class="mt-2" :message="form.errors.user_id" />
+                        <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                            Se suma al costo de las fichas técnicas para obtener el total de la OP.
+                        </p>
+                        <InputError class="mt-2" :message="form.errors.costo_proceso" />
                     </div>
 
                     <div class="md:col-span-2">
@@ -1043,6 +1056,14 @@ watch(
                         <span>
                             Costo fichas:
                             <b class="text-gray-900 dark:text-gray-100">{{ formatdinero(costoFichas) }}</b>
+                        </span>
+                        <span>
+                            Costo del proceso:
+                            <b class="text-gray-900 dark:text-gray-100">{{ formatdinero(costoProceso) }}</b>
+                        </span>
+                        <span>
+                            Costo total:
+                            <b class="text-gray-900 dark:text-gray-100">{{ formatdinero(costoTotal) }}</b>
                         </span>
                     </div>
                     <div class="flex flex-wrap items-center gap-3">

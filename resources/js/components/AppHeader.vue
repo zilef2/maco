@@ -14,7 +14,6 @@ import {
 } from '@/components/ui/navigation-menu';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import LanguageSelector from '@/components/LanguageSelector.vue';
 import UserMenuContent from '@/components/UserMenuContent.vue';
 import { getInitials } from '@/composables/useInitials';
 import type { BreadcrumbItem, NavItem } from '@/types';
@@ -153,8 +152,6 @@ const rightNavItems: NavItem[] = [
                             </template>
                         </div>
                     </div>
-
-                    <LanguageSelector />
 
                     <DropdownMenu>
                         <DropdownMenuTrigger :as-child="true">

@@ -235,7 +235,7 @@ const update = () => {
                                     <InputLabel :for="atributosform.label"
                                         :value="lang().t('app.label')[atributosform.label]" />
                                     <TextInput :id="atributosform.idd" :type="atributosform.type" class="mt-1 block w-full"
-                                        v-model="form[atributosform.idd]" required :placeholder="atributosform.label"
+                                        v-model="form[atributosform.idd]" :required="atributosform.idd !== 'observaciones'" :placeholder="atributosform.label"
                                         :error="form.errors[atributosform.idd]"
                                         :disabled="esCampoBloqueado(atributosform.idd)"
                                         :class="esCampoBloqueado(atributosform.idd) ? 'bg-gray-100 dark:bg-gray-800/60 cursor-not-allowed opacity-70' : ''" />

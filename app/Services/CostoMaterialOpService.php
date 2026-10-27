@@ -367,7 +367,10 @@ class CostoMaterialOpService
             $op->costosMateriales()->delete();
         }
 
-        return round($total, 2);
+        $total = round($total, 2);
+        $op->actualizarCostoTotal($total);
+
+        return $total;
     }
 
     private function registrarCambio(
