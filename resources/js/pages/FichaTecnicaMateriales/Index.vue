@@ -178,7 +178,11 @@ watch(() => _.cloneDeep(data.params), debounce(() => {
                                 <td class="whitespace-nowrap py-4 px-2 sm:py-3">{{ ficha.nombre }}</td>
                                 <td class="py-4 px-2 sm:py-3">
                                     <span v-if="ficha.productos_nombres">{{ ficha.productos_nombres }}</span>
-                                    <span v-else class="text-gray-400">—</span>
+                                    <span v-if="ficha.productos_nombres && ficha.materiales_procesados_nombres" class="text-gray-400"> · </span>
+                                    <span v-if="ficha.materiales_procesados_nombres" class="font-medium text-amber-700 dark:text-amber-300">
+                                        {{ ficha.materiales_procesados_nombres }}
+                                    </span>
+                                    <span v-if="!ficha.productos_nombres && !ficha.materiales_procesados_nombres" class="text-gray-400">-</span>
                                 </td>
                                 <td class="whitespace-nowrap py-4 px-2 sm:py-3 text-center">
                                     <button type="button" @click="(data.fichaVisible = ficha), (data.materialesOpen = true)"

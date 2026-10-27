@@ -24,6 +24,7 @@ const emit = defineEmits(["close"]);
 const form = useForm({
     nombre: '',
     productos: [] as number[],
+    materiales_procesados: [] as number[],
     materiales: [] as any[],
 });
 
@@ -52,6 +53,7 @@ watchEffect(() => {
         form.errors = {}
         form.nombre = props.FichaTecnicaMaterialesa.nombre ?? '';
         form.productos = (props.FichaTecnicaMaterialesa.productos ?? []).map((p: any) => p.id);
+        form.materiales_procesados = (props.FichaTecnicaMaterialesa.materiales_procesados ?? []).map((m: any) => m.id);
         form.materiales = (props.FichaTecnicaMaterialesa.materiales ?? []).map((m: any) => ({
             material_componente_id: m.material_componente_id,
             consumo_estandar: m.consumo_estandar,
@@ -83,6 +85,14 @@ watchEffect(() => {
                         label="name" :reduce="(item: any) => item.id" v-model="form.productos"
                         :placeholder="lang().t('app.label.ficha_unica_producto')" />
                     <InputError class="mt-2" :message="form.errors.productos" />
+                </div>
+
+                <div class="mt-4">
+                    <InputLabel value="Materiales procesados" />
+                    <v-select multiple class="mt-1 block w-full" :options="props.losSelect?.materiales_procesados || []"
+                        label="name" :reduce="(item: any) => item.id" v-model="form.materiales_procesados"
+                        placeholder="Seleccione materiales procesados fabricados con esta ficha" />
+                    <InputError class="mt-2" :message="form.errors.materiales_procesados" />
                 </div>
 
                 <div class="mt-6">

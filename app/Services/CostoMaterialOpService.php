@@ -74,6 +74,11 @@ class CostoMaterialOpService
         $sinProducto = 0.0;
 
         foreach ($op->distribucionesPorTallas as $distribucion) {
+            // Las filas de un material procesado no son unidades de un producto.
+            if (!empty($distribucion->material_id)) {
+                continue;
+            }
+
             $productoId = (int) ($distribucion->producto_id ?? 0);
             $cantidad = (float) ($distribucion->cantidad_planificada ?? 0);
 
@@ -118,6 +123,49 @@ class CostoMaterialOpService
     }
 
     /**
+     * Unidades de cada material procesado que produce la OP. La cantidad vive
+     * en el pivote orden_produccion_material; si la OP es antigua y aún no la
+     * tiene, se reconstruye desde su distribución.
+     *
+     * @return array<int, float>
+     */
+    public function cantidadesPorMaterial(OrdenProduccion $op): array
+    {
+        $cantidades = [];
+
+        foreach ($op->materiales as $material) {
+            $cantidad = (float) ($material->pivot->cantidad ?? 0);
+            if ($cantidad > 0) {
+                $cantidades[(int) $material->id] = $cantidad;
+            }
+        }
+
+        if (!empty($cantidades)) {
+            return $cantidades;
+        }
+
+        foreach ($op->distribucionesPorTallas as $distribucion) {
+            $materialId = (int) ($distribucion->material_id ?? 0);
+            if ($materialId > 0) {
+                $cantidades[$materialId] = ($cantidades[$materialId] ?? 0)
+                    + (float) ($distribucion->cantidad_planificada ?? 0);
+            }
+        }
+
+        return $cantidades;
+    }
+
+    /**
+     * Materiales procesados que produce la OP.
+     *
+     * @return Collection<int, Material>
+     */
+    public function materialesObjetivo(OrdenProduccion $op): Collection
+    {
+        return $op->materiales->values();
+    }
+
+    /**
      * Materiales que requieren los productos de la OP, con el precio del método
      * vigente y su costo.
      *
@@ -127,10 +175,11 @@ class CostoMaterialOpService
     {
         $metodo ??= $this->metodo();
         $cantidades = $this->cantidadesPorProducto($op);
+        $cantidadesMateriales = $this->cantidadesPorMaterial($op);
         $unidades = $this->unidadesPorMaterial($op);
 
         // Consumo agregado por material: consumo_estandar de la ficha × unidades
-        // del producto en la OP.
+        // del producto o material procesado que produce la OP.
         $necesidad = [];
         foreach ($this->productos($op) as $producto) {
             $cantidad = (float) ($cantidades[$producto->id] ?? 0);
@@ -139,6 +188,28 @@ class CostoMaterialOpService
             }
 
             $ficha = $producto->fichaTecnica->first();
+            if (!$ficha) {
+                continue;
+            }
+
+            foreach ($ficha->materiales as $fila) {
+                $materialId = (int) $fila->material_componente_id;
+                if ($materialId <= 0) {
+                    continue;
+                }
+
+                $necesidad[$materialId] = ($necesidad[$materialId] ?? 0)
+                    + (float) $fila->consumo_estandar * $cantidad;
+            }
+        }
+
+        foreach ($this->materialesObjetivo($op) as $materialObjetivo) {
+            $cantidad = (float) ($cantidadesMateriales[$materialObjetivo->id] ?? 0);
+            if ($cantidad <= 0) {
+                continue;
+            }
+
+            $ficha = $materialObjetivo->fichaTecnica->first();
             if (!$ficha) {
                 continue;
             }
@@ -189,6 +260,17 @@ class CostoMaterialOpService
 
         foreach ($this->productos($op) as $producto) {
             foreach ($producto->fichaTecnica as $ficha) {
+                foreach ($ficha->materiales as $fila) {
+                    $materialId = (int) $fila->material_componente_id;
+                    if ($materialId > 0 && !isset($unidades[$materialId])) {
+                        $unidades[$materialId] = $fila->unidad_medida ?: 'u';
+                    }
+                }
+            }
+        }
+
+        foreach ($this->materialesObjetivo($op) as $materialObjetivo) {
+            foreach ($materialObjetivo->fichaTecnica as $ficha) {
                 foreach ($ficha->materiales as $fila) {
                     $materialId = (int) $fila->material_componente_id;
                     if ($materialId > 0 && !isset($unidades[$materialId])) {
@@ -381,6 +463,34 @@ class CostoMaterialOpService
         return $this->recalcularLista($ids);
     }
 
+    /**
+     * Renueva las OPs abiertas que producen alguno de estos materiales
+     * procesados: su ficha técnica cambió y con ella el costo de la OP.
+     *
+     * @param  list<int>  $materialIds
+     * @return int Cantidad de OPs recalculadas.
+     */
+    public function recalcularPorMateriales(array $materialIds): int
+    {
+        if (empty($materialIds)) {
+            return 0;
+        }
+
+        $cerradaId = EstadoOperacion::where('nombre', 'Cerrada')->value('id');
+
+        $ids = OrdenProduccion::query()
+            ->where(function ($consulta) use ($cerradaId) {
+                $consulta->whereNull('estado_op_id')
+                    ->orWhere('estado_op_id', '!=', $cerradaId);
+            })
+            ->whereHas('materiales', function ($pivot) use ($materialIds) {
+                $pivot->whereIn('materials.id', $materialIds);
+            })
+            ->pluck('id');
+
+        return $this->recalcularLista($ids);
+    }
+
     private function recalcularLista(Collection $opIds): int
     {
         $cerradaId = EstadoOperacion::where('nombre', 'Cerrada')->value('id');
@@ -389,6 +499,7 @@ class CostoMaterialOpService
             ->with([
                 'productos.fichaTecnica.materiales',
                 'productoReferencia.fichaTecnica.materiales',
+                'materiales.fichaTecnica.materiales',
                 'distribucionesPorTallas',
                 'costosMateriales',
             ])

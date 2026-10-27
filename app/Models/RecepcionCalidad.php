@@ -16,6 +16,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     protected $fillable = [
         'orden_produccion_id',
         'producto_referencia_id',
+        'material_referencia_id',
         'talla',
         'cantidad_esperada',
         'cantidad_recibida',
@@ -36,6 +37,11 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     public function productoReferencia()
     {
         return $this->belongsTo(Producto::class, 'producto_referencia_id');
+    }
+
+    public function materialReferencia()
+    {
+        return $this->belongsTo(Material::class, 'material_referencia_id');
     }
 
     /**
@@ -59,6 +65,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
                 [
                     'orden_produccion_id'     => $orden->id,
                     'producto_referencia_id'  => $fila['producto_id'] ?? null,
+                    'material_referencia_id'  => $fila['material_id'] ?? null,
                     'talla'                   => $fila['talla'],
                 ],
                 [

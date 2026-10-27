@@ -7,6 +7,7 @@ use App\Traits\HasFillableWithTypes;
 use Database\Factories\MaterialFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Material extends Model
@@ -37,6 +38,23 @@ class Material extends Model
     public function proveedorHabitual()
     {
         return $this->belongsTo(Proveedor::class, 'proveedor_habitual');
+    }
+
+    /**
+     * Ficha técnica con la que se fabrica este material procesado. Un material
+     * solo puede pertenecer a una ficha.
+     */
+    public function fichaTecnica(): BelongsToMany
+    {
+        return $this->belongsToMany(FichaTecnica::class, 'ficha_tecnica_material', 'material_id', 'ficha_tecnica_id')->withTimestamps();
+    }
+
+    /** OPs que producen este material procesado. */
+    public function ordenesProduccion(): BelongsToMany
+    {
+        return $this->belongsToMany(OrdenProduccion::class, 'orden_produccion_material', 'material_id', 'orden_produccion_id')
+            ->withPivot('cantidad')
+            ->withTimestamps();
     }
 
     public function prices()

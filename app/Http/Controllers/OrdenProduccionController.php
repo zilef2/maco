@@ -58,7 +58,7 @@ class OrdenProduccionController extends Controller {
         $claveListado = 'op_index_v11_' . $this->versionCache();
         $OrdenProduccions = Cache::remember($claveListado, now()->addMinutes(10), function () {
             return OrdenProduccion::query()
-                ->with(['productoReferencia.fichaTecnica.materiales', 'taller', 'empresaExterna', 'estadoOp', 'responsable', 'distribucionesPorTallas.producto', 'productos.fichaTecnica.materiales', 'recepcionesCalidad', 'compromisosReparacion', 'kitProcesos.material', 'procesosExternos.materialOrigen', 'procesosExternos.proveedorDestino', 'cierres', 'costosMateriales.material', 'costosCambios.material', 'costosCambios.usuario'])
+                ->with(['productoReferencia.fichaTecnica.materiales', 'taller', 'empresaExterna', 'estadoOp', 'responsable', 'distribucionesPorTallas.producto', 'distribucionesPorTallas.material', 'productos.fichaTecnica.materiales', 'materiales.fichaTecnica.materiales', 'recepcionesCalidad.materialReferencia', 'compromisosReparacion.materialReferencia', 'kitProcesos.material', 'procesosExternos.materialOrigen', 'procesosExternos.proveedorDestino', 'cierres', 'costosMateriales.material', 'costosCambios.material', 'costosCambios.usuario'])
                 ->orderByDesc('updated_at')
                 ->get()
                 ->map(function ($op) {
@@ -66,16 +66,33 @@ class OrdenProduccionController extends Controller {
                     $nombreProducto = fn ($p) => $p
                         ? ($p->Titulo_Shopify ?: ($p->Codigo_interno ?: 'Producto #' . $p->id))
                         : null;
+                    $nombreMaterial = fn ($m) => $m
+                        ? (trim(($m->codigo_material ? $m->codigo_material . ' — ' : '') . $m->nombre_base)
+                            ?: ('Material #' . $m->id))
+                        : null;
 
                     $op->producto_nombre = $nombreProducto($producto)
                         ?? ($op->producto_referencia_id ? '#' . $op->producto_referencia_id : '');
                     $op->productos_nombres = $op->productos
                         ->map(fn ($p) => $nombreProducto($p))
                         ->implode(', ');
+                    $op->materiales_nombres = $op->materiales
+                        ->map(fn ($m) => $nombreMaterial($m))
+                        ->implode(', ');
+                    $op->es_op_material = $op->materiales->isNotEmpty();
+                    $op->objetivo_nombre = $op->materiales_nombres ?: $op->productos_nombres ?: $op->producto_nombre;
+                    $op->materiales_objetivo = $op->materiales->map(fn ($m) => [
+                        'id' => (int) $m->id,
+                        'nombre' => $nombreMaterial($m),
+                        'cantidad' => (int) ($m->pivot->cantidad ?? 0),
+                    ])->values()->all();
 
                     // Nombres por producto para las tablas de detalle (tallas y recepción).
                     $nombresProductos = $op->productos->mapWithKeys(
                         fn ($p) => [$p->id => $nombreProducto($p)]
+                    );
+                    $nombresMaterialesObjetivo = $op->materiales->mapWithKeys(
+                        fn ($m) => [$m->id => $nombreMaterial($m)]
                     );
 
                     // Relación material -> productos que lo usan según la ficha
@@ -99,8 +116,26 @@ class OrdenProduccionController extends Controller {
                         }
                     }
 
-                    // Detalle por talla con su producto, para la recepción de calidad.
-                    $op->distribuciones_detalle = $op->distribucionesPorTallas->map(function ($d) use ($nombreProducto, $nombresProductos) {
+                    foreach ($op->materiales as $materialKit) {
+                        $ficha = $materialKit->fichaTecnica->first();
+                        if (!$ficha) {
+                            continue;
+                        }
+
+                        $nombreKit = $nombreMaterial($materialKit) ?: ('Material #' . $materialKit->id);
+                        foreach ($ficha->materiales as $filaMaterial) {
+                            $materialId = $filaMaterial->material_componente_id;
+                            if (!$materialId) {
+                                continue;
+                            }
+
+                            $productosPorMaterial[$materialId][$materialKit->id] = $nombreKit;
+                        }
+                    }
+
+                    // Detalle por talla con su producto o material, para la
+                    // recepción de calidad.
+                    $op->distribuciones_detalle = $op->distribucionesPorTallas->map(function ($d) use ($nombreProducto, $nombresProductos, $nombreMaterial, $nombresMaterialesObjetivo) {
                         return [
                             'id'                   => $d->id,
                             'talla'                => $d->talla,
@@ -108,6 +143,10 @@ class OrdenProduccionController extends Controller {
                             'producto_id'          => $d->producto_id,
                             'producto_nombre'      => $nombreProducto($d->producto)
                                 ?? $nombresProductos[$d->producto_id]
+                                ?? null,
+                            'material_id'          => $d->material_id,
+                            'material_nombre'      => $nombreMaterial($d->material)
+                                ?? $nombresMaterialesObjetivo[$d->material_id]
                                 ?? null,
                         ];
                     })->values()->all();
@@ -188,6 +227,7 @@ class OrdenProduccionController extends Controller {
                     // con los precios guardados. Lo usa el formulario de recepción
                     // para costear aprobados y no recuperables.
                     $op->costo_unitario_productos = $this->costosRecepcion->unitarios($op);
+                    $op->costo_unitario_materiales = $this->costosRecepcion->unitariosMateriales($op);
 
                     // Recepciones ya registradas, para precargar el formulario
                     // de calidad y para el detalle de solo lectura del estado.
@@ -196,6 +236,10 @@ class OrdenProduccionController extends Controller {
                         'producto_id'             => $r->producto_referencia_id,
                         'producto_nombre'         => $nombresProductos[$r->producto_referencia_id]
                             ?? ((int) $r->producto_referencia_id === (int) $producto?->id ? $nombreProducto($producto) : null),
+                        'material_id'             => $r->material_referencia_id,
+                        'material_nombre'         => $nombreMaterial($r->materialReferencia)
+                            ?? $nombresMaterialesObjetivo[$r->material_referencia_id]
+                            ?? null,
                         'talla'                   => $r->talla,
                         'cantidad_esperada'       => $r->cantidad_esperada,
                         'cantidad_recibida'       => $r->cantidad_recibida,
@@ -216,6 +260,10 @@ class OrdenProduccionController extends Controller {
                             'producto_id'            => $c->producto_referencia_id,
                             'producto_nombre'        => $nombresProductos[$c->producto_referencia_id]
                                 ?? ((int) $c->producto_referencia_id === (int) $producto?->id ? $nombreProducto($producto) : null),
+                            'material_id'            => $c->material_referencia_id,
+                            'material_nombre'        => $nombreMaterial($c->materialReferencia)
+                                ?? $nombresMaterialesObjetivo[$c->material_referencia_id]
+                                ?? null,
                             'talla'                  => $c->talla,
                             'cantidad_en_reparacion' => $c->cantidad_en_reparacion,
                             'fecha_compromiso'       => $c->fecha_compromiso?->toDateString(),
@@ -263,7 +311,7 @@ class OrdenProduccionController extends Controller {
         $borradorId = OrdenProduccion::where('estado_op_id', EstadoOperacion::where('nombre', 'Borrador')->value('id'))
             ->latest('updated_at')->value('id');
         $borradorUltimo = $borradorId
-            ? OrdenProduccion::with(['productos:id,Titulo_Shopify,Codigo_interno', 'distribucionesPorTallas'])->find($borradorId)
+            ? OrdenProduccion::with(['productos:id,Titulo_Shopify,Codigo_interno', 'materiales:id,codigo_material,nombre_base', 'distribucionesPorTallas'])->find($borradorId)
             : null;
 
         return Inertia::render($this->FromController . '/Index', [
@@ -397,6 +445,37 @@ class OrdenProduccionController extends Controller {
                 ];
             });
 
+        $materialesProcesados = Material::with(['fichaTecnica.materiales.material', 'lastPrice'])
+            ->where('material_procesado', true)
+            ->orderBy('nombre_base')
+            ->get(['id', 'codigo_material', 'nombre_base', 'unidad_inventario'])
+            ->map(function ($material) use ($preciosPorMaterial, $metodoCostos) {
+                $nombre = trim(($material->codigo_material ? $material->codigo_material . ' — ' : '') . $material->nombre_base)
+                    ?: ('Material #' . $material->id);
+                $ficha = $material->fichaTecnica->first();
+
+                return [
+                    'id'    => $material->id,
+                    'value' => $material->id,
+                    'name'  => $nombre,
+                    'label' => $nombre,
+                    'title' => $nombre,
+                    'unidad_inventario' => $material->unidad_inventario,
+                    'es_material' => true,
+                    'ficha' => $ficha ? ['nombre' => $ficha->nombre] : null,
+                    'ficha_materiales' => $ficha?->materiales->map(fn ($fila) => [
+                        'material_id'       => $fila->material_componente_id,
+                        'nombre'            => trim(($fila->material?->codigo_material ? $fila->material->codigo_material . ' — ' : '') . $fila->material?->nombre_base),
+                        'consumo_estandar'  => (float) $fila->consumo_estandar,
+                        'unidad_medida'     => $fila->unidad_medida,
+                        'costo_asociado_teorico' => (float) $fila->costo_asociado_teorico,
+                        'precio_unitario'   => (float) ($preciosPorMaterial[$fila->material_componente_id] ?? 0),
+                        'metodo_costos'     => $metodoCostos,
+                        'existencia_actual' => (float) ($fila->material?->existencia_actual ?? 0),
+                    ])->values()->all() ?? [],
+                ];
+            })->values()->all();
+
         $siguienteNumeroOp = (int) str_replace('OP-', '', OrdenProduccion::siguienteNumeroOp());
 
         $estadosMateriales = EstadoOpMaterial::all(['id', 'nombre'])
@@ -481,6 +560,7 @@ class OrdenProduccionController extends Controller {
             'estado_op_id'           => $estadoOperaciones,
             'producto_referencia_id' => $productos,
             'producto_id'            => $productos,
+            'materiales_procesados'  => $materialesProcesados,
             'taller_id'              => $talleres,
             'tipo'                   => [
                 ['id' => 'taller', 'value' => 'taller', 'name' => 'Taller', 'label' => 'Taller', 'title' => 'Taller'],
@@ -552,12 +632,42 @@ class OrdenProduccionController extends Controller {
         return $paginated;
     }
 
+    /**
+     * Materiales seleccionados y su cantidad (una unidad si el formulario no
+     * la envía). El pivote es la fuente para costos, kit y recepción.
+     *
+     * @return array<int, array{cantidad: int}>
+     */
+    private function materialesPivotDesdeRequest(Request $request): array
+    {
+        return collect((array) $request->input('materiales', []))
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->mapWithKeys(fn ($id) => [
+                $id => ['cantidad' => max(1, (int) $request->input('materiales_cantidad.' . $id, 1))],
+            ])
+            ->all();
+    }
+
     public function store(StoreOrdenProduccionRequest $request): RedirectResponse {
         $permissions = Myhelp::EscribirEnLog($this, ' Begin STORE:OrdenProduccions');
         DB::beginTransaction();
 
+        $materialesPivot = $this->materialesPivotDesdeRequest($request);
+        $esModoMaterial = !empty($materialesPivot);
+
         $data = $request->only(['cantidad_planificada', 'fecha_prevista_envio_taller', 'taller_id', 'tipo', 'empresa_externa_id', 'user_id', 'id_shopify_producto', 'observaciones', 'estado_op_material_id', 'externa']);
         $data['producto_referencia_id'] = $request->filled('producto_referencia_id') ? $request->input('producto_referencia_id') : null;
+        if ($esModoMaterial) {
+            // La cantidad planificada de una OP de materiales es la suma de las
+            // unidades de sus materiales procesados.
+            $data['cantidad_planificada'] = array_sum(array_map(
+                fn ($fila) => (int) $fila['cantidad'],
+                $materialesPivot
+            ));
+            $data['producto_referencia_id'] = null;
+        }
         $data['fecha_prevista_envio_taller'] = ($data['fecha_prevista_envio_taller'] ?? '') === '' ? null : $data['fecha_prevista_envio_taller'];
         $data['estado_op_material_id'] = ($data['estado_op_material_id'] ?? '') === '' ? null : $data['estado_op_material_id'];
         $data = $this->normalizarTipo($data);
@@ -580,21 +690,33 @@ class OrdenProduccionController extends Controller {
         // Las tallas pueden venir de la plantilla del producto (con id) o ser
         // nuevas. En ambos casos se guarda la cantidad planificada que digitó
         // el usuario, para que la OP y su kit no queden en cero.
-        $this->sincronizarTallas(
-            $OrdenProduccion,
-            $request->input('distribucion_tallas', []),
-            true,
-            $grupoTallas
-        );
+        if (!$esModoMaterial) {
+            $this->sincronizarTallas(
+                $OrdenProduccion,
+                $request->input('distribucion_tallas', []),
+                true,
+                $grupoTallas
+            );
+        }
 
-        $productosOp = array_map('intval', $request->input('productos', []));
+        $productosOp = $esModoMaterial ? [] : array_map('intval', (array) $request->input('productos', []));
         $OrdenProduccion->productos()->sync($productosOp);
+        $OrdenProduccion->materiales()->sync($materialesPivot);
 
-        // Aviso de materiales insuficientes según la ficha técnica de cada producto
+        if ($esModoMaterial) {
+            $this->sincronizarDistribucionMateriales($OrdenProduccion, $materialesPivot);
+        }
+
+        $cantidadesMateriales = array_map(fn ($fila) => (float) $fila['cantidad'], $materialesPivot);
+
+        // Aviso de materiales insuficientes según la ficha técnica de cada
+        // producto o material procesado.
         $faltantes = $this->faltantesDeMateriales(
             $productosOp,
             (int) ($data['cantidad_planificada'] ?? 0),
-            array_map('floatval', (array) $request->input('productos_cantidad', []))
+            array_map('floatval', (array) $request->input('productos_cantidad', [])),
+            array_keys($materialesPivot),
+            $cantidadesMateriales
         );
         $avisoFaltantes = null;
         if (!empty($faltantes)) {
@@ -627,7 +749,9 @@ class OrdenProduccionController extends Controller {
             $OrdenProduccion,
             $productosOp,
             (int) ($data['cantidad_planificada'] ?? 0),
-            array_map('floatval', (array) $request->input('productos_cantidad', []))
+            array_map('floatval', (array) $request->input('productos_cantidad', [])),
+            array_keys($materialesPivot),
+            $cantidadesMateriales
         );
 
         $this->guardarCostosMateriales($OrdenProduccion);
@@ -671,6 +795,10 @@ class OrdenProduccionController extends Controller {
             'externa' => ['nullable', 'boolean'],
             'productos' => ['nullable', 'array'],
             'productos.*' => ['integer', 'exists:productos,id'],
+            'materiales' => ['nullable', 'array'],
+            'materiales.*' => ['integer', 'exists:materials,id'],
+            'materiales_cantidad' => ['nullable', 'array'],
+            'materiales_cantidad.*' => ['integer', 'min:1'],
             'distribucion_tallas' => ['nullable', 'array'],
             'distribucion_tallas.*.id' => ['nullable', 'integer'],
             'distribucion_tallas.*.talla' => ['nullable', 'string', 'max:255'],
@@ -679,11 +807,22 @@ class OrdenProduccionController extends Controller {
 
         DB::beginTransaction();
 
+        $materialesPivot = $this->materialesPivotDesdeRequest($request);
+        $esModoMaterial = $request->has('materiales')
+            ? !empty($materialesPivot)
+            : ($request->filled('id') && OrdenProduccion::find((int) $request->input('id'))?->materiales()->exists());
+
         $data = $request->only(['numero_op', 'cantidad_planificada', 'fecha_prevista_envio_taller', 'taller_id', 'tipo', 'empresa_externa_id', 'user_id', 'id_shopify_producto', 'observaciones', 'estado_op_material_id', 'externa']);
         $data = array_map(fn ($v) => $v === '' ? null : $v, $data);
         $data = $this->normalizarTipo($data);
         $data['estado_op_id'] = EstadoOperacion::where('nombre', 'Borrador')->value('id');
-        if (empty($data['cantidad_planificada'])) {
+        if ($esModoMaterial) {
+            $data['cantidad_planificada'] = array_sum(array_map(
+                fn ($fila) => (int) $fila['cantidad'],
+                $materialesPivot
+            ));
+            $data['producto_referencia_id'] = null;
+        } elseif (empty($data['cantidad_planificada'])) {
             $data['cantidad_planificada'] = 0;
         }
         if (empty($data['user_id']) && $request->filled('responsable_id')) {
@@ -711,13 +850,35 @@ class OrdenProduccionController extends Controller {
         $OrdenProduccion->forceFill($data);
         $OrdenProduccion->save();
 
-        if ($request->has('distribucion_tallas')) {
+        if (!$esModoMaterial && $request->has('distribucion_tallas')) {
             $this->sincronizarTallas($OrdenProduccion, $request->input('distribucion_tallas', []), true, $request->input('grupo_tallas'));
         }
 
+        $productosOp = $esModoMaterial
+            ? []
+            : array_map('intval', (array) $request->input('productos', []));
+
         if ($request->has('productos')) {
-            $OrdenProduccion->productos()->sync(array_map('intval', (array) $request->input('productos', [])));
+            $OrdenProduccion->productos()->sync($productosOp);
         }
+
+        if ($request->has('materiales')) {
+            $OrdenProduccion->materiales()->sync($materialesPivot);
+        }
+
+        if ($esModoMaterial) {
+            $this->sincronizarDistribucionMateriales($OrdenProduccion, $materialesPivot);
+        }
+
+        $cantidadesMateriales = array_map(fn ($fila) => (float) $fila['cantidad'], $materialesPivot);
+        $this->sincronizarKitProceso(
+            $OrdenProduccion,
+            $productosOp,
+            (int) ($data['cantidad_planificada'] ?? 0),
+            array_map('floatval', (array) $request->input('productos_cantidad', [])),
+            array_keys($materialesPivot),
+            $cantidadesMateriales
+        );
 
         $this->guardarCostosMateriales($OrdenProduccion);
 
@@ -746,8 +907,56 @@ class OrdenProduccionController extends Controller {
         $permissions = Myhelp::EscribirEnLog($this, ' Begin UPDATE:OrdenProduccions');
         DB::beginTransaction();
 
+        $request->validate([
+            'materiales' => ['nullable', 'array'],
+            'materiales.*' => ['integer', 'exists:materials,id'],
+            'materiales_cantidad' => ['nullable', 'array'],
+            'materiales_cantidad.*' => ['integer', 'min:1'],
+        ]);
+
+        $OrdenProduccion = OrdenProduccion::findOrFail($id);
+
+        $materialesPivot = $this->materialesPivotDesdeRequest($request);
+        $tieneMaterialesEnviados = $request->has('materiales');
+        $esModoMaterial = $tieneMaterialesEnviados
+            ? !empty($materialesPivot)
+            : $OrdenProduccion->materiales()->exists();
+
+        if (!$tieneMaterialesEnviados && $esModoMaterial) {
+            $materialesPivot = $OrdenProduccion->materiales()
+                ->get()
+                ->mapWithKeys(fn ($material) => [
+                    $material->id => ['cantidad' => max(1, (int) ($material->pivot->cantidad ?? 1))],
+                ])
+                ->all();
+        }
+
+        if ($esModoMaterial) {
+            $elegibles = Material::query()
+                ->whereIn('id', array_keys($materialesPivot))
+                ->where('material_procesado', true)
+                ->whereHas('fichaTecnica')
+                ->pluck('id')
+                ->map(fn ($materialId) => (int) $materialId)
+                ->all();
+
+            if (count($elegibles) !== count($materialesPivot)) {
+                DB::rollBack();
+                throw ValidationException::withMessages([
+                    'materiales' => 'Solo se pueden producir materiales con proceso y ficha técnica.',
+                ]);
+            }
+        }
+
         $data = $request->only(['numero_op', 'cantidad_planificada', 'fecha_prevista_envio_taller', 'taller_id', 'tipo', 'empresa_externa_id', 'user_id', 'id_shopify_producto', 'observaciones', 'estado_op_material_id', 'externa']);
         $data['producto_referencia_id'] = $request->filled('producto_referencia_id') ? $request->input('producto_referencia_id') : null;
+        if ($esModoMaterial) {
+            $data['cantidad_planificada'] = array_sum(array_map(
+                fn ($fila) => (int) $fila['cantidad'],
+                $materialesPivot
+            ));
+            $data['producto_referencia_id'] = null;
+        }
         $data['fecha_prevista_envio_taller'] = ($data['fecha_prevista_envio_taller'] ?? '') === '' ? null : $data['fecha_prevista_envio_taller'];
         $data['estado_op_material_id'] = ($data['estado_op_material_id'] ?? '') === '' ? null : $data['estado_op_material_id'];
         $data = $this->normalizarTipo($data);
@@ -755,7 +964,6 @@ class OrdenProduccionController extends Controller {
         if (empty($data['user_id']) && $request->filled('responsable_id')) {
             $data['user_id'] = $request->input('responsable_id');
         }
-        $OrdenProduccion = OrdenProduccion::findOrFail($id);
 
         if (!empty($data['numero_op'])
             && $data['numero_op'] !== $OrdenProduccion->numero_op
@@ -776,17 +984,29 @@ class OrdenProduccionController extends Controller {
             ])->save();
         }
 
-        if ($request->has('distribucion_tallas')) {
+        if (!$esModoMaterial && $request->has('distribucion_tallas')) {
             $this->sincronizarTallas($OrdenProduccion, $request->input('distribucion_tallas', []), true, $request->input('grupo_tallas'));
         }
 
-        $productosOp = $request->has('productos')
-            ? array_map('intval', (array) $request->input('productos', []))
-            : $OrdenProduccion->productos()->pluck('productos.id')->all();
+        $productosOp = $esModoMaterial
+            ? []
+            : ($request->has('productos')
+                ? array_map('intval', (array) $request->input('productos', []))
+                : $OrdenProduccion->productos()->pluck('productos.id')->all());
 
         if ($request->has('productos')) {
             $OrdenProduccion->productos()->sync($productosOp);
         }
+
+        if ($tieneMaterialesEnviados || $esModoMaterial) {
+            $OrdenProduccion->materiales()->sync($materialesPivot);
+        }
+
+        if ($esModoMaterial) {
+            $this->sincronizarDistribucionMateriales($OrdenProduccion, $materialesPivot);
+        }
+
+        $cantidadesMateriales = array_map(fn ($fila) => (float) $fila['cantidad'], $materialesPivot);
 
         // Si la OP cambia de productos o cantidades, el kit se mantiene
         // sincronizado: crea las filas faltantes y actualiza las cantidades.
@@ -794,7 +1014,9 @@ class OrdenProduccionController extends Controller {
             $OrdenProduccion,
             $productosOp,
             (int) ($data['cantidad_planificada'] ?? $OrdenProduccion->cantidad_planificada ?? 0),
-            array_map('floatval', (array) $request->input('productos_cantidad', []))
+            array_map('floatval', (array) $request->input('productos_cantidad', [])),
+            array_keys($materialesPivot),
+            $cantidadesMateriales
         );
 
         $this->guardarCostosMateriales($OrdenProduccion);
@@ -815,6 +1037,7 @@ class OrdenProduccionController extends Controller {
         $recargada = $op->fresh([
             'productos.fichaTecnica.materiales',
             'productoReferencia.fichaTecnica.materiales',
+            'materiales.fichaTecnica.materiales',
             'distribucionesPorTallas',
             'costosMateriales',
         ]);
@@ -826,30 +1049,62 @@ class OrdenProduccionController extends Controller {
 
     /**
      * Necesidad agregada de materiales: consumo_estandar de la ficha × cantidad
-     * del producto. Si no viene el mapa de cantidades por producto se usa la
-     * cantidad planificada total de la OP para cada producto.
+     * del producto o material procesado. Si no viene el mapa de cantidades por
+     * objetivo se usa la cantidad planificada total de la OP.
      *
+     * @param  array<int, float>  $cantidadesPorProducto
+     * @param  array<int, float>  $cantidadesPorMaterial
      * @return array<int, array{nombre:string, unidad:string, necesita:float, hay:float}>
      */
-    private function necesidadMateriales(array $productoIds, int $cantidadPlanificada, array $cantidadesPorProducto = []): array {
-        if (empty($productoIds)) {
+    private function necesidadMateriales(
+        array $productoIds,
+        int $cantidadPlanificada,
+        array $cantidadesPorProducto = [],
+        array $materialIds = [],
+        array $cantidadesPorMaterial = []
+    ): array {
+        if (empty($productoIds) && empty($materialIds)) {
             return [];
         }
 
         $necesidad = [];
-        $productos = Producto::with('fichaTecnica.materiales.material')->whereIn('id', $productoIds)->get();
+        $productos = Producto::with('fichaTecnica.materiales.material')
+            ->whereIn('id', $productoIds)
+            ->get();
+
+        $objetivos = collect();
         foreach ($productos as $producto) {
-            $cantidad = array_key_exists($producto->id, $cantidadesPorProducto)
-                ? (float) $cantidadesPorProducto[$producto->id]
-                : ($cantidadesPorProducto ? 0 : $cantidadPlanificada);
-            if ($cantidad <= 0) {
+            $objetivos->push([
+                'id' => (int) $producto->id,
+                'cantidad' => array_key_exists($producto->id, $cantidadesPorProducto)
+                    ? (float) $cantidadesPorProducto[$producto->id]
+                    : ($cantidadesPorProducto ? 0 : $cantidadPlanificada),
+                'ficha' => $producto->fichaTecnica->first(),
+            ]);
+        }
+
+        if (!empty($materialIds)) {
+            $materiales = Material::with('fichaTecnica.materiales.material')
+                ->whereIn('id', $materialIds)
+                ->get();
+
+            foreach ($materiales as $material) {
+                $objetivos->push([
+                    'id' => (int) $material->id,
+                    'cantidad' => array_key_exists($material->id, $cantidadesPorMaterial)
+                        ? (float) $cantidadesPorMaterial[$material->id]
+                        : ($cantidadesPorMaterial ? 0 : $cantidadPlanificada),
+                    'ficha' => $material->fichaTecnica->first(),
+                ]);
+            }
+        }
+
+        foreach ($objetivos as $objetivo) {
+            if ($objetivo['cantidad'] <= 0 || !$objetivo['ficha']) {
                 continue;
             }
-            $ficha = $producto->fichaTecnica->first();
-            if (!$ficha) {
-                continue;
-            }
-            foreach ($ficha->materiales as $fila) {
+
+            foreach ($objetivo['ficha']->materiales as $fila) {
                 $id = $fila->material_componente_id;
                 if (!$id) {
                     continue;
@@ -862,7 +1117,7 @@ class OrdenProduccionController extends Controller {
                         'hay'      => (float) ($fila->material?->existencia_actual ?? 0),
                     ];
                 }
-                $necesidad[$id]['necesita'] += (float) $fila->consumo_estandar * $cantidad;
+                $necesidad[$id]['necesita'] += (float) $fila->consumo_estandar * $objetivo['cantidad'];
             }
         }
 
@@ -872,8 +1127,20 @@ class OrdenProduccionController extends Controller {
     /**
      * Materiales cuya necesidad supera la existencia actual en inventario.
      */
-    private function faltantesDeMateriales(array $productoIds, int $cantidadPlanificada, array $cantidadesPorProducto = []): array {
-        return collect($this->necesidadMateriales($productoIds, $cantidadPlanificada, $cantidadesPorProducto))
+    private function faltantesDeMateriales(
+        array $productoIds,
+        int $cantidadPlanificada,
+        array $cantidadesPorProducto = [],
+        array $materialIds = [],
+        array $cantidadesPorMaterial = []
+    ): array {
+        return collect($this->necesidadMateriales(
+            $productoIds,
+            $cantidadPlanificada,
+            $cantidadesPorProducto,
+            $materialIds,
+            $cantidadesPorMaterial
+        ))
             ->map(fn ($fila) => $fila + ['faltante' => max(0, $fila['necesita'] - $fila['hay'])])
             ->filter(fn ($fila) => $fila['faltante'] > 0)
             ->values()->all();
@@ -885,12 +1152,25 @@ class OrdenProduccionController extends Controller {
      * los defina. Al editar una OP se actualizan las cantidades y se crean
      * las filas que falten, sin pisar el trabajo ya registrado.
      */
-    private function sincronizarKitProceso(OrdenProduccion $op, array $productoIds, int $cantidadPlanificada, array $cantidadesPorProducto = []): void {
-        if (empty($productoIds)) {
+    private function sincronizarKitProceso(
+        OrdenProduccion $op,
+        array $productoIds,
+        int $cantidadPlanificada,
+        array $cantidadesPorProducto = [],
+        array $materialIds = [],
+        array $cantidadesPorMaterial = []
+    ): void {
+        if (empty($productoIds) && empty($materialIds)) {
             return;
         }
 
-        $necesidad = $this->necesidadMateriales($productoIds, $cantidadPlanificada, $cantidadesPorProducto);
+        $necesidad = $this->necesidadMateriales(
+            $productoIds,
+            $cantidadPlanificada,
+            $cantidadesPorProducto,
+            $materialIds,
+            $cantidadesPorMaterial
+        );
         if (empty($necesidad)) {
             return;
         }
@@ -1109,6 +1389,7 @@ class OrdenProduccionController extends Controller {
                     ->get()
                     ->map(fn ($recepcion) => [
                         'producto_id' => $recepcion->producto_referencia_id,
+                        'material_id' => $recepcion->material_referencia_id,
                         'cantidad_aprobada' => $recepcion->cantidad_aprobada,
                         'cantidad_no_recuperable' => $recepcion->cantidad_no_recuperable,
                     ])
@@ -1275,9 +1556,10 @@ class OrdenProduccionController extends Controller {
 
     /**
      * Guarda un borrador de la recepción de calidad (Aprobada / En reparación /
-     * No recuperable) sin cambiar el estado de la OP ni exigir que la suma
-     * cuadre exactamente con la cantidad esperada. Permite al usuario guardar
-     * lo que lleva hasta el momento y terminarlo después.
+     * No recuperable) sin exigir que la suma cuadre exactamente con la cantidad
+     * esperada. Permite al usuario guardar lo que lleva hasta el momento y
+     * terminarlo después. Si queda al menos un producto recibido (en el estado
+     * que sea), la OP pasa a «Recibiendo».
      */
     public function guardarRecepcionBorrador(Request $request, $id): RedirectResponse {
         $datos = $request->validate([
@@ -1299,6 +1581,7 @@ class OrdenProduccionController extends Controller {
         $productosOp = $orden->productos()->pluck('productos.id')->map(fn ($pid) => (int) $pid)->all();
 
         $guardadas = 0;
+        $paresRecibidos = 0;
         $filasCompromiso = [];
         foreach ($datos['recepciones'] ?? [] as $fila) {
             $distribucion = $distribuciones->get((int) ($fila['distribucion_id'] ?? 0));
@@ -1319,15 +1602,21 @@ class OrdenProduccionController extends Controller {
                 ]);
             }
 
-            $productoId = (int) ($distribucion->producto_id ?? 0)
-                ?: (int) ($orden->producto_referencia_id ?? 0)
-                ?: (count($productosOp) === 1 ? (int) $productosOp[0] : 0);
+            $paresRecibidos += $suma;
+
+            $materialId = (int) ($distribucion->material_id ?? 0) ?: null;
+            $productoId = $materialId
+                ? null
+                : ((int) ($distribucion->producto_id ?? 0)
+                    ?: (int) ($orden->producto_referencia_id ?? 0)
+                    ?: (count($productosOp) === 1 ? (int) $productosOp[0] : 0));
 
             RecepcionCalidad::updateOrCreate(
                 [
-                    'orden_produccion_id'    => $orden->id,
-                    'producto_referencia_id' => $productoId ?: null,
-                    'talla'                  => $distribucion->talla,
+                    'orden_produccion_id'     => $orden->id,
+                    'producto_referencia_id'  => $productoId ?: null,
+                    'material_referencia_id'  => $materialId,
+                    'talla'                   => $distribucion->talla,
                 ],
                 [
                     'cantidad_esperada'       => $esperada,
@@ -1341,6 +1630,7 @@ class OrdenProduccionController extends Controller {
 
             $filasCompromiso[] = [
                 'producto_id'            => $productoId ?: null,
+                'material_id'            => $materialId,
                 'talla'                  => $distribucion->talla,
                 'cantidad_en_reparacion' => $reparacion ?? 0,
                 'fecha_compromiso'       => $fechaCompromiso,
@@ -1353,12 +1643,31 @@ class OrdenProduccionController extends Controller {
         // que al reabrir el formulario no se pierda lo ya digitado.
         $compromisosAvisados = $this->registrarCompromisosReparacion($orden, $filasCompromiso);
 
+        // Una OP con al menos un producto recibido ya está «Recibiendo», sin
+        // importar en qué quedó cada par (aprobado, en reparación o no
+        // recuperable). No se toca una OP ya cerrada.
+        $pasoARecibiendo = false;
+        $estadoActualNombre = $orden->estadoOp?->nombre;
+        if ($paresRecibidos > 0 && !in_array($estadoActualNombre, ['Recibiendo', 'Cerrada'], true)) {
+            $estadoRecibiendo = EstadoOperacion::where('nombre', 'Recibiendo')->first();
+            if ($estadoRecibiendo) {
+                $orden->forceFill([
+                    'estado_op_id'    => $estadoRecibiendo->id,
+                    'recepcion_desde' => $orden->recepcion_desde ?: now(),
+                ])->save();
+                $pasoARecibiendo = true;
+            }
+        }
+
         $this->invalidarCache();
 
         $identificador = $orden->numero_op ?? $orden->id;
-        Myhelp::EscribirEnLog($this, 'RECEPCION-BORRADOR:OrdenProduccions', 'OrdenProduccion id:' . $orden->id . ' | ' . $identificador . ' | ' . $guardadas . ' fila(s)', false);
+        Myhelp::EscribirEnLog($this, 'RECEPCION-BORRADOR:OrdenProduccions', 'OrdenProduccion id:' . $orden->id . ' | ' . $identificador . ' | ' . $guardadas . ' fila(s)' . ($pasoARecibiendo ? ' | pasó a Recibiendo' : ''), false);
 
         $mensaje = 'Avance de recepción guardado. Los valores se conservarán al terminar.';
+        if ($pasoARecibiendo) {
+            $mensaje .= ' La OP pasó a «Recibiendo».';
+        }
         if ($compromisosAvisados > 0) {
             $mensaje .= ' Se crearon los avisos de ' . $compromisosAvisados
                 . ' fecha(s) de compromiso pendiente.';
@@ -1458,7 +1767,7 @@ class OrdenProduccionController extends Controller {
         array $filas,
         ?string $fechaCompromisoGeneral = null
     ): array {
-        $distribuciones = $orden->distribucionesPorTallas()->get()->keyBy('id');
+        $distribuciones = $orden->distribucionesPorTallas()->with('material')->get()->keyBy('id');
         if ($distribuciones->isEmpty()) {
             return [];
         }
@@ -1475,15 +1784,24 @@ class OrdenProduccionController extends Controller {
                 ]);
             }
 
-            // El producto sale de la distribución de la talla; no se le pregunta al usuario.
-            $productoId = (int) ($distribucion->producto_id ?? 0)
-                ?: (int) ($orden->producto_referencia_id ?? 0)
-                ?: (count($productosOp) === 1 ? (int) $productosOp[0] : 0);
-            if (!empty($productosOp) && !in_array($productoId, $productosOp, true)) {
+            // El objetivo sale de la distribución: producto en una OP normal,
+            // material procesado en una OP de materiales.
+            $materialId = (int) ($distribucion->material_id ?? 0) ?: null;
+            $productoId = $materialId
+                ? null
+                : ((int) ($distribucion->producto_id ?? 0)
+                    ?: (int) ($orden->producto_referencia_id ?? 0)
+                    ?: (count($productosOp) === 1 ? (int) $productosOp[0] : 0));
+
+            if (!$materialId && !empty($productosOp) && !in_array($productoId, $productosOp, true)) {
                 throw ValidationException::withMessages([
                     'recepciones' => "La talla {$distribucion->talla} no tiene un producto asociado en la OP.",
                 ]);
             }
+
+            $etiqueta = $materialId
+                ? ('Material ' . ($distribucion->material?->nombre_base ?? '#' . $materialId))
+                : ('Talla ' . $distribucion->talla);
 
             $aprobada = (int) ($fila['cantidad_aprobada'] ?? 0);
             $reparacion = (int) ($fila['cantidad_en_reparacion'] ?? 0);
@@ -1495,27 +1813,28 @@ class OrdenProduccionController extends Controller {
 
             if ($suma > $esperada) {
                 throw ValidationException::withMessages([
-                    'recepciones' => "Talla {$distribucion->talla}: la suma ({$suma}) supera la cantidad esperada ({$esperada}).",
+                    'recepciones' => "{$etiqueta}: la suma ({$suma}) supera la cantidad esperada ({$esperada}).",
                 ]);
             }
 
             // Lo que se va a reparación necesita una fecha de compromiso pendiente.
             if ($reparacion > 0 && empty($fechaCompromiso)) {
                 throw ValidationException::withMessages([
-                    'recepciones' => "Talla {$distribucion->talla}: indique la fecha de compromiso pendiente para los {$reparacion} par(es) en reparación.",
+                    'recepciones' => "{$etiqueta}: indique la fecha de compromiso pendiente para los {$reparacion} par(es) en reparación.",
                 ]);
             }
 
-            $clave = $productoId . '|' . $distribucion->talla;
+            $clave = ($materialId ? 'material:' . $materialId : 'producto:' . $productoId) . '|' . $distribucion->talla;
             if (isset($vistas[$clave])) {
                 throw ValidationException::withMessages([
-                    'recepciones' => "La talla {$distribucion->talla} está repetida para el mismo producto.",
+                    'recepciones' => "{$etiqueta} está repetido en la recepción.",
                 ]);
             }
             $vistas[$clave] = true;
 
             $normalizadas[$distribucion->id] = [
                 'producto_id' => $productoId ?: null,
+                'material_id' => $materialId,
                 'talla' => $distribucion->talla,
                 'cantidad_esperada' => $esperada,
                 'cantidad_recibida' => $suma,
@@ -1528,8 +1847,11 @@ class OrdenProduccionController extends Controller {
 
         foreach ($distribuciones as $distribucion) {
             if (!isset($normalizadas[$distribucion->id])) {
+                $etiqueta = $distribucion->material_id
+                    ? ('el material ' . ($distribucion->material?->nombre_base ?? '#' . $distribucion->material_id))
+                    : ('la talla ' . $distribucion->talla);
                 throw ValidationException::withMessages([
-                    'recepciones' => "Falta registrar la recepción de la talla {$distribucion->talla}.",
+                    'recepciones' => "Falta registrar la recepción de {$etiqueta}.",
                 ]);
             }
         }
@@ -1575,7 +1897,13 @@ class OrdenProduccionController extends Controller {
         foreach ($recepciones as $fila) {
             $enReparacion = (int) ($fila['cantidad_en_reparacion'] ?? 0);
             $productoId = $fila['producto_id'] ? (int) $fila['producto_id'] : null;
-            $compromiso = CompromisoReparacion::abiertoPorTalla((int) $orden->id, $fila['talla'], $productoId);
+            $materialId = !empty($fila['material_id']) ? (int) $fila['material_id'] : null;
+            $compromiso = CompromisoReparacion::abiertoPorTalla(
+                (int) $orden->id,
+                $fila['talla'],
+                $productoId,
+                $materialId
+            );
 
             if ($enReparacion === 0) {
                 $compromiso?->update(['atendido' => true]);
@@ -1597,6 +1925,7 @@ class OrdenProduccionController extends Controller {
             $datos = [
                 'orden_produccion_id'    => $orden->id,
                 'producto_referencia_id' => $productoId,
+                'material_referencia_id' => $materialId,
                 'talla'                  => $fila['talla'],
                 'cantidad_en_reparacion' => $enReparacion,
                 'fecha_compromiso'       => $fila['fecha_compromiso'],
@@ -1663,6 +1992,62 @@ class OrdenProduccionController extends Controller {
     }
 
     /**
+     * Una OP de materiales no maneja tallas: crea una fila de distribución por
+     * material procesado con su cantidad. Esa fila es la que usa la recepción
+     * de calidad para registrar lo aprobado, en reparación o no recuperable.
+     *
+     * @param  array<int, array{cantidad: int}>  $materialesPivot
+     */
+    private function sincronizarDistribucionMateriales(OrdenProduccion $orden, array $materialesPivot): void
+    {
+        $existentes = $orden->distribucionesPorTallas()
+            ->whereNotNull('material_id')
+            ->get()
+            ->groupBy('material_id');
+
+        foreach ($materialesPivot as $materialId => $fila) {
+            $distribucion = $existentes->get($materialId)?->shift()
+                ?? new Distribucion_por_tallas(['material_id' => $materialId]);
+
+            $distribucion->fill([
+                'producto_id' => null,
+                'material_id' => $materialId,
+                'talla' => null,
+                'cantidad_planificada' => (int) $fila['cantidad'],
+            ]);
+            $distribucion->save();
+
+            $orden->distribucionesPorTallas()->syncWithoutDetaching([$distribucion->id]);
+        }
+
+        // Si un material dejó de formar parte de la OP, su fila se elimina solo
+        // cuando todavía no tiene recepción ni compromiso asociado.
+        foreach ($existentes as $materialId => $sobrantes) {
+            if (array_key_exists($materialId, $materialesPivot)) {
+                continue;
+            }
+
+            foreach ($sobrantes as $distribucion) {
+                $tieneHistorial = $distribucion->cantidad_recibida_buena !== null
+                    || $distribucion->cantidad_pendiente_reparacion !== null
+                    || RecepcionCalidad::where('orden_produccion_id', $orden->id)
+                        ->where('material_referencia_id', $materialId)
+                        ->exists()
+                    || CompromisoReparacion::where('orden_produccion_id', $orden->id)
+                        ->where('material_referencia_id', $materialId)
+                        ->exists();
+
+                if ($tieneHistorial) {
+                    continue;
+                }
+
+                $orden->distribucionesPorTallas()->detach($distribucion->id);
+                $distribucion->delete();
+            }
+        }
+    }
+
+    /**
      * Sincroniza las tallas de una orden vía pivote: actualiza las que traen id,
      * crea+vincula las nuevas y desvincula (sin borrar) las que ya no vienen.
      * Con $conPlanificada en true también actualiza cantidad_planificada.
@@ -1690,6 +2075,9 @@ class OrdenProduccionController extends Controller {
                     if (empty($distribucion->producto_id) && !empty($talla['producto_id'])) {
                         $datos['producto_id'] = (int) $talla['producto_id'];
                     }
+                    if (empty($distribucion->material_id) && !empty($talla['material_id'])) {
+                        $datos['material_id'] = (int) $talla['material_id'];
+                    }
                     $distribucion->update($datos);
                     $conservados[] = $distribucion->id;
                 }
@@ -1701,6 +2089,7 @@ class OrdenProduccionController extends Controller {
             $nueva = Distribucion_por_tallas::create([
                 'grupo' => $grupoNuevo,
                 'producto_id' => $talla['producto_id'] ?? null,
+                'material_id' => $talla['material_id'] ?? null,
                 'talla' => $talla['talla'] ?? null,
                 'cantidad_planificada' => (int) ($talla['cantidad_planificada'] ?? 0),
                 'cantidad_recibida_buena' => $aEnteroONulo($talla['cantidad_recibida_buena'] ?? null),
@@ -1725,6 +2114,10 @@ class OrdenProduccionController extends Controller {
         $OrdenProduccion = OrdenProduccion::findOrFail($OrdenProduccionid);
         $identificador = $OrdenProduccion->numero_op ?? $OrdenProduccion->id;
 
+        if (RecepcionCalidad::where('orden_produccion_id', $OrdenProduccion->id)->exists()) {
+            return back()->with('error', "No es posible borrar la OP {$identificador} porque tiene recepciones asociadas.");
+        }
+
         // Las filas del kit tienen llave foránea a la OP: se eliminan primero
         // para que la OP pueda borrarse.
         KitProceso::where('orden_produccion_id', $OrdenProduccion->id)->delete();
@@ -1738,11 +2131,34 @@ class OrdenProduccionController extends Controller {
     public function destroyBulk(Request $request) {
         $ids = (array) $request->input('id', []);
 
-        KitProceso::whereIn('orden_produccion_id', $ids)->delete();
-        OrdenProduccion::whereIn('id', $ids)->delete();
+        // Las OPs con recepciones asociadas tienen FK RESTRICT: se excluyen del
+        // borrado masivo en lugar de tumbar la operación completa.
+        $conRecepciones = RecepcionCalidad::whereIn('orden_produccion_id', $ids)
+            ->distinct()
+            ->pluck('orden_produccion_id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+        $deletables = array_values(array_diff(array_map('intval', $ids), $conRecepciones));
+
+        if (!$deletables) {
+            return back()->with('error', 'No es posible borrar las OPs seleccionadas porque tienen recepciones asociadas.');
+        }
+
+        KitProceso::whereIn('orden_produccion_id', $deletables)->delete();
+        OrdenProduccion::whereIn('id', $deletables)->delete();
 
         $this->invalidarCache();
-        return back()->with('success', __('app.label.deleted_successfully', ['name' => count($ids) . ' ' . __('app.label.user')]));
+
+        $nombre = count($deletables) . ' ' . __('app.label.user');
+        if ($conRecepciones) {
+            return back()->with(
+                'warning',
+                'Se borraron ' . $nombre . ' orden(es). No es posible borrar ' . count($conRecepciones)
+                    . ' OP(s) porque tienen recepciones asociadas.'
+            );
+        }
+
+        return back()->with('success', __('app.label.deleted_successfully', ['name' => $nombre]));
     }
     //FIN : STORE - UPDATE - DELETE
 

@@ -5,6 +5,7 @@ import Modal from '@/components/Modal.vue';
 import PrimaryButton from '@/components/PrimaryButton.vue';
 import SecondaryButton from '@/components/SecondaryButton.vue';
 import TextInput from '@/components/TextInput.vue';
+import EditorMateriales from '@/pages/FichaTecnicaMateriales/EditorMateriales.vue';
 import { ClipboardDocumentListIcon, ExclamationTriangleIcon, SwatchIcon } from '@heroicons/vue/24/solid';
 import { useForm} from '@inertiajs/vue3';
 import { onMounted, computed, ref, watchEffect } from 'vue';
@@ -37,6 +38,7 @@ const form = useForm({
     // Deben existir desde el inicio: useForm solo envía las claves iniciales.
     last_purchase_price: '',
     last_purchase_date: new Date().toISOString().split('T')[0],
+    materiales: [] as any[],
 });
 onMounted(() => {
     if (props.numberPermissions === 100) {
@@ -74,6 +76,7 @@ const camposNormales = printForm.filter((campo) => campo.type !== 'boolean');
 const camposBooleanos = printForm.filter((campo) => campo.type === 'boolean');
 
 const hayProveedores = computed(() => (props.losSelect?.proveedor_habitual?.length || 0) > 0);
+const esMaterialProcesado = computed(() => Number(form.material_procesado) === 1);
 
 const estadoActivo = (valor: any): boolean => {
     const texto = String(valor ?? '').trim().toLowerCase();
@@ -317,6 +320,20 @@ watchEffect(() => {
                                 </span>
                             </div>
                         </div>
+                    </div>
+
+                    <!-- Ficha técnica del material procesado -->
+                    <div v-if="esMaterialProcesado">
+                        <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-1.5 mb-1">
+                            <SwatchIcon class="w-4 h-4 text-gray-400 dark:text-gray-500" />
+                            Ficha técnica
+                        </h3>
+                        <p class="text-xs text-gray-400 dark:text-gray-500 mb-3 pl-6">
+                            Define los materiales y consumos necesarios para fabricar una unidad de este material procesado.
+                        </p>
+                        <EditorMateriales v-model="form.materiales" :opciones="props.losSelect" :errors="form.errors" />
+                        <InputError class="mt-2" :message="form.errors.materiales" />
+                        <InputError class="mt-2" :message="form.errors.materiales_procesados" />
                     </div>
 
                     <!-- Precio de última compra -->

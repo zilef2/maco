@@ -10,9 +10,10 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 /**
- * Una ficha técnica agrupa los materiales que consume un producto.
- * Este servicio concentra las opciones del formulario y el guardado, para que
- * el alta se pueda hacer tanto desde la ficha como desde "Nuevo producto".
+ * Una ficha técnica agrupa los materiales que consume un producto o un
+ * material procesado. Este servicio concentra las opciones del formulario y el
+ * guardado, para que el alta se pueda hacer desde la ficha, desde "Nuevo
+ * producto" o desde "Nuevo material".
  */
 class FichaTecnicaService
 {
@@ -57,7 +58,8 @@ class FichaTecnicaService
     }
 
     /**
-     * Opciones completas del formulario de ficha (materiales, unidades y productos).
+     * Opciones completas del formulario de ficha: materiales componentes,
+     * unidades, productos y materiales procesados que se pueden fabricar.
      */
     public function opcionesFicha(): array
     {
@@ -79,9 +81,39 @@ class FichaTecnicaService
             fn ($p) => !in_array($p['id'], $productosConFicha)
         ));
 
+        $materialesProcesados = Material::query()
+            ->where('material_procesado', true)
+            ->orderBy('nombre_base')
+            ->get(['id', 'codigo_material', 'nombre_base'])
+            ->map(fn ($m) => $this->opcionMaterialProcesado($m))
+            ->values()
+            ->all();
+
+        $materialesConFicha = DB::table('ficha_tecnica_material')->pluck('material_id')->all();
+        $materialesSinFicha = array_values(array_filter(
+            $materialesProcesados,
+            fn ($m) => !in_array($m['id'], $materialesConFicha, true)
+        ));
+
         return $this->opcionesMateriales() + [
-            'productos'           => $productos,
-            'productos_sin_ficha' => $productosSinFicha,
+            'productos'                      => $productos,
+            'productos_sin_ficha'            => $productosSinFicha,
+            'materiales_procesados'          => $materialesProcesados,
+            'materiales_procesados_sin_ficha' => $materialesSinFicha,
+        ];
+    }
+
+    private function opcionMaterialProcesado(Material $material): array
+    {
+        $nombre = trim(($material->codigo_material ? $material->codigo_material . ' — ' : '') . $material->nombre_base)
+            ?: ('Material #' . $material->id);
+
+        return [
+            'id'    => $material->id,
+            'value' => $material->id,
+            'name'  => $nombre,
+            'label' => $nombre,
+            'title' => $nombre,
         ];
     }
 
@@ -134,26 +166,77 @@ class FichaTecnicaService
     }
 
     /**
-     * Crea o actualiza la ficha con sus materiales y productos.
-     * Un producto solo puede pertenecer a una ficha (ficha única por producto).
-     * No se puede modificar si el producto está en una OP activa.
+     * OPs que impiden editar la ficha de un material procesado.
      *
-     * @param  array{nombre: string, productos?: array, materiales: array}  $datos
+     * @return array<string, string> número de OP => estado
+     */
+    public function operacionesQueBloqueanMaterial(int $materialId): array
+    {
+        $material = Material::find($materialId);
+        if (!$material) {
+            return [];
+        }
+
+        return $material->ordenesProduccion()
+            ->with('estadoOp:id,nombre')
+            ->get()
+            ->reject(fn ($op) => in_array($op->estadoOp?->nombre, self::ESTADOS_FICHA_EDITABLE, true))
+            ->mapWithKeys(fn ($op) => [
+                ($op->numero_op ?? $op->id) => ($op->estadoOp?->nombre ?? 'sin estado'),
+            ])
+            ->all();
+    }
+
+    /**
+     * Mapa material_id => [número de OP => estado] con las OPs que bloquean
+     * la ficha de un material procesado.
+     *
+     * @return array<int, array<string, string>>
+     */
+    public function bloqueosPorMaterial(): array
+    {
+        $bloqueos = [];
+
+        OrdenProduccion::with(['materiales:id', 'estadoOp:id,nombre'])
+            ->get()
+            ->each(function ($op) use (&$bloqueos) {
+                if (in_array($op->estadoOp?->nombre, self::ESTADOS_FICHA_EDITABLE, true)) {
+                    return;
+                }
+
+                foreach ($op->materiales as $material) {
+                    $bloqueos[$material->id][$op->numero_op ?? $op->id] = $op->estadoOp?->nombre ?? 'sin estado';
+                }
+            });
+
+        return $bloqueos;
+    }
+
+    /**
+     * Crea o actualiza la ficha con sus materiales, productos y materiales
+     * procesados. Un producto o material procesado solo puede pertenecer a una
+     * ficha. No se puede modificar si el objetivo está en una OP activa.
+     *
+     * @param  array{nombre: string, productos?: array, materiales_procesados?: array, materiales: array}  $datos
      */
     public function guardar(array $datos, ?FichaTecnica $ficha = null): FichaTecnica
     {
-        $productoIds = array_map('intval', $datos['productos'] ?? []);
+        $productoIds = array_values(array_unique(array_map('intval', $datos['productos'] ?? [])));
+        $materialProcesadoIds = array_values(array_unique(array_map('intval', $datos['materiales_procesados'] ?? [])));
 
         $bloqueos = [];
         foreach ($productoIds as $productoId) {
             $bloqueos += $this->operacionesQueBloquean($productoId);
+        }
+        foreach ($materialProcesadoIds as $materialId) {
+            $bloqueos += $this->operacionesQueBloqueanMaterial($materialId);
         }
         if (!empty($bloqueos)) {
             $detalle = collect($bloqueos)
                 ->map(fn ($estado, $numeroOp) => $numeroOp . ' (' . $estado . ')')
                 ->implode(', ');
             throw ValidationException::withMessages([
-                'productos' => 'La ficha técnica no se puede modificar: el producto está en la OP ' . $detalle
+                'materiales_procesados' => 'La ficha técnica no se puede modificar: el objetivo está en la OP ' . $detalle
                     . '. Solo se permite en Borrador, Preparación o Cerrada.',
             ]);
         }
@@ -166,6 +249,31 @@ class FichaTecnicaService
             throw ValidationException::withMessages([
                 'productos' => __('app.label.ficha_ya_asignada') . ': ' . $nombres,
             ]);
+        }
+
+        if (!empty($materialProcesadoIds)) {
+            $materialesValidos = Material::whereIn('id', $materialProcesadoIds)
+                ->where('material_procesado', true)
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+
+            $noProcesados = array_values(array_diff($materialProcesadoIds, $materialesValidos));
+            if (!empty($noProcesados)) {
+                throw ValidationException::withMessages([
+                    'materiales_procesados' => 'Solo los materiales con proceso pueden tener ficha técnica.',
+                ]);
+            }
+
+            $enOtraFichaMaterial = FichaTecnica::materialesProcesadosConFicha($materialProcesadoIds, $ficha?->id);
+            if (!empty($enOtraFichaMaterial)) {
+                $nombres = Material::whereIn('id', $enOtraFichaMaterial)->get()
+                    ->map(fn ($m) => trim(($m->codigo_material ? $m->codigo_material . ' — ' : '') . $m->nombre_base))
+                    ->implode(', ');
+                throw ValidationException::withMessages([
+                    'materiales_procesados' => 'Estos materiales ya tienen una ficha técnica: ' . $nombres,
+                ]);
+            }
         }
 
         // El costo real no se captura por ahora: al editar se conserva el valor previo.
@@ -211,11 +319,19 @@ class FichaTecnicaService
             ]);
         }
 
-        $ficha->productos()->sync($productoIds);
+        // Solo se sincronizan las relaciones que el formulario envió: así el
+        // alta desde Producto no desvincula materiales procesados y viceversa.
+        if (array_key_exists('productos', $datos)) {
+            $ficha->productos()->sync($productoIds);
+        }
+        if (array_key_exists('materiales_procesados', $datos)) {
+            $ficha->materialesProcesados()->sync($materialProcesadoIds);
+        }
 
-        // Las OPs abiertas que usan estos productos deben costearse con la ficha
+        // Las OPs abiertas que usan estos objetivos deben costearse con la ficha
         // nueva: su precio guardado y su historial de cambios se renuevan.
         $this->costosMateriales->recalcularPorProductos($productoIds);
+        $this->costosMateriales->recalcularPorMateriales($materialProcesadoIds);
 
         return $ficha->refresh();
     }

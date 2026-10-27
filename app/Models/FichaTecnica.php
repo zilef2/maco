@@ -27,6 +27,15 @@ class FichaTecnica extends Model
     }
 
     /**
+     * Materiales procesados que se fabrican con esta ficha. No confundir con
+     * materiales(), que son las líneas/componentes de la receta.
+     */
+    public function materialesProcesados(): BelongsToMany
+    {
+        return $this->belongsToMany(Material::class, 'ficha_tecnica_material', 'ficha_tecnica_id', 'material_id')->withTimestamps();
+    }
+
+    /**
      * Costo total de la ficha por unidad de producto.
      *
      * Cada línea aporta su costo unitario multiplicado por el consumo
@@ -57,6 +66,23 @@ class FichaTecnica extends Model
             ->get()
             ->flatMap(fn ($ficha) => $ficha->productos->pluck('id'))
             ->intersect($productoIds)
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Ids de materiales procesados que ya tienen ficha (excluyendo la ficha
+     * indicada). Un material solo puede pertenecer a una ficha.
+     */
+    public static function materialesProcesadosConFicha(array $materialIds, ?int $exceptoFichaId = null): array
+    {
+        return self::query()
+            ->whereKeyNot($exceptoFichaId ?? 0)
+            ->whereHas('materialesProcesados', fn ($q) => $q->whereIn('material_id', $materialIds))
+            ->with('materialesProcesados:id')
+            ->get()
+            ->flatMap(fn ($ficha) => $ficha->materialesProcesados->pluck('id'))
+            ->intersect($materialIds)
             ->values()
             ->all();
     }

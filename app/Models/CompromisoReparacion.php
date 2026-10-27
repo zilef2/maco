@@ -14,6 +14,7 @@ class CompromisoReparacion extends Model
     protected $fillable = [
         'orden_produccion_id',
         'producto_referencia_id',
+        'material_referencia_id',
         'talla',
         'cantidad_en_reparacion',
         'fecha_compromiso',
@@ -31,11 +32,21 @@ class CompromisoReparacion extends Model
         return $this->belongsTo(OrdenProduccion::class, 'orden_produccion_id');
     }
 
-    /**
-     * El compromiso aún sin resolver de una talla (producto + talla) de la OP.
-     */
-    public static function abiertoPorTalla(int $ordenProduccionId, ?string $talla, ?int $productoId): ?self
+    public function materialReferencia()
     {
+        return $this->belongsTo(Material::class, 'material_referencia_id');
+    }
+
+    /**
+     * El compromiso aún sin resolver de una talla (producto o material + talla)
+     * de la OP.
+     */
+    public static function abiertoPorTalla(
+        int $ordenProduccionId,
+        ?string $talla,
+        ?int $productoId,
+        ?int $materialId = null
+    ): ?self {
         $consulta = static::query()
             ->where('orden_produccion_id', $ordenProduccionId)
             ->where('atendido', false);
@@ -50,6 +61,12 @@ class CompromisoReparacion extends Model
             $consulta->whereNull('producto_referencia_id');
         } else {
             $consulta->where('producto_referencia_id', $productoId);
+        }
+
+        if ($materialId === null) {
+            $consulta->whereNull('material_referencia_id');
+        } else {
+            $consulta->where('material_referencia_id', $materialId);
         }
 
         return $consulta->orderByDesc('id')->first();

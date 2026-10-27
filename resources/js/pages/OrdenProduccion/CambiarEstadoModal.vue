@@ -296,11 +296,22 @@ watch(estadoObjetivo, (nuevo) => {
     }
 });
 
-// La recepción de calidad se muestra cuando la OP ya está en "Recibiendo"
-// o cuando se selecciona "Recibiendo" como nuevo estado.
+// La recepción de calidad se muestra cuando la OP ya está en "Recibiendo",
+// cuando se selecciona "Recibiendo" como nuevo estado, o cuando ya tiene al
+// menos un producto recibido (la OP cuenta como Recibiendo aunque el estado
+// guardado todavía no lo refleje: el formulario sale sin hacer clic).
 const esRecepcion = computed(() => estadoSeleccionado.value?.name === 'Recibiendo');
+const tieneProductosRecibidos = computed(() =>
+    ((props.op as any)?.recepciones_detalle || []).some((recepcion: any) =>
+        (Number(recepcion.cantidad_recibida) || 0) > 0
+        || (Number(recepcion.cantidad_aprobada) || 0) > 0
+        || (Number(recepcion.cantidad_en_reparacion) || 0) > 0
+        || (Number(recepcion.cantidad_no_recuperable) || 0) > 0)
+);
 const mostrarTablaRecepcion = computed(() =>
-    estadoActual.value?.name === 'Recibiendo' || esRecepcion.value
+    estadoActual.value?.name === 'Recibiendo'
+    || esRecepcion.value
+    || tieneProductosRecibidos.value
 );
 
 // ── Resta de materiales al pasar a «En taller» ──────────────────────────
@@ -757,8 +768,58 @@ const manejarEnterRecepcion = (indice: number) => {
 watch(() => props.show, (visible) => {
     if (visible) {
         abrirModal();
+        posicionarScrollRecepcion();
+        return;
     }
+    soltarScrollRecepcion();
 });
+
+// ── Scroll de la recepción ───────────────────────────────────────────────
+// Al abrir el modal se restaura el scroll que el usuario dejó guardado; si no
+// hay uno, salta a la primera fila vacía. La posición se guarda en localStorage
+// por OP, así al reabrir se retoma donde se quedó.
+const claveScrollRecepcion = () => `op-recepcion-scroll-${(props.op as any)?.id ?? ''}`;
+
+const primeraFilaVacia = (): number =>
+    form.recepciones.findIndex((fila: any) =>
+        [fila.cantidad_aprobada, fila.cantidad_en_reparacion, fila.cantidad_no_recuperable]
+            .every((valor) => numeroONulo(valor) === null));
+
+let regionScrollRecepcion: HTMLElement | null = null;
+let guardandoScrollRecepcion: (() => void) | null = null;
+
+const soltarScrollRecepcion = () => {
+    if (regionScrollRecepcion && guardandoScrollRecepcion) {
+        regionScrollRecepcion.removeEventListener('scroll', guardandoScrollRecepcion);
+    }
+    regionScrollRecepcion = null;
+    guardandoScrollRecepcion = null;
+};
+
+const posicionarScrollRecepcion = async () => {
+    if (!mostrarTablaRecepcion.value || !form.recepciones.length) return;
+
+    await nextTick();
+
+    const indice = primeraFilaVacia();
+    const input = indice >= 0 ? document.getElementById(`recepcion-aprobada-${indice}`) : null;
+    const region = (input?.closest('[scroll-region]')
+        ?? document.querySelector('[scroll-region]')) as HTMLElement | null;
+    if (!region) return;
+
+    const guardado = Number(localStorage.getItem(claveScrollRecepcion()));
+    if (guardado > 0) {
+        region.scrollTop = guardado;
+    } else if (input) {
+        input.scrollIntoView({ block: 'center' });
+    }
+
+    guardandoScrollRecepcion = () => {
+        localStorage.setItem(claveScrollRecepcion(), String(region.scrollTop));
+    };
+    regionScrollRecepcion = region;
+    region.addEventListener('scroll', guardandoScrollRecepcion);
+};
 </script>
 
 <template>

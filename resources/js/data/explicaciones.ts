@@ -256,7 +256,7 @@ export const explicaciones: Explicacion[] = [
                     {
                         pregunta: 'La recepción no cuadra todavía. ¿Pierdo lo digitado?',
                         respuesta:
-                            'No. «Guardar avance» conserva las cantidades sin exigir que cuadren y sin cambiar el estado; puede seguir ajustando la recepción otros días.',
+                            'No. «Guardar avance» conserva las cantidades sin exigir que cuadren; puede seguir ajustando la recepción otros días. En cuanto el avance deja al menos un producto recibido (aprobado, en reparación o no recuperable), la OP pasa a «Recibiendo».',
                     },
                     {
                         pregunta: 'Quedaron pares en reparación y quiero cerrar la OP.',

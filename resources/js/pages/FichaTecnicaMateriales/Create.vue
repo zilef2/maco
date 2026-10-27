@@ -20,19 +20,44 @@ const props = defineProps({
 })
 const emit = defineEmits(["close"]);
 
-const productosSinFicha = computed(() => props.losSelect?.productos_sin_ficha ?? []);
-
-const productoUnico = computed({
-    get: () => form.productos[0] ?? null,
-    set: (valor: number | null) => {
-        form.productos = valor ? [valor] : [];
-    },
-});
-
 const form = useForm({
     nombre: '',
     productos: [] as number[],
+    materiales_procesados: [] as number[],
     materiales: [] as any[],
+});
+
+// Una ficha se puede asignar a un producto o a un material procesado. El
+// selector usa una clave con prefijo para distinguir ambos tipos.
+const objetivosSinFicha = computed(() => {
+    const productos = (props.losSelect?.productos_sin_ficha ?? []).map((p: any) => ({
+        id: `producto:${p.id}`,
+        name: `Producto · ${p.name}`,
+    }));
+    const materiales = (props.losSelect?.materiales_procesados_sin_ficha ?? []).map((m: any) => ({
+        id: `material:${m.id}`,
+        name: `Material procesado · ${m.name}`,
+    }));
+
+    return [...productos, ...materiales];
+});
+
+const objetivoSeleccionado = computed({
+    get: () => {
+        if (form.productos.length) return `producto:${form.productos[0]}`;
+        if (form.materiales_procesados.length) return `material:${form.materiales_procesados[0]}`;
+        return null;
+    },
+    set: (valor: string | null) => {
+        form.productos = [];
+        form.materiales_procesados = [];
+
+        if (!valor) return;
+
+        const [tipo, id] = valor.split(':');
+        if (tipo === 'producto') form.productos = [Number(id)];
+        if (tipo === 'material') form.materiales_procesados = [Number(id)];
+    },
 });
 
 const guardar = () => {
@@ -75,9 +100,9 @@ watchEffect(() => {
                     {{ lang().t('app.label.add') }} {{ props.title }}
                 </h2>
 
-                <template v-if="!productosSinFicha.length">
+                <template v-if="!objetivosSinFicha.length">
                     <p class="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm font-medium text-amber-800 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
-                        {{ lang().t('app.label.todos_productos_con_ficha') }}
+                        No hay productos ni materiales procesados pendientes de ficha.
                     </p>
                     <div class="my-8 flex justify-end">
                         <SecondaryButton @click="emit('close')">
@@ -95,11 +120,12 @@ watchEffect(() => {
                 </div>
 
                 <div class="mt-4">
-                    <InputLabel :value="lang().t('app.label.productos')" />
-                    <v-select class="mt-1 block w-full" :options="productosSinFicha"
-                        label="name" :reduce="(item: any) => item.id" v-model="productoUnico"
+                    <InputLabel :value="lang().t('app.label.productos') + ' / material procesado'" />
+                    <v-select class="mt-1 block w-full" :options="objetivosSinFicha"
+                        label="name" :reduce="(item: any) => item.id" v-model="objetivoSeleccionado"
                         :placeholder="lang().t('app.label.ficha_unica_producto')" />
                     <InputError class="mt-2" :message="form.errors.productos" />
+                    <InputError class="mt-2" :message="form.errors.materiales_procesados" />
                 </div>
 
                 <div class="mt-6">

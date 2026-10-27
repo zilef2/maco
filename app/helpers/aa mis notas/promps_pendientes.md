@@ -1,9 +1,7 @@
-# al borrar una OP, deberian advertir que se van a borrar las recepciones de calidad
 
-deberia sacar una alerta con el mensaje "no es posible borrar la OP porque tiene recepciones asociadas" 
-SQLSTATE[23000]: Integrity constraint violation: 1451 Cannot delete or update a parent row: a foreign key constraint fails (`maco`.`recepcion_calidads`, CONSTRAINT `recepcion_calidads_orden_produccion_id_foreign` 
 
-# form cambiar estado OP ((recibiendo))
+# OP
+## form cambiar estado OP ((recibiendo))
 en el formulario de cambiar estado OP, estado recibiendo, no debe preguntar Pérdidas en mermas *,Materiales sobrantes o recuperados * o  costo real final, eso lo debe calcular el programa.
 Materiales sobrantes o recuperados: ese campo borralo completamente
 Pérdidas en mermas: es la suma del coste de cada producto considerado en perdida total

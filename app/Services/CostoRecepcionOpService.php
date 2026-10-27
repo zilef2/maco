@@ -34,20 +34,51 @@ class CostoRecepcionOpService
         $unitarios = [];
         foreach ($this->costosMateriales->productos($op) as $producto) {
             // La ficha vigente del producto define cuánto material entra en una unidad.
-            $consumo = $producto->fichaTecnica->first()?->materiales ?? collect();
-
-            $costo = 0.0;
-            foreach ($consumo as $fila) {
-                $materialId = (int) $fila->material_componente_id;
-                if ($materialId > 0) {
-                    $costo += (float) $fila->consumo_estandar * ($precios[$materialId] ?? 0.0);
-                }
-            }
-
-            $unitarios[(int) $producto->id] = round($costo, 2);
+            $unitarios[(int) $producto->id] = $this->costoUnitarioFicha(
+                $producto->fichaTecnica->first(),
+                $precios
+            );
         }
 
         return $unitarios;
+    }
+
+    /**
+     * Costo de materiales de una unidad de cada material procesado que produce
+     * la OP. Se usa en la recepción/cierre igual que el de un producto.
+     *
+     * @return array<int, float> material_id => costo unitario
+     */
+    public function unitariosMateriales(OrdenProduccion $op): array
+    {
+        $precios = $this->preciosPorMaterial($op);
+
+        $unitarios = [];
+        foreach ($this->costosMateriales->materialesObjetivo($op) as $material) {
+            $unitarios[(int) $material->id] = $this->costoUnitarioFicha(
+                $material->fichaTecnica->first(),
+                $precios
+            );
+        }
+
+        return $unitarios;
+    }
+
+    /**
+     * @param  array<int, float>  $precios
+     */
+    private function costoUnitarioFicha(mixed $ficha, array $precios): float
+    {
+        $costo = 0.0;
+
+        foreach ($ficha?->materiales ?? collect() as $fila) {
+            $materialId = (int) $fila->material_componente_id;
+            if ($materialId > 0) {
+                $costo += (float) $fila->consumo_estandar * ($precios[$materialId] ?? 0.0);
+            }
+        }
+
+        return round($costo, 2);
     }
 
     /**
@@ -62,13 +93,20 @@ class CostoRecepcionOpService
      */
     public function resumenCierre(OrdenProduccion $op, array $filas): array
     {
-        $unitarios = $this->unitarios($op);
+        $unitariosProductos = $this->unitarios($op);
+        $unitariosMateriales = $this->unitariosMateriales($op);
         $perdidas = 0.0;
         $costo = 0.0;
 
         foreach ($filas as $fila) {
-            $productoId = (int) ($fila['producto_id'] ?? $fila['producto_referencia_id'] ?? 0);
-            $unitario = $unitarios[$productoId] ?? 0.0;
+            $materialId = (int) ($fila['material_id'] ?? $fila['material_referencia_id'] ?? 0);
+            if ($materialId > 0) {
+                $unitario = $unitariosMateriales[$materialId] ?? 0.0;
+            } else {
+                $productoId = (int) ($fila['producto_id'] ?? $fila['producto_referencia_id'] ?? 0);
+                $unitario = $unitariosProductos[$productoId] ?? 0.0;
+            }
+
             $aprobadas = (int) ($fila['cantidad_aprobada'] ?? 0);
             $noRecuperables = (int) ($fila['cantidad_no_recuperable'] ?? 0);
 

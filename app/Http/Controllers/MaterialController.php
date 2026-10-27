@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\FichaTecnica;
 use App\Models\Material;
 use App\Models\Proveedor;
+use App\Services\FichaTecnicaService;
 use App\Services\ListaDesplegableService;
 use App\Services\CostoMaterialOpService;
 use App\helpers\Myhelp;
@@ -26,7 +28,11 @@ class MaterialController extends Controller {
 
 
     //<editor-fold desc="Construc | filtro and dependencia">
-    public function __construct(protected ListaDesplegableService $listaDesplegableService, protected CostoMaterialOpService $costosMateriales) {
+    public function __construct(
+        protected ListaDesplegableService $listaDesplegableService,
+        protected CostoMaterialOpService $costosMateriales,
+        protected FichaTecnicaService $fichaTecnicaService
+    ) {
 //        $this->middleware('permission:create Material', ['only' => ['create', 'store']]);
 //        $this->middleware('permission:read Material', ['only' => ['index', 'show']]);
 //        $this->middleware('permission:update Material', ['only' => ['edit', 'update']]);
@@ -42,7 +48,7 @@ class MaterialController extends Controller {
         $claveListado = 'material_index_' . $this->versionCache();
         $Materiales = Cache::remember($claveListado, now()->addMinutes(10), function () {
             return Material::query()
-                ->with(['proveedorHabitual', 'prices'])
+                ->with(['proveedorHabitual', 'prices', 'fichaTecnica.materiales.material'])
                 ->orderByDesc('updated_at')
                 ->get()
                 ->map(function ($material) {
@@ -61,6 +67,27 @@ class MaterialController extends Controller {
                     return $material;
                 })
                 ->values();
+        });
+
+        $bloqueosFicha = $this->fichaTecnicaService->bloqueosPorMaterial();
+        $Materiales->each(function (Material $material) use ($bloqueosFicha) {
+            $ficha = $material->fichaTecnica->first();
+            $material->ficha_id = $ficha?->id;
+            $material->ficha_nombre = $ficha?->nombre;
+            $material->ficha_materiales = ($ficha?->materiales ?? collect())
+                ->map(fn ($fila) => [
+                    'material_componente_id' => $fila->material_componente_id,
+                    'consumo_estandar' => $fila->consumo_estandar,
+                    'unidad_medida' => $fila->unidad_medida,
+                    'costo_asociado_teorico' => $fila->costo_asociado_teorico,
+                ])
+                ->values()
+                ->all();
+            $bloqueos = $bloqueosFicha[$material->id] ?? [];
+            $material->ficha_bloqueada = !empty($bloqueos);
+            $material->ficha_bloqueo_detalle = collect($bloqueos)
+                ->map(fn ($estado, $numeroOp) => $numeroOp . ' (' . $estado . ')')
+                ->implode(', ');
         });
 
         $listasDesplegables = $this->listaDesplegableService->getOptionsByCategoriaGrouped('material');
@@ -88,6 +115,8 @@ class MaterialController extends Controller {
                 'categoria'                 => $listasDesplegables['categoria'] ?? [],
                 'variante_atributo_sugerido' => $listasDesplegables['variante_atributo_sugerido'] ?? $listasDesplegables['variante'] ?? [],
                 'proveedor_habitual'        => $proveedores,
+                'materiales'                => $this->fichaTecnicaService->opcionesMateriales()['materiales'],
+                'unidad_medida'             => $this->fichaTecnicaService->opcionesMateriales()['unidad_medida'],
             ],
 	        'titulos'           => Material::getFillableWithTypes(),
 
@@ -105,6 +134,7 @@ class MaterialController extends Controller {
 
     private function invalidarCache(): void {
         Cache::increment('material_index_version');
+        Cache::increment('op_index_version');
         Cache::forget('op_selects');
     }
 
@@ -135,13 +165,19 @@ class MaterialController extends Controller {
 //        $no_nada = $request->no_nada['id'];
 //        $request->merge(['no_nada_id' => $request->no_nada['id']]);
         
-        // Validar precio de última compra (obligatorio)
+        // Validar precio de última compra (obligatorio) y, si el material se
+        // marca como procesado, las líneas de su ficha técnica.
         $request->validate([
             'last_purchase_price' => 'required|numeric|min:0',
             'last_purchase_date' => 'required|date',
+            'materiales' => 'nullable|array',
+            'materiales.*.material_componente_id' => 'nullable|integer|exists:materials,id',
+            'materiales.*.consumo_estandar' => 'nullable|numeric|min:0',
+            'materiales.*.unidad_medida' => 'nullable|string|max:255',
+            'materiales.*.costo_asociado_teorico' => 'nullable|numeric|min:0',
         ]);
 
-        $datos = $request->all();
+        $datos = $request->except(['materiales', 'last_purchase_price', 'last_purchase_date']);
         $datos['proveedor_habitual'] = $this->normalizarProveedorHabitual($datos['proveedor_habitual'] ?? null);
         $Material = Material::create($datos);
         $this->registrarMovimientoCreacion($Material);
@@ -154,6 +190,17 @@ class MaterialController extends Controller {
             'precio' => $price,
             'fecha' => $date
         ]);
+
+        if ($Material->material_procesado) {
+            $lineas = $this->lineasFichaDesdeRequest($request);
+            if (!empty($lineas)) {
+                $this->fichaTecnicaService->guardar([
+                    'nombre' => $this->nombreFichaMaterial($Material),
+                    'materiales_procesados' => [(int) $Material->id],
+                    'materiales' => $lineas,
+                ]);
+            }
+        }
 
         DB::commit();
         $this->invalidarCache();
@@ -176,6 +223,115 @@ class MaterialController extends Controller {
     }
 
     /**
+     * Normaliza las líneas del editor de ficha que llegan del formulario.
+     * Las filas vacías se ignoran.
+     *
+     * @return array<int, array{material_componente_id: int, consumo_estandar: float, unidad_medida: string|null, costo_asociado_teorico: float|null}>
+     */
+    private function lineasFichaDesdeRequest(Request $request): array
+    {
+        return collect($request->input('materiales', []))
+            ->filter(fn ($fila) => is_array($fila) && !empty($fila['material_componente_id']))
+            ->map(fn ($fila) => [
+                'material_componente_id' => (int) $fila['material_componente_id'],
+                'consumo_estandar' => (float) ($fila['consumo_estandar'] ?? 0),
+                'unidad_medida' => $fila['unidad_medida'] ?? null,
+                'costo_asociado_teorico' => isset($fila['costo_asociado_teorico'])
+                    ? (float) $fila['costo_asociado_teorico']
+                    : null,
+            ])
+            ->values()
+            ->all();
+    }
+
+    private function nombreFichaMaterial(Material $material): string
+    {
+        $nombre = trim(($material->codigo_material ? $material->codigo_material . ' — ' : '') . $material->nombre_base);
+
+        return $nombre !== '' ? $nombre : 'Material #' . $material->id;
+    }
+
+    /**
+     * Crea, actualiza o elimina la ficha del material según su marca de
+     * procesado y las líneas enviadas por el formulario.
+     */
+    private function sincronizarFichaMaterial(Material $material, Request $request): void
+    {
+        $lineas = $this->lineasFichaDesdeRequest($request);
+        $ficha = $material->fichaTecnica()->first();
+
+        if (!$material->material_procesado || empty($lineas)) {
+            if (!$ficha) {
+                return;
+            }
+
+            $bloqueos = $this->fichaTecnicaService->operacionesQueBloqueanMaterial((int) $material->id);
+            if (!empty($bloqueos)) {
+                $detalle = collect($bloqueos)
+                    ->map(fn ($estado, $numeroOp) => $numeroOp . ' (' . $estado . ')')
+                    ->implode(', ');
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'materiales' => 'No se puede quitar la ficha del material: está en la OP ' . $detalle
+                        . '. Solo se permite en Borrador, Preparación o Cerrada.',
+                ]);
+            }
+
+            $ficha->materialesProcesados()->detach($material->id);
+            $this->eliminarFichaSinObjetivos($ficha);
+            $this->costosMateriales->recalcularPorMateriales([(int) $material->id]);
+
+            return;
+        }
+
+        // Una OP activa bloquea la ficha. Si el usuario guarda el material sin
+        // tocar la receta, se conserva tal cual en lugar de fallar.
+        if ($ficha && $this->fichaTecnicaService->operacionesQueBloqueanMaterial((int) $material->id)) {
+            $actuales = $ficha->materiales()
+                ->get()
+                ->map(fn ($fila) => [
+                    'material_componente_id' => (int) $fila->material_componente_id,
+                    'consumo_estandar' => round((float) $fila->consumo_estandar, 4),
+                    'unidad_medida' => trim((string) $fila->unidad_medida),
+                ])
+                ->sortBy('material_componente_id')
+                ->values()
+                ->all();
+
+            $nuevas = collect($lineas)
+                ->map(fn ($fila) => [
+                    'material_componente_id' => (int) $fila['material_componente_id'],
+                    'consumo_estandar' => round((float) $fila['consumo_estandar'], 4),
+                    'unidad_medida' => trim((string) ($fila['unidad_medida'] ?? '')),
+                ])
+                ->sortBy('material_componente_id')
+                ->values()
+                ->all();
+
+            if ($actuales === $nuevas) {
+                return;
+            }
+        }
+
+        $this->fichaTecnicaService->guardar([
+            'nombre' => $ficha?->nombre ?: $this->nombreFichaMaterial($material),
+            'materiales_procesados' => [(int) $material->id],
+            'materiales' => $lineas,
+        ], $ficha);
+    }
+
+    private function eliminarFichaSinObjetivos(FichaTecnica $ficha): void
+    {
+        $ficha->loadCount(['productos', 'materialesProcesados']);
+
+        if ((int) $ficha->productos_count > 0 || (int) $ficha->materiales_procesados_count > 0) {
+            return;
+        }
+
+        $ficha->materiales()->delete();
+        $ficha->delete();
+    }
+
+    /**
      * El frontend puede enviar el proveedor como objeto completo (select de Inertia)
      * o como id; la columna guarda solo el id.
      */
@@ -195,6 +351,14 @@ class MaterialController extends Controller {
         $permissions = Myhelp::EscribirEnLog($this, ' Begin UPDATE:Materials');
         DB::beginTransaction();
 
+        $request->validate([
+            'materiales' => 'nullable|array',
+            'materiales.*.material_componente_id' => 'nullable|integer|exists:materials,id',
+            'materiales.*.consumo_estandar' => 'nullable|numeric|min:0',
+            'materiales.*.unidad_medida' => 'nullable|string|max:255',
+            'materiales.*.costo_asociado_teorico' => 'nullable|numeric|min:0',
+        ]);
+
         if ($request->has('existencia_actual') && $request->input('existencia_actual') < 0) {
             DB::rollBack();
             return back()->with('error', 'La existencia no puede ser negativa.');
@@ -203,7 +367,15 @@ class MaterialController extends Controller {
         $Material = Material::findOrFail($id);
         $existenciaAnterior = (float) ($Material->existencia_actual ?? 0);
 //        $request->merge(['no_nada_id' => $request->no_nada['id']]);
-        $datos = $request->except(['codigo_material', 'existencia_actual', 'motivo', 'alterar_existencia']);
+        $datos = $request->except([
+            'codigo_material',
+            'existencia_actual',
+            'motivo',
+            'alterar_existencia',
+            'materiales',
+            'last_purchase_price',
+            'last_purchase_date',
+        ]);
         if (array_key_exists('proveedor_habitual', $datos)) {
             $datos['proveedor_habitual'] = $this->normalizarProveedorHabitual($datos['proveedor_habitual']);
         }
@@ -212,6 +384,12 @@ class MaterialController extends Controller {
         }
         $Material->update($datos);
         $this->registrarMovimientoActualizacion($Material, $existenciaAnterior, $request->input('motivo'));
+
+        // La ficha técnica solo se toca cuando el formulario envía sus líneas.
+        // Así una edición rápida de existencia/precio no borra la receta.
+        if ($request->has('materiales')) {
+            $this->sincronizarFichaMaterial($Material, $request);
+        }
         
         // Actualizar precio de última compra si se proporciona
         if ($request->has('last_purchase_price') && $request->filled('last_purchase_price')) {

@@ -5,9 +5,10 @@ import Modal from '@/components/Modal.vue';
 import PrimaryButton from '@/components/PrimaryButton.vue';
 import SecondaryButton from '@/components/SecondaryButton.vue';
 import TextInput from '@/components/TextInput.vue';
+import EditorMateriales from '@/pages/FichaTecnicaMateriales/EditorMateriales.vue';
 import { ClipboardDocumentListIcon, SwatchIcon } from '@heroicons/vue/24/solid';
 import { useForm } from '@inertiajs/vue3';
-import { watchEffect } from 'vue';
+import { computed, watchEffect } from 'vue';
 import '@vuepic/vue-datepicker/dist/main.css'
 import vSelect from "vue-select";
 import "vue-select/dist/vue-select.css";
@@ -36,6 +37,7 @@ const form = useForm({
     // Deben existir desde el inicio: useForm solo envía las claves iniciales.
     last_purchase_price: '',
     last_purchase_date: new Date().toISOString().split('T')[0],
+    materiales: [] as any[],
 });
 
 const printForm: Array<{ idd: string; label: string; type: string }> = [];
@@ -50,6 +52,10 @@ props.titulos.forEach((names: any) => {
 
 const camposNormales = printForm.filter((campo) => campo.type !== 'boolean');
 const camposBooleanos = printForm.filter((campo) => campo.type === 'boolean');
+
+const esMaterialProcesado = computed(() => Number(form.material_procesado) === 1);
+const fichaBloqueada = computed(() => Boolean(props.Materiala?.ficha_bloqueada));
+const fichaBloqueoDetalle = computed(() => props.Materiala?.ficha_bloqueo_detalle ?? '');
 
 const camposBloqueados = ['codigo_material', 'existencia_actual'];
 const esCampoBloqueado = (campo: string) => camposBloqueados.includes(campo) && campo !== 'estado';
@@ -103,6 +109,13 @@ watchEffect(() => {
             form.last_purchase_price = '';
             form.last_purchase_date = new Date().toISOString().split('T')[0];
         }
+
+        form.materiales = (props.Materiala?.ficha_materiales ?? []).map((fila: any) => ({
+            material_componente_id: fila.material_componente_id,
+            consumo_estandar: fila.consumo_estandar,
+            unidad_medida: fila.unidad_medida ?? '',
+            costo_asociado_teorico: fila.costo_asociado_teorico ?? '',
+        }));
     }
 })
 
@@ -267,6 +280,25 @@ const update = () => {
                                 </span>
                             </div>
                         </div>
+                    </div>
+
+                    <!-- Ficha técnica del material procesado -->
+                    <div v-if="esMaterialProcesado">
+                        <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-1.5 mb-1">
+                            <SwatchIcon class="w-4 h-4 text-gray-400 dark:text-gray-500" />
+                            Ficha técnica
+                        </h3>
+                        <p class="text-xs text-gray-400 dark:text-gray-500 mb-3 pl-6">
+                            Materiales y consumos necesarios para fabricar una unidad de este material procesado.
+                        </p>
+                        <div v-if="fichaBloqueada"
+                            class="mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-200">
+                            La ficha no se puede modificar porque el material está en la OP {{ fichaBloqueoDetalle }}.
+                        </div>
+                        <EditorMateriales v-model="form.materiales" :opciones="props.losSelect"
+                            :errors="form.errors" :disabled="fichaBloqueada" />
+                        <InputError class="mt-2" :message="form.errors.materiales" />
+                        <InputError class="mt-2" :message="form.errors.materiales_procesados" />
                     </div>
 
                     <!-- Precio de última compra -->

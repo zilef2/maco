@@ -30,7 +30,15 @@ type ItemDistribucion = {
     talla: string;
     cantidad_planificada: number | string;
     producto_id?: number | null;
+    material_id?: number | null;
     _origen?: 'producto' | 'grupo' | 'manual';
+};
+
+type MaterialSeleccionado = {
+    id: number;
+    nombre: string;
+    unidad: string;
+    cantidad: string;
 };
 
 const distribucion = reactive({
@@ -38,6 +46,10 @@ const distribucion = reactive({
 });
 
 const grupoTallas = ref<number | null>(null);
+
+// Una OP produce productos (como antes) o materiales procesados. El modo se
+// elige al inicio y oculta la sección que no aplica.
+const modoObjetivo = ref<'producto' | 'material'>('producto');
 
 const modalProductoDistribucion = reactive({
     show: false,
@@ -779,10 +791,10 @@ watch(
                             Cantidad planificada:
                             <b class="text-gray-900 dark:text-gray-100">{{ totalTallas }}</b>
                         </span>
-                        <span>
+                        <!-- <span>
                             Total de tallas:
                             <b class="text-gray-900 dark:text-gray-100">{{ totalTallas }}</b>
-                        </span>
+                        </span> -->
                         <span>
                             Costo fichas:
                             <b class="text-gray-900 dark:text-gray-100">{{ formatdinero(costoFichas) }}</b>

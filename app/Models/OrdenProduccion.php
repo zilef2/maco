@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\DB;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 use Illuminate\Database\Eloquent\SoftDeletes;
 
@@ -54,6 +55,17 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     public function productos()
     {
         return $this->belongsToMany(Producto::class, 'orden_produccion_producto')->withTimestamps();
+    }
+
+    /**
+     * Materiales procesados que produce esta OP. La cantidad planificada de
+     * cada uno vive en el pivote.
+     */
+    public function materiales(): BelongsToMany
+    {
+        return $this->belongsToMany(Material::class, 'orden_produccion_material', 'orden_produccion_id', 'material_id')
+            ->withPivot('cantidad')
+            ->withTimestamps();
     }
 
     public function taller()

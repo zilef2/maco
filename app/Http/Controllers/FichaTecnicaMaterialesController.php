@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\FichaTecnica;
+use App\Models\Material;
 use App\Models\Producto;
 use App\helpers\Myhelp;
 use App\helpers\MyModels;
@@ -38,6 +39,9 @@ class FichaTecnicaMaterialesController extends Controller {
         $fichas = $this->Filtros($request)->get()->map(function ($ficha) {
             $ficha->productos_nombres = $ficha->productos
                 ->map(fn ($p) => $p->Titulo_Shopify ?: ($p->Codigo_interno ?: 'Producto #' . $p->id))
+                ->implode(', ');
+            $ficha->materiales_procesados_nombres = $ficha->materialesProcesados
+                ->map(fn ($m) => trim(($m->codigo_material ? $m->codigo_material . ' — ' : '') . $m->nombre_base))
                 ->implode(', ');
             $ficha->materiales_count = $ficha->materiales->count();
             return $ficha;
@@ -126,7 +130,7 @@ class FichaTecnicaMaterialesController extends Controller {
     }
 
     public function Filtros($request): Builder {
-        $fichas = FichaTecnica::query()->with(['materiales.material', 'productos']);
+        $fichas = FichaTecnica::query()->with(['materiales.material', 'productos', 'materialesProcesados']);
         if ($request->has('search')) {
             $fichas = $fichas->where(function ($query) use ($request) {
                 $query->where('nombre', 'LIKE', "%" . $request->search . "%");
@@ -158,6 +162,8 @@ class FichaTecnicaMaterialesController extends Controller {
         DB::beginTransaction();
         $ficha = $this->guardarFicha($request);
         DB::commit();
+        Cache::increment('material_index_version');
+        Cache::increment('op_index_version');
         Cache::forget('op_selects');
         Myhelp::EscribirEnLog($this, 'STORE:FichaTecnicaMaterialess EXITOSO', 'FichaTecnica id:' . $ficha->id . ' | ' . $ficha->nombre, false);
         return back()->with('success', __('app.label.created_successfully', ['name' => $ficha->nombre]));
@@ -178,6 +184,8 @@ class FichaTecnicaMaterialesController extends Controller {
         $ficha = FichaTecnica::findOrFail($id);
         $this->guardarFicha($request, $ficha);
         DB::commit();
+        Cache::increment('material_index_version');
+        Cache::increment('op_index_version');
         Cache::forget('op_selects');
         Myhelp::EscribirEnLog($this, 'UPDATE:FichaTecnicaMaterialess EXITOSO', 'FichaTecnica id:' . $ficha->id . ' | ' . $ficha->nombre, false);
         return back()->with('success', __('app.label.updated_successfully2', ['nombre' => $ficha->nombre]));
@@ -192,6 +200,8 @@ class FichaTecnicaMaterialesController extends Controller {
             'nombre'                          => ['required', 'string', 'max:255'],
             'productos'                       => ['present', 'array'],
             'productos.*'                     => ['integer', 'exists:productos,id'],
+            'materiales_procesados'           => ['present', 'array'],
+            'materiales_procesados.*'         => ['integer', 'exists:materials,id'],
             'materiales'                      => ['required', 'array', 'min:1'],
             'materiales.*.material_componente_id' => ['required', 'integer', 'exists:materials,id'],
             'materiales.*.consumo_estandar'   => ['required', 'numeric', 'min:0'],
@@ -199,6 +209,23 @@ class FichaTecnicaMaterialesController extends Controller {
             'materiales.*.costo_asociado_teorico' => ['nullable', 'numeric', 'min:0'],
             'materiales.*.costo_asociado_real'    => ['nullable', 'numeric', 'min:0'],
         ]);
+
+        if (empty($datos['productos']) && empty($datos['materiales_procesados'])) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'productos' => 'Seleccione un producto o un material procesado para esta ficha.',
+            ]);
+        }
+
+        $noProcesados = Material::whereIn('id', $datos['materiales_procesados'])
+            ->where('material_procesado', false)
+            ->pluck('nombre_base')
+            ->all();
+
+        if (!empty($noProcesados)) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'materiales_procesados' => 'Solo los materiales con proceso pueden tener ficha técnica: ' . implode(', ', $noProcesados),
+            ]);
+        }
 
         return $this->fichaTecnicaService->guardar($datos, $ficha);
     }
@@ -210,8 +237,11 @@ class FichaTecnicaMaterialesController extends Controller {
         DB::beginTransaction();
         $ficha->materiales()->delete();
         $ficha->productos()->detach();
+        $ficha->materialesProcesados()->detach();
         $ficha->delete();
         DB::commit();
+        Cache::increment('material_index_version');
+        Cache::increment('op_index_version');
         Cache::forget('op_selects');
         Myhelp::EscribirEnLog($this, 'DELETE:FichaTecnicaMaterialess', 'FichaTecnica id:' . $ficha->id . ' | ' . $elnombre . ' borrado', false);
         return back()->with('success', __('app.label.deleted_successfully', ['name' => $elnombre]));
@@ -223,9 +253,12 @@ class FichaTecnicaMaterialesController extends Controller {
         foreach ($fichas as $ficha) {
             $ficha->materiales()->delete();
             $ficha->productos()->detach();
+            $ficha->materialesProcesados()->detach();
             $ficha->delete();
         }
         DB::commit();
+        Cache::increment('material_index_version');
+        Cache::increment('op_index_version');
         Cache::forget('op_selects');
         return back()->with('success', __('app.label.deleted_successfully', ['name' => count($request->id) . ' ' . __('app.label.user')]));
     }
