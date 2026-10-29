@@ -19,6 +19,9 @@ class Parametro extends Model
 
     public const COSTOS_PROMEDIO_ULTIMO = 2;
 
+    /** Días de cobertura mínima: el banner de materiales avisa si quedan menos. */
+    public const DIAS_PREVISION_STOCK = 'dias_prevision_stock';
+
     protected $fillable = [
         'nombre',
         'valor',

@@ -5,11 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\CierreOrdenProduccion;
 use App\helpers\Myhelp;
 use App\helpers\MyModels;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -30,17 +28,28 @@ class CierreOrdenProduccionController extends Controller {
 
     public function index(Request $request) {
         $numberPermissions = MyModels::getPermissionToNumber(Myhelp::EscribirEnLog($this, ' CierreOrdenProduccions '));
-        $CierreOrdenProduccions = $this->Filtros($request)->get();
-//        $losSelect = $this->Dependencias();
-
+        // Listado completo: la búsqueda, los filtros, el agrupado por OP y la
+        // paginación viven en el frontend (igual que Producto), así que aquí
+        // no se lee ningún parámetro de filtro.
+        $cierres = CierreOrdenProduccion::query()
+            ->with(['ordenProduccion', 'responsable'])
+            ->orderByDesc('fecha_cierre')
+            ->get()
+            ->map(function ($cierre) {
+                $cierre->orden_codigo = $cierre->ordenProduccion?->numero_op
+                    ?? ($cierre->orden_produccion_id ? '#' . $cierre->orden_produccion_id : '—');
+                $cierre->responsable_nombre = $cierre->responsable?->name ?? '—';
+                unset($cierre->ordenProduccion, $cierre->responsable);
+                return $cierre;
+            })
+            ->values();
 
         $perPage = $request->has('perPage') ? $request->perPage : 10;
         return Inertia::render($this->FromController . '/Index', [
-            'fromController' => $this->PerPageAndPaginate($request, $CierreOrdenProduccions),
-            'total' => $CierreOrdenProduccions->count(),
+            'cierres' => $cierres,
+            'total' => $cierres->count(),
             'breadcrumbs' => [['label' => __('app.label.' . $this->FromController), 'href' => route($this->FromController . '.index')]],
             'title' => __('app.label.' . $this->FromController),
-            'filters' => $request->all(['search', 'field', 'order']),
             'perPage' => (int)$perPage,
             'numberPermissions' => $numberPermissions,
             'losSelect'         => $this->losSelect(CierreOrdenProduccion::class, ' CierreOrdenProduccion','proveeNombre'),
@@ -68,24 +77,6 @@ class CierreOrdenProduccionController extends Controller {
 			$label => Myhelp::NEW_turnInSelectID($modelCollection, $label.' ', $displayField),
 		];
 	}
-    public function Filtros($request): Builder {
-        $CierreOrdenProduccions = CierreOrdenProduccion::query();
-        if ($request->has('search')) {
-            $CierreOrdenProduccions = $CierreOrdenProduccions->where(function ($query) use ($request) {
-                $query->where('nombre', 'LIKE', "%" . $request->search . "%")
-                    //                    ->orWhere('codigo', 'LIKE', "%" . $request->search . "%")
-                    //                    ->orWhere('identificacion', 'LIKE', "%" . $request->search . "%")
-                ;
-            });
-        }
-
-        if ($request->has(['field', 'order'])) {
-            $CierreOrdenProduccions = $CierreOrdenProduccions->orderBy($request->field, $request->order);
-        } else
-            $CierreOrdenProduccions = $CierreOrdenProduccions->orderBy('updated_at', 'DESC');
-        return $CierreOrdenProduccions;
-    }
-
 //    public function Dependencias()
 //    {
 //        $no_nadasSelect = No_nada::all('id','nombre as name')->toArray();
@@ -98,19 +89,6 @@ class CierreOrdenProduccionController extends Controller {
 //    }
 
     //</editor-fold>
-
-    public function PerPageAndPaginate($request, $CierreOrdenProduccions) {
-        $perPage = $request->has('perPage') ? $request->perPage : 10;
-        $page = request('page', 1); // Current page number
-        $paginated = new LengthAwarePaginator(
-            $CierreOrdenProduccions->forPage($page, $perPage),
-            $CierreOrdenProduccions->count(),
-            $perPage,
-            $page,
-            ['path' => request()->url()]
-        );
-        return $paginated;
-    }
 
     public function store(Request $request): RedirectResponse {
         $permissions = Myhelp::EscribirEnLog($this, ' Begin STORE:CierreOrdenProduccions');

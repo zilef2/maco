@@ -12,6 +12,7 @@ import ImportarMaterialModal from '@/pages/Material/ImportarMaterialModal.vue';
 import AlterarExistencia from '@/pages/Material/AlterarExistencia.vue';
 import HistorialMovimientos from '@/pages/Material/HistorialMovimientos.vue';
 import HistorialMultiples from '@/pages/Material/HistorialMultiples.vue';
+import RegistrarCompra from '@/pages/Material/RegistrarCompra.vue';
 
 import {
     ArrowPathIcon,
@@ -31,6 +32,7 @@ import {
     MagnifyingGlassIcon,
     PencilIcon,
     PlusIcon,
+    ShoppingCartIcon,
     TrashIcon,
     XMarkIcon,
 } from '@heroicons/vue/24/solid';
@@ -54,6 +56,7 @@ const props = defineProps({
     numberPermissions: Number,
     losSelect: Object,
     titulos: Array,
+    prevision: { type: Object as () => any, default: () => null },
 });
 
 /* --------------------------------------------------------------------------
@@ -115,6 +118,7 @@ const preparadas = computed(() =>
                 m.unidad_inventario,
                 estadoNormalizado(m.estado),
                 m.variante_atributo_sugerido,
+                (m.variants ?? []).map((v: any) => v.nombre).join(' '),
                 m.proveedor_nombre,
                 m.observaciones,
             ].join(' '),
@@ -333,6 +337,12 @@ const materialesSinPrecio = computed(() => {
     return filas.value.filter((m: any) => m.last_purchase_price === null || m.last_purchase_price === undefined).length;
 });
 
+// Previsión: materiales cuyo stock alcanza para menos de los días del parámetro.
+const diasPrevision = computed(() => Number(props.prevision?.dias_prevision ?? 2));
+const previsiónFaltantes = computed<any[]>(() =>
+    ((props.prevision?.faltan ?? []) as any[]).filter((f) => f.dias_restantes <= diasPrevision.value)
+);
+
 const limpiarFiltros = () => {
     busqueda.value = '';
     categoriaFiltro.value = 'todos';
@@ -401,10 +411,11 @@ const columnas = [
     { key: 'material', label: 'Material', sortable: true, align: 'left', headerClass: 'min-w-[200px]', cellClass: 'min-w-[200px]' },
     { key: 'last_purchase_price', label: 'Último precio', sortable: true, align: 'right', headerClass: 'min-w-[140px]', cellClass: 'min-w-[140px]' },
     { key: 'existencia_actual', label: 'Existencia', sortable: true, align: 'right', headerClass: 'w-[120px]', cellClass: 'w-[120px]' },
+    { key: 'gasto_diario', label: 'Gasto diario', sortable: true, align: 'right', headerClass: 'w-[130px]', cellClass: 'w-[130px]' },
     { key: 'estado', label: 'Estado', sortable: true, align: 'left', headerClass: 'min-w-[130px]', cellClass: 'min-w-[130px]' },
     { key: 'material_procesado', label: 'Procesado', sortable: true, align: 'left', headerClass: 'min-w-[110px]', cellClass: 'min-w-[110px]' },
     { key: 'proveedor', label: 'Proveedor', sortable: true, align: 'left', headerClass: 'hidden min-w-[140px] md:table-cell', cellClass: 'hidden min-w-[140px] md:table-cell' },
-    { key: 'variante_atributo_sugerido', label: 'Variante', sortable: true, align: 'left', headerClass: 'hidden min-w-[120px] xl:table-cell', cellClass: 'hidden min-w-[120px] xl:table-cell' },
+    { key: 'variante_atributo_sugerido', label: 'Variantes', sortable: true, align: 'left', headerClass: 'hidden min-w-[160px] xl:table-cell', cellClass: 'hidden min-w-[160px] xl:table-cell' },
     { key: 'variantes', label: 'Maneja', sortable: false, align: 'left', headerClass: 'hidden min-w-[120px] lg:table-cell', cellClass: 'hidden min-w-[120px] lg:table-cell' },
     { key: 'observaciones', label: 'Observaciones', sortable: false, align: 'left', headerClass: 'hidden min-w-[200px] 2xl:table-cell', cellClass: 'hidden min-w-[200px] 2xl:table-cell' },
 ] as const;
@@ -427,6 +438,7 @@ const data = reactive({
     editOpen: false,
     deleteOpen: false,
     importOpen: false,
+    compraOpen: false,
     alterarExistenciaOpen: false,
     historialOpen: false,
     historialMultipleOpen: false,
@@ -489,7 +501,7 @@ router.on('finish', () => {
 });
 
 const recargar = () => {
-    router.reload({ only: ['materiales', 'total', 'losSelect'], preserveScroll: true });
+    router.reload({ only: ['materiales', 'total', 'losSelect', 'prevision'], preserveScroll: true });
 };
 
 /* Títulos para los modales de crear/editar (mismo contrato de antes). */
@@ -582,6 +594,16 @@ const titulos = [
                         </PrimaryButton>
 
                         <PrimaryButton
+                            v-if="can(['update Material']) && filas.length"
+                            type="button"
+                            class="h-9 bg-sky-600 hover:bg-sky-700 focus:ring-sky-500"
+                            @click="data.compraOpen = true"
+                        >
+                            <ShoppingCartIcon class="mr-1.5 h-4 w-4" />
+                            Registrar compra
+                        </PrimaryButton>
+
+                        <PrimaryButton
                             v-if="can(['create Material'])"
                             type="button"
                             class="h-9 bg-emerald-600 hover:bg-emerald-700 focus:ring-emerald-500"
@@ -597,6 +619,50 @@ const titulos = [
                         </PrimaryButton>
                     </div>
                 </div>
+            </div>
+
+            <!-- Banner de previsión: materiales que no alcanzan los días configurados -->
+            <div
+                v-if="previsiónFaltantes.length > 0"
+                class="rounded-xl border border-red-500/30 bg-red-50/80 p-4 dark:bg-red-500/10"
+                role="alert"
+            >
+                <div class="flex items-center gap-2">
+                    <ExclamationTriangleIcon class="h-5 w-5 text-red-600 dark:text-red-400" />
+                    <h2 class="text-sm font-bold text-red-700 dark:text-red-300">
+                        Previsión: {{ previsiónFaltantes.length }} material{{ previsiónFaltantes.length === 1 ? '' : 'es' }} no
+                        alcanza para {{ diasPrevision }} día{{ diasPrevision === 1 ? '' : 's' }}
+                    </h2>
+                </div>
+                <ul class="mt-2 space-y-1.5">
+                    <li
+                        v-for="f in previsiónFaltantes"
+                        :key="f.material_id"
+                        class="flex items-start gap-2 text-xs leading-relaxed text-red-800 dark:text-red-200"
+                    >
+                        <span class="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" />
+                        <span>
+                            <b class="font-semibold">{{ f.codigo ? `${f.codigo} · ` : '' }}{{ f.nombre }}</b>
+                            —
+                            <template v-if="f.dias_restantes <= 0">
+                                gasta {{ zilef_nuber_format(f.gasto_dia, f.gasto_dia % 1 ? 2 : 0) }}{{ f.unidad ? ` ${f.unidad}` : '' }} por día,
+                                solo quedan {{ zilef_nuber_format(f.existencia, f.existencia % 1 ? 2 : 0) }}{{ f.unidad ? ` ${f.unidad}` : '' }}:
+                                <b>no alcanza ni para un día</b>
+                            </template>
+                            <template v-else>
+                                gasta {{ zilef_nuber_format(f.gasto_dia, f.gasto_dia % 1 ? 2 : 0) }}{{ f.unidad ? ` ${f.unidad}` : '' }} por día,
+                                hay {{ zilef_nuber_format(f.existencia, f.existencia % 1 ? 2 : 0) }}{{ f.unidad ? ` ${f.unidad}` : '' }}:
+                                <b>solo queda para {{ f.dias_restantes }} día{{ f.dias_restantes === 1 ? '' : 's' }}</b>
+                            </template>
+                        </span>
+                    </li>
+                </ul>
+                <p class="mt-3 border-t border-red-500/20 pt-2 text-[11px] text-red-600/80 dark:text-red-300/70">
+                    Cómo se calcula: gasto por día = total de salidas a taller de las OPs en los últimos
+                    {{ prevision?.ventana_dias ?? 30 }} días ÷ {{ prevision?.ventana_dias ?? 30 }};
+                    días que alcanzan = existencia ÷ gasto por día. Se avisa cuando quedan
+                    {{ diasPrevision }} día{{ diasPrevision === 1 ? '' : 's' }} o menos (se cambia en Parámetros → Días de previsión de existencias).
+                </p>
             </div>
 
             <!-- Superficie principal: barra de filtros + tabla + paginación -->
@@ -900,6 +966,22 @@ const titulos = [
                                     </div>
                                 </td>
 
+                                <!-- Gasto diario -->
+                                <td class="px-3 py-3 text-right align-top">
+                                    <div class="flex flex-col items-end gap-0.5">
+                                        <span class="font-semibold tabular-nums text-foreground">
+                                            {{ material.gasto_diario !== null && material.gasto_diario !== undefined
+                                                ? zilef_nuber_format(material.gasto_diario, material.gasto_diario % 1 ? 2 : 0)
+                                                : '—' }}
+                                        </span>
+                                        <span class="text-[11px] text-muted-foreground">
+                                            {{ material.gasto_diario !== null && material.gasto_diario !== undefined
+                                                ? (material.unidad_inventario || 'unidades') + ' / día'
+                                                : 'Sin consumo' }}
+                                        </span>
+                                    </div>
+                                </td>
+
                                 <!-- Estado -->
                                 <td class="px-3 py-3 align-top">
                                     <span
@@ -945,9 +1027,29 @@ const titulos = [
                                     <span class="text-sm text-foreground">{{ material.proveedor_nombre || '—' }}</span>
                                 </td>
 
-                                <!-- Variante -->
+                                <!-- Variantes -->
                                 <td class="hidden px-3 py-3 align-top xl:table-cell">
-                                    <span class="text-sm text-foreground">{{ material.variante_atributo_sugerido || '—' }}</span>
+                                    <div v-if="material.variants?.length" class="flex max-w-[220px] flex-wrap items-center gap-1">
+                                        <span
+                                            v-for="variante in material.variants.slice(0, 3)"
+                                            :key="variante.id"
+                                            class="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium"
+                                            :class="variante.tipo === 'color'
+                                                ? 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300'
+                                                : 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-300'"
+                                            :title="variante.tipo === 'color' ? 'Color' : 'Otra variante'"
+                                        >
+                                            {{ variante.nombre }}
+                                        </span>
+                                        <span
+                                            v-if="material.variants.length > 3"
+                                            class="text-[10px] font-medium text-muted-foreground"
+                                            :title="material.variants.slice(3).map((v: any) => v.nombre).join(', ')"
+                                        >
+                                            +{{ material.variants.length - 3 }}
+                                        </span>
+                                    </div>
+                                    <span v-else class="text-sm text-foreground">{{ material.variante_atributo_sugerido || '—' }}</span>
                                 </td>
 
                                 <!-- Maneja -->
@@ -1152,6 +1254,13 @@ const titulos = [
         />
 
         <ImportarMaterialModal :show="data.importOpen" @close="data.importOpen = false" />
+
+        <RegistrarCompra
+            v-if="can(['update Material'])"
+            :show="data.compraOpen"
+            :materiales="filas"
+            @close="data.compraOpen = false"
+        />
 
         <Create
             v-if="can(['create Material'])"

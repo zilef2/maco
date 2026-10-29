@@ -1,9 +1,8 @@
 <script setup>
 import AppLayout from '@/layouts/AppLayout.vue';
-import { Head, useForm, Link } from '@inertiajs/vue3';
+import { Head, useForm } from '@inertiajs/vue3';
 import { computed, reactive } from 'vue';
 import { PlusIcon } from '@heroicons/vue/24/solid';
-import { ArrowRightIcon } from '@heroicons/vue/24/outline';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
 import Edit from './Edit.vue';
@@ -19,18 +18,18 @@ const props = defineProps({
     isSuperadmin: Boolean,
     modelNames: Array,
     costosPromedio: Object,
+    diasPrevision: Object,
 })
-
 const data = reactive({
     createOpen: false,
     editOpen: false,
     deleteOpen: false,
     showAddLista: false,
-    enlacesMaestros: [
-        { nombre: 'Talla', href: '/Talla', desc: 'Gestión y configuración de tallas' },
-        { nombre: 'Presupuesto', href: '/Presupuesto', desc: 'Administración de presupuestos' },
-    ],
 })
+
+// Todo lo editable de esta pantalla exige superadmin: los controles se
+// deshabilitan y el botón de guardar queda fuera cuando no lo es.
+const puedeEditar = computed(() => props.isSuperadmin)
 
 // Parámetro entero costos_promedio: decide cómo se toma el precio de un
 // material al costear una OP.
@@ -45,7 +44,24 @@ const opcionElegida = computed(() =>
 )
 
 const guardarCostos = () => {
+    if (!puedeEditar.value) return
     costosForm.post(route('parametros.costos-promedio'), {
+        preserveScroll: true,
+    })
+}
+
+// Parámetro entero dias_prevision_stock: umbral del banner de previsión
+// en Materiales (avisa si la existencia alcanza para menos de estos días).
+const diasForm = useForm({
+    valor_int: Number(props.diasPrevision?.valor ?? 2),
+})
+
+const diasGuardado = computed(() => Number(props.diasPrevision?.valor ?? 2))
+const diasSinCambios = computed(() => diasForm.valor_int === diasGuardado.value)
+
+const guardarDias = () => {
+    if (!puedeEditar.value) return
+    diasForm.post(route('parametros.dias-prevision'), {
         preserveScroll: true,
     })
 }
@@ -57,6 +73,7 @@ const addForm = useForm({
 })
 
 const submitLista = () => {
+    if (!puedeEditar.value) return
     addForm.post(route('parametros.lista.store'), {
         preserveScroll: true,
         onSuccess: () => {
@@ -75,44 +92,6 @@ const submitLista = () => {
 
         <div class="space-y-6 p-4">
 
-            <!-- ─── Parámetro del sistema ────────────────────────────────── -->
-            <div class="bg-white dark:bg-gray-800 rounded-xl shadow overflow-hidden">
-                <div class="flex justify-between items-center px-5 py-3 border-b border-gray-200 dark:border-gray-700">
-                    <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wide">
-                        Parámetros del sistema
-                    </h2>
-                    <div class="flex gap-2">
-                        <button
-                            v-show="can(['edit parametro'])"
-                            @click="data.editOpen = true"
-                            class="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white transition"
-                        >
-                            Editar
-                        </button>
-                    </div>
-                </div>
-
-                <table class="w-full text-sm">
-                    <thead class="bg-gray-50 dark:bg-gray-900 text-xs uppercase text-gray-500 dark:text-gray-400">
-                        <tr>
-                            <th v-for="(col, i) in nombresTabla?.[0]" :key="i" class="px-4 py-2 text-left">{{ col }}</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr v-for="item in fromController" class="border-t border-gray-100 dark:border-gray-700">
-                            <td class="px-4 py-2">—</td>
-                            <td class="px-4 py-2">{{ item?.nombre }}</td>
-                            <td class="px-4 py-2">{{ item?.valor }}</td>
-                            <td class="px-4 py-2">{{ item?.valor2 }}</td>
-                            <td class="px-4 py-2">{{ item?.valor_date }}</td>
-                            <td class="px-4 py-2">{{ item?.valor_int }}</td>
-                            <td class="px-4 py-2">{{ item?.valor_double }}</td>
-                            <td class="px-4 py-2">{{ item?.valor_string1m }}</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-
             <!-- ─── Costos de materiales en las OPs ────────────────────────── -->
             <div class="bg-white dark:bg-gray-800 rounded-xl shadow overflow-hidden">
                 <div class="flex justify-between items-center px-5 py-3 border-b border-gray-200 dark:border-gray-700">
@@ -121,6 +100,9 @@ const submitLista = () => {
                     </h2>
                     <span class="text-xs text-gray-400 dark:text-gray-500">
                         parámetro entero · {{ props.costosPromedio?.nombre }}
+                    </span>
+                    <span v-if="!puedeEditar" class="text-xs font-medium text-amber-600 dark:text-amber-400">
+                        Solo lectura · requiere superadmin
                     </span>
                 </div>
 
@@ -134,16 +116,20 @@ const submitLista = () => {
                         <label
                             v-for="opcion in props.costosPromedio?.opciones ?? []"
                             :key="opcion.value"
-                            class="flex gap-3 rounded-xl border p-4 transition cursor-pointer"
-                            :class="Number(costosForm.valor_int) === Number(opcion.value)
-                                ? 'border-sky-500 bg-sky-50 dark:border-sky-400 dark:bg-sky-900/30'
-                                : 'border-gray-200 hover:border-gray-300 dark:border-gray-700 dark:hover:border-gray-600'"
+                            class="flex gap-3 rounded-xl border p-4 transition"
+                            :class="[
+                                !puedeEditar ? 'cursor-not-allowed opacity-60' : 'cursor-pointer',
+                                Number(costosForm.valor_int) === Number(opcion.value)
+                                    ? 'border-sky-500 bg-sky-50 dark:border-sky-400 dark:bg-sky-900/30'
+                                    : 'border-gray-200 hover:border-gray-300 dark:border-gray-700 dark:hover:border-gray-600',
+                            ]"
                         >
                             <input
                                 type="radio"
                                 name="costos_promedio"
                                 :value="opcion.value"
                                 v-model="costosForm.valor_int"
+                                :disabled="!puedeEditar"
                                 class="mt-1"
                             />
                             <span class="min-w-0">
@@ -171,8 +157,9 @@ const submitLista = () => {
                             </span>
                         </p>
                         <button
+                            v-if="puedeEditar"
                             type="submit"
-                            :disabled="costosForm.processing || costoSinCambios || !can(['edit parametro', 'issuperadmin'])"
+                            :disabled="costosForm.processing || costoSinCambios"
                             class="text-xs px-4 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {{ costosForm.processing ? 'Guardando...' : 'Guardar' }}
@@ -186,6 +173,73 @@ const submitLista = () => {
                 </form>
             </div>
 
+            <!-- ─── Días de previsión de existencias ───────────────────────── -->
+            <div class="bg-white dark:bg-gray-800 rounded-xl shadow overflow-hidden">
+                <div class="flex justify-between items-center px-5 py-3 border-b border-gray-200 dark:border-gray-700">
+                    <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wide">
+                        Días de previsión de existencias
+                    </h2>
+                    <span class="text-xs text-gray-400 dark:text-gray-500">
+                        parámetro entero · {{ props.diasPrevision?.nombre }}
+                    </span>
+                    <span v-if="!puedeEditar" class="text-xs font-medium text-amber-600 dark:text-amber-400">
+                        Solo lectura · requiere superadmin
+                    </span>
+                </div>
+
+                <form class="p-5 space-y-4" @submit.prevent="guardarDias">
+                    <p class="text-sm text-gray-600 dark:text-gray-300">
+                        El banner de la pantalla de Materiales avisa de cada material cuyo stock alcanza para
+                        menos de estos días, usando el gasto diario promedio calculado con las salidas a taller
+                        de las OPs (últimos 30 días). Por defecto: 2 días.
+                    </p>
+
+                    <div class="flex items-center gap-3">
+                        <label for="dias_prevision" class="text-sm font-medium text-gray-700 dark:text-gray-200">
+                            Avisar si quedan menos de
+                        </label>
+                        <input
+                            id="dias_prevision"
+                            type="number"
+                            min="1"
+                            max="30"
+                            step="1"
+                            v-model="diasForm.valor_int"
+                            :disabled="!puedeEditar"
+                            class="w-24 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 px-3 py-1.5 text-sm text-right tabular-nums focus:ring-2 focus:ring-sky-500 outline-none disabled:opacity-60 disabled:cursor-not-allowed"
+                        />
+                        <span class="text-sm text-gray-600 dark:text-gray-300">días</span>
+                    </div>
+
+                    <p v-if="diasForm.errors.valor_int" class="text-xs text-red-600 dark:text-red-400">
+                        {{ diasForm.errors.valor_int }}
+                    </p>
+
+                    <div class="flex flex-wrap items-center justify-between gap-3 border-t border-gray-100 pt-4 dark:border-gray-700">
+                        <p class="text-xs text-gray-500 dark:text-gray-400">
+                            Guardado:
+                            <b class="text-gray-800 dark:text-gray-100">{{ props.diasPrevision?.nombre }} = {{ diasGuardado }}</b>
+                            <span v-if="!diasSinCambios" class="ml-2 font-medium text-amber-600 dark:text-amber-400">
+                                Cambio sin guardar
+                            </span>
+                        </p>
+                        <button
+                            v-if="puedeEditar"
+                            type="submit"
+                            :disabled="diasForm.processing || diasSinCambios"
+                            class="text-xs px-4 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white transition disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {{ diasForm.processing ? 'Guardando...' : 'Guardar' }}
+                        </button>
+                    </div>
+
+                    <p class="text-[11px] text-gray-400 dark:text-gray-500">
+                        Ejemplo: si un material gasta 100 al día y hay 299 en existencia, alcanza para 2 días;
+                        con el valor en 2 el banner lo lista.
+                    </p>
+                </form>
+            </div>
+
             <!-- ─── Listas Desplegables ──────────────────────────────────── -->
             <div class="bg-white dark:bg-gray-800 rounded-xl shadow overflow-hidden">
                 <div class="flex justify-between items-center px-5 py-3 border-b border-gray-200 dark:border-gray-700">
@@ -193,7 +247,7 @@ const submitLista = () => {
                         Listas Desplegables
                     </h2>
                     <button
-                        v-if="isSuperadmin"
+                        v-if="puedeEditar"
                         @click="data.showAddLista = !data.showAddLista"
                         class="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition"
                     >
@@ -203,7 +257,7 @@ const submitLista = () => {
                 </div>
 
                 <!-- Formulario para agregar (solo superadmin) -->
-                <div v-if="data.showAddLista && isSuperadmin" class="px-5 py-4 bg-emerald-50 dark:bg-emerald-900/20 border-b border-emerald-200 dark:border-emerald-800">
+                <div v-if="data.showAddLista && puedeEditar" class="px-5 py-4 bg-emerald-50 dark:bg-emerald-900/20 border-b border-emerald-200 dark:border-emerald-800">
                     <form @submit.prevent="submitLista" class="flex flex-wrap gap-3 items-end">
                         <div class="flex flex-col gap-1 min-w-[180px]">
                             <label class="text-xs font-medium text-gray-600 dark:text-gray-300">Categoría (modelo)</label>
@@ -287,56 +341,59 @@ const submitLista = () => {
                 </div>
             </div>
 
+            <!-- ─── Parámetros del sistema (al fondo, solo superadmin editable) ─── -->
             <div class="bg-white dark:bg-gray-800 rounded-xl shadow overflow-hidden">
-                <div class="px-5 py-3 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                <div class="flex justify-between items-center px-5 py-3 border-b border-gray-200 dark:border-gray-700">
                     <h2 class="text-sm font-semibold text-gray-700 dark:text-gray-200 uppercase tracking-wide">
-                        Tablas y Catálogos del Sistema
+                        Parámetros del sistema
                     </h2>
-                    <span class="text-xs text-gray-400 dark:text-gray-500">
-                        Accesos directos
-                    </span>
+                    <div class="flex gap-2">
+                        <button
+                            v-if="puedeEditar"
+                            @click="data.editOpen = true"
+                            class="inline-flex items-center gap-1 text-xs px-3 py-1.5 rounded-lg bg-sky-600 hover:bg-sky-700 text-white transition"
+                        >
+                            Editar
+                        </button>
+                    </div>
                 </div>
 
-                <div class="p-5 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                    <Link
-                        v-for="enlace in data.enlacesMaestros"
-                        :key="enlace.href"
-                        :href="enlace.href"
-                        class="group flex flex-col justify-between p-4 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-sky-500 dark:hover:border-sky-500 hover:shadow-md transition-all bg-gray-50 dark:bg-gray-900/50"
-                    >
-                        <div>
-                            <div class="flex items-center justify-between mb-1.5">
-                                <span class="text-sm font-bold text-gray-900 dark:text-white group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors">
-                                    {{ enlace.nombre }}
-                                </span>
-                                <ArrowRightIcon class="w-4 h-4 text-gray-400 group-hover:text-sky-600 group-hover:translate-x-1 transition-all" />
-                            </div>
-                            <p class="text-xs text-gray-500 dark:text-gray-400">
-                                {{ enlace.desc }}
-                            </p>
-                        </div>
-                        <span class="mt-4 text-xs font-semibold text-sky-600 dark:text-sky-400 inline-flex items-center gap-1">
-                            Ir a {{ enlace.nombre }} →
-                        </span>
-                    </Link>
-                </div>
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-50 dark:bg-gray-900 text-xs uppercase text-gray-500 dark:text-gray-400">
+                        <tr>
+                            <th v-for="(col, i) in nombresTabla?.[0]" :key="i" class="px-4 py-2 text-left">{{ col }}</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="item in fromController" class="border-t border-gray-100 dark:border-gray-700">
+                            <td class="px-4 py-2">—</td>
+                            <td class="px-4 py-2">{{ item?.nombre }}</td>
+                            <td class="px-4 py-2">{{ item?.valor }}</td>
+                            <td class="px-4 py-2">{{ item?.valor2 }}</td>
+                            <td class="px-4 py-2">{{ item?.valor_date }}</td>
+                            <td class="px-4 py-2">{{ item?.valor_int }}</td>
+                            <td class="px-4 py-2">{{ item?.valor_double }}</td>
+                            <td class="px-4 py-2">{{ item?.valor_string1m }}</td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
 
         </div>
 
         <!-- Modales existentes -->
         <Edit
+            v-if="puedeEditar"
             :show="data.editOpen"
             @close="data.editOpen = false"
             :parametro="props.fromController"
-            v-show="can(['edit parametro'])"
             :title="props.title"
         />
         <Delete
+            v-if="puedeEditar"
             :show="data.deleteOpen"
             @close="data.deleteOpen = false"
             :parametro="props.fromController"
-            v-show="can(['delete parametro'])"
             :title="props.title"
         />
 

@@ -29,6 +29,7 @@ import Edit from '@/pages/Producto/Edit.vue';
 import Delete from '@/pages/Producto/Delete.vue';
 import ImportarProductoModal from '@/pages/Producto/ImportarProductoModal.vue';
 import DistribucionTallas from '@/pages/Producto/DistribucionTallas.vue';
+import ModalDependenciasProducto from '@/pages/Producto/ModalDependenciasProducto.vue';
 
 import { zilef_nuber_format } from '@/global.ts';
 
@@ -92,7 +93,7 @@ const titulos = [
     { order: 'Estado', label: 'Estado', type: 'string' },
     { order: 'Observaciones', label: 'Observaciones', type: 'string' },
     { order: 'descripcion', label: 'descripcion', type: 'text' },
-    { order: 'precio_predicho', label: 'precio_predicho', type: 'number' },
+    { order: 'costo_anticipado', label: 'costo_anticipado', type: 'number' },
     { order: 'precio_preventa', label: 'precio_preventa', type: 'number' },
     { order: 'precio_estimado', label: 'precio_estimado', type: 'number' },
 ];
@@ -105,7 +106,88 @@ const data = reactive({
     importOpen: false,
     distribucionOpen: false,
     distribucionProducto: null as any,
+    deleteBulkOpen: false,
+    deletingBulk: false,
+    modalBloqueadosOpen: false,
+    productosBloqueados: [] as any[],
+    productosEliminados: 0,
 });
+
+const seleccionados = reactive<Set<number>>(new Set());
+
+const todosSeleccionados = computed(() =>
+    visibles.value.length > 0 && visibles.value.every((p: any) => seleccionados.has(p.id)),
+);
+
+const algunoSeleccionado = computed(() =>
+    visibles.value.some((p: any) => seleccionados.has(p.id)) && !todosSeleccionados.value,
+);
+
+const toggleProducto = (id: number) => {
+    if (seleccionados.has(id)) {
+        seleccionados.delete(id);
+    } else {
+        seleccionados.add(id);
+    }
+};
+
+const toggleTodos = () => {
+    if (todosSeleccionados.value) {
+        visibles.value.forEach((p: any) => seleccionados.delete(p.id));
+    } else {
+        visibles.value.forEach((p: any) => seleccionados.add(p.id));
+    }
+};
+
+const limpiarSeleccion = () => seleccionados.clear();
+
+const eliminarSeleccionados = () => {
+    data.deleteBulkOpen = true;
+};
+
+const confirmarEliminarBulk = async () => {
+    data.deletingBulk = true;
+    try {
+        const csrfToken = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content || '';
+        const respuesta = await fetch(route('Producto.destroy-bulk'), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                Accept: 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN': csrfToken,
+            },
+            body: JSON.stringify({ ids: Array.from(seleccionados) }),
+        });
+
+        const resultado = await respuesta.json();
+        data.deleteBulkOpen = false;
+
+        if (resultado?.bloqueados?.length > 0) {
+            data.productosBloqueados = resultado.bloqueados;
+            data.productosEliminados = Number(resultado.eliminados || 0);
+            data.modalBloqueadosOpen = true;
+
+            const idsBloqueados = new Set(resultado.bloqueados.map((b: any) => Number(b.id)));
+            Array.from(seleccionados).forEach((id: number) => {
+                if (!idsBloqueados.has(id)) {
+                    seleccionados.delete(id);
+                }
+            });
+
+            if (resultado.eliminados > 0) {
+                recargar();
+            }
+        } else {
+            seleccionados.clear();
+            recargar();
+        }
+    } catch {
+        data.deleteBulkOpen = false;
+    } finally {
+        data.deletingBulk = false;
+    }
+};
 
 const selectClass = 'h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30';
 
@@ -403,6 +485,13 @@ watch(
 watch(paginas, (n) => {
     if (pagina.value > n) pagina.value = n;
 });
+
+watch(
+    [busqueda, estadoFiltro, categoriaFiltro, familiaFiltro, controlVarianteFiltro, opcionFiltro, precioPreventaFiltro, precioEstimadoFiltro, tallasFiltro, cantidadFiltro, fichaFiltro, pagina],
+    () => {
+        seleccionados.clear();
+    },
+);
 
 const accionFila = (accion: string, producto: any) => {
     data.Productoo = producto;
@@ -702,6 +791,20 @@ const recargar = () => {
                         <thead>
                             <tr>
                                 <th
+                                    v-if="can(['issuperadmin'])"
+                                    scope="col"
+                                    class="w-10 bg-muted px-3 py-2.5"
+                                >
+                                    <input
+                                        type="checkbox"
+                                        :checked="todosSeleccionados"
+                                        :indeterminate="algunoSeleccionado"
+                                        @change="toggleTodos"
+                                        class="h-4 w-4 rounded border-border accent-foreground"
+                                        aria-label="Seleccionar todos"
+                                    />
+                                </th>
+                                <th
                                     v-for="col in columnas"
                                     :key="col.key"
                                     scope="col"
@@ -758,7 +861,17 @@ const recargar = () => {
                                 v-for="producto in visibles"
                                 :key="producto.id"
                                 class="group border-b border-border/60 transition-colors last:border-0 hover:bg-muted/40"
+                                :class="{ 'bg-primary/5': seleccionados.has(producto.id) }"
                             >
+                                <td v-if="can(['issuperadmin'])" class="w-10 px-3 py-3 align-top">
+                                    <input
+                                        type="checkbox"
+                                        :checked="seleccionados.has(producto.id)"
+                                        @change="toggleProducto(producto.id)"
+                                        class="h-4 w-4 rounded border-border accent-foreground"
+                                        :aria-label="`Seleccionar ${producto.Codigo_interno || producto.Titulo_Shopify}`"
+                                    />
+                                </td>
                                 <td class="px-3 py-3 align-top">
                                     <div class="flex flex-col gap-0.5">
                                         <span class="font-semibold tabular-nums tracking-tight text-foreground">
@@ -838,7 +951,7 @@ const recargar = () => {
                                             {{ formatearPrecio(producto.precio_preventa) }}
                                         </span>
                                         <span class="text-[11px] tabular-nums text-muted-foreground">
-                                            Predicho {{ formatearPrecio(producto.precio_predicho) }}
+                                            Anticipado {{ formatearPrecio(producto.costo_anticipado) }}
                                         </span>
                                     </div>
                                 </td>
@@ -975,6 +1088,94 @@ const recargar = () => {
             </div>
         </div>
 
+        <Teleport to="body">
+            <Transition
+                enter-active-class="transition duration-200 ease-out"
+                enter-from-class="translate-y-4 opacity-0"
+                enter-to-class="translate-y-0 opacity-100"
+                leave-active-class="transition duration-150 ease-in"
+                leave-from-class="translate-y-0 opacity-100"
+                leave-to-class="translate-y-4 opacity-0"
+            >
+                <div
+                    v-if="can(['issuperadmin']) && seleccionados.size > 0"
+                    class="fixed bottom-6 left-1/2 z-50 -translate-x-1/2"
+                >
+                    <div
+                        class="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-2.5 shadow-xl ring-1 ring-black/5"
+                    >
+                        <span class="text-sm font-medium text-foreground">
+                            {{ seleccionados.size }}
+                            {{ seleccionados.size === 1 ? 'producto seleccionado' : 'productos seleccionados' }}
+                        </span>
+                        <div class="h-4 w-px bg-border" />
+                        <button
+                            type="button"
+                            @click="eliminarSeleccionados"
+                            class="inline-flex items-center gap-1.5 rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                        >
+                            <TrashIcon class="h-3.5 w-3.5" />
+                            Eliminar
+                        </button>
+                        <button
+                            type="button"
+                            @click="limpiarSeleccion"
+                            class="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        >
+                            <XMarkIcon class="h-3.5 w-3.5" />
+                            Cancelar
+                        </button>
+                    </div>
+                </div>
+            </Transition>
+        </Teleport>
+
+        <Teleport to="body">
+            <Transition
+                enter-active-class="transition duration-200 ease-out"
+                enter-from-class="opacity-0"
+                enter-to-class="opacity-100"
+                leave-active-class="transition duration-150 ease-in"
+                leave-from-class="opacity-100"
+                leave-to-class="opacity-0"
+            >
+                <div
+                    v-if="data.deleteBulkOpen"
+                    class="fixed inset-0 z-50 flex items-center justify-center p-4"
+                >
+                    <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="data.deleteBulkOpen = false" />
+                    <div class="relative w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-xl">
+                        <h2 class="text-base font-semibold text-foreground">Eliminar productos</h2>
+                        <p class="mt-2 text-sm text-muted-foreground">
+                            ¿Estás seguro de que deseas eliminar
+                            <span class="font-semibold text-foreground">{{ seleccionados.size }}</span>
+                            {{ seleccionados.size === 1 ? 'producto' : 'productos' }}?
+                            Esta acción no se puede deshacer.
+                        </p>
+                        <div class="mt-6 flex justify-end gap-2">
+                            <button
+                                type="button"
+                                @click="data.deleteBulkOpen = false"
+                                :disabled="data.deletingBulk"
+                                class="inline-flex items-center rounded-md border border-border bg-card px-4 py-2 text-sm font-medium text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="button"
+                                @click="confirmarEliminarBulk"
+                                :disabled="data.deletingBulk"
+                                class="inline-flex items-center gap-1.5 rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50"
+                            >
+                                <TrashIcon class="h-4 w-4" />
+                                {{ data.deletingBulk ? 'Eliminando...' : 'Sí, eliminar' }}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </Transition>
+        </Teleport>
+
         <ImportarProductoModal :show="data.importOpen" @close="data.importOpen = false" />
 
         <Create
@@ -1016,6 +1217,13 @@ const recargar = () => {
             :productoLabel="data.distribucionProducto?.Codigo_interno"
             :items="data.distribucionProducto?.distribuciones_por_tallas || []"
             :ordenesTallas="data.distribucionProducto?.ordenes_con_tallas || []"
+        />
+
+        <ModalDependenciasProducto
+            :show="data.modalBloqueadosOpen"
+            :bloqueados="data.productosBloqueados"
+            :eliminados="data.productosEliminados"
+            @close="data.modalBloqueadosOpen = false"
         />
     </AppLayout>
 </template>

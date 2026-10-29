@@ -319,8 +319,15 @@ const destinoEsEnTaller = computed(
     () => form.estado_op_id !== '' && estadoSeleccionado.value?.name === 'En taller'
 );
 
+// Las OPs externas no descuentan el kit: el material lo maneja la empresa
+// externa. Solo las OPs de taller sacan materiales de bodega.
+const opEsExterna = computed(() => {
+    const op: any = props.op || {};
+    return op.tipo === 'externa' || Boolean(op.externa);
+});
+
 const mostrarRestaMateriales = computed(
-    () => destinoEsEnTaller.value && props.mostrarRestaMateriales
+    () => destinoEsEnTaller.value && props.mostrarRestaMateriales && !opEsExterna.value
 );
 
 const kitsResta = ref<any[]>([]);
@@ -526,9 +533,6 @@ const alCambiarEstado = () => {
 
 watch(() => form.estado_op_id, alCambiarEstado);
 
-const valorValido = (valor: any) =>
-    valor === '' || valor === null || valor === undefined || (Number.isFinite(Number(valor)) && Number(valor) >= 0);
-
 const numeroONulo = (valor: any): number | null => {
     if (valor === '' || valor === null || valor === undefined) return null;
     const numero = Math.trunc(Number(valor));
@@ -543,12 +547,6 @@ const sumaFila = (fila: any): number =>
 const filaSuperada = (fila: any): boolean => sumaFila(fila) > Number(fila.esperada);
 const filaCuadra = (fila: any): boolean => sumaFila(fila) === Number(fila.esperada);
 
-const filaValida = (fila: any): boolean => {
-    const sinNegativos = [fila.cantidad_aprobada, fila.cantidad_en_reparacion, fila.cantidad_no_recuperable]
-        .every(valorValido);
-    return sinNegativos && !filaSuperada(fila);
-};
-
 // Misma talla para el mismo producto: la recepción quedaría duplicada.
 const clavesDuplicadas = computed(() => {
     const vistas = new Set<string>();
@@ -561,13 +559,13 @@ const clavesDuplicadas = computed(() => {
     return [...repetidas];
 });
 
-const filasCompletas = computed(() => form.recepciones.every(filaValida));
 const filasListas = computed(() => form.recepciones.every(filaCuadra));
 
 const puedeGuardar = computed(() => {
     if (destinoEsCerrada.value && totalEnReparacionEfectivo.value > 0) return false;
 
-    // Para pasar a «En taller» el kit debe cuadrar y tener existencia.
+    // Para pasar a «En taller» el kit debe cuadrar y tener existencia. Las OPs
+    // externas no pasan por esta validación porque no descuentan inventario.
     if (mostrarRestaMateriales.value && (cargandoResta.value || problemasResta.value.length)) {
         return false;
     }
@@ -991,6 +989,21 @@ const posicionarScrollRecepcion = async () => {
                     <InputError class="mt-2" :message="form.errors.estado_op_secundario_id" />
                 </div>
 
+                <!-- Las OPs externas no descuentan materiales -->
+                <div
+                    v-if="destinoEsEnTaller && opEsExterna"
+                    class="mt-5 rounded-lg border border-violet-200 bg-violet-50/70 px-4 py-3 dark:border-violet-800 dark:bg-violet-900/20"
+                    role="status"
+                    aria-live="polite"
+                >
+                    <p class="text-sm font-medium text-violet-900 dark:text-violet-100">
+                        Esta OP es externa.
+                    </p>
+                    <p class="mt-1 text-xs text-violet-800/80 dark:text-violet-200/80">
+                        Al pasar a «En taller» no se descuenta inventario: el material lo maneja la empresa externa.
+                    </p>
+                </div>
+
                 <!-- Resta de materiales al pasar a «En taller» -->
                 <div v-if="mostrarRestaMateriales" class="mt-5">
                     <div class="rounded-lg border border-emerald-200 bg-emerald-50/70 px-4 py-3 dark:border-emerald-800 dark:bg-emerald-900/20" role="status" aria-live="polite">
@@ -1074,6 +1087,7 @@ const posicionarScrollRecepcion = async () => {
                     <p v-if="problemasResta.length" class="mt-2 text-sm text-rose-600 dark:text-rose-400">
                         Corrige el kit antes de continuar:
                         {{ problemasResta.length }} material(es) con cantidades diferentes o sin existencia.
+                        Si falta inventario, registra la compra desde la vista de Materiales.
                     </p>
                 </div>
 

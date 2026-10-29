@@ -448,6 +448,61 @@ export const explicaciones: Explicacion[] = [
             'resources/js/pages/OrdenProduccion/DistribucionTallasEditor.vue (edición desde la OP)',
         ],
     },
+    {
+        id: 'material-prevision-de-existencias',
+        categoria: 'Material',
+        categoriaLabel: 'Materiales',
+        subcategoria: 'Previsión de existencias',
+        titulo: 'Banner de previsión: para cuántos días alcanza cada material',
+        resumen:
+            'En Materiales, debajo del contador, un banner avisa los materiales cuyo stock no alcanza los días de previsión configurados, mostrando cómo se calculó.',
+        etiquetas: [
+            'previsión',
+            'prevision',
+            'banner',
+            'faltantes',
+            'dias restantes',
+            'gasto por dia',
+            'consumo diario',
+            'existencia',
+            'stock',
+            'salida a taller',
+            'en taller',
+            'dias_prevision_stock',
+        ],
+        actualizada: '2026-10-28',
+        bloques: [
+            {
+                tipo: 'texto',
+                texto:
+                    'Cuando una OP pasa a «En taller», el kit sale de bodega: se descuenta la existencia de cada material y queda un movimiento de salida con el motivo «Salida de materiales a taller». Esas salidas son la base del gasto diario: promedio de los últimos 30 días (total salido ÷ 30).',
+            },
+            {
+                tipo: 'pasos',
+                items: [
+                    'Gasto por día = sumatoria de las salidas a taller del material en los últimos 30 días ÷ 30.',
+                    'Días que alcanzan = existencia actual ÷ gasto por día (se toma el entero hacia abajo).',
+                    'Si quedan «días de previsión» o menos, el material aparece en el banner rojo de Materiales con el cálculo completo.',
+                    'El umbral se configura en Parámetros → Días de previsión de existencias (dias_prevision_stock); por defecto son 2 días.',
+                ],
+            },
+            {
+                tipo: 'nota',
+                tono: 'info',
+                texto:
+                    'Ejemplo: si se gastan 100 unidades de Ajiné Grueso por día y la existencia es 299, el banner avisa que solo queda ajiné para 2 días.',
+            },
+        ],
+        fuentes: [
+            'app/Http/Controllers/MaterialController.php (prevision: gasto diario y días restantes)',
+            'app/Http/Controllers/OrdenProduccionController.php (descontarMaterialesTaller al pasar a «En taller»)',
+            'app/Http/Controllers/ParametrosController.php (actualizarDiasPrevision)',
+            'app/Models/Parametro.php (DIAS_PREVISION_STOCK)',
+            'resources/js/pages/Material/Index.vue (banner bajo el contador)',
+            'resources/js/pages/parametro/Index.vue (card Días de previsión de existencias)',
+            'tabla material_movimientos (tipo_movimiento salida, motivo «Salida de materiales a taller…»)',
+        ],
+    },
 ];
 
 /** Categorías en el orden en que aparecen, cada una con sus subcategorías. */

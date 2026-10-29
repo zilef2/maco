@@ -2,13 +2,16 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\DestroyBulkProductoRequest;
 use App\Models\Producto;
 use App\Models\Distribucion_por_tallas;
 use App\helpers\Myhelp;
 use App\helpers\MyModels;
 use App\Services\FichaTecnicaService;
+use App\Services\ProductoService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -30,7 +33,8 @@ class ProductoController extends Controller {
     //<editor-fold desc="Construc | filtro and dependencia">
     public function __construct(
         protected \App\Services\ListaDesplegableService $listaDesplegableService,
-        protected FichaTecnicaService $fichaTecnicaService
+        protected FichaTecnicaService $fichaTecnicaService,
+        protected ProductoService $productoService
     ) {
         $this->thisAtributos = (new Producto())->getFillable(); //not using
     }
@@ -278,7 +282,7 @@ class ProductoController extends Controller {
             $datos[$campo] = (string) ($datos[$campo] ?? '');
         }
         $datos['Estado'] = ($datos['Estado'] ?? '') === '' ? 1 : (int) $datos['Estado'];
-        foreach (['precio_predicho', 'precio_preventa', 'precio_estimado'] as $campo) {
+        foreach (['costo_anticipado', 'precio_preventa', 'precio_estimado'] as $campo) {
             if (($datos[$campo] ?? null) === '') {
                 $datos[$campo] = null;
             }
@@ -347,7 +351,7 @@ class ProductoController extends Controller {
             $datos[$campo] = (string) ($datos[$campo] ?? '');
         }
         $datos['Estado'] = ($datos['Estado'] ?? '') === '' ? 1 : (int) $datos['Estado'];
-        foreach (['precio_predicho', 'precio_preventa', 'precio_estimado'] as $campo) {
+        foreach (['costo_anticipado', 'precio_preventa', 'precio_estimado'] as $campo) {
             if (($datos[$campo] ?? null) === '') {
                 $datos[$campo] = null;
             }
@@ -392,7 +396,7 @@ class ProductoController extends Controller {
             'Estado'               => ['nullable', 'integer', 'in:0,1'],
             'Observaciones'        => ['nullable', 'string', 'max:255'],
             'descripcion'          => ['nullable', 'string', 'max:5000'],
-            'precio_predicho'      => ['nullable', 'numeric', 'min:0'],
+            'costo_anticipado'      => ['nullable', 'numeric', 'min:0'],
             'precio_preventa'      => ['nullable', 'numeric', 'min:0'],
             'precio_estimado'      => ['nullable', 'numeric', 'min:0'],
             // Ficha técnica (opcional): se registra junto al producto.
@@ -590,10 +594,13 @@ class ProductoController extends Controller {
         return back()->with('success', __('app.label.deleted_successfully', ['name' => $elnombre]));
     }
 
-    public function destroyBulk(Request $request) {
-        $Producto = Producto::whereIn('id', $request->id);
-        $Producto->delete();
-        return back()->with('success', __('app.label.deleted_successfully', ['name' => count($request->id) . ' ' . __('app.label.user')]));
+    public function destroyBulk(DestroyBulkProductoRequest $request): JsonResponse|RedirectResponse
+    {
+        $resultado = $this->productoService->eliminarMasivo($request->validated()['ids']);
+        if ($request->wantsJson()) {
+            return response()->json($resultado);
+        }
+        return back()->with('bulk_result', $resultado);
     }
     //FIN : STORE - UPDATE - DELETE
 
@@ -666,7 +673,8 @@ class ProductoController extends Controller {
             'estado'             => 'Estado',
             'observaciones'      => 'Observaciones',
             'descripcion'        => 'descripcion',
-            'preciopredicho'     => 'precio_predicho',
+            'preciopredicho'     => 'costo_anticipado',
+            'costoanticipado'    => 'costo_anticipado',
             'preciopreventa'     => 'precio_preventa',
         ];
 
@@ -765,7 +773,7 @@ class ProductoController extends Controller {
                 'Estado'                => $texto($registro['Estado'] ?? ''),
                 'Observaciones'         => $texto($registro['Observaciones'] ?? ''),
                 'descripcion'           => mb_substr(strip_tags((string) ($registro['descripcion'] ?? '')), 0, 5000),
-                'precio_predicho'       => $entero($registro['precio_predicho'] ?? null),
+                'costo_anticipado'       => $entero($registro['costo_anticipado'] ?? null),
                 'precio_preventa'       => $entero($registro['precio_preventa'] ?? null),
             ];
         }
@@ -797,7 +805,7 @@ class ProductoController extends Controller {
                         'Estado'              => '',
                         'Observaciones'       => '',
                         'descripcion'         => '',
-                        'precio_predicho'     => 0,
+                        'costo_anticipado'     => 0,
                         'precio_preventa'     => 0,
                     ];
                     Producto::create($registro);

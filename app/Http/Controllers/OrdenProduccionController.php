@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Models\EstadoOperacion;
 use App\Models\EstadoOpMaterial;
 use App\Models\Producto;
+use App\Models\ProductoMovimiento;
 use App\Models\EmpresaExterna;
 use App\Models\ProcesoExterno;
 use App\Models\Proveedor;
@@ -348,9 +349,12 @@ class OrdenProduccionController extends Controller {
 
     /**
      * Invalida el listado y los selects tras una escritura (create/update/delete).
+     * Los cambios de estado descuentan inventario, así que el listado de
+     * materiales también debe refrescarse.
      */
     private function invalidarCache(): void {
         Cache::increment('op_index_version');
+        Cache::increment('material_index_version');
         Cache::forget('op_selects');
     }
 
@@ -1370,11 +1374,13 @@ class OrdenProduccionController extends Controller {
         $recepcionesGeneradas = 0;
         $procesosCreados = 0;
         $materialesDescontados = 0;
+        $productosIncrementados = 0;
         $compromisosAvisados = 0;
 
-        // Entrar a "En taller" saca el kit de bodega: se descuenta inventario
-        // una sola vez (reenviar el mismo estado no vuelve a restar).
-        $entraEnTaller = $estadoFinalNombre === 'En taller' && $estadoActual?->nombre !== 'En taller';
+        // Entrar a "En taller" saca el kit de bodega. Aplica también a las OPs
+        // externas: el material sale de inventario al entregarse al taller.
+        $entraEnTaller = $estadoFinalNombre === 'En taller'
+            && $estadoActual?->nombre !== 'En taller';
 
         // El cierre no se digita: las pérdidas y el costo real final se
         // calculan con los productos recibidos y el costo guardado en la OP.
@@ -1390,6 +1396,7 @@ class OrdenProduccionController extends Controller {
                     ->map(fn ($recepcion) => [
                         'producto_id' => $recepcion->producto_referencia_id,
                         'material_id' => $recepcion->material_referencia_id,
+                        'cantidad_esperada' => $recepcion->cantidad_esperada,
                         'cantidad_aprobada' => $recepcion->cantidad_aprobada,
                         'cantidad_no_recuperable' => $recepcion->cantidad_no_recuperable,
                     ])
@@ -1442,6 +1449,7 @@ class OrdenProduccionController extends Controller {
             &$recepcionesGeneradas,
             &$procesosCreados,
             &$materialesDescontados,
+            &$productosIncrementados,
             &$compromisosAvisados
         ) {
             if ($entraEnTaller) {
@@ -1460,6 +1468,10 @@ class OrdenProduccionController extends Controller {
                     [
                         'perdidas_mermas'      => round((float) $cierreDatos['perdidas_mermas'], 2),
                         'costo_real_final'     => round((float) $cierreDatos['costo_real_final'], 2),
+                        'dato_esperado'        => $cierreDatos['dato_esperado'],
+                        'dato_real'            => $cierreDatos['dato_real'],
+                        'dato_no_recuperable'  => $cierreDatos['dato_no_recuperable'],
+                        'diferencia'           => $cierreDatos['diferencia'],
                         'completado'           => true,
                         'estado_accion'        => 'cerrado',
                         'control_cierre'       => 'Cierre de OP',
@@ -1471,6 +1483,7 @@ class OrdenProduccionController extends Controller {
 
             if (!empty($recepciones)) {
                 $recepcionesGeneradas = RecepcionCalidad::generarDesdeOrden($OrdenProduccion, $recepciones, $fechaRecepcion);
+                $productosIncrementados = $this->incrementarProductos($OrdenProduccion, $recepciones);
                 $compromisosAvisados = $this->registrarCompromisosReparacion($OrdenProduccion, $recepciones);
             }
 
@@ -1540,6 +1553,10 @@ class OrdenProduccionController extends Controller {
         }
         if ($materialesDescontados > 0) {
             $mensaje .= ' Se descontaron ' . $materialesDescontados . ' materiales del inventario para el taller.';
+        }
+        if ($productosIncrementados > 0) {
+            $mensaje .= ' Se incrementó el inventario de ' . $productosIncrementados
+                . ' objetivo(s) recibidos por la OP.';
         }
         if ($esCierre) {
             $mensaje .= $seCierraAutomatica
@@ -1744,11 +1761,110 @@ class OrdenProduccionController extends Controller {
 
         if (!empty($sinStock)) {
             throw ValidationException::withMessages([
-                'estado_op_id' => 'No se puede pasar a «En taller»: inventario insuficiente — ' . implode(' | ', $sinStock),
+                'estado_op_id' => 'No se puede pasar a «En taller»: inventario insuficiente — '
+                    . implode(' | ', $sinStock)
+                    . '. Registra la compra desde la vista de Materiales.',
             ]);
         }
 
         return $descontados;
+    }
+
+    /**
+     * Es la otra mitad del movimiento de inventario: lo que «En taller» sacó de
+     * bodega vuelve a entrar como unidad producida cuando la OP se recibe.
+     *
+     * Al pasar a «Recibiendo» (o al cerrar) solo lo aprobado por el control de
+     * calidad aumenta el inventario del objetivo de la OP: en un material
+     * procesado sube `existencia_actual` y deja su MaterialMovimiento, y en un
+     * producto sube la cantidad recibida de su talla y deja su ProductoMovimiento.
+     *
+     * Cada OP entra como diferencia contra lo que ella misma ya había metido,
+     * así que reabrir la recepción y corregirla no duplica la cantidad.
+     *
+     * @param  array<int, array<string, mixed>>  $recepciones
+     */
+    private function incrementarProductos(OrdenProduccion $orden, array $recepciones): int {
+        $identificador = $orden->numero_op ?? $orden->id;
+        $entradas = 0;
+
+        foreach ($recepciones as $fila) {
+            $aprobada = max(0, (int) ($fila['cantidad_aprobada'] ?? 0));
+            $distribucion = Distribucion_por_tallas::whereKey($fila['distribucion_id'] ?? null)
+                ->lockForUpdate()
+                ->first();
+            if (!$distribucion) {
+                continue;
+            }
+
+            // Material procesado: la fila de distribución es de la OP, así que
+            // su cantidad recibida ya dice cuánto metió esta OP en bodega.
+            if ($distribucion->material_id) {
+                $diferencia = $aprobada - (int) ($distribucion->cantidad_recibida_buena ?? 0);
+                if ($diferencia === 0) {
+                    continue;
+                }
+
+                $material = Material::whereKey($distribucion->material_id)->lockForUpdate()->first();
+                if ($material) {
+                    $existencia = round((float) ($material->existencia_actual ?? 0), 2);
+                    $nueva = round($existencia + $diferencia, 2);
+                    $material->update(['existencia_actual' => $nueva]);
+
+                    $this->registrarMovimientoExistencia(
+                        $material,
+                        $existencia,
+                        $nueva,
+                        $diferencia > 0 ? 'entrada' : 'salida',
+                        ($diferencia > 0 ? 'Entrada de material producido' : 'Corrección de la recepción')
+                            . ' — OP ' . $identificador
+                    );
+                }
+
+                $distribucion->update([
+                    'cantidad_recibida_buena' => $aprobada,
+                    'cantidad_pendiente_reparacion' => max(0, (int) ($fila['cantidad_en_reparacion'] ?? 0)),
+                ]);
+
+                $entradas++;
+                continue;
+            }
+
+            if (!$distribucion->producto_id) {
+                continue;
+            }
+
+            // Producto: la fila de la talla la comparten todas las OPs que la
+            // producen, así que lo que esta OP ya metió se mide contra su
+            // propio histórico de movimientos, no contra la fila.
+            $diferencia = $aprobada - ProductoMovimiento::unidadesDeOrden(
+                (int) $distribucion->producto_id,
+                (string) $distribucion->talla,
+                (int) $orden->id
+            );
+            if ($diferencia === 0) {
+                continue;
+            }
+
+            $anterior = (int) ($distribucion->cantidad_recibida_buena ?? 0);
+            $nueva = max(0, $anterior + $diferencia);
+
+            $distribucion->update(['cantidad_recibida_buena' => $nueva]);
+
+            ProductoMovimiento::registrar(
+                (int) $distribucion->producto_id,
+                (string) $distribucion->talla,
+                $anterior,
+                $nueva,
+                (int) $orden->id,
+                ($diferencia > 0 ? 'Recepción de calidad' : 'Corrección de la recepción')
+                    . ' — OP ' . $identificador
+            );
+
+            $entradas++;
+        }
+
+        return $entradas;
     }
 
     /**
@@ -1833,6 +1949,7 @@ class OrdenProduccionController extends Controller {
             $vistas[$clave] = true;
 
             $normalizadas[$distribucion->id] = [
+                'distribucion_id' => $distribucion->id,
                 'producto_id' => $productoId ?: null,
                 'material_id' => $materialId,
                 'talla' => $distribucion->talla,
@@ -2078,7 +2195,14 @@ class OrdenProduccionController extends Controller {
                     if (empty($distribucion->material_id) && !empty($talla['material_id'])) {
                         $datos['material_id'] = (int) $talla['material_id'];
                     }
+                    $recibidaAnterior = (int) ($distribucion->cantidad_recibida_buena ?? 0);
                     $distribucion->update($datos);
+                    $this->registrarMovimientoDeTallaEditada(
+                        $distribucion,
+                        $recibidaAnterior,
+                        (int) ($datos['cantidad_recibida_buena'] ?? 0),
+                        $orden
+                    );
                     $conservados[] = $distribucion->id;
                 }
                 continue;
@@ -2095,10 +2219,41 @@ class OrdenProduccionController extends Controller {
                 'cantidad_recibida_buena' => $aEnteroONulo($talla['cantidad_recibida_buena'] ?? null),
                 'cantidad_pendiente_reparacion' => $aEnteroONulo($talla['cantidad_pendiente_reparacion'] ?? null),
             ]);
+            $this->registrarMovimientoDeTallaEditada(
+                $nueva,
+                0,
+                (int) ($nueva->cantidad_recibida_buena ?? 0),
+                $orden
+            );
             $conservados[] = $nueva->id;
         }
         $orden->distribucionesPorTallas()->sync($conservados);
         return $conservados;
+    }
+
+    /**
+     * El editor de distribución por tallas también puede digitar la cantidad
+     * recibida de un producto: ese cambio queda en el histórico igual que el de
+     * una recepción, atribuido a la OP que lo editó.
+     */
+    private function registrarMovimientoDeTallaEditada(
+        Distribucion_por_tallas $distribucion,
+        int $existenciaAnterior,
+        int $existenciaNueva,
+        OrdenProduccion $orden
+    ): void {
+        if (!$distribucion->producto_id || $existenciaAnterior === $existenciaNueva) {
+            return;
+        }
+
+        ProductoMovimiento::registrar(
+            (int) $distribucion->producto_id,
+            (string) $distribucion->talla,
+            $existenciaAnterior,
+            $existenciaNueva,
+            (int) $orden->id,
+            'Ajuste de la distribución por tallas — OP ' . ($orden->numero_op ?? $orden->id)
+        );
     }
 
     /**

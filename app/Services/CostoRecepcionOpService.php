@@ -88,8 +88,11 @@ class CostoRecepcionOpService
      * hasta el momento. Al completar la recepción coincide con el costo que se
      * calculó al crear la OP.
      *
+     * También devuelve las cantidades del formulario de «Cambiar estado»:
+     * esperada, aprobada y no recuperable, con su diferencia (esperada − aprobada).
+     *
      * @param  array<int, array<string, mixed>>  $filas
-     * @return array{perdidas_mermas: float, costo_real_final: float}
+     * @return array{perdidas_mermas: float, costo_real_final: float, dato_esperado: int, dato_real: int, dato_no_recuperable: int, diferencia: int}
      */
     public function resumenCierre(OrdenProduccion $op, array $filas): array
     {
@@ -97,6 +100,9 @@ class CostoRecepcionOpService
         $unitariosMateriales = $this->unitariosMateriales($op);
         $perdidas = 0.0;
         $costo = 0.0;
+        $esperado = 0;
+        $aprobado = 0;
+        $noRecuperable = 0;
 
         foreach ($filas as $fila) {
             $materialId = (int) ($fila['material_id'] ?? $fila['material_referencia_id'] ?? 0);
@@ -110,6 +116,10 @@ class CostoRecepcionOpService
             $aprobadas = (int) ($fila['cantidad_aprobada'] ?? 0);
             $noRecuperables = (int) ($fila['cantidad_no_recuperable'] ?? 0);
 
+            $esperado += (int) ($fila['cantidad_esperada'] ?? 0);
+            $aprobado += $aprobadas;
+            $noRecuperable += $noRecuperables;
+
             $perdidas += $noRecuperables * $unitario;
             $costo += ($aprobadas + $noRecuperables) * $unitario;
         }
@@ -117,6 +127,10 @@ class CostoRecepcionOpService
         return [
             'perdidas_mermas' => round($perdidas, 2),
             'costo_real_final' => round($costo, 2),
+            'dato_esperado' => $esperado,
+            'dato_real' => $aprobado,
+            'dato_no_recuperable' => $noRecuperable,
+            'diferencia' => $esperado - $aprobado,
         ];
     }
 

@@ -22,6 +22,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
         'control_cierre',
         'dato_esperado',
         'dato_real',
+        'dato_no_recuperable',
         'diferencia',
         'estado_accion',
         'responsable_id',

@@ -24,7 +24,7 @@ class ProductoSeeder extends Seeder
                 'Estado' => 'Activo',
                 'Observaciones' => 'Modelo estrella para la campaña de temporada primavera-verano.',
                 'descripcion' => 'Zapatillas de running con amortiguación de alto impacto, malla transpirable y suela de caucho antideslizante.',
-                'precio_predicho' => 189900,
+                'costo_anticipado' => 189900,
                 'precio_preventa' => 169900,
             ],
             [
@@ -38,7 +38,7 @@ class ProductoSeeder extends Seeder
                 'Estado' => 'Inactivo',
                 'Observaciones' => null,
                 'descripcion' => 'Sneakers casuales de diseño minimalista, ideales para uso diario con plantilla acolchada y suela ligera.',
-                'precio_predicho' => 129900,
+                'costo_anticipado' => 129900,
                 'precio_preventa' => 119900,
             ],
         ];

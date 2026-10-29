@@ -33,6 +33,7 @@ Route::middleware('auth', 'verified')->group(function () {
 	Route::resource('/Parametros', ParametrosController::class);
 	Route::post('/Parametros/lista', [ParametrosController::class, 'storeLista'])->name('parametros.lista.store');
 	Route::post('/Parametros/costos-promedio', [ParametrosController::class, 'actualizarCostosPromedio'])->name('parametros.costos-promedio');
+	Route::post('/Parametros/dias-prevision', [ParametrosController::class, 'actualizarDiasPrevision'])->name('parametros.dias-prevision');
 	
 	//<editor-fold desc="User">
 	Route::resource('/user', UserController::class);
@@ -44,6 +45,7 @@ Route::middleware('auth', 'verified')->group(function () {
 
 	Route::resource("/Producto", \App\Http\Controllers\ProductoController::class);
 	Route::post("/Producto/upload-excel", [\App\Http\Controllers\ProductoController::class, 'uploadExcel'])->name('Producto.upload-excel');
+	Route::post("/Producto/destroy-bulk", [\App\Http\Controllers\ProductoController::class, 'destroyBulk'])->name('Producto.destroy-bulk');
 	Route::put("/Producto/{id}/distribucion", [\App\Http\Controllers\ProductoController::class, 'syncDistribucion'])->name('Producto.distribucion');
 	Route::get("/Producto/{id}/tallas-history", [\App\Http\Controllers\ProductoController::class, 'tallasHistory'])->name('Producto.tallas-history');
 	
@@ -71,8 +73,10 @@ Route::middleware('auth', 'verified')->group(function () {
 	Route::resource("/Proveedor", \App\Http\Controllers\ProveedorController::class);
 	Route::post("/Proveedor/upload-excel", [\App\Http\Controllers\ProveedorController::class, 'uploadExcel'])->name('Proveedor.upload-excel');
 	Route::resource("/Distribucion_por_tallas", \App\Http\Controllers\Distribucion_por_tallasController::class);
+	Route::get("/Material/plantilla-excel", [\App\Http\Controllers\MaterialController::class, 'descargarPlantillaExcel'])->name('Material.plantilla-excel');
 	Route::resource("/Material", \App\Http\Controllers\MaterialController::class);
 	Route::post("/Material/upload-excel", [\App\Http\Controllers\MaterialController::class, 'uploadExcel'])->name('Material.upload-excel');
+	Route::post("/Material/compra", [\App\Http\Controllers\MaterialController::class, 'registrarCompra'])->name('Material.compra');
 	Route::get('/Material/{id}/movimientos', [\App\Http\Controllers\MaterialController::class, 'historicoMovimientos'])->name('Material.movimientos');
 	Route::resource("/GrupoTalla", \App\Http\Controllers\GrupoTallaController::class);
 	Route::get("/ImportarExcel", [\App\Http\Controllers\ImportarExcelController::class, 'index'])->name('ImportarExcel.index');

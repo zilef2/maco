@@ -5,15 +5,14 @@ namespace App\Http\Controllers;
 use App\Models\FichaTecnica;
 use App\Models\Material;
 use App\Models\Producto;
+use App\Models\Proveedor;
 use App\helpers\Myhelp;
 use App\helpers\MyModels;
 use App\Services\CostoMaterialOpService;
 use App\Services\FichaTecnicaService;
 use App\Services\ListaDesplegableService;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -30,86 +29,133 @@ class FichaTecnicaMaterialesController extends Controller {
         $this->thisAtributos = (new FichaTecnica())->getFillable();
     }
 
-    /** Columnas de productos ordenables desde la tabla «sin ficha». */
-    private const PRODUCTO_COLUMNAS_ORDENABLES = [
-        'Codigo_interno', 'Titulo_Shopify', 'Categoria_original', 'Control_de_variante',
-        'Estado', 'precio_preventa', 'precio_estimado', 'created_at', 'updated_at',
-    ];
-
-    public function index(Request $request) {
+    /**
+     * Las tres tablas de la página reciben el listado completo una sola vez:
+     * buscar, ordenar y paginar se hace en el cliente.
+     */
+    public function index() {
         $numberPermissions = MyModels::getPermissionToNumber(Myhelp::EscribirEnLog($this, ' FichaTecnicaMaterialess '));
-        $fichas = $this->Filtros($request)->get()->map(function ($ficha) {
-            $ficha->productos_nombres = $ficha->productos
-                ->map(fn ($p) => $p->Titulo_Shopify ?: ($p->Codigo_interno ?: 'Producto #' . $p->id))
-                ->implode(', ');
-            $ficha->materiales_procesados_nombres = $ficha->materialesProcesados
-                ->map(fn ($m) => trim(($m->codigo_material ? $m->codigo_material . ' — ' : '') . $m->nombre_base))
-                ->implode(', ');
-            $ficha->materiales_count = $ficha->materiales->count();
-            return $ficha;
-        });
 
-        $perPage = $request->has('perPage') ? $request->perPage : 10;
         return Inertia::render($this->FromController . '/Index', [
-            'fromController' => $this->PerPageAndPaginate($request, $fichas),
-            'total' => $fichas->count(),
+            'fichas' => $this->fichas(),
             'breadcrumbs' => [['label' => __('app.label.' . $this->FromController), 'href' => route($this->FromController . '.index')]],
             'title' => __('app.label.' . $this->FromController),
-            'filters' => $request->all(['search', 'field', 'order', 'psearch', 'pfield', 'porder', 'pperPage', 'ppage']),
-            'perPage' => (int)$perPage,
             'numberPermissions' => $numberPermissions,
-            'losSelect'         => $this->losSelect(),
-            'productosSinFicha' => $this->productosSinFicha($request),
-            'selectProducto'    => $this->selectProducto(),
-            'titulosProducto'   => Producto::getFillableWithTypes(),
+            'losSelect'          => $this->losSelect(),
+            'productosSinFicha'  => $this->productosSinFicha(),
+            'selectProducto'     => $this->selectProducto(),
+            'titulosProducto'    => Producto::getFillableWithTypes(),
+            'materialesSinFicha' => $this->materialesSinFicha(),
+            'selectMaterial'     => $this->selectMaterial(),
+            'titulosMaterial'    => Material::getFillableWithTypes(),
         ]);
+    }
+
+    private function fichas(): array {
+        return FichaTecnica::with(['materiales.material', 'productos', 'materialesProcesados'])
+            ->orderByDesc('updated_at')
+            ->get()
+            ->map(function ($ficha) {
+                $ficha->productos_nombres = $ficha->productos
+                    ->map(fn ($p) => $p->Titulo_Shopify ?: ($p->Codigo_interno ?: 'Producto #' . $p->id))
+                    ->implode(', ');
+                $ficha->materiales_procesados_nombres = $ficha->materialesProcesados
+                    ->map(fn ($m) => trim(($m->codigo_material ? $m->codigo_material . ' — ' : '') . $m->nombre_base))
+                    ->implode(', ');
+                $ficha->materiales_count = $ficha->materiales->count();
+                $ficha->productos_count = $ficha->productos->count();
+                $ficha->materiales_procesados_count = $ficha->materialesProcesados->count();
+                return $ficha;
+            })
+            ->all();
     }
 
     /**
      * Productos que aún no tienen ficha técnica, con lo que muestra la tabla de
      * Productos (cantidad por talla y sus acciones de fila).
      */
-    private function productosSinFicha(Request $request): LengthAwarePaginator {
-        $busqueda = trim((string) $request->input('psearch', ''));
-        $campo = (string) $request->input('pfield', 'Codigo_interno');
-        if (!in_array($campo, self::PRODUCTO_COLUMNAS_ORDENABLES, true)) {
-            $campo = 'Codigo_interno';
-        }
-        $direccion = $request->input('porder') === 'desc' ? 'desc' : 'asc';
-        $porPagina = max(1, (int) $request->input('pperPage', 10));
-
-        $productos = Producto::query()
+    private function productosSinFicha(): array {
+        return Producto::query()
             ->whereDoesntHave('fichaTecnica')
             ->with('distribucionesPorTallas.ordenesProduccion')
-            ->when($busqueda !== '', function ($consulta) use ($busqueda) {
-                $consulta->where(function ($q) use ($busqueda) {
-                    $q->where('Codigo_interno', 'LIKE', "%$busqueda%")
-                        ->orWhere('Titulo_Shopify', 'LIKE', "%$busqueda%")
-                        ->orWhere('Categoria_original', 'LIKE', "%$busqueda%");
-                });
+            ->orderBy('Codigo_interno')
+            ->get()
+            ->each(function ($producto) {
+                $producto->cantidad = (int) $producto->distribucionesPorTallas->sum('cantidad_planificada');
+                // OPs que ya usan estas tallas: el modal solo las muestra y avisa dónde
+                // se cambian.
+                $producto->ordenes_con_tallas = $producto->distribucionesPorTallas
+                    ->flatMap->ordenesProduccion
+                    ->unique('id')
+                    ->sortBy('numero_op')
+                    ->pluck('numero_op')
+                    ->filter()
+                    ->values()
+                    ->all();
+                $producto->ficha_id = null;
+                $producto->ficha_materiales = [];
+                $producto->ficha_bloqueada = false;
+                $producto->ficha_bloqueo_detalle = '';
             })
-            ->orderBy($campo, $direccion);
+            ->all();
+    }
 
-        $paginados = $productos->paginate($porPagina, ['*'], 'ppage')->withQueryString();
-        $paginados->getCollection()->each(function ($producto) {
-            $producto->cantidad = (int) $producto->distribucionesPorTallas->sum('cantidad_planificada');
-            // OPs que ya usan estas tallas: el modal solo las muestra y avisa dónde
-            // se cambian.
-            $producto->ordenes_con_tallas = $producto->distribucionesPorTallas
-                ->flatMap->ordenesProduccion
-                ->unique('id')
-                ->sortBy('numero_op')
-                ->pluck('numero_op')
-                ->filter()
-                ->values()
-                ->all();
-            $producto->ficha_id = null;
-            $producto->ficha_materiales = [];
-            $producto->ficha_bloqueada = false;
-            $producto->ficha_bloqueo_detalle = '';
-        });
+    /**
+     * Materiales con proceso que aún no tienen ficha técnica: el mismo caso que
+     * los productos, pero el objetivo es un material de la bodega.
+     */
+    private function materialesSinFicha(): array {
+        $materiales = Material::query()
+            ->where('material_procesado', true)
+            ->whereDoesntHave('fichaTecnica')
+            ->with(['lastPrice', 'ordenesProduccion.estadoOp:id,nombre'])
+            ->orderBy('codigo_material')
+            ->get();
 
-        return $paginados;
+        // Un material sin ficha también puede estar en una OP activa: en ese caso
+        // su ficha no se puede crear todavía, y el modal debe decir por qué.
+        $bloqueos = $this->fichaTecnicaService->bloqueosPorMaterial();
+        return $materiales
+            ->each(function ($material) use ($bloqueos) {
+                $material->costo_actual = $material->costoUnitarioActual();
+                $material->ordenes_con_material = collect($bloqueos[$material->id] ?? [])
+                    ->keys()
+                    ->sortBy(fn ($numeroOp) => (string) $numeroOp)
+                    ->values()
+                    ->all();
+                $material->ficha_id = null;
+                $material->ficha_nombre = null;
+                $material->ficha_materiales = [];
+                $material->ficha_bloqueada = !empty($bloqueos[$material->id] ?? []);
+                $material->ficha_bloqueo_detalle = collect($bloqueos[$material->id] ?? [])
+                    ->map(fn ($estado, $numeroOp) => $numeroOp . ' (' . $estado . ')')
+                    ->implode(', ');
+            })
+            ->all();
+    }
+
+    /** Selects que necesita el formulario de Material (mismo origen que MaterialController). */
+    private function selectMaterial(): array {
+        $listas = array_change_key_case($this->listaDesplegableService->getOptionsByCategoriaGrouped('material'), CASE_LOWER);
+        $opciones = $this->fichaTecnicaService->opcionesMateriales();
+        $proveedores = Proveedor::all(['id', 'nombre'])
+            ->map(fn ($proveedor) => [
+                'id' => $proveedor->id,
+                'value' => $proveedor->id,
+                'nombre' => $proveedor->nombre,
+                'label' => $proveedor->nombre,
+                'name' => $proveedor->nombre,
+                'title' => $proveedor->nombre,
+            ])->values()->all();
+
+        return [
+            'unidad_inventario' => $listas['unidad_inventario'] ?? [],
+            'categoria' => $listas['categoria'] ?? [],
+            'variante_atributo_sugerido' => $listas['variante_atributo_sugerido'] ?? $listas['variante'] ?? [],
+            'proveedor_habitual' => $proveedores,
+            'materiales' => $opciones['materiales'],
+            'unidad_medida' => $opciones['unidad_medida'],
+        ];
     }
 
     /** Selects que necesita el formulario de Producto (mismo origen que ProductoController). */
@@ -129,34 +175,6 @@ class FichaTecnicaMaterialesController extends Controller {
 
     private function losSelect(): array {
         return $this->fichaTecnicaService->opcionesFicha();
-    }
-
-    public function Filtros($request): Builder {
-        $fichas = FichaTecnica::query()->with(['materiales.material', 'productos', 'materialesProcesados']);
-        if ($request->has('search')) {
-            $fichas = $fichas->where(function ($query) use ($request) {
-                $query->where('nombre', 'LIKE', "%" . $request->search . "%");
-            });
-        }
-
-        if ($request->has(['field', 'order'])) {
-            $fichas = $fichas->orderBy($request->field, $request->order);
-        } else
-            $fichas = $fichas->orderBy('updated_at', 'DESC');
-        return $fichas;
-    }
-
-    public function PerPageAndPaginate($request, $fichas) {
-        $perPage = $request->has('perPage') ? $request->perPage : 10;
-        $page = request('page', 1); // Current page number
-        $paginated = new LengthAwarePaginator(
-            $fichas->forPage($page, $perPage),
-            $fichas->count(),
-            $perPage,
-            $page,
-            ['path' => request()->url()]
-        );
-        return $paginated;
     }
 
     public function store(Request $request): RedirectResponse {

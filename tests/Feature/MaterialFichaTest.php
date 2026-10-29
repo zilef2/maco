@@ -16,10 +16,9 @@ class MaterialFichaTest extends TestCase
 
     public function test_crear_un_material_procesado_crea_su_ficha_y_sus_lineas(): void
     {
-        $user = $this->usuarioAdmin();
-        $componente = $this->materialBase('MAT-COMP-CREATE', 7);
-
-        $response = $this->actingAs($user)->post(route('Material.store'), [
+        $componente = $this->materialBase('MAT-COMP-CREATE', 7000);
+        
+        $dataMaterial = [
             'codigo_material' => 'MAT-PRO-CREATE',
             'categoria' => 'Semielaborado',
             'nombre_base' => 'Cuero procesado',
@@ -34,9 +33,16 @@ class MaterialFichaTest extends TestCase
                 'unidad_medida' => 'm',
                 'costo_asociado_teorico' => 0,
             ]],
-        ]);
+        ];
 
+        $user = $this->usuarioSuper();
+        $response = $this->actingAs($user)->post(route('Material.store'), $dataMaterial);
         $response->assertSessionHasNoErrors();
+
+        $user = $this->usuarioAdmin();
+        $response = $this->actingAs($user)->post(route('Material.store'), $dataMaterial);
+        $response->assertSessionHasNoErrors();
+       
 
         $material = Material::where('codigo_material', 'MAT-PRO-CREATE')->firstOrFail();
         $this->assertTrue((bool) $material->material_procesado);
@@ -53,7 +59,7 @@ class MaterialFichaTest extends TestCase
             'material_componente_id' => $componente->id,
             'consumo_estandar' => 3,
             'unidad_medida' => 'm',
-            'costo_asociado_teorico' => 7,
+            'costo_asociado_teorico' => 7000,
         ]);
     }
 
@@ -192,6 +198,35 @@ class MaterialFichaTest extends TestCase
                     && $fila['ficha_bloqueada'] === false
                     && (int) $fila['ficha_materiales'][0]['material_componente_id'] === $componente->id
                     && (float) $fila['ficha_materiales'][0]['consumo_estandar'] === 2.0;
+            }));
+    }
+
+    /**
+     * El listado debe avisar que la ficha de un material procesado está
+     * bloqueada cuando una OP activa lo está produciendo, igual que en el
+     * detalle del material.
+     */
+    public function test_el_index_de_materiales_marca_la_ficha_bloqueada_por_una_op_activa(): void
+    {
+        $user = $this->usuarioAdmin();
+        $componente = $this->materialBase('MAT-COMP-BLOQ-IDX', 5);
+        $material = $this->materialProcesado('MAT-PRO-BLOQ-IDX');
+        $ficha = $this->fichaParaMaterial($material, [[$componente, 2]], 'Ficha bloqueada en index');
+        $estado = $this->estadoOperacion('En taller');
+        $op = $this->opQueProduce($material, $user, $estado);
+
+        $response = $this->actingAs($user)->get(route('Material.index'));
+
+        $response->assertInertia(fn (Assert $page) => $page
+            ->component('Material/Index')
+            ->where('materiales', function ($materiales) use ($material, $ficha, $op) {
+                $fila = collect($materiales)->firstWhere('id', $material->id);
+
+                return $fila !== null
+                    && (int) $fila['ficha_id'] === $ficha->id
+                    && $fila['ficha_bloqueada'] === true
+                    && str_contains($fila['ficha_bloqueo_detalle'], $op->numero_op)
+                    && str_contains($fila['ficha_bloqueo_detalle'], 'En taller');
             }));
     }
 }

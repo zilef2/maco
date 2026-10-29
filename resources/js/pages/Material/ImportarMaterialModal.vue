@@ -19,6 +19,11 @@ const COLUMNAS_REQUERIDAS = [
     'Estado',
 ];
 
+const COLUMNAS_VARIANTES = [
+    'Colores (separados por coma)',
+    'Variantes (separados por coma)',
+];
+
 const COLUMNAS_OPCIONALES = [
     'Maneja color (SI/NO)',
     'Maneja talla (SI/NO)',
@@ -167,6 +172,12 @@ watch(() => props.show, (visible) => {
                     <li v-for="col in COLUMNAS_REQUERIDAS" :key="col">{{ col }}</li>
                 </ul>
                 <p class="mt-3 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                    Variantes (usa solo una de las dos columnas por fila)
+                </p>
+                <ul class="mt-1 list-decimal ml-5 space-y-0.5 text-gray-600 dark:text-gray-300">
+                    <li v-for="col in COLUMNAS_VARIANTES" :key="col">{{ col }}</li>
+                </ul>
+                <p class="mt-3 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                     Opcionales
                 </p>
                 <ul class="mt-1 list-decimal ml-5 space-y-0.5 text-gray-600 dark:text-gray-300">
@@ -176,6 +187,16 @@ watch(() => props.show, (visible) => {
                     Si el código de material ya existe, se actualiza el registro; si no, se crea. Las columnas
                     "Maneja ..." admiten SI / NO en mayúsculas o minúsculas.
                 </p>
+                <p class="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+                    En una misma fila no se pueden combinar colores con otras variantes: si el material maneja
+                    colores, usa la columna <b>Colores</b>; si maneja tallas u otra variante, usa <b>Variantes</b>.
+                </p>
+                <a
+                    :href="route('Material.plantilla-excel')"
+                    class="mt-3 inline-flex items-center gap-1.5 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300 dark:hover:bg-emerald-500/20"
+                >
+                    Descargar plantilla Excel
+                </a>
             </details>
         </div>
     </Modal>

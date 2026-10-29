@@ -40,7 +40,8 @@ class CierreOrdenProduccionSeeder extends Seeder
 
         for ($i = 1; $i <= self::CANTIDAD; $i++) {
             $esperado = rand(50, 1000);
-            $real = max(0, $esperado + rand(-60, 60));
+            $noRecuperable = rand(0, 25);
+            $real = max(0, $esperado - $noRecuperable - rand(0, 40));
 
             CierreOrdenProduccion::create([
                 'orden_produccion_id' => $ordenes->random(),
@@ -48,7 +49,8 @@ class CierreOrdenProduccionSeeder extends Seeder
                 'control_cierre'      => $controles[array_rand($controles)],
                 'dato_esperado'       => $esperado,
                 'dato_real'           => $real,
-                'diferencia'          => $real - $esperado,
+                'dato_no_recuperable' => $noRecuperable,
+                'diferencia'          => $esperado - $real,
                 'estado_accion'       => $estados[array_rand($estados)],
                 'fecha_cierre'        => now()->subDays(rand(0, 180))->subHours(rand(0, 23)),
                 'observaciones'       => $observaciones[array_rand($observaciones)],

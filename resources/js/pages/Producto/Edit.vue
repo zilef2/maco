@@ -59,7 +59,7 @@ const form = useForm({
     Estado: 1,
     Observaciones: '',
     descripcion: '',
-    precio_predicho: '' as string | number,
+    costo_anticipado: '' as string | number,
     precio_preventa: '' as string | number,
     precio_estimado: '' as string | number,
     materiales: [] as any[],
@@ -147,7 +147,7 @@ watchEffect(() => {
     form.Estado = Number(producto.Estado) === 0 ? 0 : 1;
     form.Observaciones = producto.Observaciones ?? '';
     form.descripcion = producto.descripcion ?? '';
-    form.precio_predicho = producto.precio_predicho ?? '';
+    form.costo_anticipado = producto.costo_anticipado ?? '';
     form.precio_preventa = producto.precio_preventa ?? '';
     form.precio_estimado = producto.precio_estimado ?? '';
     form.materiales = (producto.ficha_materiales ?? []).map((material: any) => ({
@@ -416,11 +416,11 @@ watchEffect(() => {
                             </div>
 
                             <div>
-                                <InputLabel for="precio_predicho" :value="lang().t('app.label.precio_predicho') || 'Precio predicho'" />
-                                <MoneyInput id="precio_predicho" class="mt-1 block w-full"
-                                    v-model="form.precio_predicho" placeholder="$0"
-                                    :error="form.errors.precio_predicho" />
-                                <InputError class="mt-2" :message="form.errors.precio_predicho" />
+                                <InputLabel for="costo_anticipado" :value="lang().t('app.label.costo_anticipado') || 'Costo anticipado'" />
+                                <MoneyInput id="costo_anticipado" class="mt-1 block w-full"
+                                    v-model="form.costo_anticipado" placeholder="$0"
+                                    :error="form.errors.costo_anticipado" />
+                                <InputError class="mt-2" :message="form.errors.costo_anticipado" />
                             </div>
 
                             <div>

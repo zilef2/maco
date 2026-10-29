@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\FichaTecnica;
 use App\Models\Material;
+use App\Models\MaterialMovimiento;
+use App\Models\Parametro;
 use App\Models\Proveedor;
 use App\Services\FichaTecnicaService;
 use App\Services\ListaDesplegableService;
@@ -18,6 +20,9 @@ use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 use PhpOffice\PhpSpreadsheet\IOFactory;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use App\Traits\MaterialMovimientoTrait;
 
 class MaterialController extends Controller {
@@ -48,7 +53,7 @@ class MaterialController extends Controller {
         $claveListado = 'material_index_' . $this->versionCache();
         $Materiales = Cache::remember($claveListado, now()->addMinutes(10), function () {
             return Material::query()
-                ->with(['proveedorHabitual', 'prices', 'fichaTecnica.materiales.material'])
+                ->with(['proveedorHabitual', 'prices', 'variants', 'fichaTecnica.materiales.material'])
                 ->orderByDesc('updated_at')
                 ->get()
                 ->map(function ($material) {
@@ -57,6 +62,9 @@ class MaterialController extends Controller {
                     $lastPrice = $material->prices()->first();
                     $material->last_purchase_price = $lastPrice?->precio ?? null;
                     $material->last_purchase_date = $lastPrice?->fecha ?? null;
+                    // Gasto diario (unidades por día, persistido en BD)
+                    $material->gasto_diario = $material->gasto_diario ?? null;
+                    $material->gasto_diario_actualizado_en = $material->gasto_diario_actualizado_en ?? null;
                     // Obtener los últimos 3 precios
                     $material->recent_prices = $material->prices()->limit(3)->get()->map(function($price) {
                         return [
@@ -106,6 +114,7 @@ class MaterialController extends Controller {
         return Inertia::render($this->FromController . '/Index', [
             'materiales' => $Materiales,
             'total' => $Materiales->count(),
+            'prevision' => $this->prevision(),
             'breadcrumbs' => [['label' => __('app.label.' . $this->FromController), 'href' => route($this->FromController . '.index')]],
             'title' => __('app.label.' . $this->FromController),
             'perPage' => 10,
@@ -138,6 +147,67 @@ class MaterialController extends Controller {
         Cache::forget('op_selects');
     }
 
+    /**
+     * Previsión de existencias: con las salidas de materiales a taller que
+     * generan las OPs (últimos 30 días) se calcula el gasto diario promedio de
+     * cada material y cuántos días falta la existencia actual. El umbral de
+     * días se configura en Parámetros (dias_prevision_stock, por defecto 2).
+     *
+     * @return array{dias_prevision: int, ventana_dias: int, faltan: list<array<string, mixed>>}
+     */
+    private function prevision(): array {
+        $diasMinimos = Parametro::entero(Parametro::DIAS_PREVISION_STOCK, 2);
+        $ventana = 30;
+        $desde = now()->subDays($ventana);
+
+        $consumoTotal = MaterialMovimiento::query()
+            ->where('tipo_movimiento', 'salida')
+            ->where('motivo', 'like', 'Salida de materiales a taller%')
+            ->where('created_at', '>=', $desde)
+            ->groupBy('material_id')
+            ->selectRaw('material_id, SUM(cantidad) AS total')
+            ->pluck('total', 'material_id');
+
+        $faltan = Material::query()
+            ->where('estado', 'Activo')
+            ->get(['id', 'codigo_material', 'nombre_base', 'existencia_actual', 'unidad_inventario'])
+            ->map(function (Material $material) use ($consumoTotal, $ventana) {
+                $total = round((float) ($consumoTotal[$material->id] ?? 0), 2);
+                if ($total <= 0) {
+                    return null;
+                }
+
+                $gastoDia = round($total / $ventana, 2);
+                if ($gastoDia <= 0) {
+                    return null;
+                }
+
+                $existencia = round((float) $material->existencia_actual, 2);
+
+                return [
+                    'material_id' => $material->id,
+                    'codigo' => $material->codigo_material,
+                    'nombre' => $material->nombre_base,
+                    'unidad' => $material->unidad_inventario,
+                    'gasto_dia' => $gastoDia,
+                    'total_ventana' => $total,
+                    'existencia' => $existencia,
+                    'dias_restantes' => (int) floor($existencia / $gastoDia),
+                ];
+            })
+            ->filter()
+            ->sortBy('dias_restantes')
+            ->take(12)
+            ->values()
+            ->all();
+
+        return [
+            'dias_prevision' => $diasMinimos,
+            'ventana_dias' => $ventana,
+            'faltan' => $faltan,
+        ];
+    }
+
 	public function losSelect(string $modelClass, string $label, string $displayField = 'nombre'): array {
 		// Verifica si la clase del modelo existe
 		if (!class_exists($modelClass)) {
@@ -159,6 +229,80 @@ class MaterialController extends Controller {
 	}
     //</editor-fold>
 
+    /**
+     * Registra la compra de uno o varios materiales desde la vista de
+     * Materiales. La unidad no se recibe: se toma la del material.
+     */
+    public function registrarCompra(Request $request): RedirectResponse {
+        Myhelp::EscribirEnLog($this, ' Begin STORE:MaterialCompra');
+
+        $datos = $request->validate([
+            'materiales' => ['required', 'array', 'min:1'],
+            'materiales.*.material_id' => ['required', 'integer', 'exists:materials,id'],
+            'materiales.*.cantidad' => ['required', 'numeric', 'min:0.01'],
+        ]);
+
+        $compras = collect($datos['materiales'])
+            ->filter(fn ($fila) => !empty($fila['material_id']) && (float) ($fila['cantidad'] ?? 0) > 0)
+            ->groupBy(fn ($fila) => (int) $fila['material_id'])
+            ->map(fn ($filas, $materialId) => [
+                'material_id' => (int) $materialId,
+                'cantidad' => round($filas->sum(fn ($fila) => (float) $fila['cantidad']), 2),
+            ])
+            ->sortBy('material_id')
+            ->values()
+            ->all();
+
+        if (empty($compras)) {
+            return back()->withErrors([
+                'materiales' => 'Agrega al menos un material con cantidad.',
+            ]);
+        }
+
+        DB::beginTransaction();
+        try {
+            $registradas = 0;
+
+            foreach ($compras as $compra) {
+                $material = Material::whereKey($compra['material_id'])->lockForUpdate()->first();
+                if (!$material) {
+                    continue;
+                }
+
+                $cantidad = round((float) $compra['cantidad'], 2);
+                if ($cantidad <= 0) {
+                    continue;
+                }
+
+                $existenciaAnterior = round((float) ($material->existencia_actual ?? 0), 2);
+                $existenciaNueva = round($existenciaAnterior + $cantidad, 2);
+
+                $material->update(['existencia_actual' => $existenciaNueva]);
+                $this->registrarMovimientoExistencia(
+                    $material,
+                    $existenciaAnterior,
+                    $existenciaNueva,
+                    'entrada',
+                    'Compra de material'
+                );
+
+                $registradas++;
+            }
+
+            DB::commit();
+            $this->invalidarCache();
+            Myhelp::EscribirEnLog($this, 'STORE:MaterialCompra EXITOSO', $registradas . ' material(es) actualizados', false);
+
+            return back()->with(
+                'success',
+                'Se registraron ' . $registradas . ' compra(s) de material. Las entradas quedaron en el histórico.'
+            );
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            throw $e;
+        }
+    }
+
     public function store(Request $request): RedirectResponse {
         $permissions = Myhelp::EscribirEnLog($this, ' Begin STORE:Materials');
         DB::beginTransaction();
@@ -176,11 +320,23 @@ class MaterialController extends Controller {
             'materiales.*.consumo_estandar' => 'nullable|numeric|min:0',
             'materiales.*.unidad_medida' => 'nullable|string|max:255',
             'materiales.*.costo_asociado_teorico' => 'nullable|numeric|min:0',
+            'colores' => 'nullable',
+            'variantes' => 'nullable',
         ]);
 
-        $datos = $request->except(['materiales', 'last_purchase_price', 'last_purchase_date']);
+        $colores = Material::normalizarListaVariantes($request->input('colores', []));
+        $variantes = Material::normalizarListaVariantes($request->input('variantes', []));
+
+        if (!empty($colores) && !empty($variantes)) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'colores' => 'Un material no puede tener colores y otras variantes al mismo tiempo. Usa solo una de las dos listas.',
+            ]);
+        }
+
+        $datos = $request->except(['materiales', 'last_purchase_price', 'last_purchase_date', 'colores', 'variantes']);
         $datos['proveedor_habitual'] = $this->normalizarProveedorHabitual($datos['proveedor_habitual'] ?? null);
         $Material = Material::create($datos);
+        $Material->sincronizarVariantes($colores, $variantes);
         $this->registrarMovimientoCreacion($Material);
         
         // Guardar precio de última compra
@@ -363,6 +519,8 @@ class MaterialController extends Controller {
             'materiales.*.consumo_estandar' => 'nullable|numeric|min:0',
             'materiales.*.unidad_medida' => 'nullable|string|max:255',
             'materiales.*.costo_asociado_teorico' => 'nullable|numeric|min:0',
+            'colores' => 'nullable',
+            'variantes' => 'nullable',
         ]);
 
         if ($request->has('existencia_actual') && $request->input('existencia_actual') < 0) {
@@ -381,6 +539,8 @@ class MaterialController extends Controller {
             'materiales',
             'last_purchase_price',
             'last_purchase_date',
+            'colores',
+            'variantes',
         ]);
         if (array_key_exists('proveedor_habitual', $datos)) {
             $datos['proveedor_habitual'] = $this->normalizarProveedorHabitual($datos['proveedor_habitual']);
@@ -389,6 +549,16 @@ class MaterialController extends Controller {
             $datos['existencia_actual'] = (float) $request->input('existencia_actual');
         }
         $Material->update($datos);
+
+        // Las variantes se sincronizan cuando el formulario envía sus listas.
+        // Así una edición rápida (existencia, precio) no las borra.
+        if ($request->has('colores') || $request->has('variantes')) {
+            $Material->sincronizarVariantes(
+                Material::normalizarListaVariantes($request->input('colores', [])),
+                Material::normalizarListaVariantes($request->input('variantes', []))
+            );
+        }
+
         $this->registrarMovimientoActualizacion($Material, $existenciaAnterior, $request->input('motivo'));
 
         // La ficha técnica solo se toca cuando el formulario envía sus líneas.
@@ -454,8 +624,59 @@ class MaterialController extends Controller {
     //FIN : STORE - UPDATE - DELETE
 
     // ─────────────────────────────────────────────────────────
-    //  CARGA MASIVA DESDE EXCEL (general, sin FK)
+    //  CARGA MASIVA DESDE EXCEL
     // ─────────────────────────────────────────────────────────
+    /**
+     * Plantilla del nuevo formato: los colores y las variantes van en
+     * columnas separadas y con los valores separados por coma. En una misma
+     * fila solo se usa una de las dos columnas.
+     */
+    public function descargarPlantillaExcel(): StreamedResponse
+    {
+        $spreadsheet = new Spreadsheet();
+        $hoja = $spreadsheet->getActiveSheet();
+        $hoja->setTitle('Materiales');
+
+        $encabezados = [
+            'codigo_material',
+            'nombre_base',
+            'categoria',
+            'unidad_inventario',
+            'estado',
+            'colores',
+            'variantes',
+            'maneja_talla',
+            'variante_atributo_sugerido',
+            'proveedor_habitual',
+            'observaciones',
+        ];
+
+        $hoja->fromArray($encabezados, null, 'A1');
+        $hoja->fromArray([
+            [
+                'MAT-0001', 'Tela algodón', 'Tela', 'Metros', 'Activo',
+                'Rojo, Azul, Negro', '', 'NO', 'Color', '', 'Ejemplo con colores',
+            ],
+            [
+                'MAT-0002', 'Tela poliéster', 'Tela', 'Metros', 'Activo',
+                '', 'S, M, L, XL', 'SI', 'Talla', '', 'Ejemplo con otras variantes',
+            ],
+        ], null, 'A2');
+
+        $hoja->getStyle('A1:K1')->getFont()->setBold(true);
+        foreach (range('A', 'K') as $columna) {
+            $hoja->getColumnDimension($columna)->setAutoSize(true);
+        }
+
+        $writer = new Xlsx($spreadsheet);
+
+        return response()->streamDownload(function () use ($writer) {
+            $writer->save('php://output');
+        }, 'plantilla-materiales.xlsx', [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
+    }
+
     public function uploadExcel(Request $request): RedirectResponse
     {
         Myhelp::EscribirEnLog($this, 'uploadExcel: inicio');
@@ -519,6 +740,12 @@ class MaterialController extends Controller {
             'varianteatributosugerido'=> 'variante_atributo_sugerido',
             'proveedorhabitual'       => 'proveedor_habitual',
             'observaciones'           => 'observaciones',
+            // Nuevo formato de inventario: una lista de colores o una lista
+            // de otras variantes (separadas por coma o punto y coma).
+            'colores'                 => 'colores',
+            'color'                   => 'colores',
+            'variantes'               => 'variantes',
+            'otrasvariantes'          => 'variantes',
         ];
 
         $normalizarTexto = fn (string $texto): string => strtr(
@@ -565,14 +792,27 @@ class MaterialController extends Controller {
             );
         }
 
+        // Si el archivo trae las columnas de variantes, se sincronizan para
+        // cada fila (una lista vacía borra las variantes anteriores).
+        $columnasPresentes = array_values($encabezado);
+        $sincronizarVariantes = in_array('colores', $columnasPresentes, true)
+            || in_array('variantes', $columnasPresentes, true);
+
         // 6. Construir registros (sin tocar la BD aún: primero validar todo)
         $parsearBooleano = function ($valor): bool {
             $clave = preg_replace('/[^a-z]/', '', mb_strtolower(trim((string) $valor)));
             return in_array($clave, ['si', 's', 'yes', 'y', 'true', 't', '1'], true);
         };
 
+        // El Excel puede traer el nombre del proveedor; la columna guarda el id.
+        $proveedoresPorNombre = Proveedor::query()
+            ->get(['id', 'nombre'])
+            ->mapWithKeys(fn (Proveedor $proveedor) => [
+                mb_strtolower(trim((string) $proveedor->nombre)) => (int) $proveedor->id,
+            ]);
+
         $errores  = [];
-        $existentes = Material::pluck('codigo_material')->flip();
+        $existentes = Material::pluck('id', 'codigo_material');
         $registros  = [];
 
         foreach ($filas as $numFila => $fila) {
@@ -596,18 +836,42 @@ class MaterialController extends Controller {
                 continue;
             }
 
+            $colores = Material::normalizarListaVariantes($registro['colores'] ?? []);
+            $variantes = Material::normalizarListaVariantes($registro['variantes'] ?? []);
+
+            if (!empty($colores) && !empty($variantes)) {
+                $errores[] = "Fila {$filaExcel}: no puede tener colores y variantes al mismo tiempo. Usa solo una de las dos columnas.";
+                continue;
+            }
+
+            $proveedorTexto = trim((string) ($registro['proveedor_habitual'] ?? ''));
+            $proveedorId = null;
+
+            if ($proveedorTexto !== '') {
+                $proveedorId = $proveedoresPorNombre[mb_strtolower($proveedorTexto)] ?? null;
+                if ($proveedorId === null && is_numeric($proveedorTexto)) {
+                    $proveedorId = (int) $proveedorTexto;
+                }
+            }
+
             $registros[] = [
-                'codigo_material'           => $codigo,
-                'nombre_base'               => $nombre,
-                'categoria'                 => mb_substr(strip_tags((string) ($registro['categoria'] ?? '')), 0, 255),
-                'unidad_inventario'         => mb_substr(strip_tags((string) ($registro['unidad_inventario'] ?? '')), 0, 255),
-                'maneja_color'              => $parsearBooleano($registro['maneja_color'] ?? ''),
-                'maneja_talla'              => $parsearBooleano($registro['maneja_talla'] ?? ''),
-                'maneja_otra_variante'      => $parsearBooleano($registro['maneja_otra_variante'] ?? ''),
-                'estado'                    => mb_substr(strip_tags((string) ($registro['estado'] ?? '')), 0, 255),
-                'variante_atributo_sugerido' => mb_substr(strip_tags((string) ($registro['variante_atributo_sugerido'] ?? '')), 0, 255),
-                'proveedor_habitual'        => mb_substr(strip_tags((string) ($registro['proveedor_habitual'] ?? '')), 0, 255),
-                'observaciones'             => mb_substr(strip_tags((string) ($registro['observaciones'] ?? '')), 0, 1000),
+                'datos' => [
+                    'codigo_material'           => $codigo,
+                    'nombre_base'               => $nombre,
+                    'categoria'                 => mb_substr(strip_tags((string) ($registro['categoria'] ?? '')), 0, 255),
+                    'unidad_inventario'         => mb_substr(strip_tags((string) ($registro['unidad_inventario'] ?? '')), 0, 255),
+                    'maneja_color'              => !empty($colores) ? true : $parsearBooleano($registro['maneja_color'] ?? ''),
+                    'maneja_talla'              => $parsearBooleano($registro['maneja_talla'] ?? ''),
+                    'maneja_otra_variante'      => !empty($variantes) ? true : $parsearBooleano($registro['maneja_otra_variante'] ?? ''),
+                    'estado'                    => mb_substr(strip_tags((string) ($registro['estado'] ?? '')), 0, 255),
+                    'variante_atributo_sugerido' => mb_substr(strip_tags((string) ($registro['variante_atributo_sugerido'] ?? '')), 0, 255),
+                    'proveedor_habitual'        => $proveedorId,
+                    'observaciones'             => mb_substr(strip_tags((string) ($registro['observaciones'] ?? '')), 0, 1000),
+                ],
+                'colores' => $colores,
+                'variantes' => $variantes,
+                'sincronizar_variantes' => $sincronizarVariantes,
+                'fila' => $filaExcel,
             ];
         }
 
@@ -624,11 +888,23 @@ class MaterialController extends Controller {
         DB::beginTransaction();
         try {
             foreach ($registros as $registro) {
-                if (isset($existentes[$registro['codigo_material']])) {
-                    Material::where('codigo_material', $registro['codigo_material'])->update($registro);                    $actualizados++;
+                $datos = $registro['datos'];
+                $codigoMaterial = $datos['codigo_material'];
+                $material = isset($existentes[$codigoMaterial])
+                    ? Material::find($existentes[$codigoMaterial])
+                    : null;
+
+                if ($material) {
+                    $material->update($datos);
+                    $actualizados++;
                 } else {
-                    Material::create($registro);
+                    $material = Material::create($datos);
+                    $existentes[$codigoMaterial] = $material->id;
                     $creados++;
+                }
+
+                if ($registro['sincronizar_variantes']) {
+                    $material->sincronizarVariantes($registro['colores'], $registro['variantes']);
                 }
             }
             DB::commit();
@@ -642,7 +918,7 @@ class MaterialController extends Controller {
         Myhelp::EscribirEnLog($this, 'uploadExcel OK', "Creados: {$creados} | Actualizados: {$actualizados}");
         $avisoIgnoradas = empty($encabezadosIgnorados)
             ? ''
-            : ' Columnas ignoradas (encabezado no reconocido): ' . implode(', ', $encabezadosIgnoradas) . '.';
+            : ' Columnas ignoradas (encabezado no reconocido): ' . implode(', ', $encabezadosIgnorados) . '.';
         return back()->with('success', "Importación completada: {$creados} creado(s), {$actualizados} actualizado(s).{$avisoIgnoradas}");
     }
 

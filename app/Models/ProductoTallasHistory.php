@@ -9,6 +9,8 @@ class ProductoTallasHistory extends Model
 {
     use HasFactory;
 
+    protected $table = 'producto_tallas_history';
+
     protected $fillable = [
         'producto_id',
         'user_id',

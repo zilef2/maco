@@ -1,3 +1,5 @@
+## Orden produccion ##----------------------------------------------
+
 # OP al borrar una OP, deberian advertir que se van a borrar las recepciones de calidad
 ## Borrado OP
 ### mostrar advertencia
@@ -36,11 +38,32 @@ si una OP pasa a recibiendo, y se guarda el avanze con el boton "guardar avanze"
 
 ----------------------------------------------## dashboard ##----------------------------------------------
 
-## 24 oct
-
 # dashboard
 ## primer vistazo al dashboard
 el dashboard, debe tener una zona para graficos, otra para resultados del mes y por ultimo una zona para las notificaciones rojas. por el momento busca una buena extension de graficos, muy llamativa, instala la mejor extension para graficos con vue o js, deben haber almenos 2 graficos.
 se debe responder a: Reportes de existencias, movimientos, compras, producción, costos y desviaciones por período, claro esta que debe ser en tiempo real, no estatico.
 
 la zona de las notificaciones solo sera visible si hay notificaciones rojas, deben decir exactamente lo mismo que las notificaciones y estar en la parte superior del dashboard
+
+
+# dashboard
+## testing
+genera tests para el dashboard, has una diferencia entre valores numericos simples, como pares aprobados, y una grafica. ambas categorias deben tener su archivo de tests diferente
+
+
+----------------------------------------------## CierreOrdenProduccion ##----------------------------------------------
+
+# CierreOrdenProduccion
+
+hay que mejorar el modulo de CierreOrdenProduccion, ya que muestra datos pero no son tan utiles a la vista. No se porque no sale nada en la columan orden_produccion_id, pero esa columan deberia mostrar el codigo de la orden (ejemplo: OP-101) debe agrupar por OP, pero solo cuando se aplique el filtro de OP, ademas El numero de paginacion debe ser mayor al numero de filas resultantes cuando se aplique dicho filtro de OP, ejemplo: si la OP-101 tiene 11 registros en cierreordenproduccion, entonces la paginacion debe cambiar automaticamente a 25 que es el numero mas pequeño entre las paginaciones pero mayor a 11.
+
+este index de cierreordenproduccion no debe tener barra de busqueda, pero si un filtro para fecha_cierre, responsable.
+
+usa el diseño de vista igual al index.vue de producto. 
+
+en dato esperado, dato real y diferencia son equivalentes a los valores en el form de "cambiar estado" de las OP solo que se llaman "ESPERADA", "APROBADA" respectivamente (diferencia es un dato calculado, es la resta entre esperado y real), asi que falta tener encuenta "NO RECUPERABLE"
+
+
+----------------------------------------------## FICHATECNICAMATERIALES ##----------------------------------------------
+# FICHATECNICAMATERIALES
+Modulo fichatecnicamateriales, al editar una ficha, no debe permitir cambiar el nombre, y debe mostrar o "material con proceso" o "producto" no ambos, de hecho eso no es editable, porque se hace click en el producto/material(con proceso) que se desear editar, asi que no deberia preguntarlo. lo unico que deberia editarse es la cantidad de los materiales o si hay que agregar mas materiales o borrar (en la parte llamada "Materiales de la ficha")

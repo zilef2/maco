@@ -85,7 +85,7 @@ const navDropdown: NavGroup[] = [
         ],
     },
     {
-        label: 'Kits',
+        label: 'Fichas y Kit',
         icon: Layers,
         items: [
             {

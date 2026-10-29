@@ -318,6 +318,7 @@ class KitProcesoController extends Controller {
 
                 return [
                     'id' => $kit->id,
+                    'material_id' => $kit->material_id,
                     'material_codigo' => $kit->material?->codigo_material,
                     'material_nombre' => $kit->material?->nombre_base,
                     'proveedor_id' => $kit->proveedor_id,

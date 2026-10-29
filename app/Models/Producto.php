@@ -24,7 +24,7 @@ class Producto extends Model
          'Estado',
          'Observaciones',
          'descripcion',
-         'precio_predicho',
+         'costo_anticipado',
          'precio_preventa',
          'precio_estimado'
         ];

@@ -1,7 +1,5 @@
 <script setup lang="ts">
 import DataPagination from '@/components/DataPagination.vue';
-import SelectInput from '@/components/SelectInput.vue';
-import TextInput from '@/components/TextInput.vue';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import Delete from '@/pages/Producto/Delete.vue';
 import DistribucionTallas from '@/pages/Producto/DistribucionTallas.vue';
@@ -12,123 +10,24 @@ import {
     ChevronUpIcon,
     CubeIcon,
     EllipsisVerticalIcon,
+    FunnelIcon,
     MagnifyingGlassIcon,
     PencilIcon,
     SquaresPlusIcon,
     TrashIcon,
     XMarkIcon,
 } from '@heroicons/vue/24/solid';
-import { router, usePage } from '@inertiajs/vue3';
-import { computed, reactive, ref, watch } from 'vue';
-import pkg from 'lodash';
+import { reactive } from 'vue';
 import { zilef_nuber_format } from '@/global.ts';
-
-const { debounce, pickBy } = pkg;
+import { useTablaClient, type ColumnaTabla } from '@/composables/useTablaClient';
 
 const props = defineProps({
-    productos: { type: Object as () => any, default: () => ({}) },
-    filters: { type: Object as () => any, default: () => ({}) },
+    productos: { type: Array as () => any[], default: () => [] },
     losSelect: { type: Object as () => any, default: () => ({}) },
     titulos: { type: Array as () => any[], default: () => [] },
     numberPermissions: Number,
     title: String,
 });
-
-const defaultPerPage = [
-    { label: '5', value: 5 },
-    { label: '10', value: 10 },
-    { label: '25', value: 25 },
-    { label: '50', value: 50 },
-    { label: '100', value: 100 },
-];
-
-const params = reactive({
-    psearch: String(props.filters?.psearch ?? ''),
-    pperPage: Number(props.filters?.pperPage ?? 10),
-});
-
-const sortKey = ref(String(props.filters?.pfield ?? 'Codigo_interno'));
-const sortDir = ref<'asc' | 'desc'>(props.filters?.porder === 'desc' ? 'desc' : 'asc');
-
-const data = reactive({
-    Producto: null as any,
-    editOpen: false,
-    deleteOpen: false,
-    distribucionOpen: false,
-    distribucionProducto: null as any,
-    dataSet: (usePage().props as any)?.app?.perpage ?? defaultPerPage,
-});
-
-const filas = computed<any[]>(() => props.productos?.data ?? []);
-const totalRegistros = computed(() => Number(props.productos?.total ?? 0));
-const hayBusqueda = computed(() => params.psearch.trim() !== '');
-
-const columnas = [
-    { key: 'Codigo_interno', label: 'Código', sortable: true, align: 'left', headerClass: 'min-w-[120px]', cellClass: 'min-w-[120px]' },
-    { key: 'Titulo_Shopify', label: 'Producto', sortable: true, align: 'left', headerClass: 'min-w-[240px]', cellClass: 'min-w-[240px]' },
-    { key: 'cantidad', label: 'Cantidad', sortable: false, align: 'right', headerClass: 'w-[100px]', cellClass: 'w-[100px]' },
-    { key: 'Categoria_original', label: 'Categoría', sortable: true, align: 'left', headerClass: 'hidden min-w-[180px] lg:table-cell', cellClass: 'hidden min-w-[180px] lg:table-cell' },
-    { key: 'Control_de_variante', label: 'Variante', sortable: true, align: 'left', headerClass: 'hidden min-w-[160px] xl:table-cell', cellClass: 'hidden min-w-[160px] xl:table-cell' },
-    { key: 'Estado', label: 'Estado', sortable: true, align: 'left', headerClass: 'w-[110px]', cellClass: 'w-[110px]' },
-    { key: 'precio_preventa', label: 'Precio', sortable: true, align: 'right', headerClass: 'w-[140px]', cellClass: 'w-[140px]' },
-    { key: 'precio_estimado', label: 'Precio estimado', sortable: true, align: 'right', headerClass: 'w-[150px]', cellClass: 'w-[150px]' },
-    { key: 'tallas', label: 'Tallas', sortable: false, align: 'left', headerClass: 'hidden min-w-[150px] md:table-cell', cellClass: 'hidden min-w-[150px] md:table-cell' },
-];
-
-// Solo se reenvían los filtros de la tabla de productos: los de fichas se leen
-// de la página para no perder la búsqueda/orden del listado principal.
-const navegar = (pagina = 1) => {
-    const filtrosPagina = (usePage().props as any).filters ?? {};
-    router.get(
-        route('FichaTecnicaMateriales.index'),
-        pickBy({
-            search: filtrosPagina.search,
-            field: filtrosPagina.field,
-            order: filtrosPagina.order,
-            perPage: filtrosPagina.perPage,
-            psearch: params.psearch,
-            pfield: sortKey.value,
-            porder: sortDir.value,
-            pperPage: params.pperPage,
-            ppage: pagina,
-        }),
-        { preserveState: true, preserveScroll: true, replace: true },
-    );
-};
-
-watch(
-    () => params.psearch,
-    debounce(() => navegar(), 250),
-);
-
-watch(() => params.pperPage, () => navegar());
-
-const ordenarPor = (key: string) => {
-    if (sortKey.value === key) {
-        sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc';
-    } else {
-        sortKey.value = key;
-        sortDir.value = 'asc';
-    }
-    navegar();
-};
-
-const indicador = (key: string) => (sortKey.value === key ? sortDir.value : null);
-
-const limpiarBusqueda = () => {
-    params.psearch = '';
-};
-
-const abrirAccion = (accion: string, producto: any) => {
-    data.Producto = producto;
-
-    if (accion === 'edit') data.editOpen = true;
-    if (accion === 'tallas') {
-        data.distribucionProducto = producto;
-        data.distribucionOpen = true;
-    }
-    if (accion === 'delete') data.deleteOpen = true;
-};
 
 const distribucionesDe = (producto: any): any[] => {
     const lista = producto?.distribuciones_por_tallas ?? producto?.distribucionesPorTallas ?? [];
@@ -144,6 +43,7 @@ const tallasDe = (producto: any): string[] =>
         ),
     );
 
+// Desglose que valida la columna Cantidad: «S 10 · M 5».
 const detalleTallasDe = (producto: any): string =>
     distribucionesDe(producto)
         .map((item: any) => {
@@ -153,6 +53,92 @@ const detalleTallasDe = (producto: any): string =>
         })
         .filter(Boolean)
         .join(' · ');
+
+const ordenesDe = (producto: any): string[] => {
+    const lista = producto?.ordenes_con_tallas ?? [];
+    return Array.isArray(lista) ? lista.map((numeroOp: any) => String(numeroOp)) : [];
+};
+
+const columnas: ColumnaTabla[] = [
+    { key: 'Codigo_interno', label: 'Código', sortable: true, align: 'left', headerClass: 'min-w-[130px]' },
+    { key: 'Titulo_Shopify', label: 'Producto', sortable: true, align: 'left', headerClass: 'min-w-[260px]' },
+    {
+        key: 'cantidad',
+        label: 'Cantidad',
+        sortable: true,
+        align: 'right',
+        headerClass: 'w-[110px]',
+        valor: (producto: any) => Number(producto.cantidad ?? 0),
+    },
+    { key: 'Categoria_original', label: 'Categoría', sortable: true, align: 'left', headerClass: 'hidden min-w-[190px] lg:table-cell' },
+    { key: 'Control_de_variante', label: 'Variante', sortable: true, align: 'left', headerClass: 'hidden min-w-[170px] xl:table-cell' },
+    { key: 'Estado', label: 'Estado', sortable: true, align: 'left', headerClass: 'w-[110px]' },
+    {
+        key: 'precio_preventa',
+        label: 'Precio',
+        sortable: true,
+        align: 'right',
+        headerClass: 'w-[140px]',
+        valor: (producto: any) => Number(producto.precio_preventa ?? 0),
+    },
+    {
+        key: 'precio_estimado',
+        label: 'Precio estimado',
+        sortable: true,
+        align: 'right',
+        headerClass: 'w-[150px]',
+        valor: (producto: any) => Number(producto.precio_estimado ?? 0),
+    },
+    {
+        key: 'tallas',
+        label: 'Tallas',
+        sortable: true,
+        align: 'left',
+        headerClass: 'hidden min-w-[150px] md:table-cell',
+        valor: (producto: any) => tallasDe(producto).length,
+    },
+    {
+        key: 'ordenes_con_tallas',
+        label: 'OPs',
+        sortable: true,
+        align: 'left',
+        headerClass: 'hidden min-w-[120px] lg:table-cell',
+        valor: (producto: any) => ordenesDe(producto).length,
+    },
+];
+
+const tabla = useTablaClient(() => props.productos ?? [], {
+    columnas,
+    busquedaPor: ['Codigo_interno', 'Titulo_Shopify', 'Categoria_original', 'Familia_normalizada', 'Control_de_variante', 'Opciones'],
+    porPagina: 10,
+    orden: { key: 'Codigo_interno', dir: 'asc' },
+});
+
+const {
+    busqueda,
+    porPagina,
+    paginaActual,
+    paginas,
+    desde,
+    hasta,
+    visibles,
+    total,
+    hayBusqueda,
+    totalRegistros,
+    cambiarPagina,
+    ordenarPor,
+    indicador,
+    ariaSort,
+    limpiar,
+} = tabla;
+
+const data = reactive({
+    Producto: null as any,
+    editOpen: false,
+    deleteOpen: false,
+    distribucionOpen: false,
+    distribucionProducto: null as any,
+});
 
 const estadoNormalizado = (valor: any): 'Activo' | 'Inactivo' => {
     const texto = String(valor ?? '').trim().toLowerCase();
@@ -182,90 +168,127 @@ const formatearPrecio = (valor: any, decimales = 0): string =>
 
 const decimalesDe = (valor: any): number =>
     Number.isFinite(Number(valor)) && Math.round(Number(valor) * 100) % 100 !== 0 ? 2 : 0;
+
+const selectClass =
+    'h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30';
+
+const abrirAccion = (accion: string, producto: any) => {
+    data.Producto = producto;
+
+    if (accion === 'edit') data.editOpen = true;
+    if (accion === 'tallas') {
+        data.distribucionProducto = producto;
+        data.distribucionOpen = true;
+    }
+    if (accion === 'delete') data.deleteOpen = true;
+};
+
+const iconoAccion =
+    'inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring';
 </script>
 
 <template>
-    <section class="relative bg-white dark:bg-gray-800 shadow sm:rounded-lg w-max min-w-full">
-        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 px-3 py-2.5 dark:border-gray-700">
-            <div class="min-w-0">
-                <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Productos sin ficha técnica</h2>
-                <p class="text-xs text-gray-500 dark:text-gray-400">
-                    <span class="font-medium tabular-nums">{{ totalRegistros }}</span>
-                    {{ totalRegistros === 1 ? 'producto espera' : 'productos esperan' }} su ficha
+    <section class="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
+        <div class="flex flex-col gap-2.5 border-b border-border p-3">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="min-w-0">
+                    <h2 class="text-sm font-semibold text-foreground">Productos sin ficha técnica</h2>
+                    <p class="mt-0.5 text-xs text-muted-foreground">
+                        <span class="tabular-nums font-medium text-foreground">{{ totalRegistros }}</span>
+                        {{ totalRegistros === 1 ? 'producto espera' : 'productos esperan' }} su ficha. Se la asigna
+                        desde Editar, en la sección «Ficha técnica de materiales».
+                    </p>
+                </div>
+
+                <p v-if="hayBusqueda" class="text-xs tabular-nums text-muted-foreground">
+                    <span class="font-medium text-foreground">{{ total }}</span> de {{ totalRegistros }} coinciden
                 </p>
             </div>
 
             <div class="flex flex-wrap items-center gap-2">
-                <div class="relative min-w-[220px]">
-                    <MagnifyingGlassIcon class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                    <TextInput
-                        v-model="params.psearch"
-                        type="search"
+                <div class="relative min-w-[220px] flex-1">
+                    <MagnifyingGlassIcon class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <input
+                        v-model="busqueda"
+                        type="text"
                         aria-label="Buscar productos sin ficha"
-                        placeholder="Buscar código, título o categoría…"
-                        class="block h-9 w-full rounded-lg pl-9 pr-9 text-sm"
+                        placeholder="Buscar por código, título, categoría o variante…"
+                        class="h-9 w-full rounded-md border border-input bg-background pl-9 pr-9 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30"
                     />
                     <button
-                        v-if="hayBusqueda"
+                        v-if="busqueda"
                         type="button"
-                        @click="limpiarBusqueda"
+                        @click="limpiar"
                         aria-label="Limpiar búsqueda de productos"
-                        class="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-gray-400 transition hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-700"
+                        class="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                         <XMarkIcon class="h-3.5 w-3.5" />
                     </button>
                 </div>
-                <SelectInput v-model="params.pperPage" :dataSet="data.dataSet" />
+
+                <select v-model.number="porPagina" aria-label="Productos por página" :class="selectClass">
+                    <option v-for="n in [10, 25, 50, 100]" :key="n" :value="n">{{ n }} / página</option>
+                </select>
             </div>
         </div>
 
-        <div class="max-h-[60vh] overflow-auto">
-            <table v-if="filas.length" class="w-full min-w-[1240px] border-collapse text-sm">
-                <thead class="uppercase">
-                    <tr class="text-left dark:bg-gray-900/50">
+        <div class="mat-scroll max-h-[68vh] overflow-auto overscroll-contain">
+            <table v-if="total > 0" class="w-full min-w-[1330px] border-collapse text-sm">
+                <thead>
+                    <tr>
                         <th
                             v-for="col in columnas"
                             :key="col.key"
                             scope="col"
-                            :class="['border-b border-t border-gray-200 px-3 py-3 text-[11px] font-semibold tracking-wide text-gray-500 dark:border-gray-700 dark:text-gray-400', col.align === 'right' ? 'text-right' : 'text-left', col.headerClass]"
+                            :aria-sort="col.sortable ? ariaSort(col.key) : undefined"
+                            :class="[
+                                'bg-muted px-3 py-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground',
+                                col.align === 'right' ? 'text-right' : 'text-left',
+                                col.headerClass,
+                            ]"
                         >
                             <button
                                 v-if="col.sortable"
                                 type="button"
                                 @click="ordenarPor(col.key)"
                                 :class="[
-                                    'inline-flex items-center gap-1 hover:text-gray-800 dark:hover:text-gray-200',
+                                    'group/sort inline-flex items-center gap-1 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                                     col.align === 'right' ? 'w-full justify-end' : '',
                                 ]"
                             >
                                 <span>{{ col.label }}</span>
-                                <ChevronUpIcon v-if="indicador(col.key) === 'asc'" class="h-3.5 w-3.5" />
-                                <ChevronDownIcon v-else-if="indicador(col.key) === 'desc'" class="h-3.5 w-3.5" />
-                                <ChevronUpDownIcon v-else class="h-3.5 w-3.5 opacity-40" />
+                                <span class="text-muted-foreground/60 transition-colors group-hover/sort:text-foreground">
+                                    <ChevronUpIcon v-if="indicador(col.key) === 'asc'" class="h-3 w-3" />
+                                    <ChevronDownIcon v-else-if="indicador(col.key) === 'desc'" class="h-3 w-3" />
+                                    <ChevronUpDownIcon v-else class="h-3 w-3 opacity-0 transition-opacity group-hover/sort:opacity-100" />
+                                </span>
                             </button>
                             <span v-else>{{ col.label }}</span>
                         </th>
 
-                        <th class="w-[104px] border-b border-t border-gray-200 px-2 py-3 text-right text-[11px] font-semibold tracking-wide text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                        <th
+                            scope="col"
+                            class="sticky right-0 z-30 w-[104px] border-l border-border bg-muted px-2 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground"
+                        >
                             Acciones
                         </th>
                     </tr>
                 </thead>
 
-                <tbody>
+                <tbody :key="paginaActual" class="mat-page">
                     <tr
-                        v-for="producto in filas"
+                        v-for="producto in visibles"
                         :key="producto.id"
-                        class="border-b border-gray-200 transition-colors last:border-0 hover:bg-gray-200/30 dark:border-gray-700 dark:hover:bg-gray-900/20"
+                        class="group border-b border-border/60 transition-colors last:border-0 hover:bg-muted/40"
                     >
                         <td class="px-3 py-3 align-top">
                             <div class="flex flex-col gap-0.5">
-                                <span class="font-semibold tabular-nums text-gray-900 dark:text-gray-100">
+                                <span class="font-semibold tabular-nums tracking-tight text-foreground">
                                     {{ texto(producto.Codigo_interno) }}
                                 </span>
                                 <span
                                     v-if="producto.ID_producto_Shopify"
-                                    class="block max-w-[140px] truncate text-[10px] text-gray-500 dark:text-gray-400"
+                                    class="block max-w-[140px] truncate text-[10px] text-muted-foreground"
                                     :title="producto.ID_producto_Shopify"
                                 >
                                     {{ producto.ID_producto_Shopify }}
@@ -275,10 +298,10 @@ const decimalesDe = (valor: any): number =>
 
                         <td class="px-3 py-3 align-top">
                             <div class="flex max-w-[300px] flex-col gap-0.5">
-                                <span class="truncate font-medium text-gray-900 dark:text-gray-100" :title="producto.Titulo_Shopify">
+                                <span class="truncate font-medium text-foreground" :title="producto.Titulo_Shopify">
                                     {{ texto(producto.Titulo_Shopify) }}
                                 </span>
-                                <span class="truncate text-[11px] text-gray-500 dark:text-gray-400" :title="producto.descripcion">
+                                <span class="truncate text-[11px] text-muted-foreground" :title="producto.descripcion">
                                     {{ texto(producto.descripcion, 'Sin descripción') }}
                                 </span>
                             </div>
@@ -286,12 +309,12 @@ const decimalesDe = (valor: any): number =>
 
                         <td class="px-3 py-3 text-right align-top">
                             <div class="flex flex-col items-end gap-0.5">
-                                <span class="font-semibold tabular-nums text-gray-900 dark:text-gray-100">
+                                <span class="font-semibold tabular-nums text-foreground">
                                     {{ Number(producto.cantidad ?? 0) }}
                                 </span>
                                 <span
                                     v-if="detalleTallasDe(producto)"
-                                    class="max-w-[130px] truncate text-[11px] tabular-nums text-gray-500 dark:text-gray-400"
+                                    class="max-w-[130px] truncate text-[11px] tabular-nums text-muted-foreground"
                                     :title="detalleTallasDe(producto)"
                                 >
                                     {{ detalleTallasDe(producto) }}
@@ -301,10 +324,10 @@ const decimalesDe = (valor: any): number =>
 
                         <td class="hidden px-3 py-3 align-top lg:table-cell">
                             <div class="flex max-w-[210px] flex-col gap-0.5">
-                                <span class="truncate text-sm text-gray-900 dark:text-gray-100" :title="producto.Categoria_original">
+                                <span class="truncate text-sm text-foreground" :title="producto.Categoria_original">
                                     {{ texto(producto.Categoria_original) }}
                                 </span>
-                                <span class="truncate text-[11px] text-gray-500 dark:text-gray-400" :title="producto.Familia_normalizada">
+                                <span class="truncate text-[11px] text-muted-foreground" :title="producto.Familia_normalizada">
                                     {{ texto(producto.Familia_normalizada, 'Sin familia') }}
                                 </span>
                             </div>
@@ -312,10 +335,10 @@ const decimalesDe = (valor: any): number =>
 
                         <td class="hidden px-3 py-3 align-top xl:table-cell">
                             <div class="flex max-w-[190px] flex-col gap-0.5">
-                                <span class="truncate text-sm text-gray-900 dark:text-gray-100" :title="producto.Control_de_variante">
+                                <span class="truncate text-sm text-foreground" :title="producto.Control_de_variante">
                                     {{ texto(producto.Control_de_variante) }}
                                 </span>
-                                <span class="truncate text-[11px] text-gray-500 dark:text-gray-400" :title="producto.Opciones">
+                                <span class="truncate text-[11px] text-muted-foreground" :title="producto.Opciones">
                                     {{ texto(producto.Opciones, 'Sin opciones') }}
                                 </span>
                             </div>
@@ -333,17 +356,17 @@ const decimalesDe = (valor: any): number =>
 
                         <td class="px-3 py-3 text-right align-top">
                             <div class="flex flex-col items-end gap-0.5">
-                                <span class="font-semibold tabular-nums text-gray-900 dark:text-gray-100">
+                                <span class="font-semibold tabular-nums text-foreground">
                                     {{ formatearPrecio(producto.precio_preventa) }}
                                 </span>
-                                <span class="text-[11px] tabular-nums text-gray-500 dark:text-gray-400">
-                                    Predicho {{ formatearPrecio(producto.precio_predicho) }}
+                                <span class="text-[11px] tabular-nums text-muted-foreground">
+                                    Anticipado {{ formatearPrecio(producto.costo_anticipado) }}
                                 </span>
                             </div>
                         </td>
 
                         <td class="px-3 py-3 text-right align-top">
-                            <span class="font-medium tabular-nums text-gray-900 dark:text-gray-100">
+                            <span class="font-medium tabular-nums text-foreground">
                                 {{ formatearPrecio(producto.precio_estimado, decimalesDe(producto.precio_estimado)) }}
                             </span>
                         </td>
@@ -353,53 +376,77 @@ const decimalesDe = (valor: any): number =>
                                 <span
                                     v-for="talla in tallasDe(producto).slice(0, 3)"
                                     :key="talla"
-                                    class="inline-flex min-w-6 items-center justify-center rounded border border-gray-300 bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold text-gray-600 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300"
+                                    class="inline-flex min-w-6 items-center justify-center rounded border border-border bg-muted/60 px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground"
                                 >
                                     {{ talla }}
                                 </span>
                                 <span
                                     v-if="tallasDe(producto).length > 3"
-                                    class="inline-flex min-w-6 items-center justify-center rounded border border-gray-300 bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold text-gray-600 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-300"
+                                    class="inline-flex min-w-6 items-center justify-center rounded border border-border bg-muted/60 px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground"
                                     :title="tallasDe(producto).slice(3).join(', ')"
                                 >
                                     +{{ tallasDe(producto).length - 3 }}
                                 </span>
-                                <span v-if="!tallasDe(producto).length" class="text-xs text-gray-400">—</span>
+                                <span v-if="!tallasDe(producto).length" class="text-xs text-muted-foreground">—</span>
                             </div>
                         </td>
 
-                        <td class="w-[104px] border-l border-gray-200 px-2 py-2 align-middle dark:border-gray-700">
+                        <td class="hidden px-3 py-3 align-top lg:table-cell">
+                            <div class="flex max-w-[170px] flex-wrap items-center gap-1">
+                                <span
+                                    v-for="numeroOp in ordenesDe(producto).slice(0, 2)"
+                                    :key="numeroOp"
+                                    class="inline-flex items-center rounded border border-border bg-muted/60 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-muted-foreground"
+                                    :title="numeroOp"
+                                >
+                                    {{ numeroOp }}
+                                </span>
+                                <span
+                                    v-if="ordenesDe(producto).length > 2"
+                                    class="inline-flex items-center rounded border border-border bg-muted/60 px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground"
+                                    :title="ordenesDe(producto).slice(2).join(', ')"
+                                >
+                                    +{{ ordenesDe(producto).length - 2 }}
+                                </span>
+                                <span v-if="!ordenesDe(producto).length" class="text-xs text-muted-foreground">—</span>
+                            </div>
+                        </td>
+
+                        <td
+                            class="sticky right-0 z-10 w-[104px] border-l border-border/60 bg-card px-2 py-2 align-middle shadow-[-8px_0_16px_-16px_rgba(0,0,0,0.35)] transition-colors group-hover:bg-muted/40"
+                        >
                             <div class="flex items-center justify-end gap-1">
                                 <button
                                     v-if="can(['update Producto'])"
                                     type="button"
+                                    @click="abrirAccion('tallas', producto)"
+                                    title="Tallas"
+                                    :aria-label="`Ver tallas de ${producto.Codigo_interno || producto.Titulo_Shopify}`"
+                                    :class="iconoAccion"
+                                >
+                                    <SquaresPlusIcon class="h-4 w-4" />
+                                </button>
+                                <button
+                                    v-if="can(['update Producto'])"
+                                    type="button"
                                     @click="abrirAccion('edit', producto)"
-                                    title="Editar"
+                                    title="Editar y asignar ficha"
                                     :aria-label="`Editar ${producto.Codigo_interno || producto.Titulo_Shopify}`"
-                                    class="inline-flex h-7 w-7 items-center justify-center rounded-md border border-gray-300 text-gray-500 transition hover:bg-gray-100 hover:text-gray-800 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-700"
+                                    :class="iconoAccion"
                                 >
                                     <PencilIcon class="h-4 w-4" />
                                 </button>
-                                <DropdownMenu v-if="can(['update Producto']) || can(['delete Producto'])">
+                                <DropdownMenu v-if="can(['delete Producto'])">
                                     <DropdownMenuTrigger
                                         type="button"
                                         title="Acciones"
                                         :aria-label="`Acciones de ${producto.Codigo_interno || producto.Titulo_Shopify}`"
-                                        class="inline-flex h-7 w-7 items-center justify-center rounded-md border border-gray-300 text-gray-500 transition hover:bg-gray-100 hover:text-gray-800 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-700"
+                                        :class="iconoAccion"
                                     >
                                         <EllipsisVerticalIcon class="h-4 w-4" />
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end" class="w-56 p-1">
                                         <DropdownMenuItem
-                                            v-if="can(['update Producto'])"
-                                            @click="abrirAccion('tallas', producto)"
-                                            class="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-xs font-medium"
-                                        >
-                                            <SquaresPlusIcon class="h-4 w-4" />
-                                            <span>Tallas</span>
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem
-                                            v-if="can(['delete Producto'])"
                                             @click="abrirAccion('delete', producto)"
                                             variant="destructive"
                                             class="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-xs font-medium"
@@ -415,33 +462,39 @@ const decimalesDe = (valor: any): number =>
                 </tbody>
             </table>
 
-            <div v-else class="flex flex-col items-center justify-center gap-2 px-6 py-12 text-center">
-                <CubeIcon class="h-6 w-6 text-gray-400" />
-                <p class="text-sm text-gray-500 dark:text-gray-400">
-                    {{ hayBusqueda ? 'Ningún producto sin ficha coincide con la búsqueda.' : 'Todos los productos tienen ficha técnica.' }}
+            <div v-else class="flex flex-col items-center justify-center gap-3 px-6 py-16 text-center">
+                <div class="flex h-12 w-12 items-center justify-center rounded-full border border-border bg-muted/60">
+                    <FunnelIcon v-if="hayBusqueda" class="h-5 w-5 text-muted-foreground" />
+                    <CubeIcon v-else class="h-5 w-5 text-muted-foreground" />
+                </div>
+                <h3 class="text-sm font-semibold text-foreground">
+                    {{ hayBusqueda ? 'Ningún producto sin ficha coincide' : 'Todos los productos tienen ficha técnica' }}
+                </h3>
+                <p v-if="hayBusqueda" class="max-w-sm text-sm text-muted-foreground">
+                    Ajusta el texto de búsqueda para ver más resultados.
                 </p>
                 <button
                     v-if="hayBusqueda"
                     type="button"
-                    @click="limpiarBusqueda"
-                    class="text-xs font-medium text-indigo-600 hover:text-indigo-700 dark:text-indigo-400"
+                    @click="limpiar"
+                    class="inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
+                    <XMarkIcon class="h-3.5 w-3.5" />
                     Limpiar búsqueda
                 </button>
             </div>
         </div>
 
-        <div v-if="totalRegistros > Number(props.productos?.per_page ?? 10)" class="border-t border-gray-200 dark:border-gray-700">
-            <DataPagination
-                :current-page="Number(props.productos?.current_page ?? 1)"
-                :last-page="Number(props.productos?.last_page ?? 1)"
-                :from="Number(props.productos?.from ?? 0)"
-                :to="Number(props.productos?.to ?? 0)"
-                :total="totalRegistros"
-                item-label="productos"
-                @page="navegar"
-            />
-        </div>
+        <DataPagination
+            v-if="total > 0"
+            :current-page="paginaActual"
+            :last-page="paginas"
+            :from="desde"
+            :to="hasta"
+            :total="total"
+            :item-label="total === 1 ? 'producto' : 'productos'"
+            @page="cambiarPagina"
+        />
 
         <Edit
             v-if="can(['update Producto'])"
@@ -470,7 +523,51 @@ const decimalesDe = (valor: any): number =>
             :productoId="data.distribucionProducto?.id"
             :productoLabel="data.distribucionProducto?.Codigo_interno"
             :items="distribucionesDe(data.distribucionProducto)"
-            :ordenesTallas="(data.distribucionProducto as any)?.ordenes_con_tallas || []"
+            :ordenesTallas="ordenesDe(data.distribucionProducto)"
         />
     </section>
 </template>
+
+<style scoped>
+@keyframes mat-page-in {
+    from {
+        opacity: 0;
+        transform: translateY(3px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.mat-page {
+    animation: mat-page-in 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.mat-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+}
+
+.mat-scroll::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+.mat-scroll::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.mat-scroll::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border: 3px solid transparent;
+    border-radius: 9999px;
+    background-clip: content-box;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .mat-page {
+        animation: none;
+    }
+}
+</style>

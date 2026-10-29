@@ -10,6 +10,7 @@ use App\Models\EstadoOperacion;
 use App\Models\FichaTecnica;
 use App\Models\KitProceso;
 use App\Models\Material;
+use App\Models\MaterialMovimiento;
 use App\Models\OrdenProduccion;
 use App\Models\Producto;
 use App\Models\ProcesoExterno;
@@ -451,6 +452,116 @@ class OrdenProduccionTest extends TestCase
         $this->assertDatabaseCount('proceso_externos', 0);
     }
 
+    public function test_cuando_una_op_pasa_a_en_taller_debe_disminuir_las_existencias_de_los_materiales_necesarios(): void
+    {
+        [$user, $op, $estados] = $this->contextoRecepcion('Lista para taller');
+
+        $materialA = Material::create([
+            'codigo_material' => 'MAT-TALLER-001',
+            'categoria' => 'Tela',
+            'nombre_base' => 'Tela principal',
+            'unidad_inventario' => 'm',
+            'estado' => 'Activo',
+            'existencia_actual' => 20,
+        ]);
+
+        $materialB = Material::create([
+            'codigo_material' => 'MAT-TALLER-002',
+            'categoria' => 'Insumos',
+            'nombre_base' => 'Botones',
+            'unidad_inventario' => 'und',
+            'estado' => 'Activo',
+            'existencia_actual' => 50,
+        ]);
+
+        KitProceso::create([
+            'orden_produccion_id' => $op->id,
+            'material_id' => $materialA->id,
+            'unidad' => 'm',
+            'cantidad_requerida' => 5,
+            'cantidad_disponible' => 20,
+            'cantidad_preparada' => 5,
+        ]);
+
+        KitProceso::create([
+            'orden_produccion_id' => $op->id,
+            'material_id' => $materialB->id,
+            'unidad' => 'und',
+            'cantidad_requerida' => 12,
+            'cantidad_disponible' => 50,
+            'cantidad_preparada' => 12,
+        ]);
+
+        $response = $this->actingAs($user)->put(route('OrdenProduccion.cambiarEstado', $op->id), [
+            'estado_op_id' => $estados['En taller']->id,
+        ]);
+
+        $response->assertSessionHasNoErrors();
+
+        $op->refresh();
+        $this->assertSame($estados['En taller']->id, (int) $op->estado_op_id);
+        $this->assertSame(15.0, (float) $materialA->fresh()->existencia_actual);
+        $this->assertSame(38.0, (float) $materialB->fresh()->existencia_actual);
+
+        $this->assertDatabaseHas('material_movimientos', [
+            'material_id' => $materialA->id,
+            'tipo_movimiento' => 'salida',
+            'cantidad' => 5,
+            'existencia_anterior' => 20,
+            'existencia_nueva' => 15,
+        ]);
+
+        $this->assertDatabaseHas('material_movimientos', [
+            'material_id' => $materialB->id,
+            'tipo_movimiento' => 'salida',
+            'cantidad' => 12,
+            'existencia_anterior' => 50,
+            'existencia_nueva' => 38,
+        ]);
+    }
+
+    /**
+     * Las OPs externas no descuentan materiales al pasar a «En taller»: el
+     * material lo maneja la empresa externa.
+     */
+    public function test_una_op_externa_no_disminuye_las_existencias_al_pasar_a_en_taller(): void //si deberia disminuir!!!
+    {
+        [$user, $op, $estados] = $this->contextoRecepcion('Lista para taller');
+
+        $material = Material::create([
+            'codigo_material' => 'MAT-EXTERNA-001',
+            'categoria' => 'Tela',
+            'nombre_base' => 'Tela de OP externa',
+            'unidad_inventario' => 'm',
+            'estado' => 'Activo',
+            // A propósito no alcanza para el kit: una OP externa no debe
+            // bloquearse por inventario ni descontarlo.
+            'existencia_actual' => 1,
+        ]);
+
+        KitProceso::create([
+            'orden_produccion_id' => $op->id,
+            'material_id' => $material->id,
+            'unidad' => 'm',
+            'cantidad_requerida' => 4,
+            'cantidad_disponible' => 1,
+            'cantidad_preparada' => 4,
+        ]);
+
+        $op->forceFill(['tipo' => 'externa', 'externa' => true])->save();
+
+        $response = $this->actingAs($user)->put(route('OrdenProduccion.cambiarEstado', $op->id), [
+            'estado_op_id' => $estados['En taller']->id,
+        ]);
+
+        $response->assertSessionHasNoErrors();
+
+        $op->refresh();
+        $this->assertSame($estados['En taller']->id, (int) $op->estado_op_id);
+        $this->assertSame(1.0, (float) $material->fresh()->existencia_actual);
+        $this->assertDatabaseCount('material_movimientos', 0);
+    }
+
     /**
      * Al pasar a "Lista para taller" se pregunta y guarda la fecha real de
      * regreso de los procesos externos pendientes.
@@ -790,6 +901,60 @@ class OrdenProduccionTest extends TestCase
             ->where('ordenes.0.distribuciones_detalle.0.material_id', $contexto['material']->id)
             ->where('ordenes.0.distribuciones_detalle.0.material_nombre', fn ($valor) => is_string($valor) && str_contains($valor, 'MAT-PROC-001'))
             ->where('ordenes.0.costo_unitario_materiales', fn ($costos) => (float) ($costos[$contexto['material']->id] ?? 0) === 20.0));
+    }
+
+    /**
+     * Actualizar solo el costo del proceso debe recalcular el costo de la ficha
+     * del producto, persistir el total y reflejarlo también en el kit.
+     */
+    public function test_actualizar_solo_el_costo_de_proceso_persiste_el_total_de_la_op(): void
+    {
+        [$user, $op] = $this->contextoRecepcion('Preparación');
+
+        $componente = Material::create([
+            'codigo_material' => 'MAT-COSTO-PROCESO',
+            'categoria' => 'Tela',
+            'nombre_base' => 'Tela para costo de proceso',
+            'unidad_inventario' => 'm',
+            'estado' => 'Activo',
+            'existencia_actual' => 100,
+        ]);
+        $componente->prices()->create([
+            'precio' => 10,
+            'fecha' => now()->toDateString(),
+        ]);
+
+        $ficha = FichaTecnica::create(['nombre' => 'Ficha del producto de la OP']);
+        $ficha->productos()->attach($op->producto_referencia_id);
+        $ficha->materiales()->create([
+            'material_componente_id' => $componente->id,
+            'consumo_estandar' => 2,
+            'unidad_medida' => 'm',
+            'costo_asociado_teorico' => 10,
+        ]);
+
+        $response = $this->actingAs($user)->put(route('OrdenProduccion.update', $op->id), [
+            'costo_proceso' => 45,
+        ]);
+
+        $response->assertSessionHasNoErrors();
+
+        $op->refresh();
+        $this->assertSame(45.0, (float) $op->costo_proceso);
+        $this->assertSame(80.0, $op->costoFichasTecnicas());
+        $this->assertSame(125.0, (float) $op->costo_total);
+        $this->assertDatabaseHas('orden_produccion_costos_materiales', [
+            'orden_produccion_id' => $op->id,
+            'material_id' => $componente->id,
+            'cantidad' => 8,
+            'precio_unitario' => 10,
+            'costo_total' => 80,
+        ]);
+        $this->assertDatabaseHas('kit_procesos', [
+            'orden_produccion_id' => $op->id,
+            'material_id' => $componente->id,
+            'cantidad_requerida' => 8,
+        ]);
     }
 
     /**

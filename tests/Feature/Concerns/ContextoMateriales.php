@@ -19,6 +19,14 @@ trait ContextoMateriales
 
         return $user;
     }
+    protected function usuarioSuper(): User
+    {
+        $rol = Role::firstOrCreate(['name' => 'superadmin', 'guard_name' => 'web']);
+        $user = User::factory()->create();
+        $user->assignRole($rol);
+
+        return $user;
+    }
 
     /**
      * Material base. Si se pasa precio se registra como última compra.

@@ -377,6 +377,7 @@ class ProcesoExternoController extends Controller {
         }
 
         Cache::forget('op_selects');
+        Cache::increment('material_index_version');
         Myhelp::EscribirEnLog($this, 'SALIDA-OP:ProcesoExternos EXITOSO', 'OP ' . $op->numero_op . ' | ' . $creados . ' procesos creados', false);
         return back()->with('success', 'Salida registrada: ' . $creados . ' materiales enviados al taller.');
     }

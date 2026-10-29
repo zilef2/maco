@@ -32,7 +32,7 @@ trait MaterialMovimientoTrait
             $tipo = $nueva >= $anterior ? 'entrada' : 'salida';
         }
 
-        return MaterialMovimiento::create([
+        $movimiento = MaterialMovimiento::create([
             'material_id' => $material->id,
             'tipo_movimiento' => $tipo,
             'cantidad' => $diferencia,
@@ -41,6 +41,14 @@ trait MaterialMovimientoTrait
             'motivo' => $motivo,
             'user_id' => Auth::id(),
         ]);
+
+        // Las salidas a taller son las que alimentan el gasto diario: al
+        // registrarse, se recalcula y persiste en el material.
+        if ($tipo === 'salida' && $motivo && str_starts_with($motivo, 'Salida de materiales a taller')) {
+            $material->recalcularGastoDiario();
+        }
+
+        return $movimiento;
     }
 
     public function registrarMovimientoCreacion(

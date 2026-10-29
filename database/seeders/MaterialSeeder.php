@@ -48,21 +48,33 @@ class MaterialSeeder extends Seeder
         $proveedores = Proveedor::pluck('id')->all();
 
         for ($i = 1; $i <= self::CANTIDAD; $i++) {
-            Material::create([
+            // Un material maneja colores o una variante adicional, nunca ambas.
+            $manejaColor = (bool) random_int(0, 1);
+            $manejaOtra = !$manejaColor && (bool) random_int(0, 1);
+
+            $material = Material::create([
                 'codigo_material'            => 'MAT-' . str_pad((string) $i, 4, '0', STR_PAD_LEFT),
                 'nombre_base'                => $bases[array_rand($bases)] . ' ' . $adj[array_rand($adj)],
                 'categoria'                  => $categorias[array_rand($categorias)],
                 'unidad_inventario'          => $unidades[array_rand($unidades)],
                 'existencia_actual'          => round(rand(0, 50000) / 100, 2),
-                'maneja_color'               => (bool) random_int(0, 1),
-                'maneja_talla'               => (bool) random_int(0, 1),
-                'maneja_otra_variante'       => (bool) random_int(0, 1),
+                'maneja_color'               => $manejaColor,
+                'maneja_talla'               => $manejaOtra || (bool) random_int(0, 1),
+                'maneja_otra_variante'       => $manejaOtra,
                 'estado'                     => $estados[array_rand($estados)],
-                'variante_atributo_sugerido' => $variante[array_rand($variante)],
+                'variante_atributo_sugerido' => $manejaColor
+                    ? 'Color'
+                    : ($manejaOtra ? 'Talla' : $variante[array_rand($variante)]),
                 'proveedor_habitual'         => $proveedores ? $proveedores[array_rand($proveedores)] : null,
                 'material_procesado'         => random_int(0, 1),
                 'observaciones'              => $observaciones[array_rand($observaciones)],
             ]);
+
+            if ($manejaColor) {
+                $material->sincronizarVariantes(['Rojo', 'Azul', 'Negro', 'Beige'], []);
+            } elseif ($manejaOtra) {
+                $material->sincronizarVariantes([], ['S', 'M', 'L', 'XL']);
+            }
         }
     }
 }

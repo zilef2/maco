@@ -85,6 +85,11 @@ class ParametrosController extends Controller
                 'modelNames'     => $modelNames,
                 // Parámetro entero costos_promedio, con su valor vigente.
                 'costosPromedio' => $this->costosPromedio(),
+                // Días de cobertura mínima del banner de previsión de materiales.
+                'diasPrevision' => [
+                    'nombre' => Parametro::DIAS_PREVISION_STOCK,
+                    'valor' => Parametro::entero(Parametro::DIAS_PREVISION_STOCK, 2),
+                ],
             ]);
         } else {
             Myhelp::EscribirEnLog($this, ' parametro', 'en el index nos hackearon ', false, true);
@@ -127,6 +132,7 @@ class ParametrosController extends Controller
     public function actualizarCostosPromedio(Request $request): RedirectResponse
     {
         $permissions = Myhelp::EscribirEnLog($this, ' costos_promedio');
+        abort_unless($permissions === 'superadmin', 403, 'Solo superadmin puede modificar parámetros.');
 
         $datos = $request->validate([
             'valor_int' => [
@@ -159,6 +165,34 @@ class ParametrosController extends Controller
         }
     }
 
+    /**
+     * Guarda los días de previsión (umbral del banner de faltantes en Materiales).
+     */
+    public function actualizarDiasPrevision(Request $request): RedirectResponse
+    {
+        $permissions = Myhelp::EscribirEnLog($this, ' dias_prevision_stock');
+        abort_unless($permissions === 'superadmin', 403, 'Solo superadmin puede modificar parámetros.');
+
+        $datos = $request->validate([
+            'valor_int' => ['required', 'integer', 'min:1', 'max:30'],
+        ]);
+
+        $valor = (int) $datos['valor_int'];
+
+        try {
+            Parametro::guardarEntero(Parametro::DIAS_PREVISION_STOCK, $valor);
+            Log::info('U -> ' . Auth::user()->name . ' cambio dias_prevision_stock a ' . $valor);
+
+            return back()->with('success', __('app.label.updated_successfully2', [
+                'nombre' => Parametro::DIAS_PREVISION_STOCK . ' = ' . $valor,
+            ]));
+        } catch (\Throwable $th) {
+            Log::alert('U -> ' . Auth::user()->name . ' fallo al guardar dias_prevision_stock - ' . $th->getMessage());
+
+            return back()->with('error', __('app.label.updated_error', ['nombre' => __('app.label.parametro')]) . $th->getMessage());
+        }
+    }
+
     public function storeLista(Request $request): RedirectResponse
     {
         $permissions = Myhelp::EscribirEnLog($this, 'storeLista');
@@ -180,8 +214,10 @@ class ParametrosController extends Controller
     }
     public function store(Request $request)
     {
+        $permissions = Myhelp::EscribirEnLog($this, ' store');
+        abort_unless($permissions === 'superadmin', 403, 'Solo superadmin puede modificar parámetros.');
+
         DB::beginTransaction();
-        Myhelp::EscribirEnLog($this, get_called_class(), ' store ', false); //!usefull
 
         try {
             $parametro = Parametro::create([
@@ -210,9 +246,11 @@ class ParametrosController extends Controller
 
     public function update(Request $request, $id)
     {
+        $permissions = Myhelp::EscribirEnLog($this, ' update');
+        abort_unless($permissions === 'superadmin', 403, 'Solo superadmin puede modificar parámetros.');
+
         $parametro = Parametro::find($id);
         DB::beginTransaction();
-        Myhelp::EscribirEnLog($this, get_called_class(), '', false);
         try {
             // dd($parametro,$request->nombre);
             $numticke = $request->NumeroTicketDefecto < 0 ? $request->NumeroTicketDefecto * -1 : $request->NumeroTicketDefecto;
@@ -237,7 +275,8 @@ class ParametrosController extends Controller
     // public function destroy(parametro $parametro)
     public function destroy($id)
     {
-        Myhelp::EscribirEnLog($this, get_called_class(), '', false);
+        $permissions = Myhelp::EscribirEnLog($this, ' destroy');
+        abort_unless($permissions === 'superadmin', 403, 'Solo superadmin puede modificar parámetros.');
 
         DB::beginTransaction();
 
