@@ -35,6 +35,7 @@ class DashboardController extends Controller
             'produccion' => $this->produccion($desde, $diario),
             'compras' => $this->compras($desde),
             'desviaciones' => $this->desviaciones($desde),
+            'recepcionCalidadPorOp' => $this->recepcionCalidadPorOp($desde),
             'mes' => $this->resultadosMes(),
             'generado_en' => now()->format('H:i:s'),
         ]);
@@ -190,6 +191,40 @@ class DashboardController extends Controller
             'ops' => $filas->pluck('op')->all(),
             'planeado' => $filas->map(fn ($f) => (int) $f->planeado)->all(),
             'real' => $filas->map(fn ($f) => (int) $f->costo_real)->all(),
+        ];
+    }
+
+    /**
+     * Recepción por OP: esperado, recibido y no recuperable.
+     *
+     * @return array{ops: string[], esperada: int[], recibida: int[], no_recuperable: int[]}
+     */
+    private function recepcionCalidadPorOp(Carbon $desde): array
+    {
+        $filas = RecepcionCalidad::query()
+            ->whereHas('ordenProduccion', fn ($q) => $q->where('fecha_recepcion', '>=', $desde))
+            ->selectRaw('orden_produccion_id AS op_id,
+                COALESCE(SUM(cantidad_esperada), 0) AS esperada,
+                COALESCE(SUM(cantidad_recibida), 0) AS recibida,
+                COALESCE(SUM(cantidad_no_recuperable), 0) AS no_recuperable')
+            ->groupBy('orden_produccion_id')
+            ->orderByRaw('MAX(fecha_recepcion) DESC')
+            ->get();
+
+        $ops = $filas->pluck('op_id')->all();
+
+        // Mapear op_id a numero_op de la OP relacionada
+        $opsNumeros = OrdenProduccion::whereIn('id', $filas->pluck('op_id'))
+            ->pluck('numero_op', 'id')
+            ->toArray();
+
+        $opsEtiquetas = array_map(fn ($id) => $opsNumeros[$id] ?? 'OP-' . $id, $ops);
+
+        return [
+            'ops' => $opsEtiquetas,
+            'esperada' => $filas->map(fn ($f) => (int) $f->esperada)->all(),
+            'recibida' => $filas->map(fn ($f) => (int) $f->recibida)->all(),
+            'no_recuperable' => $filas->map(fn ($f) => (int) $f->no_recuperable)->all(),
         ];
     }
 

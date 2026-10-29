@@ -240,10 +240,41 @@ const opcionesDesviaciones = computed(() => {
     };
 });
 
+const opcionesRecepcionCalidad = computed(() => {
+    const r = datos.value?.recepcionCalidadPorOp;
+    if (!r || r.ops.length === 0) return {};
+    return {
+        tooltip: { ...baseTooltip.value, formatter: (params: any[]) => {
+            const esperado = params.find((p) => p.seriesName === 'Esperada')?.value ?? 0;
+            const recibida = params.find((p) => p.seriesName === 'Recibida')?.value ?? 0;
+            const noRecuperable = params.find((p) => p.seriesName === 'No recuperable')?.value ?? 0;
+            return `${params[0].axisValue}<br/>Esperada: ${formatoNumero(esperado)}<br/>Recibida: ${formatoNumero(recibida)}<br/>No recuperable: ${formatoNumero(noRecuperable)}`;
+        } },
+        legend: { ...baseLegenda.value, top: 0 },
+        grid: { left: 8, right: 8, bottom: 0, top: 34, containLabel: true },
+        xAxis: { type: 'category', data: r.ops, ...baseEje.value, splitLine: { show: false } },
+        yAxis: { type: 'value', ...baseEje.value, axisLabel: { ...baseEje.value.axisLabel, formatter: (v: number) => formatoNumero(v) } },
+        series: [
+            {
+                name: 'Esperada', type: 'bar', data: r.esperada, barMaxWidth: 20,
+                itemStyle: { borderRadius: [6, 6, 0, 0], ...degradado('#34d399', '#059669') },
+            },
+            {
+                name: 'Recibida', type: 'bar', data: r.recibida, barMaxWidth: 20,
+                itemStyle: { borderRadius: [6, 6, 0, 0], ...degradado('#60a5fa', '#3b82f6') },
+            },
+            {
+                name: 'No recuperable', type: 'bar', data: r.no_recuperable, barMaxWidth: 20,
+                itemStyle: { borderRadius: [6, 6, 0, 0], ...degradado('#f87171', '#dc2626') },
+            },
+        ],
+    };
+});
+
 const mes = computed(() => datos.value?.mes ?? {});
 
 const kpis = computed(() => [
-    { icon: PackageCheck, etiqueta: 'Pares aprobados', valor: formatoNumero(mes.value.pares_aprobados), color: 'text-emerald-500', fondo: 'bg-emerald-500/10' },
+    { icon: PackageCheck, etiqueta: 'Pares aprobados', valor: formatoNumero(mes.value.pares_aprobados), color: 'text-lime-500', fondo: 'bg-lime-500/10' },
     { icon: Boxes, etiqueta: 'Pares recibidos', valor: formatoNumero(mes.value.pares_recibidos), color: 'text-sky-500', fondo: 'bg-sky-500/10' },
     { icon: Wrench, etiqueta: 'En reparación', valor: formatoNumero(mes.value.en_reparacion), color: 'text-amber-500', fondo: 'bg-amber-500/10' },
     { icon: TrendingDown, etiqueta: 'No recuperables', valor: formatoNumero(mes.value.no_recuperables), color: 'text-red-500', fondo: 'bg-red-500/10' },
@@ -387,6 +418,16 @@ onUnmounted(() => {
                     <CardContent>
                         <VChart v-if="datos?.desviaciones?.ops?.length" :option="opcionesDesviaciones" autoresize style="width: 100%; height: 18rem" />
                         <div v-else class="grid h-72 place-items-center text-sm text-muted-foreground">Sin cierres con costo real en el período</div>
+                    </CardContent>
+                </Card>
+
+                <Card>
+                    <CardHeader class="pb-2">
+                        <CardTitle class="text-sm font-semibold">Recepción por OP: esperada, recibida, no recuperable</CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                        <VChart v-if="datos?.recepcionCalidadPorOp?.ops?.length" :option="opcionesRecepcionCalidad" autoresize style="width: 100%; height: 18rem" />
+                        <div v-else class="grid h-72 place-items-center text-sm text-muted-foreground">Sin recepciones de calidad en el período</div>
                     </CardContent>
                 </Card>
 

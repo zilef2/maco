@@ -12,25 +12,22 @@ const props = defineProps({
 const emit = defineEmits(['close']);
 
 const COLUMNAS_REQUERIDAS = [
-    'Codigo material',
+    'Codigo material (formato MAT-30)',
     'Nombre base',
     'Categoria',
-    'Unidad inventario',
-    'Estado',
-];
-
-const COLUMNAS_VARIANTES = [
-    'Colores (separados por coma)',
-    'Variantes (separados por coma)',
+    'Unidad inventario (cantidad entera ≥ 0 → existencia actual)',
+    'Estado (Activo o Inactivo)',
+    'Todas_las_variantes (separadas por coma; puede venir vacía)',
 ];
 
 const COLUMNAS_OPCIONALES = [
     'Maneja color (SI/NO)',
     'Maneja talla (SI/NO)',
     'Maneja otra variante (SI/NO)',
-    'Variante atributo sugerido',
+    'Variante atributo sugerido (puede ir vacío)',
     'Proveedor habitual',
-    'Observaciones',
+    'Observaciones (puede ir vacío)',
+    'Es producido (SI/NO)',
 ];
 
 const form = useForm({
@@ -166,16 +163,13 @@ watch(() => props.show, (visible) => {
             <details class="mt-4 text-sm" open>
                 <summary
                     class="cursor-pointer text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 select-none">
-                    Ver columnas requeridas
+                    Ver columnas del archivo
                 </summary>
-                <ul class="mt-2 list-decimal ml-5 space-y-0.5 text-gray-600 dark:text-gray-300">
-                    <li v-for="col in COLUMNAS_REQUERIDAS" :key="col">{{ col }}</li>
-                </ul>
                 <p class="mt-3 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
-                    Variantes (usa solo una de las dos columnas por fila)
+                    Requeridas
                 </p>
                 <ul class="mt-1 list-decimal ml-5 space-y-0.5 text-gray-600 dark:text-gray-300">
-                    <li v-for="col in COLUMNAS_VARIANTES" :key="col">{{ col }}</li>
+                    <li v-for="col in COLUMNAS_REQUERIDAS" :key="col">{{ col }}</li>
                 </ul>
                 <p class="mt-3 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                     Opcionales
@@ -183,13 +177,24 @@ watch(() => props.show, (visible) => {
                 <ul class="mt-1 list-decimal ml-5 space-y-0.5 text-gray-600 dark:text-gray-300">
                     <li v-for="col in COLUMNAS_OPCIONALES" :key="col">{{ col }}</li>
                 </ul>
-                <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
                     Si el código de material ya existe, se actualiza el registro; si no, se crea. Las columnas
-                    "Maneja ..." admiten SI / NO en mayúsculas o minúsculas.
+                    "Maneja …" y "Es producido" admiten SI / NO en mayúsculas o minúsculas.
+                </p>
+                <p class="mt-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-800 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-200">
+                    <b>Unidad inventario</b> trae la cantidad de stock y se guarda como existencia actual (no se generan
+                    movimientos ni precios). Los materiales nuevos quedan con unidad "Unidades"; los existentes conservan
+                    la unidad que ya tenían.
+                </p>
+                <p class="mt-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-200">
+                    <b>Todas_las_variantes</b> alimenta la tabla de variantes del material: sus valores van separados
+                    por coma y el orden es la posición en la lista (0, 1, 2…). El tipo se deduce con
+                    <b>Maneja color</b>: SI los guarda como colores, NO como otras variantes. La lista reemplaza por
+                    completo las variantes del material, así que si la dejas vacía se borran las que tuviera.
                 </p>
                 <p class="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
-                    En una misma fila no se pueden combinar colores con otras variantes: si el material maneja
-                    colores, usa la columna <b>Colores</b>; si maneja tallas u otra variante, usa <b>Variantes</b>.
+                    Un mismo material no puede manejar colores y otras variantes a la vez: deja
+                    <b>Maneja color</b> en SI <i>o</i> <b>Maneja otra variante</b> en SI, nunca ambas.
                 </p>
                 <a
                     :href="route('Material.plantilla-excel')"

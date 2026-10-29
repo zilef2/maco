@@ -82,6 +82,12 @@ const navDropdown: NavGroup[] = [
                 href: '/CierreOrdenProduccion',
                 icon: CheckCircle2,
             },
+            {
+                title: 'Merma',
+                href: '/Merma',
+                icon: LayoutGrid,
+            },
+            //aquipuesSide
         ],
     },
     {
@@ -126,33 +132,28 @@ const navDropdown: NavGroup[] = [
             },
         ],
     },
-    {
-        label: 'Listas',
-        icon: Database,
-        items: [
+    // {
+    //     label: 'Listas',
+    //     icon: Database,
+    //     items: [
 
 
-            // {
-            //     title: 'GrupoTalla',
-            //     href: '/GrupoTalla',
-            //     icon: Tag,
-            // },
+    //         // {
+    //         //     title: 'GrupoTalla',
+    //         //     href: '/GrupoTalla',
+    //         //     icon: Tag,
+    //         // },
 
 
-            {
-                title: 'EstadoOpMaterial',
-                href: '/EstadoOpMaterial',
-                icon: LayoutGrid,
-            },
+    //         // {
+    //         //     title: 'EstadoOpMaterial',
+    //         //     href: '/EstadoOpMaterial',
+    //         //     icon: LayoutGrid,
+    //         // },
 
-            {
-                title: 'Merma',
-                href: '/Merma',
-                icon: LayoutGrid,
-            },
-            //aquipuesSide
-        ],
-    },
+
+    //     ],
+    // },
     {
         label: 'Referencias', //que no se pueden editar
         icon: BookmarkCheck,

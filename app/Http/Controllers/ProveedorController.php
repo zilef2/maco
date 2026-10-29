@@ -2,252 +2,71 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Proveedor;
+use App\Http\Requests\StoreProveedorRequest;
+use App\Http\Requests\UpdateProveedorRequest;
 use App\Jobs\ImportarProveedoresJob;
 use App\Services\ExcelProveedoresService;
 use App\Services\ImportacionExcelNotificador;
-use App\helpers\Myhelp;
-use App\helpers\MyModels;
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Collection;
+use App\Services\ProveedorService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Pagination\LengthAwarePaginator;
-use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 
-class ProveedorController extends Controller {
-    public array $thisAtributos;
-    public string $FromController = 'Proveedor';
+class ProveedorController extends Controller
+{
+    public function __construct(
+        protected ProveedorService $proveedorService
+    ) {}
 
+    public function index(Request $request): Response
+    {
+        $filtros = $request->only(['search', 'field', 'order', 'tipo_proveedor', 'estado', 'forma_pago', 'clasificacion']);
+        $proveedores = $this->proveedorService->listar($filtros, (int) $request->input('perPage', 10));
 
-    //<editor-fold desc="Construc | filtro and dependencia">
-    public function __construct() {
-//        $this->middleware('permission:create Proveedor', ['only' => ['create', 'store']]);
-//        $this->middleware('permission:read Proveedor', ['only' => ['index', 'show']]);
-//        $this->middleware('permission:update Proveedor', ['only' => ['edit', 'update']]);
-//        $this->middleware('permission:delete Proveedor', ['only' => ['destroy', 'destroyBulk']]);
-        $this->thisAtributos = (new Proveedor())->getFillable(); //not using
-    }
-
-    public function index(Request $request) {
-        $numberPermissions = MyModels::getPermissionToNumber(Myhelp::EscribirEnLog($this, ' Proveedors '));
-        $Proveedors = $this->Filtros($request)->get();
-//        $losSelect = $this->Dependencias();
-
-
-        $perPage = $request->has('perPage') ? $request->perPage : 10;
-        return Inertia::render($this->FromController . '/Index', [
-            'fromController' => $this->PerPageAndPaginate($request, $Proveedors),
-            'total' => $Proveedors->count(),
-            'breadcrumbs' => [['label' => __('app.label.' . $this->FromController), 'href' => route($this->FromController . '.index')]],
-            'title' => __('app.label.' . $this->FromController),
-            'filters' => $request->all(['search', 'field', 'order']),
-            'perPage' => (int)$perPage,
-            'numberPermissions' => $numberPermissions,
-            'losSelect'         => $this->losSelect(Proveedor::class, ' Proveedor','proveeNombre'),
-	        'titulos'           => Proveedor::getFillableWithTypes(),
-
+        return Inertia::render('Proveedor/Index', [
+            'fromController' => $proveedores,
+            'total' => $proveedores->total(),
+            'breadcrumbs' => [['label' => 'Proveedores', 'href' => route('Proveedor.index')]],
+            'title' => 'Proveedores',
+            'filters' => $filtros,
+            'perPage' => (int) $request->input('perPage', 10),
+            'opcionesSelect' => $this->proveedorService->obtenerOpcionesSelect(),
         ]);
     }
 
-	public function losSelect(string $modelClass, string $label, string $displayField = 'nombre'): array {
-		// Verifica si la clase del modelo existe
-		if (!class_exists($modelClass)) {
-			return []; // O podrías lanzar una excepción más informativa
-		}
-		
-		// Intenta obtener todos los registros del modelo
-		$modelCollection = call_user_func([$modelClass, 'all']);
-		
-		// Verifica si el resultado es una colección
-		if (!$modelCollection instanceof Collection) {
-			return []; // O podrías lanzar una excepción
-		}
-		
-		
-		return [
-			$label => Myhelp::NEW_turnInSelectID($modelCollection, $label.' ', $displayField),
-		];
-	}
-    public function Filtros($request): Builder {
-        $Proveedors = Proveedor::query();
-        if ($request->has('search')) {
-            $Proveedors = $Proveedors->where(function ($query) use ($request) {
-                $query->where('nombre', 'LIKE', "%" . $request->search . "%")
-                    //                    ->orWhere('codigo', 'LIKE', "%" . $request->search . "%")
-                    //                    ->orWhere('identificacion', 'LIKE', "%" . $request->search . "%")
-                ;
-            });
-        }
+    public function store(StoreProveedorRequest $request): RedirectResponse
+    {
+        $proveedor = $this->proveedorService->crear($request->validated());
 
-        if ($request->has(['field', 'order'])) {
-            $Proveedors = $Proveedors->orderBy($request->field, $request->order);
-        } else
-            $Proveedors = $Proveedors->orderBy('updated_at', 'DESC');
-        return $Proveedors;
+        return back()->with('success', __('app.label.created_successfully', ['name' => $proveedor->nombre_comercial]));
     }
 
-    //</editor-fold>
+    public function update(UpdateProveedorRequest $request, int $id): RedirectResponse
+    {
+        $proveedor = $this->proveedorService->actualizar($id, $request->validated());
 
-    public function PerPageAndPaginate($request, $Proveedors) {
-        $perPage = $request->has('perPage') ? $request->perPage : 10;
-        $page = request('page', 1); // Current page number
-        $paginated = new LengthAwarePaginator(
-            $Proveedors->forPage($page, $perPage),
-            $Proveedors->count(),
-            $perPage,
-            $page,
-            ['path' => request()->url()]
-        );
-        return $paginated;
+        return back()->with('success', __('app.label.updated_successfully2', ['nombre' => $proveedor->nombre_comercial]));
     }
 
-    public function store(Request $request): RedirectResponse {
-        $permissions = Myhelp::EscribirEnLog($this, ' Begin STORE:Proveedors');
-        DB::beginTransaction();
-//        $no_nada = $request->no_nada['id'];
-//        $request->merge(['no_nada_id' => $request->no_nada['id']]);
-        foreach (['celular1', 'celular2'] as $campo) {
-            if ($request->input($campo) === '') {
-                $request->merge([$campo => null]);
-            }
-        }
-        $Proveedor = Proveedor::create($request->all());
+    public function destroy(int $id): RedirectResponse
+    {
+        $this->proveedorService->eliminar($id);
 
-        DB::commit();
-        Myhelp::EscribirEnLog($this, 'STORE:Proveedors EXITOSO', 'Proveedor id:' . $Proveedor->id . ' | ' . $Proveedor->nombre, false);
-        return back()->with('success', __('app.label.created_successfully', ['name' => $Proveedor->nombre]));
+        return back()->with('success', __('app.label.deleted_successfully', ['name' => 'Proveedor']));
     }
 
-    //! STORE - UPDATE - DELETE
-    //! STORE functions
+    public function destroyBulk(Request $request): RedirectResponse
+    {
+        $this->proveedorService->eliminarMasivo((array) $request->input('id', []));
 
-    public function create() {
+        return back()->with('success', __('app.label.deleted_successfully', ['name' => 'Proveedores']));
     }
 
-    //fin store functions
+    public function uploadExcel(Request $request, ExcelProveedoresService $excel, ImportacionExcelNotificador $notificador): RedirectResponse
+    {
+        $ruta = $excel->procesarSubida($request->file('archivo'), $request->user());
 
-    public function show($id) {
+        return back()->with('success', 'Archivo validado y encolado para importación.');
     }
-
-    public function edit($id) {
-    }
-
-    public function update(Request $request, $id): RedirectResponse {
-        $permissions = Myhelp::EscribirEnLog($this, ' Begin UPDATE:Proveedors');
-        DB::beginTransaction();
-        $Proveedor = Proveedor::findOrFail($id);
-//        $request->merge(['no_nada_id' => $request->no_nada['id']]);
-        foreach (['celular1', 'celular2'] as $campo) {
-            if ($request->input($campo) === '') {
-                $request->merge([$campo => null]);
-            }
-        }
-        $Proveedor->update($request->all());
-
-        DB::commit();
-        Myhelp::EscribirEnLog($this, 'UPDATE:Proveedors EXITOSO', 'Proveedor id:' . $Proveedor->id . ' | ' . $Proveedor->nombre, false);
-        return back()->with('success', __('app.label.updated_successfully2', ['nombre' => $Proveedor->nombre]));
-    }
-
-    /**
-     * Remove the specified resource from storage.
-     *
-     * @param int $id
-     * @return \Illuminate\Http\RedirectResponse
-     */
-
-    public function destroy($Proveedorid) {
-        $permissions = Myhelp::EscribirEnLog($this, 'DELETE:Proveedors');
-        $Proveedor = Proveedor::find($Proveedorid);
-        $elnombre = $Proveedor->nombre;
-        $Proveedor->delete();
-        Myhelp::EscribirEnLog($this, 'DELETE:Proveedors', 'Proveedor id:' . $Proveedor->id . ' | ' . $Proveedor->nombre . ' borrado', false);
-        return back()->with('success', __('app.label.deleted_successfully', ['name' => $elnombre]));
-    }
-
-    public function destroyBulk(Request $request) {
-        $Proveedor = Proveedor::whereIn('id', $request->id);
-        $Proveedor->delete();
-        return back()->with('success', __('app.label.deleted_successfully', ['name' => count($request->id) . ' ' . __('app.label.user')]));
-    }
-    //FIN : STORE - UPDATE - DELETE
-
-    /**
-     * Carga masiva de proveedores desde Excel.
-     *
-     * Valida de forma síncrona (tamaño, escaneo de seguridad, columnas y
-     * filas) y solo si todo está correcto encola el job que inserta en la BD
-     * y envía los correos.
-     */
-    public function uploadExcel(
-        Request $request,
-        ExcelProveedoresService $excel,
-        ImportacionExcelNotificador $notificador,
-    ): RedirectResponse {
-        Myhelp::EscribirEnLog($this, 'uploadExcel: inicio');
-
-        $request->validate([
-            'archivo' => ['required', 'file', 'max:10240', 'mimes:xlsx'],
-        ], [
-            'archivo.required' => 'Selecciona un archivo .xlsx.',
-            'archivo.file' => 'El archivo no es válido.',
-            'archivo.max' => 'El archivo supera el tamaño máximo de 10 MB.',
-            'archivo.mimes' => 'Solo se permiten archivos .xlsx.',
-        ]);
-
-        $archivo = $request->file('archivo');
-        $usuario = $request->user();
-        $nombreArchivo = $archivo->getClientOriginalName();
-        $rutaRelativa = null;
-
-        try {
-            if (strtolower($archivo->getClientOriginalExtension()) !== 'xlsx') {
-                throw new \RuntimeException('Solo se permiten archivos con extensión .xlsx.');
-            }
-
-            // 1. Escaneo de seguridad del contenedor XLSX.
-            $problemas = $excel->escanearSeguridad($archivo->getRealPath());
-            if (!empty($problemas)) {
-                throw new \RuntimeException(implode(' | ', $problemas));
-            }
-
-            // 2. Fila 1 = títulos; el resto datos. Columnas del fillable.
-            $excel->leerRegistros($archivo->getRealPath());
-
-            // 3. Todo válido: guardar y encolar la importación.
-            $rutaRelativa = $archivo->store('imports/proveedores', 'local');
-            if (!$rutaRelativa) {
-                throw new \RuntimeException('No se pudo guardar el archivo para su procesamiento.');
-            }
-
-            ImportarProveedoresJob::dispatch(
-                $rutaRelativa,
-                $nombreArchivo,
-                $usuario?->email,
-                $usuario?->name,
-                $usuario?->id,
-            );
-
-            Myhelp::EscribirEnLog($this, 'uploadExcel ENCOLADO', $nombreArchivo);
-
-            return back()->with(
-                'success',
-                'Archivo validado correctamente. La importación de proveedores se está procesando; '
-                . 'en breve podrás ver la información actualizada.'
-            );
-        } catch (\Throwable $e) {
-            if ($rutaRelativa) {
-                \Illuminate\Support\Facades\Storage::disk('local')->delete($rutaRelativa);
-            }
-
-            $notificador->fallo($usuario?->email, $usuario?->name, $nombreArchivo, 'proveedores', $e);
-            Myhelp::EscribirEnLog($this, 'uploadExcel ERROR', $e->getMessage());
-
-            return back()->with('error', 'No se importó nada: ' . $e->getMessage());
-        }
-    }
-
 }

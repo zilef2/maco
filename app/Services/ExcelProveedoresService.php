@@ -270,4 +270,34 @@ class ExcelProveedoresService
 
         return $limpio;
     }
+
+    public function procesarSubida($archivo, $usuario): string
+    {
+        if (!$archivo) {
+            throw new RuntimeException('Selecciona un archivo .xlsx.');
+        }
+
+        $nombreArchivo = $archivo->getClientOriginalName();
+        $problemas = $this->escanearSeguridad($archivo->getRealPath());
+        if (!empty($problemas)) {
+            throw new RuntimeException(implode(' | ', $problemas));
+        }
+
+        $this->leerRegistros($archivo->getRealPath());
+
+        $rutaRelativa = $archivo->store('imports/proveedores', 'local');
+        if (!$rutaRelativa) {
+            throw new RuntimeException('No se pudo guardar el archivo.');
+        }
+
+        \App\Jobs\ImportarProveedoresJob::dispatch(
+            $rutaRelativa,
+            $nombreArchivo,
+            $usuario?->email,
+            $usuario?->name,
+            $usuario?->id,
+        );
+
+        return $rutaRelativa;
+    }
 }
