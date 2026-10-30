@@ -24,6 +24,11 @@ Route::get('dashboard/datos', [DashboardController::class, 'datos'])
 	->middleware(['auth', 'verified'])
 	->name('dashboard.datos');
 
+// Bitácora de navegación y tiempos entre acciones: solo superadmin.
+Route::middleware(['auth', 'verified', 'role:superadmin'])->group(function () {
+	Route::get('/Actividad', [\App\Http\Controllers\ActividadController::class, 'index'])->name('Actividad.index');
+});
+
 Route::middleware('auth', 'verified')->group(function () {
 	Route::resource('/role', RoleController::class)->except('create', 'show', 'edit');
 	Route::post('/role/destroy-bulk', [RoleController::class, 'destroyBulk'])->name('role.destroy-bulk');
@@ -38,6 +43,7 @@ Route::middleware('auth', 'verified')->group(function () {
 	//<editor-fold desc="User">
 	Route::resource('/user', UserController::class);
 	Route::post('/user/destroy-bulk', [UserController::class, 'destroyBulk'])->name('user.destroy-bulk');
+	Route::post('/user/upload-excel', [UserController::class, 'uploadExcel'])->name('user.upload-excel');
 	
 
     require __DIR__.'/pagoszilef.php';
@@ -77,10 +83,14 @@ Route::middleware('auth', 'verified')->group(function () {
 	Route::resource("/Material", \App\Http\Controllers\MaterialController::class);
 	Route::post("/Material/upload-excel", [\App\Http\Controllers\MaterialController::class, 'uploadExcel'])->name('Material.upload-excel');
 	Route::post("/Material/compra", [\App\Http\Controllers\MaterialController::class, 'registrarCompra'])->name('Material.compra');
+	Route::get('/Material/{id}/predecir-compra', [\App\Http\Controllers\MaterialController::class, 'predecirCompra'])->name('Material.predecir-compra');
+	Route::post("/Material/dependencias-bulk", [\App\Http\Controllers\MaterialController::class, 'dependenciasBulk'])->name('Material.dependencias-bulk');
+	Route::post("/Material/destroy-bulk", [\App\Http\Controllers\MaterialController::class, 'destroyBulk'])->name('Material.destroy-bulk');
 	Route::get('/Material/{id}/movimientos', [\App\Http\Controllers\MaterialController::class, 'historicoMovimientos'])->name('Material.movimientos');
 	Route::resource("/GrupoTalla", \App\Http\Controllers\GrupoTallaController::class);
 	Route::get("/ImportarExcel", [\App\Http\Controllers\ImportarExcelController::class, 'index'])->name('ImportarExcel.index');
 	Route::post("/ImportarExcel/entidad", [\App\Http\Controllers\ImportarExcelController::class, 'toggleEntidad'])->name('ImportarExcel.toggleEntidad');
+	Route::get("/ImportarExcel/plantilla/{clave}", [\App\Http\Controllers\ImportarExcelController::class, 'descargarPlantilla'])->name('ImportarExcel.plantilla');
 	Route::resource("/EstadoOpMaterial", \App\Http\Controllers\EstadoOpMaterialController::class);
 	Route::resource("/EmpresaExterna", \App\Http\Controllers\EmpresaExternaController::class);
 	Route::resource("/Merma", \App\Http\Controllers\MermaController::class);

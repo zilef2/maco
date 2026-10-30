@@ -9,13 +9,17 @@ use App\Http\Requests\User\UserIndexRequest;
 use App\Http\Requests\User\UserStoreRequest;
 use App\Http\Requests\User\UserUpdateRequest;
 use App\Imports\PersonalImport;
+use App\Jobs\ImportarUsuariosJob;
 use App\Models\Permission;
 use App\Models\Reporte;
 use App\Models\Role;
 use App\Models\User;
 use App\Exports\MultipleExport;
 use App\Models\Producto;
+use App\Services\ExcelUsuariosService;
+use App\Services\ImportacionExcelNotificador;
 use Carbon\Carbon;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
@@ -256,6 +260,81 @@ class UserController extends Controller
     }
 
     //FIN : STORE - UPDATE - DELETE
+
+    /**
+     * Carga masiva de usuarios desde Excel.
+     *
+     * Valida de forma síncrona (tamaño, escaneo de seguridad, columnas y
+     * filas) y solo si todo está correcto encola el job que inserta en la BD,
+     * envía los correos y crea la notificación de finalización.
+     */
+    public function uploadExcel(
+        Request $request,
+        ExcelUsuariosService $excel,
+        ImportacionExcelNotificador $notificador,
+    ): RedirectResponse {
+        Myhelp::EscribirEnLog($this, 'uploadExcel:users: inicio');
+
+        $request->validate([
+            'archivo' => ['required', 'file', 'max:10240', 'mimes:xlsx'],
+        ], [
+            'archivo.required' => 'Selecciona un archivo .xlsx.',
+            'archivo.file' => 'El archivo no es válido.',
+            'archivo.max' => 'El archivo supera el tamaño máximo de 10 MB.',
+            'archivo.mimes' => 'Solo se permiten archivos .xlsx.',
+        ]);
+
+        $archivo = $request->file('archivo');
+        $usuario = $request->user();
+        $nombreArchivo = $archivo->getClientOriginalName();
+        $rutaRelativa = null;
+
+        try {
+            if (strtolower($archivo->getClientOriginalExtension()) !== 'xlsx') {
+                throw new \RuntimeException('Solo se permiten archivos con extensión .xlsx.');
+            }
+
+            // 1. Escaneo de seguridad del contenedor XLSX.
+            $problemas = $excel->escanearSeguridad($archivo->getRealPath());
+            if (!empty($problemas)) {
+                throw new \RuntimeException(implode(' | ', $problemas));
+            }
+
+            // 2. Fila 1 = títulos; el resto datos. Valida columnas y filas.
+            $excel->leerRegistros($archivo->getRealPath());
+
+            // 3. Todo válido: guardar y encolar la importación.
+            $rutaRelativa = $archivo->store('imports/usuarios', 'local');
+            if (!$rutaRelativa) {
+                throw new \RuntimeException('No se pudo guardar el archivo para su procesamiento.');
+            }
+
+            ImportarUsuariosJob::dispatch(
+                $rutaRelativa,
+                $nombreArchivo,
+                $usuario?->email,
+                $usuario?->name,
+                $usuario?->id,
+            );
+
+            Myhelp::EscribirEnLog($this, 'uploadExcel:users ENCOLADO', $nombreArchivo);
+
+            return back()->with(
+                'success',
+                'Archivo validado correctamente. La importación se está procesando; '
+                . 'en breve podrás ver la información actualizada.'
+            );
+        } catch (\Throwable $e) {
+            if ($rutaRelativa) {
+                \Illuminate\Support\Facades\Storage::disk('local')->delete($rutaRelativa);
+            }
+
+            $notificador->fallo($usuario?->email, $usuario?->name, $nombreArchivo, 'usuarios', $e);
+            Myhelp::EscribirEnLog($this, 'uploadExcel:users ERROR', $e->getMessage());
+
+            return back()->with('error', 'No se importó nada: ' . $e->getMessage());
+        }
+    }
 
     public function subirexceles()
     { //just  a view

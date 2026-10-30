@@ -287,7 +287,9 @@ class Myhelp {
 				
 				$permissionsString = $permissions == 'admin' ? 'soloadmin' : 'solosuper';//valor del logging
 				$ElMensaje = $mensaje != '' ? ' Mensaje: ' . $mensaje : '';
-				Log::channel($permissionsString)->info('Vista:' . $nombreC . ' Padre: ' . $nombreP . '|  U:' . Auth::user()->name . $ElMensaje);
+				// $clase suele traer la acción (index, store, uploadExcel): sin ella el
+				// log de admin no distingue crear una OP de eliminarla.
+				Log::channel($permissionsString)->info('Vista:' . $nombreC . ' Padre: ' . $nombreP . '|  U:' . Auth::user()->name . ' ||' . $clase . '||' . $ElMensaje);
 			}
 			else {
 				Log::info('Vista: ' . $nombreC . ' Padre: ' . $nombreP . 'U:' . Auth::user()->name . ' ||' . $clase . '|| ' . ' Mensaje: ' . $mensaje);

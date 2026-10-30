@@ -2,7 +2,7 @@
 import AppLayout from '@/layouts/AppLayout.vue';
 import Breadcrumb from '@/components/Breadcrumb.vue';
 import { Head, router } from '@inertiajs/vue3';
-import { ArchiveBoxIcon, ArrowPathIcon, ArrowUpTrayIcon, BuildingStorefrontIcon, SquaresPlusIcon, TruckIcon } from '@heroicons/vue/24/solid';
+import { ArchiveBoxIcon, ArrowDownTrayIcon, ArrowPathIcon, ArrowUpTrayIcon, BuildingStorefrontIcon, SquaresPlusIcon, TruckIcon, UsersIcon } from '@heroicons/vue/24/solid';
 import { computed, reactive } from 'vue';
 
 type EntidadExcel = {
@@ -23,6 +23,7 @@ const props = defineProps({
         columnas_requeridas: string[];
         columnas_opcionales: string[];
         nota: string;
+        plantilla: string;
     }>,
     entidadesExcel: Array as () => EntidadExcel[],
 });
@@ -57,6 +58,7 @@ const ICONOS: Record<string, any> = {
     estado_operacion: ArrowPathIcon,
     taller: BuildingStorefrontIcon,
     proveedor: TruckIcon,
+    usuario: UsersIcon,
 };
 
 type EstadoTarjeta = {
@@ -316,6 +318,19 @@ function subir(entidad: any) {
                             class="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700"
                         >
                             {{ estadoDe(entidad.id).error }}
+                        </div>
+
+                        <div class="mb-3 flex items-center justify-between gap-2">
+                            <p class="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-400">
+                                Formato de carga
+                            </p>
+                            <a
+                                :href="entidad.plantilla"
+                                class="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-gray-700 transition hover:border-gray-400 hover:bg-gray-50"
+                            >
+                                <ArrowDownTrayIcon class="h-3.5 w-3.5" />
+                                Descargar formato .xlsx
+                            </a>
                         </div>
 
                         <div class="flex gap-2">

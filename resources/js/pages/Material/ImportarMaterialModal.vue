@@ -25,7 +25,7 @@ const COLUMNAS_OPCIONALES = [
     'Maneja talla (SI/NO)',
     'Maneja otra variante (SI/NO)',
     'Variante atributo sugerido (puede ir vacío)',
-    'Proveedor habitual',
+    'Proveedor habitual (debe existir en la app)',
     'Observaciones (puede ir vacío)',
     'Es producido (SI/NO)',
 ];
@@ -195,6 +195,12 @@ watch(() => props.show, (visible) => {
                 <p class="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
                     Un mismo material no puede manejar colores y otras variantes a la vez: deja
                     <b>Maneja color</b> en SI <i>o</i> <b>Maneja otra variante</b> en SI, nunca ambas.
+                </p>
+                <p class="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200">
+                    <b>Proveedor habitual</b> tiene que existir en la app: sirve su nombre comercial, su razón social o
+                    su código (PRV-1, PROV-1 o el id). La comparación ignora mayúsculas, tildes y espacios. Si algún
+                    proveedor no está registrado, no se importa nada y aparece el aviso
+                    "Hay proveedores desconocidos: …".
                 </p>
                 <a
                     :href="route('Material.plantilla-excel')"

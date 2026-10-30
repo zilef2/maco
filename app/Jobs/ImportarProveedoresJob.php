@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use Alejo\Notificaciones\Facades\NotificacionesFacade as Notificaciones;
 use App\Services\ExcelProveedoresService;
 use App\Services\ImportacionExcelNotificador;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -56,6 +57,7 @@ class ImportarProveedoresJob implements ShouldQueue
             $resultado = $excel->importar($registros);
 
             $notificador->exito($this->emailUsuario, 'proveedores', $resultado);
+            $this->notificarFinalizacion();
 
             Log::info('Importación de proveedores completada', [
                 'archivo' => $this->nombreArchivo,
@@ -82,6 +84,22 @@ class ImportarProveedoresJob implements ShouldQueue
             if (is_file($ruta)) {
                 @unlink($ruta);
             }
+        }
+    }
+
+    /**
+     * La notificación no debe tumbar la importación si el paquete de avisos
+     * no está disponible.
+     */
+    private function notificarFinalizacion(): void
+    {
+        try {
+            Notificaciones::crear(
+                'La lectura de los proveedores en el archivo de excel ha finalizado',
+                'alto'
+            );
+        } catch (Throwable $e) {
+            Log::warning('No se pudo crear la notificación de la importación de proveedores: ' . $e->getMessage());
         }
     }
 }

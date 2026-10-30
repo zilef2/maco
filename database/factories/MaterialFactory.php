@@ -10,15 +10,17 @@ use Illuminate\Database\Eloquent\Factories\Factory;
  */
 class MaterialFactory extends Factory
 {
-    /**
-     * Define the model's default state.
-     *
-     * @return array<string, mixed>
-     */
+    protected $model = Material::class;
+
     public function definition(): array
     {
         return [
-            //
+            'codigo_material' => 'MAT-' . fake()->unique()->numberBetween(100, 9999),
+            'categoria' => 'Telas',
+            'nombre_base' => fake()->words(2, true),
+            'unidad_inventario' => 'm',
+            'estado' => 'Activo',
+            'existencia_actual' => 10,
         ];
     }
 }

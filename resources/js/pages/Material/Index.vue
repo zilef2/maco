@@ -8,6 +8,7 @@ import { computed, reactive, ref, watch } from 'vue';
 import Create from '@/pages/Material/Create.vue';
 import Edit from '@/pages/Material/Edit.vue';
 import Delete from '@/pages/Material/Delete.vue';
+import DeleteBulk from '@/pages/Material/DeleteBulk.vue';
 import ImportarMaterialModal from '@/pages/Material/ImportarMaterialModal.vue';
 import AlterarExistencia from '@/pages/Material/AlterarExistencia.vue';
 import HistorialMovimientos from '@/pages/Material/HistorialMovimientos.vue';
@@ -437,6 +438,8 @@ const data = reactive({
     createOpen: false,
     editOpen: false,
     deleteOpen: false,
+    deleteBulkOpen: false,
+    bulkMateriales: [] as any[],
     importOpen: false,
     compraOpen: false,
     alterarExistenciaOpen: false,
@@ -457,6 +460,18 @@ const abrirHistorialMultiple = () => {
     if (!puedeHistorialMultiple.value) return;
     data.historialMateriales = seleccionValidos.value;
     data.historialMultipleOpen = true;
+};
+
+const abrirEliminarBulk = () => {
+    data.bulkMateriales = seleccionValidos.value;
+    data.deleteBulkOpen = true;
+};
+
+const alEliminarBulk = (resultado: any) => {
+    if (Number(resultado?.eliminados) > 0) {
+        data.selectedId = [];
+        recargar();
+    }
 };
 
 const pageIds = computed(() => visibles.value.map((m: any) => m.id));
@@ -591,6 +606,17 @@ const titulos = [
                         >
                             <ClockIcon class="mr-1.5 h-4 w-4" />
                             Historial{{ data.selectedId.length ? ` (${data.selectedId.length})` : '' }}
+                        </PrimaryButton>
+
+                        <PrimaryButton
+                            v-if="can(['issuperadmin']) && data.selectedId.length"
+                            type="button"
+                            class="h-9 bg-red-600 hover:bg-red-700 focus:ring-red-500"
+                            v-tooltip="`Eliminar ${data.selectedId.length} material(es) seleccionado(s)`"
+                            @click="abrirEliminarBulk"
+                        >
+                            <TrashIcon class="mr-1.5 h-4 w-4" />
+                            Eliminar ({{ data.selectedId.length }})
                         </PrimaryButton>
 
                         <PrimaryButton
@@ -1290,6 +1316,15 @@ const titulos = [
             @close="data.deleteOpen = false"
             :Materiala="data.Materialo"
             :title="props.title"
+        />
+
+        <DeleteBulk
+            v-if="can(['issuperadmin'])"
+            :show="data.deleteBulkOpen"
+            :materiales="data.bulkMateriales"
+            :title="props.title"
+            @close="data.deleteBulkOpen = false"
+            @eliminados="alEliminarBulk"
         />
 
         <AlterarExistencia

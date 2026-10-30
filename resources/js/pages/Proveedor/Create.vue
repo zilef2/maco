@@ -6,7 +6,7 @@ import PrimaryButton from '@/components/PrimaryButton.vue';
 import SecondaryButton from '@/components/SecondaryButton.vue';
 import TextInput from '@/components/TextInput.vue';
 import { useForm } from '@inertiajs/vue3';
-import { reactive, watch } from 'vue';
+import { computed, reactive, watch } from 'vue';
 
 const props = defineProps({
     show: {
@@ -35,7 +35,6 @@ const state = reactive({
 });
 
 const form = useForm({
-    codigo_proveedor: '',
     nit: '',
     nombre_comercial: '',
     razon_social: '',
@@ -49,11 +48,40 @@ const form = useForm({
     persona_contacto: '',
     celular_contacto: '',
     forma_pago: '',
-    tiempo_entrega: '',
+    tiempo_entrega: '30',
     estado: 'Activo',
     observaciones_generales: '',
     clasificacion: 'proveedor',
 });
+
+const opcionesEstado = computed(() => props.opcionesSelect?.estado ?? ['Activo', 'Inactivo']);
+
+const claseEstadoSeleccionado = (opcion: string): string =>
+    opcion === 'Activo' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-rose-600 text-white shadow-sm';
+
+// Campos obligatorios y opcionales
+const camposObligatorios = [
+    'nit',
+    'nombre_comercial',
+];
+
+const camposOpcionales = [
+    'razon_social',
+    'direccion',
+    'observaciones_direccion',
+    'correo_electronico',
+    'ciudad',
+    'telefono_principal',
+    'tipo_proveedor',
+    'que_suministra',
+    'persona_contacto',
+    'celular_contacto',
+    'forma_pago',
+    'tiempo_entrega',
+    'estado',
+    'observaciones_generales',
+    'clasificacion',
+];
 
 const selectClass = 'mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30';
 
@@ -83,6 +111,7 @@ watch(
         if (abierto) {
             form.reset();
             form.clearErrors();
+            // codigo_proveedor se genera automáticamente en el modelo
             form.estado = 'Activo';
             form.clasificacion = 'proveedor';
         }
@@ -102,246 +131,91 @@ watch(
                 </p>
             </div>
 
+            <!-- Campos obligatorios arriba -->
+            <div class="my-6 space-y-4">
+                <h3 class="text-sm font-medium text-muted-foreground mb-2">Campos obligatorios</h3>
+                <div v-for="campo in camposObligatorios" :key="campo">
+                    <InputLabel :for="campo" :value="campo.replace('_', ' ')"/>
+                    <TextInput
+                        :id="campo"
+                        v-model="form[campo]"
+                        type="text"
+                        class="mt-1 block w-full"
+                        :placeholder="campo === 'nit' ? 'Ej. 900.123.456-7' : 'Razón social'"
+                        :error="form.errors[campo]"
+                    />
+                    <InputError class="mt-1" :message="form.errors[campo]" />
+                </div>
+            </div>
+
+            <!-- Código de proveedor generado automáticamente -->
+            <div class="my-6">
+                <InputLabel for="codigo_proveedor" value="Código proveedor"/>
+                <TextInput
+                    id="codigo_proveedor"
+                    v-model="form.codigo_proveedor"
+                    type="text"
+                    class="mt-1 block w-full bg-gray-50 cursor-not-allowed"
+                    placeholder="Ej. PRV-001 (generado automáticamente)"
+                    readonly
+                    :error="form.errors.codigo_proveedor"
+                />
+                <InputError class="mt-1" :message="form.errors.codigo_proveedor" />
+                <p class="text-xs text-muted-foreground mt-1">Se genera automáticamente al guardar (formato: PRV-001, PRV-002, ...)</p>
+            </div>
+
+            <!-- Campos opcionales abajo -->
             <div class="my-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <div>
-                    <InputLabel for="codigo_proveedor" value="Código proveedor" />
+                <div v-for="campo in camposOpcionales" :key="campo">
+                    <InputLabel :for="campo" :value="campo.replace('_', ' ')"/>
+                    
+                    <!-- Campo tiempo_entrega: en días -->
                     <TextInput
-                        id="codigo_proveedor"
-                        v-model="form.codigo_proveedor"
-                        type="text"
-                        class="mt-1 block w-full bg-gray-50 cursor-not-allowed"
-                        placeholder="Ej. PROV-001 (generado automáticamente)"
-                        :error="form.errors.codigo_proveedor"
-                        readonly
-                    />
-                    <InputError class="mt-1" :message="form.errors.codigo_proveedor" />
-                </div>
-
-                <div>
-                    <InputLabel for="nit" value="NIT" />
-                    <TextInput
-                        id="nit"
-                        v-model="form.nit"
-                        type="text"
+                        v-if="campo === 'tiempo_entrega'"
+                        :id="campo"
+                        v-model="form[campo]"
+                        type="number"
+                        min="1"
                         class="mt-1 block w-full"
-                        placeholder="Ej. 900.123.456-7"
-                        :error="form.errors.nit"
+                        :placeholder="campo === 'tiempo_entrega' ? 'Ej. 30 (días)' : ''"
+                        :error="form.errors[campo]"
                     />
-                    <InputError class="mt-1" :message="form.errors.nit" />
-                </div>
-
-                <div>
-                    <InputLabel for="nombre_comercial" value="Nombre comercial *" />
-                    <TextInput
-                        id="nombre_comercial"
-                        v-model="form.nombre_comercial"
-                        type="text"
-                        class="mt-1 block w-full"
-                        required
-                        placeholder="Nombre comercial"
-                        :error="form.errors.nombre_comercial"
-                    />
-                    <InputError class="mt-1" :message="form.errors.nombre_comercial" />
-                </div>
-
-                <div>
-                    <InputLabel for="razon_social" value="Razón social" />
-                    <TextInput
-                        id="razon_social"
-                        v-model="form.razon_social"
-                        type="text"
-                        class="mt-1 block w-full"
-                        placeholder="Razón social completa"
-                        :error="form.errors.razon_social"
-                    />
-                    <InputError class="mt-1" :message="form.errors.razon_social" />
-                </div>
-
-                <div>
-                    <InputLabel for="tipo_proveedor" value="Tipo proveedor" />
-                    <select id="tipo_proveedor" v-model="form.tipo_proveedor" :class="selectClass">
-                        <option value="">Selecciona tipo</option>
-                        <option
-                            v-for="opcion in (props.opcionesSelect?.tipo_proveedor || ['Materia prima', 'Servicio', 'Mixto', 'Otro'])"
+                    
+                    <!-- Campo estado: selector Activo/Inactivo -->
+                    <div
+                        v-else-if="campo === 'estado'"
+                        class="mt-1 inline-flex items-center gap-1 rounded-md border border-input bg-muted p-1"
+                        role="group"
+                        aria-label="Estado"
+                    >
+                        <button
+                            v-for="opcion in opcionesEstado"
                             :key="opcion"
-                            :value="opcion"
+                            type="button"
+                            :aria-pressed="form.estado === opcion"
+                            :class="[
+                                'rounded px-3 py-1 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                                form.estado === opcion
+                                    ? claseEstadoSeleccionado(opcion)
+                                    : 'text-muted-foreground hover:bg-background hover:text-foreground',
+                            ]"
+                            @click="form.estado = opcion"
                         >
                             {{ opcion }}
-                        </option>
-                    </select>
-                    <InputError class="mt-1" :message="form.errors.tipo_proveedor" />
-                </div>
-
-                <div>
-                    <InputLabel for="clasificacion" value="Proveedor o externa o macondas" />
-                    <select id="clasificacion" v-model="form.clasificacion" :class="selectClass">
-                        <option
-                            v-for="opcion in (props.opcionesSelect?.clasificacion || ['proveedor', 'taller de proceso externo', 'macondas'])"
-                            :key="opcion"
-                            :value="opcion"
-                        >
-                            {{ opcion }}
-                        </option>
-                    </select>
-                    <InputError class="mt-1" :message="form.errors.clasificacion" />
-                </div>
-
-                <div>
-                    <InputLabel for="ciudad" value="Ciudad" />
+                        </button>
+                    </div>
+                    
+                    <!-- Campos texto normales -->
                     <TextInput
-                        id="ciudad"
-                        v-model="form.ciudad"
+                        v-else
+                        :id="campo"
+                        v-model="form[campo]"
                         type="text"
                         class="mt-1 block w-full"
-                        placeholder="Ej. Medellín, Bogotá"
-                        :error="form.errors.ciudad"
+                        :placeholder="campo === 'razon_social' ? 'Razón social completa' : campo === 'clasificacion' ? 'proveedor, taller de proceso externo o macondas' : campo === 'forma_pago' ? 'Contado, Crédito 8 días, etc.' : ''"
+                        :error="form.errors[campo]"
                     />
-                    <InputError class="mt-1" :message="form.errors.ciudad" />
-                </div>
-
-                <div>
-                    <InputLabel for="direccion" value="Dirección" />
-                    <TextInput
-                        id="direccion"
-                        v-model="form.direccion"
-                        type="text"
-                        class="mt-1 block w-full"
-                        placeholder="Dirección física"
-                        :error="form.errors.direccion"
-                    />
-                    <InputError class="mt-1" :message="form.errors.direccion" />
-                </div>
-
-                <div>
-                    <InputLabel for="observaciones_direccion" value="Observaciones dirección" />
-                    <TextInput
-                        id="observaciones_direccion"
-                        v-model="form.observaciones_direccion"
-                        type="text"
-                        class="mt-1 block w-full"
-                        placeholder="Barrio, bodega, oficina, punto de referencia"
-                        :error="form.errors.observaciones_direccion"
-                    />
-                    <InputError class="mt-1" :message="form.errors.observaciones_direccion" />
-                </div>
-
-                <div>
-                    <InputLabel for="correo_electronico" value="Correo electrónico" />
-                    <TextInput
-                        id="correo_electronico"
-                        v-model="form.correo_electronico"
-                        type="email"
-                        class="mt-1 block w-full"
-                        placeholder="contacto@proveedor.com"
-                        :error="form.errors.correo_electronico"
-                    />
-                    <InputError class="mt-1" :message="form.errors.correo_electronico" />
-                </div>
-
-                <div>
-                    <InputLabel for="telefono_principal" value="Teléfono principal" />
-                    <TextInput
-                        id="telefono_principal"
-                        v-model="form.telefono_principal"
-                        type="text"
-                        class="mt-1 block w-full"
-                        placeholder="Teléfono fijo o PBX"
-                        :error="form.errors.telefono_principal"
-                    />
-                    <InputError class="mt-1" :message="form.errors.telefono_principal" />
-                </div>
-
-                <div>
-                    <InputLabel for="persona_contacto" value="Persona de contacto" />
-                    <TextInput
-                        id="persona_contacto"
-                        v-model="form.persona_contacto"
-                        type="text"
-                        class="mt-1 block w-full"
-                        placeholder="Nombre del asesor o contacto"
-                        :error="form.errors.persona_contacto"
-                    />
-                    <InputError class="mt-1" :message="form.errors.persona_contacto" />
-                </div>
-
-                <div>
-                    <InputLabel for="celular_contacto" value="Celular / WhatsApp contacto" />
-                    <TextInput
-                        id="celular_contacto"
-                        v-model="form.celular_contacto"
-                        type="text"
-                        class="mt-1 block w-full"
-                        placeholder="Ej. 3123456789"
-                        :error="form.errors.celular_contacto"
-                    />
-                    <InputError class="mt-1" :message="form.errors.celular_contacto" />
-                </div>
-
-                <div>
-                    <InputLabel for="forma_pago" value="Forma / plazo de pago" />
-                    <select id="forma_pago" v-model="form.forma_pago" :class="selectClass">
-                        <option value="">Selecciona forma de pago</option>
-                        <option
-                            v-for="opcion in (props.opcionesSelect?.forma_pago || ['Contado', 'Crédito 8 días', 'Crédito 15 días', 'Crédito 30 días', 'Anticipo', 'Otro'])"
-                            :key="opcion"
-                            :value="opcion"
-                        >
-                            {{ opcion }}
-                        </option>
-                    </select>
-                    <InputError class="mt-1" :message="form.errors.forma_pago" />
-                </div>
-
-                <div>
-                    <InputLabel for="tiempo_entrega" value="Tiempo habitual de entrega" />
-                    <TextInput
-                        id="tiempo_entrega"
-                        v-model="form.tiempo_entrega"
-                        type="text"
-                        class="mt-1 block w-full"
-                        placeholder="Ej. Inmediato, 3 a 5 días"
-                        :error="form.errors.tiempo_entrega"
-                    />
-                    <InputError class="mt-1" :message="form.errors.tiempo_entrega" />
-                </div>
-
-                <div>
-                    <InputLabel for="estado" value="Estado" />
-                    <select id="estado" v-model="form.estado" :class="selectClass">
-                        <option
-                            v-for="opcion in (props.opcionesSelect?.estado || ['Activo', 'Inactivo'])"
-                            :key="opcion"
-                            :value="opcion"
-                        >
-                            {{ opcion }}
-                        </option>
-                    </select>
-                    <InputError class="mt-1" :message="form.errors.estado" />
-                </div>
-
-                <div class="sm:col-span-2 lg:col-span-3">
-                    <InputLabel for="que_suministra" value="Qué suministra / servicio" />
-                    <TextInput
-                        id="que_suministra"
-                        v-model="form.que_suministra"
-                        type="text"
-                        class="mt-1 block w-full"
-                        placeholder="Descripción de insumos, telas, accesorios o servicios que provee"
-                        :error="form.errors.que_suministra"
-                    />
-                    <InputError class="mt-1" :message="form.errors.que_suministra" />
-                </div>
-
-                <div class="sm:col-span-2 lg:col-span-3">
-                    <InputLabel for="observaciones_generales" value="Observaciones generales" />
-                    <textarea
-                        id="observaciones_generales"
-                        v-model="form.observaciones_generales"
-                        rows="2"
-                        class="mt-1 block w-full rounded-md border border-input bg-background p-2.5 text-sm text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30"
-                        placeholder="Comentarios adicionales, acuerdos comerciales, condiciones especiales..."
-                    />
-                    <InputError class="mt-1" :message="form.errors.observaciones_generales" />
+                    <InputError class="mt-1" :message="form.errors[campo]" />
                 </div>
             </div>
 

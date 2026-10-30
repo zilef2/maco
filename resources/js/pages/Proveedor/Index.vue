@@ -7,6 +7,7 @@ import { reactive, watch } from 'vue';
 import pkg from 'lodash';
 
 import {
+    ArrowUpTrayIcon,
     ChevronRightIcon,
     ChevronUpDownIcon,
     FunnelIcon,
@@ -20,6 +21,7 @@ import {
 import Create from '@/pages/Proveedor/Create.vue';
 import Edit from '@/pages/Proveedor/Edit.vue';
 import Delete from '@/pages/Proveedor/Delete.vue';
+import ImportarProveedorModal from '@/pages/Proveedor/ImportarProveedorModal.vue';
 
 const { debounce, pickBy } = pkg;
 
@@ -78,6 +80,7 @@ const data = reactive({
     createOpen: false,
     editOpen: false,
     deleteOpen: false,
+    importOpen: false,
 });
 
 const selectClass = 'h-9 rounded-md border border-input bg-background px-2.5 text-xs text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30';
@@ -184,6 +187,15 @@ const abrirEliminar = (proveedor: any) => {
                     </div>
 
                     <div class="flex items-center gap-2">
+                        <PrimaryButton
+                            type="button"
+                            class="h-9 bg-emerald-600 hover:bg-emerald-700 focus:ring-emerald-500"
+                            @click="data.importOpen = true"
+                        >
+                            <ArrowUpTrayIcon class="mr-1.5 h-4 w-4" />
+                            Cargar Excel
+                        </PrimaryButton>
+
                         <PrimaryButton type="button" class="h-9" @click="data.createOpen = true">
                             <PlusIcon class="mr-1.5 h-4 w-4" />
                             Nuevo proveedor
@@ -464,6 +476,8 @@ const abrirEliminar = (proveedor: any) => {
             :opcionesSelect="props.opcionesSelect"
             @close="data.createOpen = false"
         />
+
+        <ImportarProveedorModal :show="data.importOpen" @close="data.importOpen = false" />
 
         <Edit
             :show="data.editOpen"

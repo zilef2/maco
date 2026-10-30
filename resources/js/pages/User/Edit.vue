@@ -115,7 +115,7 @@ const flow = ref<any>(['year', 'month', 'calendar']);
 
 <template>
     <section class="space-y-6">
-        <Modal :show="props.show" @close="emit('close')">
+        <Modal :show="props.show" @close="emit('close')" :maxWidth="'xl4'">
             <form class="p-6 mb-12" @submit.prevent="update">
                 <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">
                     {{ lang().t('app.label.edit') }} {{ props.title }}

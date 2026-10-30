@@ -87,7 +87,7 @@ const daynames = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom'];
 
 <template>
   <section class="space-y-6">
-    <Modal :show="props.show" @close="emit('close')">
+    <Modal :show="props.show" @close="emit('close')" :maxWidth="'xl4'">
       <form class="p-6 pb-8 md:pb-28" @submit.prevent="create">
         <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100">
           {{ lang().t('app.label.add') }} {{ props.title }}
@@ -96,7 +96,7 @@ const daynames = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom'];
           {{ lang().t('app.label.RequiredFields') }}
         </h3>
         <div class="mt-6 mb-20 space-y-4">
-          <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <div>
               <div class="inline-flex">
                 <InputLabel for="name" :value="lang().t('app.label.name')" />
@@ -176,8 +176,7 @@ const daynames = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom'];
               <VueDatePicker :is-24="false" :day-names="daynames" :format="formatToVue" :flow="flow" auto-apply
                 :enable-time-picker="false" id="fecha_nacimiento" class="mt-1 block w-full"
                 v-model="form.fecha_nacimiento" model-type="yyyy-MM-dd" required
-                :placeholder="lang().t('app.placeholder.fecha_nacimiento')"
-                :error="form.errors.fecha_nacimiento" />
+                :placeholder="lang().t('app.placeholder.fecha_nacimiento')" :error="form.errors.fecha_nacimiento" />
               <InputError class="mt-2" :message="form.errors.fecha_nacimiento" />
             </div>
 

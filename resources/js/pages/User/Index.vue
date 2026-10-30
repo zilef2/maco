@@ -6,17 +6,18 @@ import TextInput from '@/components/TextInput.vue';
 import PrimaryButton from '@/components/PrimaryButton.vue';
 import InfoButton from '@/components/InfoButton.vue';
 import SelectInput from '@/components/SelectInput.vue';
-import { reactive, watch, watchEffect } from 'vue';
+import { reactive, watch } from 'vue';
 import DangerButton from '@/components/DangerButton.vue';
 import pkg from 'lodash';
 import Pagination from '@/components/Pagination.vue';
-import { CheckBadgeIcon, ChevronUpDownIcon, PencilIcon, TrashIcon, UserCircleIcon } from '@heroicons/vue/24/solid';
+import { ArrowUpTrayIcon, CheckBadgeIcon, ChevronUpDownIcon, PencilIcon, TrashIcon, UserCircleIcon } from '@heroicons/vue/24/solid';
 import Create from '@/pages/User/Create.vue';
 import Edit from '@/pages/User/Edit.vue';
 import Delete from '@/pages/User/Delete.vue';
 import DeleteBulk from '@/pages/User/DeleteBulk.vue';
+import ImportarUsuarioModal from '@/pages/User/ImportarUsuarioModal.vue';
 import Checkbox from '@/components/Checkbox.vue';
-import { router, usePage, useForm, Link } from '@inertiajs/vue3';
+import { router, usePage, Link } from '@inertiajs/vue3';
 
 import { zilef_nuber_format, formatDate, CalcularEdad, CalcularSexo } from '@/global.ts';
 
@@ -51,8 +52,8 @@ const data = reactive({
     editOpen: false,
     deleteOpen: false,
     deleteBulkOpen: false,
+    importOpen: false,
     user: null,
-    ArchivoNombre: '',
     dataSet: (usePage().props as any)?.app?.perpage ?? defaultPerPage
 })
 
@@ -90,14 +91,6 @@ const select = () => {
 }
 
 
-const form = useForm({
-    archivo1: '',
-})
-
-watchEffect(() => {
-    data.ArchivoNombre = form.archivo1?.name
-})
-
 // text // number // dinero // date // datetime // foreign
 const titulos = [
     { order: 'name', label: 'Nombre', type: 'text', required: true },
@@ -120,9 +113,16 @@ const titulos = [
         <Breadcrumb :title="title" :breadcrumbs="breadcrumbs" />
         <div class="space-y-4">
             <div class="px-4 sm:px-0">
-                <div class="rounded-lg overflow-hidden w-fit">
-                    <PrimaryButton v-show="can(['create user'])" class="rounded-none" @click="data.createOpen = true">
-                        {{ lang().t('app.button.add') }}
+                <div class="flex flex-wrap items-center gap-2">
+                    <div class="rounded-lg overflow-hidden w-fit">
+                        <PrimaryButton v-show="can(['create user'])" class="rounded-none" @click="data.createOpen = true">
+                            {{ lang().t('app.button.add') }}
+                        </PrimaryButton>
+                    </div>
+                    <PrimaryButton v-show="can(['create user'])" class="bg-blue-600 hover:bg-blue-700 focus:ring-blue-500"
+                        @click="data.importOpen = true">
+                        <ArrowUpTrayIcon class="w-4 h-4 mr-1.5" />
+                        Cargar Excel
                     </PrimaryButton>
                     <Create :show="data.createOpen" @close="data.createOpen = false" :roles="props.roles"
                         v-if="can(['create user'])" :title="props.title" :titulos="titulos" />
@@ -133,6 +133,7 @@ const titulos = [
                     <DeleteBulk :show="data.deleteBulkOpen"
                         @close="data.deleteBulkOpen = false, data.multipleSelect = false, data.selectedId = []"
                         :selectedId="data.selectedId" :title="props.title" />
+                    <ImportarUsuarioModal :show="data.importOpen" @close="data.importOpen = false" />
                 </div>
             </div>
             <div class="relative bg-white dark:bg-gray-800 shadow sm:rounded-lg w-max min-w-full">

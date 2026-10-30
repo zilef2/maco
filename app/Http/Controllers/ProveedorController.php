@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\helpers\Myhelp;
 use App\Http\Requests\StoreProveedorRequest;
 use App\Http\Requests\UpdateProveedorRequest;
 use App\Jobs\ImportarProveedoresJob;
@@ -65,8 +66,36 @@ class ProveedorController extends Controller
 
     public function uploadExcel(Request $request, ExcelProveedoresService $excel, ImportacionExcelNotificador $notificador): RedirectResponse
     {
-        $ruta = $excel->procesarSubida($request->file('archivo'), $request->user());
+        $request->validate([
+            'archivo' => ['required', 'file', 'max:10240', 'mimes:xlsx'],
+        ], [
+            'archivo.required' => 'Selecciona un archivo .xlsx.',
+            'archivo.file' => 'El archivo no es válido.',
+            'archivo.max' => 'El archivo supera el tamaño máximo de 10 MB.',
+            'archivo.mimes' => 'Solo se permiten archivos .xlsx.',
+        ]);
 
-        return back()->with('success', 'Archivo validado y encolado para importación.');
+        $archivo = $request->file('archivo');
+        $usuario = $request->user();
+        $rutaGuardada = null;
+
+        try {
+            $rutaGuardada = $excel->procesarSubida($archivo, $usuario);
+        } catch (\Throwable $e) {
+            if ($rutaGuardada !== null) {
+                \Illuminate\Support\Facades\Storage::disk('local')->delete($rutaGuardada);
+            }
+
+            $notificador->fallo($usuario?->email, $usuario?->name, $archivo->getClientOriginalName(), 'proveedores', $e);
+            Myhelp::EscribirEnLog($this, 'uploadExcel ERROR', $e->getMessage());
+
+            return back()->with('error', 'No se importó nada: ' . $e->getMessage());
+        }
+
+        return back()->with(
+            'success',
+            'Archivo validado correctamente. La importación se está procesando; '
+            . 'en breve podrás ver la información actualizada.'
+        );
     }
 }

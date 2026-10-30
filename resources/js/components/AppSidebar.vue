@@ -208,6 +208,28 @@ const navDropdown: NavGroup[] = [
             },
         ],
     },
+    {
+        label: 'Dudas',
+        icon: Settings,
+        items: [
+
+            {
+                title: 'Merma',
+                href: '/Merma',
+                icon: LayoutGrid,
+            },
+            {
+                title: 'FichaEnsamble',
+                href: '/FichaEnsamble',
+                icon: FileSpreadsheet,
+            },
+            {
+                title: 'KitProceso',
+                href: '/KitProceso',
+                icon: PackageCheck,
+            },
+        ],
+    },
 ];
 
 const footerAdminItems = [

@@ -14,7 +14,7 @@ const emit = defineEmits(["close"]);
 
 <template>
     <section class="space-y-6">
-        <Modal :show="props.show" @close="emit('close')" :maxWidth="'2xl'">
+        <Modal :show="props.show" @close="emit('close')" :maxWidth="'xl3'">
             <div class="p-6 text-gray-900 dark:text-gray-100">
                 <h2 class="text-lg font-medium">
                     {{ lang().t('app.label.permission') }}

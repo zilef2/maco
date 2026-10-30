@@ -7,12 +7,16 @@ use App\Models\Material;
 use App\Models\MaterialMovimiento;
 use App\Models\Parametro;
 use App\Models\Proveedor;
+use App\Http\Requests\DestroyBulkMaterialRequest;
 use App\Services\FichaTecnicaService;
 use App\Services\ListaDesplegableService;
 use App\Services\CostoMaterialOpService;
+use App\Services\MaterialBulkDeleteService;
+use App\Services\MaterialCompraPredictorService;
 use App\helpers\Myhelp;
 use App\helpers\MyModels;
 use Illuminate\Database\Eloquent\Collection;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -36,7 +40,9 @@ class MaterialController extends Controller {
     public function __construct(
         protected ListaDesplegableService $listaDesplegableService,
         protected CostoMaterialOpService $costosMateriales,
-        protected FichaTecnicaService $fichaTecnicaService
+        protected FichaTecnicaService $fichaTecnicaService,
+        protected MaterialBulkDeleteService $bulkDelete,
+        protected MaterialCompraPredictorService $compraPredictor
     ) {
 //        $this->middleware('permission:create Material', ['only' => ['create', 'store']]);
 //        $this->middleware('permission:read Material', ['only' => ['index', 'show']]);
@@ -78,7 +84,8 @@ class MaterialController extends Controller {
         });
 
         $bloqueosFicha = $this->fichaTecnicaService->bloqueosPorMaterial();
-        $Materiales->each(function (Material $material) use ($bloqueosFicha) {
+        $prediccionesCompras = $this->compraPredictor->obtenerPrediccionesParaMateriales();
+        $Materiales->each(function (Material $material) use ($bloqueosFicha, $prediccionesCompras) {
             $ficha = $material->fichaTecnica->first();
             $material->ficha_id = $ficha?->id;
             $material->ficha_nombre = $ficha?->nombre;
@@ -96,6 +103,11 @@ class MaterialController extends Controller {
             $material->ficha_bloqueo_detalle = collect($bloqueos)
                 ->map(fn ($estado, $numeroOp) => $numeroOp . ' (' . $estado . ')')
                 ->implode(', ');
+
+            $pred = $prediccionesCompras[$material->id] ?? null;
+            $material->ultima_compra_cantidad = $pred['cantidad'] ?? null;
+            $material->ultima_compra_fecha = $pred['fecha'] ?? null;
+            $material->ultima_compra_fecha_humana = $pred['fecha_humana'] ?? null;
         });
 
         $listasDesplegables = $this->listaDesplegableService->getOptionsByCategoriaGrouped('material');
@@ -301,6 +313,11 @@ class MaterialController extends Controller {
             DB::rollBack();
             throw $e;
         }
+    }
+
+    public function predecirCompra(int $id): JsonResponse
+    {
+        return response()->json($this->compraPredictor->predecirParaMaterial($id));
     }
 
     public function store(Request $request): RedirectResponse {
@@ -615,11 +632,21 @@ class MaterialController extends Controller {
         return back()->with('success', __('app.label.deleted_successfully', ['name' => $elnombre]));
     }
 
-    public function destroyBulk(Request $request) {
-        $Material = Material::whereIn('id', $request->id);
-        $Material->delete();
+    public function destroyBulk(DestroyBulkMaterialRequest $request): JsonResponse|RedirectResponse {
+        $resultado = $this->bulkDelete->eliminarMasivo($request->ids(), $request->conDependientes());
         $this->invalidarCache();
-        return back()->with('success', __('app.label.deleted_successfully', ['name' => count($request->id) . ' ' . __('app.label.user')]));
+        Myhelp::EscribirEnLog($this, 'DELETE:Materials', 'Borrado en masa: ' . $resultado['eliminados'] . ' materiales, ' . $resultado['ordenes_eliminadas'] . ' OPs, ' . $resultado['fichas_eliminadas'] . ' fichas', false);
+
+        if ($request->wantsJson()) {
+            return response()->json($resultado);
+        }
+
+        return back()->with('bulk_result', $resultado);
+    }
+
+    /** Dependencias (OPs y fichas técnicas) de los materiales marcados. */
+    public function dependenciasBulk(DestroyBulkMaterialRequest $request): JsonResponse {
+        return response()->json($this->bulkDelete->dependencias($request->ids()));
     }
     //FIN : STORE - UPDATE - DELETE
 
@@ -818,14 +845,40 @@ class MaterialController extends Controller {
             return in_array($clave, ['si', 's', 'yes', 'y', 'true', 't', '1'], true);
         };
 
-        // El Excel puede traer el nombre del proveedor; la columna guarda el id.
-        $proveedoresPorNombre = Proveedor::query()
-            ->get(['id', 'nombre'])
-            ->mapWithKeys(fn (Proveedor $proveedor) => [
-                mb_strtolower(trim((string) $proveedor->nombre)) => (int) $proveedor->id,
-            ]);
+        // El Excel puede traer el nombre o el código del proveedor; la columna
+        // guarda el id. Se indexan todas las formas en que la app muestra a un
+        // proveedor para que la validación sea flexible (sin mayúsculas, tildes
+        // ni puntuación): "Proveedor 55N68X" = "proveedor55n68x" = "55N68X ".
+        $normalizarClave = fn (?string $texto): string => (string) preg_replace(
+            '/[^a-z0-9]/',
+            '',
+            $normalizarTexto((string) $texto)
+        );
+
+        $proveedoresPorClave = [];
+
+        foreach (Proveedor::query()->get(['id', 'codigo_proveedor', 'nombre_comercial', 'razon_social', 'nombre']) as $proveedor) {
+            $identificadores = [
+                $proveedor->nombre_comercial,
+                $proveedor->razon_social,
+                $proveedor->nombre,
+                $proveedor->codigo_proveedor,
+                // Código visual que usa el listado cuando no hay codigo_proveedor.
+                'PRV-' . $proveedor->id,
+                'PROV-' . $proveedor->id,
+                (string) $proveedor->id,
+            ];
+
+            foreach ($identificadores as $identificador) {
+                $clave = $normalizarClave($identificador);
+                if ($clave !== '' && !isset($proveedoresPorClave[$clave])) {
+                    $proveedoresPorClave[$clave] = (int) $proveedor->id;
+                }
+            }
+        }
 
         $errores  = [];
+        $proveedoresDesconocidos = [];
         $existentes = Material::pluck('id', 'codigo_material');
         $registros  = [];
 
@@ -891,9 +944,12 @@ class MaterialController extends Controller {
             $proveedorId = null;
 
             if ($proveedorTexto !== '') {
-                $proveedorId = $proveedoresPorNombre[mb_strtolower($proveedorTexto)] ?? null;
-                if ($proveedorId === null && is_numeric($proveedorTexto)) {
-                    $proveedorId = (int) $proveedorTexto;
+                $claveProveedor = $normalizarClave($proveedorTexto);
+                $proveedorId = $claveProveedor !== '' ? ($proveedoresPorClave[$claveProveedor] ?? null) : null;
+
+                if ($proveedorId === null) {
+                    // Se lista una sola vez aunque se repita escrito de otra forma.
+                    $proveedoresDesconocidos[$claveProveedor] ??= $proveedorTexto;
                 }
             }
 
@@ -921,6 +977,13 @@ class MaterialController extends Controller {
             ];
         }
 
+        // Todo proveedor de la lista debe existir en la app antes de importar.
+        if (!empty($proveedoresDesconocidos)) {
+            return back()->with(
+                'error',
+                'Hay proveedores desconocidos: ' . implode(', ', $proveedoresDesconocidos)
+            );
+        }
         if (!empty($errores)) {
             return back()->with('error', 'No se importó nada por los siguientes problemas: ' . implode(' | ', $errores));
         }

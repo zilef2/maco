@@ -72,14 +72,14 @@ class Proveedor extends Model
                 $proveedor->nombre = $proveedor->nombre_comercial ?: ($proveedor->razon_social ?: 'Sin nombre');
             }
 
-            // Auto-generate codigo_proveedor if not set
+            // Auto-generate codigo_proveedor if not set (format: PRV-1, PRV-2, ...)
             if (empty($proveedor->codigo_proveedor)) {
                 $ultimo = Proveedor::orderBy('codigo_proveedor', 'desc')->value('codigo_proveedor');
                 if ($ultimo) {
-                    $num = intval(substr($ultimo, 4)) + 1; // Extract number after "PROV-"
-                    $proveedor->codigo_proveedor = 'PROV-' . str_pad($num, 3, '0', STR_PAD_LEFT);
+                    $num = intval(substr($ultimo, 4)) + 1; // Extract number after "PRV-"
+                    $proveedor->codigo_proveedor = 'PRV-' . str_pad($num, 3, '0', STR_PAD_LEFT);
                 } else {
-                    $proveedor->codigo_proveedor = 'PROV-001';
+                    $proveedor->codigo_proveedor = 'PRV-001';
                 }
             }
         });

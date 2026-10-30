@@ -27,3 +27,39 @@ Select-String -Path "c:\laragon\www\maco\composer.json" -Pattern "laravel"
 
 # server ecno
 alias actualizar_maco="mv /home/zilef/maco.zip /home/wwecno/pruebas2/ && cd /home/wwecno/pruebas2 && unzip -o maco.zip && rm maco.zip && php artisan optimize && php artisan optimize:clear"
+
+
+- CierreOrdenProduccion
+- CompromisoReparacion
+- desarrollo
+- Distribucion_por_tallas
+- EmpresaExterna
+- EstadoOperacion
+- EstadoOpMaterial
+- FichaEnsamble
+- FichaEnsambleMaterial
+- FichaTecnica
+- FichaTecnicaMateriales
+- GrupoTalla
+- KitProceso
+- ListaDesplegable
+- Material
+- MaterialMovimiento
+- MaterialPrice
+- Merma
+- OrdenProduccion
+- OrdenProduccionCostoCambio
+- OrdenProduccionCostoMaterial
+- pagodesarrollo
+- Parametro
+- PendientesProduccion
+- Permission
+- ProcesoExterno
+- Producto
+- ProductoTallasHistory
+- Proveedor
+- RecepcionCalidad
+- Role
+- Talla
+- Taller
+- User

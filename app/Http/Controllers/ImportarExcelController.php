@@ -4,15 +4,19 @@ namespace App\Http\Controllers;
 
 use App\helpers\Myhelp;
 use App\Models\Parametro;
-use App\Models\Proveedor;
+use App\Services\PlantillasExcelService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ImportarExcelController extends Controller
 {
+    public function __construct(
+        protected PlantillasExcelService $plantillas
+    ) {}
     /**
      * Registro único de Parametro donde se guarda qué entidades tienen
      * habilitada la carga masiva por Excel.
@@ -23,7 +27,7 @@ class ImportarExcelController extends Controller
      * Entidades que se muestran en el panel informativo y que, por ahora,
      * tienen la carga por Excel habilitada.
      */
-    private const ENTIDADES_CON_EXCEL_DEFAULT = ['producto', 'material', 'estado_operacion', 'taller', 'proveedor'];
+    private const ENTIDADES_CON_EXCEL_DEFAULT = ['producto', 'material', 'estado_operacion', 'taller', 'proveedor', 'usuario'];
 
     private const CATALOGO_ENTIDADES = [
         ['clave' => 'producto', 'nombre' => 'Producto', 'grupo' => 'Inventario'],
@@ -52,73 +56,88 @@ class ImportarExcelController extends Controller
     {
         Myhelp::EscribirEnLog($this, ' ImportarExcel ');
 
-        // Las columnas de proveedores se derivan del fillable del modelo.
-        $proveedorRequeridas = ['nombre', 'categoria'];
-        $proveedorOpcionales = array_values(array_diff(
-            (new Proveedor())->getFillable(),
-            $proveedorRequeridas
-        ));
-
         $entidades = [
             [
                 'id'                  => 'producto',
                 'nombre'              => 'Productos',
                 'descripcion'         => 'Catálogo de productos: referencias internas y títulos de Shopify',
                 'ruta'                => route('Producto.upload-excel'),
-                'columnas_requeridas' => ['Codigo interno', 'Titulo Shopify'],
-                'columnas_opcionales' => [
-                    'ID producto Shopify', 'Categoria original', 'Familia normalizada',
-                    'Control de variante', 'Opciones', 'Rango', 'Estado',
-                    'Observaciones', 'Descripcion', 'Precio predicho', 'Precio preventa',
-                ],
-                'nota' => 'Si el código interno ya existe se actualiza el registro; si no, se crea. La columna "Rango" se guarda en "Opciones".',
+                'nota'                => 'Si el código interno ya existe se actualiza el registro; si no, se crea. La columna "Opciones" también acepta el nombre "Rango".',
             ],
             [
                 'id'                  => 'material',
                 'nombre'              => 'Materiales',
                 'descripcion'         => 'Inventario de materias primas e insumos de producción',
                 'ruta'                => route('Material.upload-excel'),
-                'columnas_requeridas' => ['codigo_material', 'nombre_base', 'categoria', 'unidad_inventario', 'estado'],
-                'columnas_opcionales' => [
-                    'maneja_color', 'maneja_talla', 'maneja_otra_variante',
-                    'variante_atributo_sugerido', 'proveedor_habitual', 'observaciones',
-                ],
-                'nota' => 'Carga masiva por código de material: actualiza si existe, crea si no.',
+                'nota'                => 'Carga masiva por código de material: actualiza si existe, crea si no. "Proveedor habitual" debe existir en la app.',
             ],
             [
                 'id'                  => 'estado_operacion',
                 'nombre'              => 'Estados de Operación',
                 'descripcion'         => 'Máquina de estados de las órdenes de producción',
                 'ruta'                => route('EstadoOperacion.upload-excel'),
-                'columnas_requeridas' => ['Nombre'],
-                'columnas_opcionales' => ['Cuando aplica', 'Regla clave', 'Puede pasar a'],
-                'nota' => 'Si el nombre del estado ya existe se actualiza; si no, se crea.',
+                'nota'                => 'Si el nombre del estado ya existe se actualiza; si no, se crea.',
             ],
             [
                 'id'                  => 'taller',
                 'nombre'              => 'Talleres',
                 'descripcion'         => 'Talleres de confección a los que se asignan las órdenes de producción',
                 'ruta'                => route('Taller.upload-excel'),
-                'columnas_requeridas' => ['nombre'],
-                'columnas_opcionales' => ['direccion'],
-                'nota' => 'La fila 1 debe contener los títulos de las columnas. El nombre es obligatorio; la dirección es opcional. La importación se procesa en segundo plano y recibirás un correo con el resultado.',
+                'nota'                => 'La fila 1 debe contener los títulos de las columnas. El nombre es obligatorio; la dirección es opcional. La importación se procesa en segundo plano y recibirás un correo con el resultado.',
             ],
             [
                 'id'                  => 'proveedor',
                 'nombre'              => 'Proveedores',
                 'descripcion'         => 'Directorio de proveedores y sus datos de contacto',
                 'ruta'                => route('Proveedor.upload-excel'),
-                'columnas_requeridas' => $proveedorRequeridas,
-                'columnas_opcionales' => $proveedorOpcionales,
-                'nota' => 'La fila 1 debe contener los títulos de las columnas. Si el proveedor ya existe (mismo nombre) se actualiza; si no, se crea. Los celulares son opcionales. La importación se procesa en segundo plano y recibirás un correo con el resultado.',
+                'nota'                => 'La fila 1 debe contener los títulos de las columnas. El NIT y el nombre comercial son obligatorios. Si el proveedor ya existe (mismo NIT o mismo nombre comercial) se actualiza; si no, se crea. Las celdas vacías no borran los datos que ya tenía. La importación se procesa en segundo plano y recibirás un correo con el resultado.',
+            ],
+            [
+                'id'                  => 'usuario',
+                'nombre'              => 'Usuarios',
+                'descripcion'         => 'Cuentas de acceso del personal y su rol',
+                'ruta'                => route('user.upload-excel'),
+                'nota'                => 'La fila 1 debe contener los títulos de las columnas. Nombre, email, identificación y rol son obligatorios. Si el usuario ya existe (mismo email o misma identificación) se actualiza; si no, se crea con la contraseña identificación + "*". El rol debe existir previamente en la aplicación. La importación se procesa en segundo plano y recibirás un correo y una notificación al finalizar.',
             ],
         ];
+
+        // Las columnas y el archivo descargable salen de la misma definición,
+        // así la tarjeta y el formato .xlsx nunca se contradicen.
+        $entidades = array_map(function (array $entidad): array {
+            $clave = $entidad['id'];
+
+            return $entidad + [
+                'columnas_requeridas' => $this->plantillas->titulosRequeridos($clave),
+                'columnas_opcionales' => $this->plantillas->titulosOpcionales($clave),
+                'plantilla'           => route('ImportarExcel.plantilla', ['clave' => $clave]),
+            ];
+        }, $entidades);
 
         return Inertia::render('Importar/Index', [
             'breadcrumbs' => [['label' => 'Importar Excel', 'href' => route('ImportarExcel.index')]],
             'title'       => 'Centro de Importación Excel',
             'entidades'   => $entidades,
             'entidadesExcel' => $this->entidadesConEstado(),
+        ]);
+    }
+
+    /**
+     * Descarga el formato .xlsx de una entidad: columnas y dos filas de
+     * ejemplo con las que se arma el archivo de carga.
+     */
+    public function descargarPlantilla(string $clave): StreamedResponse
+    {
+        Myhelp::EscribirEnLog($this, 'descargarPlantilla', $clave);
+
+        $writer = $this->plantillas->escribir($clave);
+        if ($writer === null) {
+            abort(404, 'No existe un formato descargable para ' . $clave);
+        }
+
+        return response()->streamDownload(function () use ($writer) {
+            $writer->save('php://output');
+        }, $this->plantillas->nombreArchivo($clave), [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         ]);
     }
 
