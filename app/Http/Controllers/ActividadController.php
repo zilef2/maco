@@ -71,13 +71,16 @@ class ActividadController extends Controller
         $series = $this->seriesPorUsuario($desde);
 
         if ($usuarioId === null) {
-            $usuarioId = $series->keys()->max(fn (int $id) => $series[$id]->count());
+            // Usuario con más acciones: max() devolvería el conteo, no la clave.
+            $usuarioId = $series->keys()
+                ->sortByDesc(fn (int $id) => $series[$id]->count())
+                ->first();
         }
 
         $resumenBase = $this->resumenBase($series);
 
         return Inertia::render('actividad/Index', [
-            'breadcrumbs' => [['label' => 'Actividad', 'href' => route('Actividad.index')]],
+            'breadcrumbs' => [['title' => 'Actividad', 'href' => route('Actividad.index')]],
             'title' => 'Actividad y tiempos',
             'filtro' => [
                 'dias' => $dias,

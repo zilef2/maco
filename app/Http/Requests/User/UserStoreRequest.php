@@ -35,7 +35,7 @@ class UserStoreRequest extends FormRequest
             'celular'           => ['nullable'],
             'fecha_de_ingreso'  => ['nullable'],
             'sexo'              => ['nullable'],
-            'area'              => ['nullable', 'string', 'max:255'],
+
             'cargo'             => ['nullable', 'string', 'max:255'],
             'fecha_nacimiento'  => ['nullable', 'date'],
         ];

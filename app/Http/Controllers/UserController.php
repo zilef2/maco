@@ -156,7 +156,7 @@ class UserController extends Controller
             $user = User::create([
                 'name' => $request->name,
                 'email' => $request->email,
-                'area' => $request->area,
+
                 'cargo' => $request->cargo,
                 'identificacion' => $request->identificacion,
                 'celular' => $request->celular,
@@ -200,7 +200,7 @@ class UserController extends Controller
             $user->update([
                 'name' => $request->name,
                 'email' => $request->email,
-                'area' => $request->area,
+
                 'cargo' => $request->cargo,
                 'identificacion' => $request->identificacion,
                 'celular' => $request->celular,

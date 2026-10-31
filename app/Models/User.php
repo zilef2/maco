@@ -30,7 +30,6 @@ class User extends Authenticatable
         'celular',
         'fecha_de_ingreso',
         'sexo',
-        'area',
         'cargo',
         'fecha_nacimiento',
     ];

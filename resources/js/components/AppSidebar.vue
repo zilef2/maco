@@ -7,6 +7,7 @@ import { type NavGroup } from '@/types';
 import { Link } from '@inertiajs/vue3';
 import {
     Building2,
+    Activity,
     Folder,
     LayoutDashboard,
     LayoutGrid,
@@ -239,6 +240,13 @@ const footerAdminItems = [
         icon: Folder,
     },
 ];
+const footerSuperItems = [
+    {
+        title: 'Actividad',
+        href: '/Actividad',
+        icon: Activity,
+    },
+];
 const footerNavItems = [
     {
         title: 'Página de la empresa',
@@ -268,6 +276,9 @@ const footerNavItems = [
 
         <SidebarFooter class="hidden md:flex" v-if="can(['isadmin'])">
             <NavFooter :items="footerAdminItems" />
+        </SidebarFooter>
+        <SidebarFooter class="hidden md:flex" v-if="can(['issuperadmin'])">
+            <NavFooter :items="footerSuperItems" />
         </SidebarFooter>
         <SidebarFooter>
             <NavFooter :items="footerNavItems" />

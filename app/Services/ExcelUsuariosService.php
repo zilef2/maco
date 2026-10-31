@@ -31,7 +31,7 @@ class ExcelUsuariosService
 
     /** Columnas opcionales del archivo. */
     public const COLUMNAS_OPCIONALES = [
-        'area',
+
         'cargo',
         'celular',
         'sexo',
@@ -78,7 +78,7 @@ class ExcelUsuariosService
         'nombre'           => ['max' => 255],
         'email'            => ['email' => true, 'max' => 255],
         'identificacion'   => ['max' => 255],
-        'area'             => ['max' => 255],
+
         'cargo'            => ['max' => 255],
         'celular'          => ['max' => 50],
         'salario'          => ['max' => 50],

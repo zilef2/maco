@@ -47,7 +47,7 @@ const form = useForm({
 
   cargo: '',
   celular: '',
-  area: '',
+
   password: '',
   password_confirmation: '',
 })
