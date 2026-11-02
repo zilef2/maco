@@ -483,7 +483,6 @@ class UserController extends Controller
 	        'sexo',
 	        'fecha_nacimiento',
 	        'celular',
-	        'area',
 	        'cargo',
         ])->where('name', '!=', 'Superadmin')
 	        ->whereHas('roles', function ($query) {

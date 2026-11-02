@@ -118,7 +118,6 @@ class PlantillasExcelService
                 ['titulo' => 'Email', 'requerida' => true, 'descripcion' => 'Correo único con el que inicia sesión.', 'ejemplos' => ['ana@macondas.com', 'luis@macondas.com']],
                 ['titulo' => 'Identificación', 'requerida' => true, 'descripcion' => 'Documento del usuario. Es la clave de emparejamiento cuando el email no coincide.', 'ejemplos' => ['1020304050', '1098765432']],
                 ['titulo' => 'Rol', 'requerida' => true, 'descripcion' => 'Rol existente en la aplicación (ej. trabajador, admin).', 'ejemplos' => ['trabajador', 'admin']],
-                ['titulo' => 'Área', 'requerida' => false, 'descripcion' => 'Área a la que pertenece el usuario.', 'ejemplos' => ['Producción', 'Administración']],
                 ['titulo' => 'Cargo', 'requerida' => false, 'descripcion' => 'Cargo que desempeña.', 'ejemplos' => ['Operaria de confección', 'Analista']],
                 ['titulo' => 'Celular', 'requerida' => false, 'descripcion' => 'Número de contacto del usuario.', 'ejemplos' => ['3001234567', '3109876543']],
                 ['titulo' => 'Sexo', 'requerida' => false, 'descripcion' => 'Masculino, Femenino u Otro.', 'ejemplos' => ['Femenino', 'Masculino']],

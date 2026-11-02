@@ -28,7 +28,7 @@ Route::get('/back-up', function () {
 });
 
 Route::get('/test-email', function () {
-    try {
+    try { 
         \Illuminate\Support\Facades\Mail::raw('Este es un correo de prueba.', function ($message) {
             $message->to('ajelof2@gmail.com')
                 ->subject('Correo de prueba');

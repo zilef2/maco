@@ -126,7 +126,6 @@ return [
 
         //user
         'RequiredFields' => 'Los campos con * son obligatorios',
-        'area' => 'Area',
         'celular' => 'Celular',
         'pgrado' => 'Nivel',
         'identificacion' => 'identificacion',

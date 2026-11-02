@@ -50,10 +50,10 @@ class ExcelUsuariosImportTest extends TestCase
     public function test_importa_los_campos_del_usuario_y_le_asigna_el_rol(): void
     {
         $ruta = $this->archivo(
-            ['Nombre', 'Email', 'Identificación', 'Rol', 'Área', 'Cargo', 'Celular', 'Sexo', 'Fecha nacimiento', 'Salario', 'Fecha de ingreso'],
+            ['Nombre', 'Email', 'Identificación', 'Rol', 'Cargo', 'Celular', 'Sexo', 'Fecha nacimiento', 'Salario', 'Fecha de ingreso'],
             [
-                ['Ana Restrepo', 'ana@macondas.com', '1020304050', 'trabajador', 'Producción', 'Operaria', '3001234567', 'Femenino', '1990-05-14', '1300000', '2024-01-15'],
-                ['Luis Pérez', 'luis@macondas.com', '1098765432', 'admin', 'Administración', 'Analista', '3109876543', 'Masculino', '1985-11-02', '2500000', '2023-08-01'],
+                ['Ana Restrepo', 'ana@macondas.com', '1020304050', 'trabajador', 'Operaria', '3001234567', 'Femenino', '1990-05-14', '1300000', '2024-01-15'],
+                ['Luis Pérez', 'luis@macondas.com', '1098765432', 'admin', 'Analista', '3109876543', 'Masculino', '1985-11-02', '2500000', '2023-08-01'],
             ]
         );
 
@@ -66,7 +66,6 @@ class ExcelUsuariosImportTest extends TestCase
         $ana = User::where('email', 'ana@macondas.com')->firstOrFail();
         $this->assertSame('Ana Restrepo', $ana->name);
         $this->assertSame('1020304050', $ana->identificacion);
-        $this->assertSame('Producción', $ana->area);
         $this->assertSame('Femenino', $ana->sexo);
         $this->assertSame('1990-05-14', $ana->fecha_nacimiento);
         $this->assertTrue(Hash::check('1020304050*', $ana->password));
@@ -82,14 +81,13 @@ class ExcelUsuariosImportTest extends TestCase
             'name' => 'Ana Restrepo',
             'email' => 'ana@macondas.com',
             'identificacion' => '1020304050',
-            'area' => 'Producción',
             'cargo' => 'Operaria',
         ]);
         $usuario->assignRole('trabajador');
 
         $ruta = $this->archivo(
-            ['Nombre', 'Email', 'Identificación', 'Rol', 'Área', 'Cargo'],
-            [['Ana Restrepo', 'ana@macondas.com', '1020304050', 'admin', '', '']]
+            ['Nombre', 'Email', 'Identificación', 'Rol', 'Cargo'],
+            [['Ana Restrepo', 'ana@macondas.com', '1020304050', 'admin', '']]
         );
 
         $excel = app(ExcelUsuariosService::class);
@@ -100,7 +98,6 @@ class ExcelUsuariosImportTest extends TestCase
         $this->assertSame(1, User::count());
 
         $usuario->refresh();
-        $this->assertSame('Producción', $usuario->area);
         $this->assertSame('Operaria', $usuario->cargo);
         $this->assertTrue($usuario->hasRole('admin'));
         $this->assertFalse($usuario->hasRole('trabajador'));

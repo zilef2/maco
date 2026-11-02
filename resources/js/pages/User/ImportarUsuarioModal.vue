@@ -19,7 +19,6 @@ const COLUMNAS_REQUERIDAS = [
 ];
 
 const COLUMNAS_OPCIONALES = [
-    'Área',
     'Cargo',
     'Celular',
     'Sexo',

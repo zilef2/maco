@@ -97,7 +97,6 @@ const titulos = [
     { order: 'email', label: 'Email', type: 'text', required: true },
     { order: 'identificacion', label: 'Identificacion', type: 'text', required: true },
     { order: 'sexo', label: 'Sexo', type: 'foreign',required:true },
-    { order: 'area', label: 'area', type: 'text', required: false },
     { order: 'cargo', label: 'cargo', type: 'text', required: false },
     { order: 'celular', label: 'celular', type: 'text', required: false },
     { order: 'fecha_nacimiento', label: 'Fecha nacimiento', type: 'date', required: false },
@@ -195,12 +194,6 @@ const titulos = [
                                         <ChevronUpDownIcon class="w-4 h-4" />
                                     </div>
                                 </th>
-                                <th class="px-2 py-4 cursor-pointer" v-on:click="order('area')">
-                                    <div class="flex justify-between items-center"> <span>{{ lang().t('app.label.area')
-                                            }}</span>
-                                        <ChevronUpDownIcon class="w-4 h-4" />
-                                    </div>
-                                </th>
                                 <th class="px-2 py-4 cursor-pointer" v-on:click="order('cargo')">
                                     <div class="flex justify-between items-center"> <span>{{ lang().t('app.label.cargo')
                                             }}</span>
@@ -245,7 +238,6 @@ const titulos = [
                                 <td class="whitespace-nowrap text-center py-4 px-2 sm:py-3">{{
                                     CalcularEdad(user.fecha_nacimiento) }}</td>
                                 <td class="whitespace-nowrap py-4 px-2 sm:py-3">{{ user.celular }}</td>
-                                <td class="whitespace-nowrap py-4 px-2 sm:py-3">{{ user.area }}</td>
                                 <td class="whitespace-nowrap py-4 px-2 sm:py-3">{{ user.cargo }}</td>
                                 <td class="whitespace-nowrap py-4 px-2 sm:py-3">
                                     <div class="flex justify-center items-center">

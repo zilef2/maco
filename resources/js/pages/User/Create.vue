@@ -132,15 +132,6 @@ const daynames = ['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom'];
 
             <div>
               <div class="inline-flex">
-                <InputLabel for="area" :value="lang().t('app.label.area')" />
-                <small class="text-lg ml-1 font-bold"> * </small>
-              </div>
-              <TextInput id="area" type="text" class="mt-1 block w-full" v-model="form.area"
-                :placeholder="lang().t('app.placeholder.area')" :error="form.errors.area" />
-              <InputError class="mt-2" :message="form.errors.area" />
-            </div>
-            <div>
-              <div class="inline-flex">
                 <InputLabel for="cargo" :value="lang().t('app.label.cargo')" />
                 <small class="text-lg ml-1 font-bold"> * </small>
               </div>

@@ -58,7 +58,6 @@ watchEffect(() => {
         console.log('sex',props.user)
         form.fecha_nacimiento = props.user?.fecha_nacimiento
         form.celular = props.user?.celular
-        form.area = props.user?.area
         form.cargo = props.user?.cargo
         data.onceTime = false
         // }
@@ -71,7 +70,6 @@ watchEffect(() => {
         form.sexo = null
         form.fecha_nacimiento = null
         form.celular = null
-        form.area = null
         form.cargo = null
     }
 })
