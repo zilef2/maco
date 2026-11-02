@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use Alejo\Notificaciones\Facades\NotificacionesFacade as Notificaciones;
+use App\Services\ExcelImportacionTracker;
 use App\Services\ExcelUsuariosService;
 use App\Services\ImportacionExcelNotificador;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -37,12 +38,14 @@ class ImportarUsuariosJob implements ShouldQueue
         public ?string $emailUsuario,
         public ?string $nombreUsuario,
         public ?int $usuarioId = null,
+        public ?int $importacionId = null,
     ) {
     }
 
     public function handle(
         ExcelUsuariosService $excel,
         ImportacionExcelNotificador $notificador,
+        ExcelImportacionTracker $tracker,
     ): void {
         $ruta = Storage::disk('local')->path($this->rutaRelativa);
 
@@ -57,16 +60,21 @@ class ImportarUsuariosJob implements ShouldQueue
             $registros = $excel->leerRegistros($ruta);
             $resultado = $excel->importar($registros);
 
+            $tracker->completar($this->importacionId, $resultado, count($registros));
+
             $notificador->exito($this->emailUsuario, 'usuarios', $resultado);
             $this->notificarFinalizacion();
 
             Log::info('Importación de usuarios completada', [
+                'importacion_id' => $this->importacionId,
                 'archivo' => $this->nombreArchivo,
                 'usuario_id' => $this->usuarioId,
                 'creados' => $resultado['creados'],
                 'actualizados' => $resultado['actualizados'],
             ]);
         } catch (Throwable $e) {
+            $tracker->fallar($this->importacionId, $e->getMessage());
+
             $notificador->fallo(
                 $this->emailUsuario,
                 $this->nombreUsuario,
@@ -102,5 +110,16 @@ class ImportarUsuariosJob implements ShouldQueue
         } catch (Throwable $e) {
             Log::warning('No se pudo crear la notificación de la importación de usuarios: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Cierra la métrica si el worker marca el job como fallido.
+     */
+    public function failed(?Throwable $e): void
+    {
+        app(ExcelImportacionTracker::class)->fallar(
+            $this->importacionId,
+            $e?->getMessage() ?? 'La importación de usuarios no pudo completarse.',
+        );
     }
 }

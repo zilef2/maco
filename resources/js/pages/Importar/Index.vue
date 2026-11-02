@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import AppLayout from '@/layouts/AppLayout.vue';
 import Breadcrumb from '@/components/Breadcrumb.vue';
-import { Head, router } from '@inertiajs/vue3';
-import { ArchiveBoxIcon, ArrowDownTrayIcon, ArrowPathIcon, ArrowUpTrayIcon, BuildingStorefrontIcon, SquaresPlusIcon, TruckIcon, UsersIcon } from '@heroicons/vue/24/solid';
-import { computed, reactive } from 'vue';
+import TarjetaEntidad from './TarjetaEntidad.vue';
+import { Head, router, usePage } from '@inertiajs/vue3';
+import { ArrowDownTrayIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/vue/24/solid';
+import { computed, reactive, ref } from 'vue';
 
 type EntidadExcel = {
     clave: string;
@@ -12,27 +13,45 @@ type EntidadExcel = {
     tiene_excel: boolean;
 };
 
+type MetricaExcel = {
+    muestras: number;
+    promedio_ms: number | null;
+    ultima_en: string | null;
+    ultimo_archivo: string | null;
+};
+
 const props = defineProps({
     breadcrumbs: Object,
     title: String,
     entidades: Array as () => Array<{
         id: string;
         nombre: string;
+        grupo: string;
         descripcion: string;
         ruta: string;
         columnas_requeridas: string[];
         columnas_opcionales: string[];
         nota: string;
         plantilla: string;
+        metrica: MetricaExcel | null;
     }>,
     entidadesExcel: Array as () => EntidadExcel[],
 });
 
-const guardandoEntidad = reactive<Record<string, boolean>>({});
-
-const totalConExcel = computed(
-    () => (props.entidadesExcel ?? []).filter((entidad) => entidad.tiene_excel).length,
+const metricasPorClave = computed<Record<string, MetricaExcel | null | undefined>>(() =>
+    Object.fromEntries((props.entidades ?? []).map((entidad) => [entidad.id, entidad.metrica])),
 );
+
+/** "1,24 s", "820 ms" o "Sin datos" para el promedio de una entidad. */
+function formatearTiempo(ms?: number | null): string {
+    if (ms === null || ms === undefined) return 'Sin datos';
+    if (ms < 1000) return `${ms} ms`;
+
+    const segundos = ms / 1000;
+    return `${segundos.toFixed(segundos < 10 ? 2 : 1)} s`;
+}
+
+const guardandoEntidad = reactive<Record<string, boolean>>({});
 
 /** Indica si la entidad necesita Excel (marcada) o no (desmarcada). */
 function toggleEntidad(entidad: EntidadExcel) {
@@ -52,108 +71,43 @@ function toggleEntidad(entidad: EntidadExcel) {
     );
 }
 
-const ICONOS: Record<string, any> = {
-    producto: SquaresPlusIcon,
-    material: ArchiveBoxIcon,
-    estado_operacion: ArrowPathIcon,
-    taller: BuildingStorefrontIcon,
-    proveedor: TruckIcon,
-    usuario: UsersIcon,
-};
+const authCan = ((usePage().props as any)?.auth?.can ?? {}) as Record<string, boolean>;
+const esSuper = computed(() => authCan['issuperadmin'] === true);
 
-type EstadoTarjeta = {
-    archivo: File | null;
-    error: string | null;
-    procesando: boolean;
-    progreso: number | null;
-};
+/**
+ * Tarjetas que solo puede ver el super (permiso `issuperadmin`).
+ * "Estados de Operación" y "Usuarios" quedan fuera del grid principal y
+ * se muestran al final de la vista, dentro de la zona plegable
+ * «Exceles opcionales» que hay que abrir con un clic.
+ */
+const CLAVES_OPCIONALES_SUPER = ['estado_operacion', 'usuario'];
 
-const estado = reactive<Record<string, EstadoTarjeta>>({});
+/** Entidades del grid principal (todas menos las opcionales de super). */
+const entidadesPrincipales = computed(() =>
+    (props.entidades ?? []).filter((entidad) => !CLAVES_OPCIONALES_SUPER.includes(entidad.id)),
+);
 
-const estadoDe = (id: string): EstadoTarjeta => {
-    if (!estado[id]) {
-        estado[id] = { archivo: null, error: null, procesando: false, progreso: null };
-    }
-    return estado[id];
-};
+/** Entidades de «Exceles opcionales»: Estados de Operación y Usuarios. */
+const entidadesOpcionalesSuper = computed(() =>
+    (props.entidades ?? []).filter((entidad) => CLAVES_OPCIONALES_SUPER.includes(entidad.id)),
+);
 
-const inputId = (id: string) => `excel-input-${id}`;
+/** Switches de cobertura visibles: todos para super, sin las dos opcionales para el resto. */
+const entidadesExcelVisibles = computed(() => {
+    const todas = props.entidadesExcel ?? [];
+    if (esSuper.value) return todas;
+    return todas.filter((entidad) => !CLAVES_OPCIONALES_SUPER.includes(entidad.clave));
+});
 
-/** Validación en cliente igual que los modales: extensión, MIME, tamaño y firma PK */
-async function validarArchivoExcel(file: File): Promise<string | null> {
-    const ext = file.name.split('.').pop()?.toLowerCase();
-    if (ext !== 'xlsx') return 'Solo se permiten archivos .xlsx';
+/** Contador "con Excel" consistente con lo visible. */
+const totalConExcel = computed(
+    () => entidadesExcelVisibles.value.filter((entidad) => entidad.tiene_excel).length,
+);
 
-    if (file.type !== 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
-        return 'El tipo MIME del archivo no corresponde a un Excel (.xlsx)';
-    }
+const opcionalesAbierto = ref(false);
 
-    if (file.size > 10 * 1024 * 1024) return 'El archivo supera el tamaño máximo de 10 MB';
-
-    const buffer = await file.slice(0, 4).arrayBuffer();
-    const bytes = new Uint8Array(buffer);
-    const esPK = bytes[0] === 0x50 && bytes[1] === 0x4B && bytes[2] === 0x03 && bytes[3] === 0x04;
-    if (!esPK) return 'El archivo no tiene una firma XLSX válida (magic bytes incorrectos)';
-
-    return null;
-}
-
-async function onFileChange(entidad: any, e: Event) {
-    const input = e.target as HTMLInputElement;
-    const st = estadoDe(entidad.id);
-    st.error = null;
-    st.archivo = null;
-
-    const file = input.files?.[0] ?? null;
-    if (!file) return;
-
-    const error = await validarArchivoExcel(file);
-    if (error) {
-        st.error = error;
-        input.value = '';
-        return;
-    }
-    st.archivo = file;
-}
-
-function limpiarInput(id: string) {
-    const input = document.getElementById(inputId(id)) as HTMLInputElement | null;
-    if (input) input.value = '';
-}
-
-function subir(entidad: any) {
-    const st = estadoDe(entidad.id);
-    st.error = null;
-
-    if (!st.archivo) {
-        st.error = 'Selecciona un archivo .xlsx antes de continuar';
-        return;
-    }
-
-    const datos = new FormData();
-    datos.append('archivo', st.archivo);
-
-    st.procesando = true;
-    st.progreso = 0;
-
-    router.post(entidad.ruta, datos, {
-        preserveScroll: true,
-        onProgress: (p: any) => {
-            st.progreso = p?.percentage ?? null;
-        },
-        onSuccess: () => {
-            st.archivo = null;
-            st.progreso = null;
-            limpiarInput(entidad.id);
-        },
-        onError: (errors: Record<string, string>) => {
-            st.error = Object.values(errors).join(' | ') || 'Error al subir el archivo';
-            st.progreso = null;
-        },
-        onFinish: () => {
-            st.procesando = false;
-        },
-    });
+function alternarOpcionales() {
+    opcionalesAbierto.value = !opcionalesAbierto.value;
 }
 </script>
 
@@ -208,13 +162,13 @@ function subir(entidad: any) {
                     </div>
                     <span class="inline-flex shrink-0 items-center gap-2 self-start rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[10px] font-semibold uppercase tracking-widest text-emerald-700">
                         <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
-                        {{ totalConExcel }} de {{ props.entidadesExcel?.length ?? 0 }} con Excel
+                        {{ totalConExcel }} de {{ entidadesExcelVisibles.length }} con Excel
                     </span>
                 </div>
 
                 <div class="grid grid-cols-1 gap-2 p-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
                     <button
-                        v-for="entidad in props.entidadesExcel"
+                        v-for="entidad in entidadesExcelVisibles"
                         :key="entidad.clave"
                         type="button"
                         role="switch"
@@ -235,6 +189,14 @@ function subir(entidad: any) {
                             </span>
                             <span class="block truncate text-[9px] uppercase tracking-[0.16em] text-gray-400">
                                 {{ entidad.grupo }}
+                            </span>
+                            <span
+                                v-if="metricasPorClave[entidad.clave]?.promedio_ms != null"
+                                class="block font-mono text-[9px] text-emerald-700"
+                            >
+                                Prom. {{ formatearTiempo(metricasPorClave[entidad.clave]?.promedio_ms) }}
+                                · {{ metricasPorClave[entidad.clave]?.muestras }}
+                                {{ metricasPorClave[entidad.clave]?.muestras === 1 ? 'carga' : 'cargas' }}
                             </span>
                         </span>
                         <span class="flex shrink-0 items-center gap-2">
@@ -258,118 +220,64 @@ function subir(entidad: any) {
                 </div>
             </div>
 
-            <!-- Tarjetas de entidades -->
+            <!-- Tarjetas de entidades (sin las opcionales de super) -->
             <div class="grid grid-cols-1 gap-4 xl:grid-cols-3">
-                <div
-                    v-for="entidad in props.entidades"
+                <TarjetaEntidad
+                    v-for="entidad in entidadesPrincipales"
                     :key="entidad.id"
-                    class="flex flex-col rounded-xl border border-gray-200 bg-white shadow-sm"
+                    :entidad="entidad"
+                />
+            </div>
+
+            <!-- Exceles opcionales: solo visibles para el super, al final de la vista y tras hacer clic -->
+            <div
+                v-if="esSuper"
+                class="rounded-xl border border-dashed border-gray-300 bg-white/60 shadow-sm"
+            >
+                <button
+                    type="button"
+                    class="flex w-full items-center justify-between gap-3 p-4 text-left transition hover:bg-gray-50"
+                    :aria-expanded="opcionalesAbierto"
+                    aria-controls="exceles-opcionales-panel"
+                    @click="alternarOpcionales"
                 >
-                    <!-- Cabecera de tarjeta -->
-                    <div class="flex items-start justify-between gap-3 p-4 border-b border-gray-100">
-                        <div class="flex items-center gap-3">
-                            <span class="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-gray-950 text-white">
-                                <component :is="ICONOS[entidad.id]" class="h-5 w-5" />
-                            </span>
-                            <div>
-                                <h3 class="font-semibold text-gray-900">{{ entidad.nombre }}</h3>
-                                <p class="text-xs text-gray-500">{{ entidad.descripcion }}</p>
-                            </div>
-                        </div>
-                        <span class="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest text-emerald-700">
-                            <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
-                            Operativo
+                    <span class="flex items-center gap-3">
+                        <span class="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-gray-950 text-white">
+                            <ArrowDownTrayIcon class="h-5 w-5" />
                         </span>
+                        <span>
+                            <span class="block text-sm font-semibold text-gray-900">Exceles opcionales</span>
+                            <span class="block text-xs text-gray-500">
+                                Cargas avanzadas: Estados de Operación y Usuarios. Haz clic para
+                                {{ opcionalesAbierto ? 'ocultarlas' : 'mostrarlas' }}.
+                            </span>
+                        </span>
+                    </span>
+                    <span class="flex items-center gap-2">
+                        <span class="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-widest text-amber-700">
+                            Solo super
+                        </span>
+                        <component
+                            :is="opcionalesAbierto ? ChevronUpIcon : ChevronDownIcon"
+                            class="h-5 w-5 text-gray-400 transition"
+                        />
+                    </span>
+                </button>
+
+                <div id="exceles-opcionales-panel" class="border-t border-gray-200">
+                    <div v-if="opcionalesAbierto" class="grid grid-cols-1 gap-4 p-4 xl:grid-cols-3">
+                        <TarjetaEntidad
+                            v-for="entidad in entidadesOpcionalesSuper"
+                            :key="entidad.id"
+                            :entidad="entidad"
+                        />
                     </div>
-
-                    <!-- Columnas y nota -->
-                    <div class="flex-1 space-y-3 p-4 text-xs">
-                        <div>
-                            <p class="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-400">
-                                Columnas requeridas
-                            </p>
-                            <div class="mt-1.5 flex flex-wrap gap-1">
-                                <code
-                                    v-for="col in entidad.columnas_requeridas"
-                                    :key="col"
-                                    class="rounded border border-red-100 bg-red-50 px-1.5 py-0.5 font-mono text-[10px] text-red-700"
-                                >{{ col }}</code>
-                            </div>
-                        </div>
-                        <div v-if="entidad.columnas_opcionales?.length">
-                            <p class="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-400">
-                                Opcionales
-                            </p>
-                            <div class="mt-1.5 flex flex-wrap gap-1">
-                                <code
-                                    v-for="col in entidad.columnas_opcionales"
-                                    :key="col"
-                                    class="rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 font-mono text-[10px] text-gray-600"
-                                >{{ col }}</code>
-                            </div>
-                        </div>
-                        <p class="text-[11px] leading-relaxed text-gray-500">{{ entidad.nota }}</p>
-                    </div>
-
-                    <!-- Consola de carga -->
-                    <div class="rounded-b-xl border-t border-gray-100 bg-gray-50/60 p-4">
-                        <div
-                            v-if="estadoDe(entidad.id).error"
-                            class="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700"
-                        >
-                            {{ estadoDe(entidad.id).error }}
-                        </div>
-
-                        <div class="mb-3 flex items-center justify-between gap-2">
-                            <p class="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-400">
-                                Formato de carga
-                            </p>
-                            <a
-                                :href="entidad.plantilla"
-                                class="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-gray-700 transition hover:border-gray-400 hover:bg-gray-50"
-                            >
-                                <ArrowDownTrayIcon class="h-3.5 w-3.5" />
-                                Descargar formato .xlsx
-                            </a>
-                        </div>
-
-                        <div class="flex gap-2">
-                            <input
-                                :id="inputId(entidad.id)"
-                                type="file"
-                                accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                                class="hidden"
-                                @change="onFileChange(entidad, $event)"
-                            />
-                            <label
-                                :for="inputId(entidad.id)"
-                                class="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-2 text-xs text-gray-600 transition hover:border-gray-400"
-                            >
-                                <ArrowUpTrayIcon class="h-4 w-4 shrink-0 text-gray-400" />
-                                <span class="truncate font-mono">
-                                    {{ estadoDe(entidad.id).archivo?.name ?? 'Elegir archivo .xlsx' }}
-                                </span>
-                            </label>
-                            <button
-                                type="button"
-                                :disabled="!estadoDe(entidad.id).archivo || estadoDe(entidad.id).procesando"
-                                class="shrink-0 rounded-md bg-gray-950 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
-                                @click="subir(entidad)"
-                            >
-                                {{ estadoDe(entidad.id).procesando ? 'Subiendo…' : 'Subir' }}
-                            </button>
-                        </div>
-
-                        <div
-                            v-if="estadoDe(entidad.id).progreso !== null"
-                            class="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-gray-200"
-                        >
-                            <div
-                                class="h-1.5 rounded-full bg-emerald-500 transition-all duration-300"
-                                :style="{ width: (estadoDe(entidad.id).progreso ?? 0) + '%' }"
-                            />
-                        </div>
-                    </div>
+                    <p
+                        v-else
+                        class="px-4 py-3 text-center font-mono text-[10px] uppercase tracking-[0.2em] text-gray-400"
+                    >
+                        Clic arriba para desplegar las cargas opcionales
+                    </p>
                 </div>
             </div>
 

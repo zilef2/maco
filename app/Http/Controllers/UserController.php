@@ -300,8 +300,9 @@ class UserController extends Controller
                 throw new \RuntimeException(implode(' | ', $problemas));
             }
 
-            // 2. Fila 1 = títulos; el resto datos. Valida columnas y filas.
-            $excel->leerRegistros($archivo->getRealPath());
+            // 2. Fila 1 = títulos. Solo se valida el encabezado aquí; el
+            // contenido completo se valida en el job.
+            $excel->validarEncabezados($archivo->getRealPath());
 
             // 3. Todo válido: guardar y encolar la importación.
             $rutaRelativa = $archivo->store('imports/usuarios', 'local');
@@ -315,14 +316,15 @@ class UserController extends Controller
                 $usuario?->email,
                 $usuario?->name,
                 $usuario?->id,
+                $request->attributes->get('importacion_excel_id'),
             );
 
             Myhelp::EscribirEnLog($this, 'uploadExcel:users ENCOLADO', $nombreArchivo);
 
             return back()->with(
                 'success',
-                'Archivo validado correctamente. La importación se está procesando; '
-                . 'en breve podrás ver la información actualizada.'
+                'Archivo recibido correctamente. La importación se está procesando; '
+                . 'si alguna fila tiene errores recibirás el detalle por correo.'
             );
         } catch (\Throwable $e) {
             if ($rutaRelativa) {

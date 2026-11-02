@@ -1,16 +1,16 @@
 <script setup lang="ts">
-import AppLayout from '@/layouts/AppLayout.vue';
-import { Head, router } from '@inertiajs/vue3';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import AppLayout from '@/layouts/AppLayout.vue';
 import type { BreadcrumbItem } from '@/types';
-import { computed, onMounted, onUnmounted, ref } from 'vue';
-import { use } from 'echarts/core';
+import { Head, router } from '@inertiajs/vue3';
 import { BarChart } from 'echarts/charts';
 import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components';
+import { use } from 'echarts/core';
 import { CanvasRenderer } from 'echarts/renderers';
+import { AlertTriangle, Ban, ChevronLeft, ChevronRight, LogIn, MousePointerClick, TriangleAlert } from 'lucide-vue-next';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import VChart from 'vue-echarts';
-import { AlertTriangle, ChevronLeft, ChevronRight, LogIn, MousePointerClick, TriangleAlert } from 'lucide-vue-next';
 
 use([BarChart, GridComponent, LegendComponent, TooltipComponent, CanvasRenderer]);
 
@@ -19,7 +19,12 @@ interface Paso {
     etiqueta: string;
     ruta: string;
     metodo: string;
+    tipo: 'negocio' | 'escritura' | 'navegacion';
+    entidad: string | null;
+    detalle: string | null;
+    otras: number;
     status: number | null;
+    error: string | null;
     duracion_ms: number | null;
     intervalo_seg: number | null;
     anormal: boolean;
@@ -29,6 +34,8 @@ interface UsuarioRitmo {
     id: number;
     nombre: string;
     acciones: number;
+    negocio: number;
+    fallidas: number;
     conexiones: number;
     anomalias: number;
     promedio_min: number;
@@ -42,11 +49,19 @@ interface UsuarioRitmo {
 const props = defineProps({
     breadcrumbs: Object as () => BreadcrumbItem[],
     title: String,
-    filtro: Object as () => { dias: number; factor: number; umbral: number; usuario: number | null },
-    opciones: Object as () => { dias: number[]; factor: number[]; umbral: number[] },
+    filtro: Object as () => { dias: number; factor: number; umbral: number; foco: string; usuario: number | null },
+    opciones: Object as () => { dias: number[]; factor: number[]; umbral: number[]; focos: Record<string, string> },
     resumen: Object as () => {
-        acciones: number; usuarios: number; conexiones: number; escrituras: number;
-        desde: string; hasta: string; picos: { hora: number; total: number }[]; generado_en: string;
+        acciones: number;
+        usuarios: number;
+        conexiones: number;
+        escrituras: number;
+        negocios: number;
+        fallidas: number;
+        desde: string;
+        hasta: string;
+        picos: { hora: number; total: number }[];
+        generado_en: string;
     },
     porHora: Object as () => { horas: string[]; acciones: number[]; conexiones: number[] },
     usuarios: Array as () => UsuarioRitmo[],
@@ -74,6 +89,17 @@ const duracionLegible = (ms: number | null): string => {
     if (ms === null) return '';
     return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(2)} s`;
 };
+
+/** El punto del camino: verde es acción de negocio, azul escritura, gris navegación. */
+const colorPunto = (paso: Paso): string => {
+    if (paso.anormal) return 'bg-red-500 ring-2 ring-red-500/30';
+    if (paso.tipo === 'negocio') return 'bg-emerald-500';
+    if (paso.tipo === 'escritura') return 'bg-blue-500';
+
+    return 'bg-gray-400';
+};
+
+const pasoFalla = (paso: Paso): boolean => !!paso.error || (paso.status ?? 0) >= 400;
 
 const filtrar = (cambios: Record<string, any>) => {
     const nuevos = { ...props.filtro, ...cambios } as Record<string, any>;
@@ -116,9 +142,7 @@ const anomaliasCamino = computed(() => props.camino.pasos.filter((paso) => paso.
 const anomaliasTotales = computed(() => props.usuarios.reduce((total, usuario) => total + usuario.anomalias, 0));
 
 const picosTexto = computed(() =>
-    props.resumen.picos.length
-        ? props.resumen.picos.map((pico) => `${String(pico.hora).padStart(2, '0')}h`).join(' · ')
-        : 'sin datos',
+    props.resumen.picos.length ? props.resumen.picos.map((pico) => `${String(pico.hora).padStart(2, '0')}h`).join(' · ') : 'sin datos',
 );
 
 const colorTexto = computed(() => (esOscuro.value ? '#cbd5e1' : '#475569'));
@@ -187,35 +211,57 @@ onUnmounted(() => observadorTema?.disconnect());
 
     <AppLayout :breadcrumbs="props.breadcrumbs ?? []">
         <div class="flex h-full flex-1 flex-col gap-4 p-4">
-
             <!-- Encabezado: qué se está midiendo y con qué umbral -->
-            <div class="flex flex-col gap-3 rounded-xl border border-sidebar-border/60 bg-card p-4 md:flex-row md:items-center md:justify-between">
+            <div class="border-sidebar-border/60 bg-card flex flex-col gap-3 rounded-xl border p-4 md:flex-row md:items-center md:justify-between">
                 <div>
-                    <h2 class="text-lg font-semibold text-foreground">Actividad y tiempos entre acciones</h2>
-                    <p class="mt-0.5 text-xs text-muted-foreground">
-                        {{ props.resumen.desde }} → {{ props.resumen.hasta }} · una fila por petición autenticada ·
-                        actualizado {{ props.resumen.generado_en }}
+                    <h2 class="text-foreground text-lg font-semibold">Actividad y tiempos entre acciones</h2>
+                    <p class="text-muted-foreground mt-0.5 text-xs">
+                        {{ props.resumen.desde }} → {{ props.resumen.hasta }} · un paso por petición, con sus acciones de negocio dentro · actualizado
+                        {{ props.resumen.generado_en }}
                     </p>
                 </div>
                 <div class="flex flex-wrap items-center gap-2">
-                    <div class="flex rounded-lg border border-sidebar-border/60 p-0.5">
-                        <button v-for="dia in props.opciones.dias" :key="dia" @click="filtrar({ dias: dia })"
+                    <div class="border-sidebar-border/60 flex rounded-lg border p-0.5">
+                        <button
+                            v-for="(texto, valor) in props.opciones.focos"
+                            :key="valor"
+                            @click="filtrar({ foco: valor })"
                             class="cursor-pointer rounded-md px-3 py-1 text-xs font-medium transition-colors"
-                            :class="props.filtro.dias === dia ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'">
+                            :class="
+                                props.filtro.foco === valor ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'
+                            "
+                        >
+                            {{ texto }}
+                        </button>
+                    </div>
+                    <div class="border-sidebar-border/60 flex rounded-lg border p-0.5">
+                        <button
+                            v-for="dia in props.opciones.dias"
+                            :key="dia"
+                            @click="filtrar({ dias: dia })"
+                            class="cursor-pointer rounded-md px-3 py-1 text-xs font-medium transition-colors"
+                            :class="props.filtro.dias === dia ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'"
+                        >
                             {{ dia }} días
                         </button>
                     </div>
-                    <label class="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <label class="text-muted-foreground flex items-center gap-1.5 text-[11px]">
                         Ritmo
-                        <select :value="props.filtro.factor" @change="filtrar({ factor: Number(($event.target as HTMLSelectElement).value) })"
-                            class="h-8 rounded-md border border-sidebar-border/60 bg-background px-2 text-xs text-foreground">
+                        <select
+                            :value="props.filtro.factor"
+                            @change="filtrar({ factor: Number(($event.target as HTMLSelectElement).value) })"
+                            class="border-sidebar-border/60 bg-background text-foreground h-8 rounded-md border px-2 text-xs"
+                        >
                             <option v-for="factor in props.opciones.factor" :key="factor" :value="factor">{{ factor }}×</option>
                         </select>
                     </label>
-                    <label class="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <label class="text-muted-foreground flex items-center gap-1.5 text-[11px]">
                         Piso
-                        <select :value="props.filtro.umbral" @change="filtrar({ umbral: Number(($event.target as HTMLSelectElement).value) })"
-                            class="h-8 rounded-md border border-sidebar-border/60 bg-background px-2 text-xs text-foreground">
+                        <select
+                            :value="props.filtro.umbral"
+                            @change="filtrar({ umbral: Number(($event.target as HTMLSelectElement).value) })"
+                            class="border-sidebar-border/60 bg-background text-foreground h-8 rounded-md border px-2 text-xs"
+                        >
                             <option v-for="umbral in props.opciones.umbral" :key="umbral" :value="umbral">{{ umbral }} min</option>
                         </select>
                     </label>
@@ -223,13 +269,33 @@ onUnmounted(() => observadorTema?.disconnect());
             </div>
 
             <!-- KPIs -->
-            <div class="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <div class="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
                 <Card>
                     <CardContent class="flex items-center gap-3 p-4">
                         <MousePointerClick class="h-5 w-5 text-emerald-600" />
                         <div>
-                            <p class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Acciones</p>
-                            <p class="text-xl font-bold text-foreground">{{ numero(props.resumen.acciones) }}</p>
+                            <p class="text-muted-foreground text-[10px] font-semibold tracking-wider uppercase">Pasos</p>
+                            <p class="text-foreground text-xl font-bold">{{ numero(props.resumen.acciones) }}</p>
+                        </div>
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardContent class="flex items-center gap-3 p-4">
+                        <MousePointerClick class="h-5 w-5 text-teal-600" />
+                        <div>
+                            <p class="text-muted-foreground text-[10px] font-semibold tracking-wider uppercase">Acciones de negocio</p>
+                            <p class="text-foreground text-xl font-bold">{{ numero(props.resumen.negocios) }}</p>
+                        </div>
+                    </CardContent>
+                </Card>
+                <Card :class="props.resumen.fallidas ? 'border-amber-500/50' : ''">
+                    <CardContent class="flex items-center gap-3 p-4">
+                        <Ban :class="props.resumen.fallidas ? 'text-amber-600' : 'text-muted-foreground'" class="h-5 w-5" />
+                        <div>
+                            <p class="text-muted-foreground text-[10px] font-semibold tracking-wider uppercase">Rechazadas</p>
+                            <p class="text-xl font-bold" :class="props.resumen.fallidas ? 'text-amber-600 dark:text-amber-400' : 'text-foreground'">
+                                {{ numero(props.resumen.fallidas) }}
+                            </p>
                         </div>
                     </CardContent>
                 </Card>
@@ -237,19 +303,21 @@ onUnmounted(() => observadorTema?.disconnect());
                     <CardContent class="flex items-center gap-3 p-4">
                         <LogIn class="h-5 w-5 text-blue-600" />
                         <div>
-                            <p class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Conexiones</p>
-                            <p class="text-xl font-bold text-foreground">{{ numero(props.resumen.conexiones) }}</p>
+                            <p class="text-muted-foreground text-[10px] font-semibold tracking-wider uppercase">Conexiones</p>
+                            <p class="text-foreground text-xl font-bold">{{ numero(props.resumen.conexiones) }}</p>
                         </div>
                     </CardContent>
                 </Card>
                 <Card>
                     <CardContent class="flex items-center gap-3 p-4">
-                        <div class="grid h-5 w-5 place-items-center rounded bg-gray-950 text-[10px] font-bold text-white dark:bg-white dark:text-gray-950">
+                        <div
+                            class="grid h-5 w-5 place-items-center rounded bg-gray-950 text-[10px] font-bold text-white dark:bg-white dark:text-gray-950"
+                        >
                             U
                         </div>
                         <div>
-                            <p class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Usuarios activos</p>
-                            <p class="text-xl font-bold text-foreground">{{ numero(props.resumen.usuarios) }}</p>
+                            <p class="text-muted-foreground text-[10px] font-semibold tracking-wider uppercase">Usuarios activos</p>
+                            <p class="text-foreground text-xl font-bold">{{ numero(props.resumen.usuarios) }}</p>
                         </div>
                     </CardContent>
                 </Card>
@@ -257,7 +325,7 @@ onUnmounted(() => observadorTema?.disconnect());
                     <CardContent class="flex items-center gap-3 p-4">
                         <AlertTriangle :class="anomaliasTotales ? 'text-red-500' : 'text-muted-foreground'" class="h-5 w-5" />
                         <div>
-                            <p class="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Saltos anormales</p>
+                            <p class="text-muted-foreground text-[10px] font-semibold tracking-wider uppercase">Saltos anormales</p>
                             <p class="text-xl font-bold" :class="anomaliasTotales ? 'text-red-600 dark:text-red-400' : 'text-foreground'">
                                 {{ numero(anomaliasTotales) }}
                             </p>
@@ -266,11 +334,10 @@ onUnmounted(() => observadorTema?.disconnect());
                 </Card>
             </div>
 
-            <div v-if="props.resumen.acciones === 0"
-                class="rounded-xl border border-amber-500/40 bg-amber-500/5 p-4 text-sm text-foreground">
-                Todavía no hay acciones registradas en el período. La bitácora empieza a llenarse con la navegación
-                posterior a la instalación del registro: el archivo laravel.log no servía como fuente porque las líneas
-                de admin y superadmin no guardaban la acción del controlador, ni el usuario, ni la ruta.
+            <div v-if="props.resumen.acciones === 0" class="text-foreground rounded-xl border border-amber-500/40 bg-amber-500/5 p-4 text-sm">
+                No hay pasos en el período con este foco. La bitácora registra una fila por petición y una por cada acción de negocio que hace el
+                controlador dentro de ella (guardar, cambiar el estado de una OP, cargar un Excel, un intento rechazado), así que con «Solo acciones»
+                basta que alguien guarde algo para que aparezcan.
             </div>
 
             <!-- Horas + camino -->
@@ -278,14 +345,15 @@ onUnmounted(() => observadorTema?.disconnect());
                 <Card class="xl:col-span-1">
                     <CardHeader>
                         <CardTitle class="text-sm">Actividad por hora del día</CardTitle>
-                        <p class="text-xs text-muted-foreground">
-                            Barras verdes: todas las acciones. Azules: solo inicios de sesión.
-                            Más movimiento: {{ picosTexto }} · {{ numero(props.resumen.escrituras) }} acciones fueron escrituras.
+                        <p class="text-muted-foreground text-xs">
+                            Barras verdes: todos los pasos. Azules: solo inicios de sesión. Más movimiento: {{ picosTexto }} ·
+                            {{ numero(props.resumen.escrituras) }} pasos escribieron algo ({{ numero(props.resumen.negocios) }} con acción de
+                            negocio).
                         </p>
                     </CardHeader>
                     <CardContent>
                         <VChart v-if="props.resumen.acciones > 0" :option="opcionesHoras" autoresize class="h-72 w-full" />
-                        <p v-else class="py-10 text-center text-xs text-muted-foreground">Sin movimiento en el período</p>
+                        <p v-else class="text-muted-foreground py-10 text-center text-xs">Sin movimiento en el período</p>
                     </CardContent>
                 </Card>
 
@@ -293,19 +361,20 @@ onUnmounted(() => observadorTema?.disconnect());
                 <Card class="xl:col-span-2">
                     <CardHeader class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                         <div>
-                            <CardTitle class="text-sm">
-                                Camino de {{ props.camino.usuario ?? 'sin usuario' }}
-                            </CardTitle>
-                            <p class="text-xs text-muted-foreground">
-                                Salto anormal cuando supera {{ props.camino.umbral_min }} min
-                                ({{ props.filtro.factor }}× la mediana de este usuario, con piso de {{ props.filtro.umbral }} min).
+                            <CardTitle class="text-sm"> Camino de {{ props.camino.usuario ?? 'sin usuario' }} </CardTitle>
+                            <p class="text-muted-foreground text-xs">
+                                Salto anormal cuando supera {{ props.camino.umbral_min }} min ({{ props.filtro.factor }}× la mediana de este usuario,
+                                con piso de {{ props.filtro.umbral }} min). Foco «{{ props.opciones.focos[props.filtro.foco] }}».
                                 <span :class="anomaliasCamino ? 'font-semibold text-red-600' : ''">
                                     {{ anomaliasCamino }} salto(s) anormal(es).
                                 </span>
                             </p>
                         </div>
-                        <select :value="seleccionUsuario" @change="cambiarUsuario"
-                            class="h-8 rounded-md border border-sidebar-border/60 bg-background px-2 text-xs text-foreground">
+                        <select
+                            :value="seleccionUsuario"
+                            @change="cambiarUsuario"
+                            class="border-sidebar-border/60 bg-background text-foreground h-8 rounded-md border px-2 text-xs"
+                        >
                             <option value="">El más activo</option>
                             <option v-for="usuario in props.usuarios" :key="usuario.id" :value="usuario.id">
                                 {{ usuario.nombre }}
@@ -313,62 +382,90 @@ onUnmounted(() => observadorTema?.disconnect());
                         </select>
                     </CardHeader>
                     <CardContent>
-                        <p v-if="props.camino.ocultos > 0" class="mb-2 text-[11px] text-muted-foreground">
+                        <p v-if="props.camino.ocultos > 0" class="text-muted-foreground mb-2 text-[11px]">
                             Se omiten {{ props.camino.ocultos }} pasos más antiguos de {{ props.camino.pasos.length }} mostrados.
                         </p>
 
                         <div class="max-h-[560px] space-y-3 overflow-y-auto pr-1">
                             <div v-for="grupo in pasosPorDia" :key="grupo.dia">
-                                <p class="mb-1 font-mono text-[10px] uppercase tracking-widest text-muted-foreground">
-                                    Día {{ grupo.dia }}
-                                </p>
+                                <p class="text-muted-foreground mb-1 font-mono text-[10px] tracking-widest uppercase">Día {{ grupo.dia }}</p>
 
                                 <div v-for="(paso, indice) in grupo.pasos" :key="paso.hora + indice">
                                     <!-- El intervalo vive entre pasos: así se ve el tiempo perdido -->
                                     <div v-if="paso.intervalo_seg !== null" class="flex items-center gap-2 py-0.5 pl-3">
                                         <span class="h-5 w-px" :class="paso.anormal ? 'bg-red-500' : 'bg-sidebar-border'" />
-                                        <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold"
-                                            :class="paso.anormal
-                                                ? 'bg-red-500/15 text-red-600 ring-1 ring-red-500/40 dark:text-red-400'
-                                                : 'bg-muted text-muted-foreground'">
+                                        <span
+                                            class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                                            :class="
+                                                paso.anormal
+                                                    ? 'bg-red-500/15 text-red-600 ring-1 ring-red-500/40 dark:text-red-400'
+                                                    : 'bg-muted text-muted-foreground'
+                                            "
+                                        >
                                             <TriangleAlert v-if="paso.anormal" class="h-3 w-3" />
                                             {{ tiempoLegible(paso.intervalo_seg) }}
                                         </span>
                                     </div>
 
-                                    <div class="flex items-center gap-2 rounded-md border px-2.5 py-1.5"
-                                        :class="paso.anormal
-                                            ? 'border-red-500/50 bg-red-500/5'
-                                            : 'border-sidebar-border/50 bg-background'">
-                                        <span class="h-2.5 w-2.5 shrink-0 rounded-full"
-                                            :class="[
-                                                paso.anormal ? 'bg-red-500 ring-2 ring-red-500/30' : 'bg-emerald-500',
-                                                ['POST', 'PUT', 'PATCH', 'DELETE'].includes(paso.metodo) && !paso.anormal ? 'bg-blue-500' : '',
-                                            ]" />
-                                        <span class="w-[92px] shrink-0 font-mono text-[11px] text-muted-foreground">
-                                            {{ paso.hora.slice(6) }}
-                                        </span>
-                                        <span class="min-w-0 flex-1 truncate text-xs font-medium text-foreground">
-                                            {{ paso.etiqueta }}
-                                        </span>
-                                        <span class="hidden shrink-0 font-mono text-[10px] text-muted-foreground lg:inline">
-                                            /{{ paso.ruta }}
-                                        </span>
-                                        <span class="shrink-0 rounded border border-sidebar-border/60 px-1.5 py-0.5 font-mono text-[9px] uppercase text-muted-foreground">
-                                            {{ paso.metodo }}
-                                        </span>
-                                        <span v-if="paso.status && paso.status >= 400"
-                                            class="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 font-mono text-[9px] text-amber-700">
-                                            {{ paso.status }}
-                                        </span>
-                                        <span class="w-[52px] shrink-0 text-right font-mono text-[10px] text-muted-foreground">
-                                            {{ duracionLegible(paso.duracion_ms) }}
-                                        </span>
+                                    <div
+                                        class="flex items-start gap-2 rounded-md border px-2.5 py-1.5"
+                                        :class="paso.anormal ? 'border-red-500/50 bg-red-500/5' : 'border-sidebar-border/50 bg-background'"
+                                    >
+                                        <span class="mt-1 h-2.5 w-2.5 shrink-0 rounded-full" :class="colorPunto(paso)" />
+
+                                        <div class="min-w-0 flex-1">
+                                            <div class="flex items-center gap-2">
+                                                <span class="text-muted-foreground w-[80px] shrink-0 font-mono text-[11px]">
+                                                    {{ paso.hora.slice(6) }}
+                                                </span>
+                                                <span class="text-foreground min-w-0 truncate text-xs font-medium">
+                                                    {{ paso.etiqueta }}
+                                                </span>
+                                                <span
+                                                    v-if="paso.otras"
+                                                    class="shrink-0 rounded bg-emerald-500/15 px-1.5 py-0.5 font-mono text-[9px] font-semibold text-emerald-700 dark:text-emerald-400"
+                                                    :title="`${paso.otras} acción(es) de negocio más en la misma petición`"
+                                                >
+                                                    +{{ paso.otras }}
+                                                </span>
+                                                <span
+                                                    v-if="paso.entidad"
+                                                    class="text-muted-foreground hidden shrink-0 font-mono text-[10px] sm:inline"
+                                                >
+                                                    {{ paso.entidad }}
+                                                </span>
+                                                <span class="text-muted-foreground hidden min-w-0 flex-1 truncate font-mono text-[10px] lg:inline">
+                                                    /{{ paso.ruta }}
+                                                </span>
+                                                <span
+                                                    class="border-sidebar-border/60 text-muted-foreground shrink-0 rounded border px-1.5 py-0.5 font-mono text-[9px] uppercase"
+                                                >
+                                                    {{ paso.metodo }}
+                                                </span>
+                                                <span
+                                                    v-if="pasoFalla(paso)"
+                                                    class="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 font-mono text-[9px] text-amber-700 dark:text-amber-400"
+                                                >
+                                                    {{ paso.status ?? 'rechazada' }}
+                                                </span>
+                                                <span class="text-muted-foreground w-[52px] shrink-0 text-right font-mono text-[10px]">
+                                                    {{ duracionLegible(paso.duracion_ms) }}
+                                                </span>
+                                            </div>
+
+                                            <p
+                                                v-if="paso.error || paso.detalle"
+                                                class="mt-1 truncate pl-[88px] text-[11px]"
+                                                :class="paso.error ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'"
+                                            >
+                                                {{ paso.error ?? paso.detalle }}
+                                            </p>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
 
-                            <p v-if="!props.camino.pasos.length" class="py-10 text-center text-xs text-muted-foreground">
+                            <p v-if="!props.camino.pasos.length" class="text-muted-foreground py-10 text-center text-xs">
                                 Este usuario no tiene acciones en el período
                             </p>
                         </div>
@@ -380,16 +477,18 @@ onUnmounted(() => observadorTema?.disconnect());
             <Card>
                 <CardHeader>
                     <CardTitle class="text-sm">Ritmo por usuario</CardTitle>
-                    <p class="text-xs text-muted-foreground">
+                    <p class="text-muted-foreground text-xs">
                         Promedio y mediana de minutos entre acción y acción. Haz clic en una fila para ver su camino.
                     </p>
                 </CardHeader>
                 <CardContent class="overflow-x-auto">
                     <table class="w-full text-xs">
                         <thead>
-                            <tr class="border-b border-sidebar-border/60 text-left text-[10px] uppercase tracking-wider text-muted-foreground">
+                            <tr class="border-sidebar-border/60 text-muted-foreground border-b text-left text-[10px] tracking-wider uppercase">
                                 <th class="py-2 pr-3 font-semibold">Usuario</th>
-                                <th class="py-2 pr-3 text-right font-semibold">Acciones</th>
+                                <th class="py-2 pr-3 text-right font-semibold">Pasos</th>
+                                <th class="py-2 pr-3 text-right font-semibold">Negocio</th>
+                                <th class="py-2 pr-3 text-right font-semibold">Rechazadas</th>
                                 <th class="py-2 pr-3 text-right font-semibold">Conexiones</th>
                                 <th class="py-2 pr-3 text-right font-semibold">Promedio</th>
                                 <th class="py-2 pr-3 text-right font-semibold">Mediana</th>
@@ -400,29 +499,39 @@ onUnmounted(() => observadorTema?.disconnect());
                             </tr>
                         </thead>
                         <tbody>
-                            <tr v-for="usuario in props.usuarios" :key="usuario.id"
+                            <tr
+                                v-for="usuario in props.usuarios"
+                                :key="usuario.id"
                                 @click="filtrar({ usuario: usuario.id })"
-                                class="cursor-pointer border-b border-sidebar-border/30 transition-colors hover:bg-muted/50"
-                                :class="props.filtro.usuario === usuario.id ? 'bg-muted/70' : ''">
-                                <td class="py-2 pr-3 font-medium text-foreground">{{ usuario.nombre }}</td>
-                                <td class="py-2 pr-3 text-right font-mono text-foreground">{{ numero(usuario.acciones) }}</td>
-                                <td class="py-2 pr-3 text-right font-mono text-muted-foreground">{{ numero(usuario.conexiones) }}</td>
-                                <td class="py-2 pr-3 text-right font-mono text-foreground">{{ usuario.promedio_min }} min</td>
-                                <td class="py-2 pr-3 text-right font-mono text-muted-foreground">{{ usuario.mediana_min }} min</td>
-                                <td class="py-2 pr-3 text-right font-mono text-muted-foreground">{{ usuario.umbral_min }} min</td>
-                                <td class="py-2 pr-3 text-right font-mono text-muted-foreground">{{ usuario.max_min }} min</td>
+                                class="border-sidebar-border/30 hover:bg-muted/50 cursor-pointer border-b transition-colors"
+                                :class="props.filtro.usuario === usuario.id ? 'bg-muted/70' : ''"
+                            >
+                                <td class="text-foreground py-2 pr-3 font-medium">{{ usuario.nombre }}</td>
+                                <td class="text-foreground py-2 pr-3 text-right font-mono">{{ numero(usuario.acciones) }}</td>
+                                <td class="py-2 pr-3 text-right font-mono text-emerald-600 dark:text-emerald-400">{{ numero(usuario.negocio) }}</td>
+                                <td
+                                    class="py-2 pr-3 text-right font-mono"
+                                    :class="usuario.fallidas ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground'"
+                                >
+                                    {{ numero(usuario.fallidas) }}
+                                </td>
+                                <td class="text-muted-foreground py-2 pr-3 text-right font-mono">{{ numero(usuario.conexiones) }}</td>
+                                <td class="text-foreground py-2 pr-3 text-right font-mono">{{ usuario.promedio_min }} min</td>
+                                <td class="text-muted-foreground py-2 pr-3 text-right font-mono">{{ usuario.mediana_min }} min</td>
+                                <td class="text-muted-foreground py-2 pr-3 text-right font-mono">{{ usuario.umbral_min }} min</td>
+                                <td class="text-muted-foreground py-2 pr-3 text-right font-mono">{{ usuario.max_min }} min</td>
                                 <td class="py-2 pr-3 text-right">
-                                    <span class="rounded-full px-2 py-0.5 font-mono text-[11px] font-semibold"
-                                        :class="usuario.anomalias ? 'bg-red-500/15 text-red-600 dark:text-red-400' : 'bg-muted text-muted-foreground'">
+                                    <span
+                                        class="rounded-full px-2 py-0.5 font-mono text-[11px] font-semibold"
+                                        :class="usuario.anomalias ? 'bg-red-500/15 text-red-600 dark:text-red-400' : 'bg-muted text-muted-foreground'"
+                                    >
                                         {{ usuario.anomalias }}
                                     </span>
                                 </td>
-                                <td class="py-2 font-mono text-[11px] text-muted-foreground">
-                                    {{ usuario.ultima }} · {{ usuario.ultima_accion }}
-                                </td>
+                                <td class="text-muted-foreground py-2 font-mono text-[11px]">{{ usuario.ultima }} · {{ usuario.ultima_accion }}</td>
                             </tr>
                             <tr v-if="!props.usuarios.length">
-                                <td colspan="9" class="py-8 text-center text-muted-foreground">Sin usuarios en el período</td>
+                                <td colspan="11" class="text-muted-foreground py-8 text-center">Sin usuarios en el período</td>
                             </tr>
                         </tbody>
                     </table>
@@ -434,22 +543,25 @@ onUnmounted(() => observadorTema?.disconnect());
                 <Card class="xl:col-span-1">
                     <CardHeader>
                         <CardTitle class="text-sm">Saltos más frecuentes</CardTitle>
-                        <p class="text-xs text-muted-foreground">De una acción a la siguiente, con su tiempo promedio.</p>
+                        <p class="text-muted-foreground text-xs">De una acción a la siguiente, con su tiempo promedio.</p>
                     </CardHeader>
                     <CardContent class="space-y-1.5">
-                        <div v-for="par in props.transiciones" :key="par.de + par.a"
-                            class="flex items-center justify-between gap-2 rounded-md border border-sidebar-border/40 px-2.5 py-1.5 text-[11px]">
-                            <span class="min-w-0 truncate text-foreground">
+                        <div
+                            v-for="par in props.transiciones"
+                            :key="par.de + par.a"
+                            class="border-sidebar-border/40 flex items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-[11px]"
+                        >
+                            <span class="text-foreground min-w-0 truncate">
                                 {{ par.de }} <span class="text-muted-foreground">→</span> {{ par.a }}
                             </span>
-                            <span class="shrink-0 font-mono text-muted-foreground">
+                            <span class="text-muted-foreground shrink-0 font-mono">
                                 {{ par.veces }}× · {{ par.promedio_min }} min
                                 <span v-if="par.anormales" class="ml-1 rounded bg-red-500/15 px-1 font-semibold text-red-600 dark:text-red-400">
                                     {{ par.anormales }}
                                 </span>
                             </span>
                         </div>
-                        <p v-if="!props.transiciones.length" class="py-8 text-center text-xs text-muted-foreground">
+                        <p v-if="!props.transiciones.length" class="text-muted-foreground py-8 text-center text-xs">
                             Falta secuencia para calcular saltos
                         </p>
                     </CardContent>
@@ -460,25 +572,35 @@ onUnmounted(() => observadorTema?.disconnect());
                     <CardHeader class="flex flex-row items-start justify-between gap-3">
                         <div>
                             <CardTitle class="text-sm">Bitácora</CardTitle>
-                            <p class="text-xs text-muted-foreground">
+                            <p class="text-muted-foreground text-xs">
                                 {{ numero(props.bitacora.total) }} filas · página {{ props.bitacora.current_page }} de {{ props.bitacora.last_page }}
                             </p>
                         </div>
                         <div class="flex gap-1">
-                            <Button variant="ghost" size="icon" class="h-8 w-8" :disabled="!props.bitacora.prev_page_url"
-                                @click="irPagina(props.bitacora.prev_page_url)">
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                class="h-8 w-8"
+                                :disabled="!props.bitacora.prev_page_url"
+                                @click="irPagina(props.bitacora.prev_page_url)"
+                            >
                                 <ChevronLeft class="h-4 w-4" />
                             </Button>
-                            <Button variant="ghost" size="icon" class="h-8 w-8" :disabled="!props.bitacora.next_page_url"
-                                @click="irPagina(props.bitacora.next_page_url)">
+                            <Button
+                                variant="ghost"
+                                size="icon"
+                                class="h-8 w-8"
+                                :disabled="!props.bitacora.next_page_url"
+                                @click="irPagina(props.bitacora.next_page_url)"
+                            >
                                 <ChevronRight class="h-4 w-4" />
                             </Button>
                         </div>
                     </CardHeader>
                     <CardContent class="max-h-[420px] overflow-auto">
                         <table class="w-full text-[11px]">
-                            <thead class="sticky top-0 bg-card">
-                                <tr class="border-b border-sidebar-border/60 text-left text-[10px] uppercase tracking-wider text-muted-foreground">
+                            <thead class="bg-card sticky top-0">
+                                <tr class="border-sidebar-border/60 text-muted-foreground border-b text-left text-[10px] tracking-wider uppercase">
                                     <th class="py-2 pr-3 font-semibold">Cuándo</th>
                                     <th class="py-2 pr-3 font-semibold">Usuario</th>
                                     <th class="py-2 pr-3 font-semibold">Acción</th>
@@ -488,20 +610,38 @@ onUnmounted(() => observadorTema?.disconnect());
                                 </tr>
                             </thead>
                             <tbody>
-                                <tr v-for="fila in props.bitacora.data" :key="fila.id" class="border-b border-sidebar-border/30">
-                                    <td class="py-1.5 pr-3 font-mono text-muted-foreground">{{ fila.cuando }}</td>
-                                    <td class="py-1.5 pr-3 truncate text-foreground">{{ fila.usuario }}</td>
+                                <tr v-for="fila in props.bitacora.data" :key="fila.id" class="border-sidebar-border/30 border-b">
+                                    <td class="text-muted-foreground py-1.5 pr-3 font-mono">{{ fila.cuando }}</td>
+                                    <td class="text-foreground truncate py-1.5 pr-3">{{ fila.usuario }}</td>
                                     <td class="py-1.5 pr-3">
+                                        <span
+                                            class="mr-1.5 rounded px-1.5 py-0.5 font-mono text-[9px] uppercase"
+                                            :class="
+                                                fila.tipo === 'accion'
+                                                    ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400'
+                                                    : 'bg-muted text-muted-foreground'
+                                            "
+                                        >
+                                            {{ fila.tipo === 'accion' ? 'acción' : 'petición' }}
+                                        </span>
                                         <span :class="fila.esEscritura ? 'font-semibold text-blue-600 dark:text-blue-400' : 'text-foreground'">
                                             {{ fila.etiqueta }}
                                         </span>
+                                        <span v-if="fila.entidad" class="text-muted-foreground ml-1 font-mono text-[10px]">{{ fila.entidad }}</span>
+                                        <p
+                                            v-if="fila.error || fila.detalle"
+                                            class="truncate text-[10px]"
+                                            :class="fila.error ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'"
+                                        >
+                                            {{ fila.error ?? fila.detalle }}
+                                        </p>
                                     </td>
-                                    <td class="py-1.5 pr-3 font-mono text-muted-foreground">/{{ fila.ruta }}</td>
-                                    <td class="py-1.5 pr-3 font-mono text-muted-foreground">{{ fila.metodo }}</td>
-                                    <td class="py-1.5 text-right font-mono text-muted-foreground">{{ fila.duracion_ms }}</td>
+                                    <td class="text-muted-foreground py-1.5 pr-3 font-mono">/{{ fila.ruta }}</td>
+                                    <td class="text-muted-foreground py-1.5 pr-3 font-mono">{{ fila.metodo }}</td>
+                                    <td class="text-muted-foreground py-1.5 text-right font-mono">{{ fila.duracion_ms }}</td>
                                 </tr>
                                 <tr v-if="!props.bitacora.data?.length">
-                                    <td colspan="6" class="py-8 text-center text-muted-foreground">Sin filas registradas</td>
+                                    <td colspan="6" class="text-muted-foreground py-8 text-center">Sin filas registradas</td>
                                 </tr>
                             </tbody>
                         </table>

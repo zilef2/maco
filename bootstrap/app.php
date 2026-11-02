@@ -20,6 +20,7 @@ return Application::configure(basePath: dirname(__DIR__))
             HandleAppearance::class,
             HandleInertiaRequests::class,
             \App\Http\Middleware\RegistrarActividad::class,
+            \App\Http\Middleware\RegistrarImportacionExcel::class,
             AddLinkHeadersForPreloadedAssets::class,
         ]);
 

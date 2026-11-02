@@ -68,11 +68,11 @@ const navDropdown: NavGroup[] = [
         label: 'Producción',
         icon: Factory,
         items: [
-            {
-                title: 'ProcesoExterno',
-                href: '/ProcesoExterno',
-                icon: ArrowLeftRight,
-            },
+            // {
+            //     title: 'ProcesoExterno',
+            //     href: '/ProcesoExterno',
+            //     icon: ArrowLeftRight,
+            // },
             {
                 title: 'RecepcionCalidad',
                 href: '/RecepcionCalidad',
@@ -219,16 +219,16 @@ const navDropdown: NavGroup[] = [
                 href: '/Merma',
                 icon: LayoutGrid,
             },
-            {
-                title: 'FichaEnsamble',
-                href: '/FichaEnsamble',
-                icon: FileSpreadsheet,
-            },
-            {
-                title: 'KitProceso',
-                href: '/KitProceso',
-                icon: PackageCheck,
-            },
+            // {
+            //     title: 'FichaEnsamble',
+            //     href: '/FichaEnsamble',
+            //     icon: FileSpreadsheet,
+            // },
+            // {
+            //     title: 'KitProceso',
+            //     href: '/KitProceso',
+            //     icon: PackageCheck,
+            // },
         ],
     },
 ];

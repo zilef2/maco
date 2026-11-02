@@ -80,7 +80,11 @@ class ProveedorController extends Controller
         $rutaGuardada = null;
 
         try {
-            $rutaGuardada = $excel->procesarSubida($archivo, $usuario);
+            $rutaGuardada = $excel->procesarSubida(
+                $archivo,
+                $usuario,
+                $request->attributes->get('importacion_excel_id'),
+            );
         } catch (\Throwable $e) {
             if ($rutaGuardada !== null) {
                 \Illuminate\Support\Facades\Storage::disk('local')->delete($rutaGuardada);
@@ -94,8 +98,8 @@ class ProveedorController extends Controller
 
         return back()->with(
             'success',
-            'Archivo validado correctamente. La importación se está procesando; '
-            . 'en breve podrás ver la información actualizada.'
+            'Archivo recibido correctamente. La importación se está procesando; '
+            . 'si alguna fila tiene errores recibirás el detalle por correo.'
         );
     }
 }

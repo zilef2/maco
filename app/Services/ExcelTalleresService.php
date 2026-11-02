@@ -3,8 +3,8 @@
 namespace App\Services;
 
 use App\Models\Taller;
+use App\Services\Concerns\LeeExcelRapido;
 use Illuminate\Support\Facades\DB;
-use PhpOffice\PhpSpreadsheet\IOFactory;
 use RuntimeException;
 
 /**
@@ -15,6 +15,8 @@ use RuntimeException;
  */
 class ExcelTalleresService
 {
+    use LeeExcelRapido;
+
     public const MAX_BYTES = ExcelSecurityScanner::MAX_BYTES;
 
     /** Columnas obligatorias y permitidas del archivo. */
@@ -38,6 +40,16 @@ class ExcelTalleresService
     }
 
     /**
+     * Valida únicamente la fila de títulos en la petición de subida.
+     *
+     * @throws RuntimeException cuando el archivo no cumple el formato
+     */
+    public function validarEncabezados(string $ruta): void
+    {
+        $this->columnasDesdeTitulos($this->leerFilaTitulos($ruta));
+    }
+
+    /**
      * Lee la primera hoja, valida los títulos (fila 1) y todas las filas de
      * datos. Devuelve los registros listos para importar.
      *
@@ -47,53 +59,13 @@ class ExcelTalleresService
      */
     public function leerRegistros(string $ruta): array
     {
-        try {
-            $spreadsheet = IOFactory::load($ruta);
-        } catch (\Throwable $e) {
-            throw new RuntimeException('No se pudo leer el archivo Excel: ' . $e->getMessage(), 0, $e);
-        }
-
-        $filas = $spreadsheet->getActiveSheet()->toArray(null, true, true, false);
+        $filas = $this->leerTodasLasFilas($ruta);
         if (empty($filas)) {
             throw new RuntimeException('El archivo está vacío.');
         }
 
-        $filaTitulos = $filas[0] ?? [];
-        $columnas = [];
-        $desconocidas = [];
-
-        foreach ($filaTitulos as $indice => $valor) {
-            $titulo = $this->normalizarTitulo((string) $valor);
-            if ($titulo === '') {
-                continue;
-            }
-
-            if (!in_array($titulo, self::COLUMNAS_PERMITIDAS, true)) {
-                $desconocidas[] = trim((string) $valor);
-                continue;
-            }
-
-            if (in_array($titulo, $columnas, true)) {
-                throw new RuntimeException("La columna \"{$titulo}\" está repetida en la fila 1.");
-            }
-
-            $columnas[$indice] = $titulo;
-        }
-
-        if (!empty($desconocidas)) {
-            throw new RuntimeException(
-                'La fila 1 contiene columnas no permitidas: ' . implode(', ', $desconocidas)
-                . '. Solo se aceptan "nombre" y "direccion".'
-            );
-        }
-
+        $columnas = $this->columnasDesdeTitulos($filas[0] ?? []);
         $indiceNombre = array_search('nombre', $columnas, true);
-        if ($indiceNombre === false) {
-            throw new RuntimeException(
-                'La fila 1 debe contener los títulos de las columnas y falta la columna obligatoria "nombre".'
-            );
-        }
-
         $indiceDireccion = array_search('direccion', $columnas, true);
         $registros = [];
         $errores = [];
@@ -185,6 +157,51 @@ class ExcelTalleresService
             'creados' => $creados,
             'actualizados' => $actualizados,
         ];
+    }
+
+    /**
+     * Resuelve y valida la fila de títulos.
+     *
+     * @param  array<int, mixed>  $filaTitulos
+     * @return array<int, string> índice de columna => nombre canónico
+     */
+    private function columnasDesdeTitulos(array $filaTitulos): array
+    {
+        $columnas = [];
+        $desconocidas = [];
+
+        foreach ($filaTitulos as $indice => $valor) {
+            $titulo = $this->normalizarTitulo((string) $valor);
+            if ($titulo === '') {
+                continue;
+            }
+
+            if (!in_array($titulo, self::COLUMNAS_PERMITIDAS, true)) {
+                $desconocidas[] = trim((string) $valor);
+                continue;
+            }
+
+            if (in_array($titulo, $columnas, true)) {
+                throw new RuntimeException("La columna \"{$titulo}\" está repetida en la fila 1.");
+            }
+
+            $columnas[$indice] = $titulo;
+        }
+
+        if (!empty($desconocidas)) {
+            throw new RuntimeException(
+                'La fila 1 contiene columnas no permitidas: ' . implode(', ', $desconocidas)
+                . '. Solo se aceptan "nombre" y "direccion".'
+            );
+        }
+
+        if (!in_array('nombre', $columnas, true)) {
+            throw new RuntimeException(
+                'La fila 1 debe contener los títulos de las columnas y falta la columna obligatoria "nombre".'
+            );
+        }
+
+        return $columnas;
     }
 
     /** Normaliza un título: minúsculas, sin acentos ni signos. */

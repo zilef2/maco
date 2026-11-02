@@ -3,8 +3,8 @@
 namespace App\Services;
 
 use App\Models\Proveedor;
+use App\Services\Concerns\LeeExcelRapido;
 use Illuminate\Support\Facades\DB;
-use PhpOffice\PhpSpreadsheet\IOFactory;
 use RuntimeException;
 
 /**
@@ -22,6 +22,8 @@ use RuntimeException;
  */
 class ExcelProveedoresService
 {
+    use LeeExcelRapido;
+
     public const MAX_BYTES = ExcelSecurityScanner::MAX_BYTES;
 
     /** Columnas obligatorias del archivo. */
@@ -135,6 +137,19 @@ class ExcelProveedoresService
     }
 
     /**
+     * Valida solo la fila 1. Es lo que se ejecuta durante la subida: leer
+     * todas las filas aquí duplicaba el trabajo del job y hacía lenta la
+     * petición sin aportar nada, porque el archivo se vuelve a validar entero
+     * antes de tocar la base de datos.
+     *
+     * @throws RuntimeException cuando el encabezado no cumple el formato
+     */
+    public function validarEncabezados(string $ruta): void
+    {
+        $this->columnasDesdeTitulos($this->leerFilaTitulos($ruta));
+    }
+
+    /**
      * Lee la primera hoja, valida los títulos (fila 1) y todas las filas de
      * datos. Devuelve los registros listos para importar.
      *
@@ -144,57 +159,12 @@ class ExcelProveedoresService
      */
     public function leerRegistros(string $ruta): array
     {
-        try {
-            $spreadsheet = IOFactory::load($ruta);
-        } catch (\Throwable $e) {
-            throw new RuntimeException('No se pudo leer el archivo Excel: ' . $e->getMessage(), 0, $e);
-        }
-
-        $filas = $spreadsheet->getActiveSheet()->toArray(null, true, true, false);
+        $filas = $this->leerTodasLasFilas($ruta);
         if (empty($filas)) {
             throw new RuntimeException('El archivo está vacío.');
         }
 
-        $filaTitulos = $filas[0] ?? [];
-        $columnas = [];
-        $desconocidas = [];
-
-        foreach ($filaTitulos as $indice => $valor) {
-            $tituloOriginal = trim((string) $valor);
-            $titulo = $this->normalizarTitulo((string) $valor);
-            if ($titulo === '') {
-                continue;
-            }
-
-            $canonica = $this->resolverColumna($titulo);
-            if ($canonica === null) {
-                $desconocidas[] = $tituloOriginal;
-                continue;
-            }
-
-            if (in_array($canonica, $columnas, true)) {
-                throw new RuntimeException("La columna \"{$tituloOriginal}\" está repetida en la fila 1.");
-            }
-
-            $columnas[$indice] = $canonica;
-        }
-
-        if (!empty($desconocidas)) {
-            throw new RuntimeException(
-                'La columna ' . implode(', ', array_map(fn (string $t): string => "\"{$t}\"", array_unique($desconocidas)))
-                . ' no está en el formato de proveedores.'
-            );
-        }
-
-        $faltantes = array_values(array_diff(self::COLUMNAS_REQUERIDAS, $columnas));
-        if (!empty($faltantes)) {
-            throw new RuntimeException(
-                'La fila 1 debe contener los títulos de las columnas y faltan las obligatorias: '
-                . implode(', ', $faltantes) . '.'
-            );
-        }
-
-        $indices = array_flip($columnas); // columna => índice de la hoja
+        $columnas = $this->columnasDesdeTitulos($filas[0] ?? []);
         $registros = [];
         $errores = [];
 
@@ -240,6 +210,11 @@ class ExcelProveedoresService
      * comercial (los proveedores que vienen de la carga anterior solo tienen
      * el nombre). La comparación ignora mayúsculas, tildes y puntuación.
      *
+     * Los proveedores nuevos se insertan en bloque: antes se hacía un
+     * INSERT por fila y, además, el modelo consultaba el último código en
+     * cada creación, lo que volvía la carga cuadrática con el tamaño del
+     * archivo.
+     *
      * @param  array<int, array<string, string|null>>  $registros
      * @return array{creados: int, actualizados: int}
      */
@@ -249,36 +224,67 @@ class ExcelProveedoresService
         $actualizados = 0;
 
         DB::transaction(function () use ($registros, &$creados, &$actualizados) {
-            $existentes = [];
+            $existentesPorNit = [];
+            $existentesPorNombre = [];
+
             foreach (Proveedor::query()->get(['id', 'nit', 'nombre_comercial']) as $proveedor) {
                 $porNit = $this->claveComparacion($proveedor->nit);
                 $porNombre = $this->claveComparacion($proveedor->nombre_comercial);
 
                 if ($porNit !== '') {
-                    $existentes[$porNit] = $proveedor->id;
+                    $existentesPorNit[$porNit] = $proveedor->id;
                 }
                 if ($porNombre !== '') {
-                    $existentes['nombre:' . $porNombre] = $proveedor->id;
+                    $existentesPorNombre[$porNombre] = $proveedor->id;
                 }
             }
+
+            $nuevos = [];
+            $nuevosPorNit = [];
+            $nuevosPorNombre = [];
 
             foreach ($registros as $registro) {
                 $nit = $this->claveComparacion($registro['nit'] ?? null);
                 $nombre = $this->claveComparacion($registro['nombre_comercial'] ?? null);
+                $datos = $this->datosAGuardar($registro);
 
                 $idExistente = null;
-                if ($nit !== '' && isset($existentes[$nit])) {
-                    $idExistente = $existentes[$nit];
-                } elseif ($nombre !== '' && isset($existentes['nombre:' . $nombre])) {
-                    $idExistente = $existentes['nombre:' . $nombre];
+                if ($nit !== '' && isset($existentesPorNit[$nit])) {
+                    $idExistente = $existentesPorNit[$nit];
+                } elseif ($nombre !== '' && isset($existentesPorNombre[$nombre])) {
+                    $idExistente = $existentesPorNombre[$nombre];
                 }
-
-                $datos = $this->datosAGuardar($registro);
 
                 if ($idExistente !== null) {
                     // Las celdas vacías no borran lo que ya tenía el registro.
                     $datos = array_filter($datos, fn ($valor): bool => $valor !== null && $valor !== '');
-                    Proveedor::whereKey($idExistente)->update($datos);
+                    if (!empty($datos)) {
+                        Proveedor::whereKey($idExistente)->update($datos);
+                    }
+                    $actualizados++;
+                    continue;
+                }
+
+                // Fila repetida dentro del mismo archivo: se completa la que
+                // ya está pendiente de insertar en vez de crear un duplicado.
+                $indiceNuevo = null;
+                if ($nit !== '' && isset($nuevosPorNit[$nit])) {
+                    $indiceNuevo = $nuevosPorNit[$nit];
+                } elseif ($nombre !== '' && isset($nuevosPorNombre[$nombre])) {
+                    $indiceNuevo = $nuevosPorNombre[$nombre];
+                }
+
+                if ($indiceNuevo !== null) {
+                    $nuevos[$indiceNuevo] = array_merge(
+                        $nuevos[$indiceNuevo],
+                        array_filter($datos, fn ($valor): bool => $valor !== null && $valor !== '')
+                    );
+                    if ($nit !== '') {
+                        $nuevosPorNit[$nit] = $indiceNuevo;
+                    }
+                    if ($nombre !== '') {
+                        $nuevosPorNombre[$nombre] = $indiceNuevo;
+                    }
                     $actualizados++;
                     continue;
                 }
@@ -286,16 +292,38 @@ class ExcelProveedoresService
                 $datos['estado'] = $datos['estado'] ?? Proveedor::ESTADOS[0];
                 $datos['clasificacion'] = $datos['clasificacion'] ?? Proveedor::CLASIFICACIONES[0];
 
-                $nuevo = Proveedor::create($datos);
-                $creados++;
+                $indice = count($nuevos);
+                $nuevos[] = $datos;
 
-                // La fila se registra para que un duplicado del mismo archivo
-                // actualice el registro en vez de crear otro.
                 if ($nit !== '') {
-                    $existentes[$nit] = $nuevo->id;
+                    $nuevosPorNit[$nit] = $indice;
                 }
                 if ($nombre !== '') {
-                    $existentes['nombre:' . $nombre] = $nuevo->id;
+                    $nuevosPorNombre[$nombre] = $indice;
+                }
+                $creados++;
+            }
+
+            if (!empty($nuevos)) {
+                $siguienteCodigo = $this->siguienteNumeroCodigo();
+                $ahora = now();
+
+                foreach ($nuevos as &$datos) {
+                    $datos['codigo_proveedor'] = 'PRV-' . str_pad(
+                        (string) $siguienteCodigo++,
+                        3,
+                        '0',
+                        STR_PAD_LEFT
+                    );
+                    $datos['nombre'] = $datos['nombre']
+                        ?? ($datos['nombre_comercial'] ?? ($datos['razon_social'] ?? 'Sin nombre'));
+                    $datos['created_at'] = $ahora;
+                    $datos['updated_at'] = $ahora;
+                }
+                unset($datos);
+
+                foreach (array_chunk($nuevos, 500) as $bloque) {
+                    Proveedor::insert($bloque);
                 }
             }
         });
@@ -304,6 +332,74 @@ class ExcelProveedoresService
             'creados' => $creados,
             'actualizados' => $actualizados,
         ];
+    }
+
+    /**
+     * Siguiente número de código disponible. Se toma el mayor número de todos
+     * los códigos existentes: ordenar por el texto hacía que PRV-999 quedara
+     * antes que PRV-1000 y se repitieran códigos.
+     */
+    private function siguienteNumeroCodigo(): int
+    {
+        $maximo = 0;
+
+        foreach (Proveedor::query()->whereNotNull('codigo_proveedor')->pluck('codigo_proveedor') as $codigo) {
+            $numero = (int) preg_replace('/\D+/', '', (string) $codigo);
+            if ($numero > $maximo) {
+                $maximo = $numero;
+            }
+        }
+
+        return $maximo + 1;
+    }
+
+    /**
+     * Resuelve y valida la fila de títulos.
+     *
+     * @param  array<int, mixed>  $filaTitulos
+     * @return array<int, string> índice de columna => nombre canónico
+     */
+    private function columnasDesdeTitulos(array $filaTitulos): array
+    {
+        $columnas = [];
+        $desconocidas = [];
+
+        foreach ($filaTitulos as $indice => $valor) {
+            $tituloOriginal = trim((string) $valor);
+            $titulo = $this->normalizarTitulo((string) $valor);
+            if ($titulo === '') {
+                continue;
+            }
+
+            $canonica = $this->resolverColumna($titulo);
+            if ($canonica === null) {
+                $desconocidas[] = $tituloOriginal;
+                continue;
+            }
+
+            if (in_array($canonica, $columnas, true)) {
+                throw new RuntimeException("La columna \"{$tituloOriginal}\" está repetida en la fila 1.");
+            }
+
+            $columnas[$indice] = $canonica;
+        }
+
+        if (!empty($desconocidas)) {
+            throw new RuntimeException(
+                'La columna ' . implode(', ', array_map(fn (string $t): string => "\"{$t}\"", array_unique($desconocidas)))
+                . ' no está en el formato de proveedores.'
+            );
+        }
+
+        $faltantes = array_values(array_diff(self::COLUMNAS_REQUERIDAS, $columnas));
+        if (!empty($faltantes)) {
+            throw new RuntimeException(
+                'La fila 1 debe contener los títulos de las columnas y faltan las obligatorias: '
+                . implode(', ', $faltantes) . '.'
+            );
+        }
+
+        return $columnas;
     }
 
     /**
@@ -415,7 +511,7 @@ class ExcelProveedoresService
         return trim(strip_tags((string) ($valor ?? '')));
     }
 
-    public function procesarSubida($archivo, $usuario): string
+    public function procesarSubida($archivo, $usuario, ?int $importacionId = null): string
     {
         if (!$archivo) {
             throw new RuntimeException('Selecciona un archivo .xlsx.');
@@ -427,7 +523,9 @@ class ExcelProveedoresService
             throw new RuntimeException(implode(' | ', $problemas));
         }
 
-        $this->leerRegistros($archivo->getRealPath());
+        // Solo se valida el encabezado en la petición. El contenido completo
+        // se valida en el job, que es quien hace la inserción.
+        $this->validarEncabezados($archivo->getRealPath());
 
         $rutaRelativa = $archivo->store('imports/proveedores', 'local');
         if (!$rutaRelativa) {
@@ -440,6 +538,7 @@ class ExcelProveedoresService
             $usuario?->email,
             $usuario?->name,
             $usuario?->id,
+            $importacionId,
         );
 
         return $rutaRelativa;

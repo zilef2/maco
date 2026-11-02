@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\CierreOrdenProduccion;
-use App\Models\Material;
 use App\Models\MaterialMovimiento;
 use App\Models\OrdenProduccion;
 use App\Models\OrdenProduccionCostoMaterial;
@@ -15,8 +14,8 @@ use Illuminate\Support\Facades\DB;
 class DashboardController extends Controller
 {
     /**
-     * Datos agregados del dashboard (existencias, movimientos, compras,
-     * producción, costos y desviaciones) para un período en días.
+     * Datos agregados del dashboard (movimientos, semana de OPs, compras,
+     * producción y calidad) para un período en días.
      */
     public function datos(Request $request)
     {
@@ -31,10 +30,9 @@ class DashboardController extends Controller
                 'hasta' => now()->toDateString(),
             ],
             'movimientos' => $this->movimientos($desde, $diario),
-            'existencias' => $this->existencias(),
+            'semana' => $this->semanaOp(),
             'produccion' => $this->produccion($desde, $diario),
             'compras' => $this->compras($desde),
-            'desviaciones' => $this->desviaciones($desde),
             'recepcionCalidadPorOp' => $this->recepcionCalidadPorOp($desde),
             'mes' => $this->resultadosMes(),
             'generado_en' => now()->format('H:i:s'),
@@ -72,24 +70,52 @@ class DashboardController extends Controller
     }
 
     /**
-     * Existencias actuales agrupadas por categoría de material.
+     * Plata de las OPs creadas cada día de la semana en curso (lunes a domingo).
+     *
+     * @return array{labels: string[], hoy: int[], costos: int[], ops: int[], total: int}
      */
-    private function existencias(): array
+    private function semanaOp(): array
     {
-        return Material::query()
-            ->where('estado', 'Activo')
-            ->selectRaw('COALESCE(NULLIF(categoria,\'\'), \'Sin categoría\') AS categoria,
-                COUNT(*) AS materiales,
-                ROUND(SUM(existencia_actual)) AS unidades')
-            ->groupBy('categoria')
-            ->orderByDesc('unidades')
-            ->get()
-            ->map(fn ($f) => [
-                'categoria' => $f->categoria,
-                'materiales' => (int) $f->materiales,
-                'unidades' => (int) $f->unidades,
-            ])
-            ->all();
+        $inicio = now()->startOfWeek(Carbon::MONDAY);
+        $fin = $inicio->copy()->endOfDay()->addDays(6);
+
+        $filas = OrdenProduccion::query()
+            ->where('created_at', '>=', $inicio)
+            ->where('created_at', '<', $fin)
+            ->selectRaw('DATE(created_at) AS dia, ROUND(SUM(costo_total)) AS plata, COUNT(*) AS ops')
+            ->groupBy('dia')
+            ->pluck('plata', 'dia');
+
+        $conteo = OrdenProduccion::query()
+            ->where('created_at', '>=', $inicio)
+            ->where('created_at', '<', $fin)
+            ->selectRaw('DATE(created_at) AS dia, COUNT(*) AS ops')
+            ->groupBy('dia')
+            ->pluck('ops', 'dia');
+
+        $nombres = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
+        $labels = [];
+        $costos = [];
+        $ops = [];
+        $total = 0;
+
+        $cursor = $inicio->copy();
+        for ($i = 0; $i < 7; $i++) {
+            $dia = $cursor->toDateString();
+            $labels[] = $nombres[$i].' '.$cursor->format('d/m');
+            $costos[] = (int) ($filas[$dia] ?? 0);
+            $ops[] = (int) ($conteo[$dia] ?? 0);
+            $total += $costos[$i];
+            $cursor->addDay();
+        }
+
+        return [
+            'labels' => $labels,
+            'hoy' => now()->dayOfWeekIso - 1,
+            'costos' => $costos,
+            'ops' => $ops,
+            'total' => $total,
+        ];
     }
 
     /**
@@ -163,34 +189,6 @@ class DashboardController extends Controller
             'labels' => $meses,
             'costos' => array_map(fn ($m) => (int) ($costos[$m] ?? 0), $meses),
             'precio_promedio' => array_map(fn ($m) => (float) ($precios[$m] ?? 0), $meses),
-        ];
-    }
-
-    /**
-     * Costo planeado vs costo real por OP cerrada en el período (desviaciones).
-     *
-     * @return array{ops: string[], planeado: int[], real: int[]}
-     */
-    private function desviaciones(Carbon $desde): array
-    {
-        $filas = CierreOrdenProduccion::query()
-            ->join('orden_produccions', 'orden_produccions.id', '=', 'cierre_orden_produccions.orden_produccion_id')
-            ->whereNotNull('cierre_orden_produccions.costo_real_final')
-            ->where(function ($q) use ($desde) {
-                $q->where('cierre_orden_produccions.fecha_cierre', '>=', $desde)
-                    ->orWhereNull('cierre_orden_produccions.fecha_cierre');
-            })
-            ->selectRaw("orden_produccions.numero_op AS op,
-                ROUND(orden_produccions.costo_total) AS planeado,
-                ROUND(cierre_orden_produccions.costo_real_final) AS costo_real")
-            ->orderByDesc('cierre_orden_produccions.id')
-            ->limit(12)
-            ->get();
-
-        return [
-            'ops' => $filas->pluck('op')->all(),
-            'planeado' => $filas->map(fn ($f) => (int) $f->planeado)->all(),
-            'real' => $filas->map(fn ($f) => (int) $f->costo_real)->all(),
         ];
     }
 

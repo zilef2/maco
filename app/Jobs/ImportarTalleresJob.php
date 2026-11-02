@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Services\ExcelImportacionTracker;
 use App\Services\ExcelTalleresService;
 use App\Services\ImportacionExcelNotificador;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -35,12 +36,14 @@ class ImportarTalleresJob implements ShouldQueue
         public ?string $emailUsuario,
         public ?string $nombreUsuario,
         public ?int $usuarioId = null,
+        public ?int $importacionId = null,
     ) {
     }
 
     public function handle(
         ExcelTalleresService $excel,
         ImportacionExcelNotificador $notificador,
+        ExcelImportacionTracker $tracker,
     ): void {
         $ruta = Storage::disk('local')->path($this->rutaRelativa);
 
@@ -55,15 +58,20 @@ class ImportarTalleresJob implements ShouldQueue
             $registros = $excel->leerRegistros($ruta);
             $resultado = $excel->importar($registros);
 
+            $tracker->completar($this->importacionId, $resultado, count($registros));
+
             $notificador->exito($this->emailUsuario, 'talleres', $resultado);
 
             Log::info('Importación de talleres completada', [
+                'importacion_id' => $this->importacionId,
                 'archivo' => $this->nombreArchivo,
                 'usuario_id' => $this->usuarioId,
                 'creados' => $resultado['creados'],
                 'actualizados' => $resultado['actualizados'],
             ]);
         } catch (Throwable $e) {
+            $tracker->fallar($this->importacionId, $e->getMessage());
+
             $notificador->fallo(
                 $this->emailUsuario,
                 $this->nombreUsuario,
@@ -83,5 +91,16 @@ class ImportarTalleresJob implements ShouldQueue
                 @unlink($ruta);
             }
         }
+    }
+
+    /**
+     * Cierra la métrica si el worker marca el job como fallido.
+     */
+    public function failed(?Throwable $e): void
+    {
+        app(ExcelImportacionTracker::class)->fallar(
+            $this->importacionId,
+            $e?->getMessage() ?? 'La importación de talleres no pudo completarse.',
+        );
     }
 }

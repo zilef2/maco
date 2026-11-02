@@ -14,5 +14,14 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     /** @use HasFactory<\Database\Factories\FichaEnsambleFactory> */
     use HasFactory;
     use HasFillableWithTypes;
-    protected $fillable = ['orden_produccion_id', 'producto_referencia_id', 'taller_id', 'cantidad_total', 'fecha_entrega', 'coleccion', 'imagen_referencia_url', 'instrucciones_especiales'];
+    protected $fillable = [
+        'orden_produccion_id',
+        'producto_referencia_id',
+        'taller_id',
+        'cantidad_total',
+        'fecha_entrega',
+        'coleccion',
+        'imagen_referencia_url',
+        'instrucciones_especiales'
+    ];
 }

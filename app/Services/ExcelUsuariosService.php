@@ -4,9 +4,9 @@ namespace App\Services;
 
 use App\Models\Role;
 use App\Models\User;
+use App\Services\Concerns\LeeExcelRapido;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Shared\Date;
 use RuntimeException;
 
@@ -24,6 +24,8 @@ use RuntimeException;
  */
 class ExcelUsuariosService
 {
+    use LeeExcelRapido;
+
     public const MAX_BYTES = ExcelSecurityScanner::MAX_BYTES;
 
     /** Columnas obligatorias del archivo. */
@@ -106,6 +108,16 @@ class ExcelUsuariosService
     }
 
     /**
+     * Valida únicamente la fila de títulos en la petición de subida.
+     *
+     * @throws RuntimeException cuando el archivo no cumple el formato
+     */
+    public function validarEncabezados(string $ruta): void
+    {
+        $this->columnasDesdeTitulos($this->leerFilaTitulos($ruta));
+    }
+
+    /**
      * Lee la primera hoja, valida los títulos (fila 1) y todas las filas de
      * datos. Devuelve los registros listos para importar.
      *
@@ -115,56 +127,12 @@ class ExcelUsuariosService
      */
     public function leerRegistros(string $ruta): array
     {
-        try {
-            $spreadsheet = IOFactory::load($ruta);
-        } catch (\Throwable $e) {
-            throw new RuntimeException('No se pudo leer el archivo Excel: ' . $e->getMessage(), 0, $e);
-        }
-
-        $filas = $spreadsheet->getActiveSheet()->toArray(null, true, true, false);
+        $filas = $this->leerTodasLasFilas($ruta);
         if (empty($filas)) {
             throw new RuntimeException('El archivo está vacío.');
         }
 
-        $filaTitulos = $filas[0] ?? [];
-        $columnas = [];
-        $desconocidas = [];
-
-        foreach ($filaTitulos as $indice => $valor) {
-            $tituloOriginal = trim((string) $valor);
-            $titulo = $this->normalizarTitulo((string) $valor);
-            if ($titulo === '') {
-                continue;
-            }
-
-            $canonica = $this->resolverColumna($titulo);
-            if ($canonica === null) {
-                $desconocidas[] = $tituloOriginal;
-                continue;
-            }
-
-            if (in_array($canonica, $columnas, true)) {
-                throw new RuntimeException("La columna \"{$tituloOriginal}\" está repetida en la fila 1.");
-            }
-
-            $columnas[$indice] = $canonica;
-        }
-
-        if (!empty($desconocidas)) {
-            throw new RuntimeException(
-                'La columna ' . implode(', ', array_map(fn (string $t): string => "\"{$t}\"", array_unique($desconocidas)))
-                . ' no está en el formato de usuarios.'
-            );
-        }
-
-        $faltantes = array_values(array_diff(self::COLUMNAS_REQUERIDAS, $columnas));
-        if (!empty($faltantes)) {
-            throw new RuntimeException(
-                'La fila 1 debe contener los títulos de las columnas y faltan las obligatorias: '
-                . implode(', ', $faltantes) . '.'
-            );
-        }
-
+        $columnas = $this->columnasDesdeTitulos($filas[0] ?? []);
         $roles = $this->rolesDisponibles();
         $registros = [];
         $errores = [];
@@ -450,6 +418,55 @@ class ExcelUsuariosService
         $timestamp = strtotime($texto);
 
         return $timestamp === false ? false : date('Y-m-d', $timestamp);
+    }
+
+    /**
+     * Resuelve y valida la fila de títulos.
+     *
+     * @param  array<int, mixed>  $filaTitulos
+     * @return array<int, string> índice de columna => nombre canónico
+     */
+    private function columnasDesdeTitulos(array $filaTitulos): array
+    {
+        $columnas = [];
+        $desconocidas = [];
+
+        foreach ($filaTitulos as $indice => $valor) {
+            $tituloOriginal = trim((string) $valor);
+            $titulo = $this->normalizarTitulo((string) $valor);
+            if ($titulo === '') {
+                continue;
+            }
+
+            $canonica = $this->resolverColumna($titulo);
+            if ($canonica === null) {
+                $desconocidas[] = $tituloOriginal;
+                continue;
+            }
+
+            if (in_array($canonica, $columnas, true)) {
+                throw new RuntimeException("La columna \"{$tituloOriginal}\" está repetida en la fila 1.");
+            }
+
+            $columnas[$indice] = $canonica;
+        }
+
+        if (!empty($desconocidas)) {
+            throw new RuntimeException(
+                'La columna ' . implode(', ', array_map(fn (string $t): string => "\"{$t}\"", array_unique($desconocidas)))
+                . ' no está en el formato de usuarios.'
+            );
+        }
+
+        $faltantes = array_values(array_diff(self::COLUMNAS_REQUERIDAS, $columnas));
+        if (!empty($faltantes)) {
+            throw new RuntimeException(
+                'La fila 1 debe contener los títulos de las columnas y faltan las obligatorias: '
+                . implode(', ', $faltantes) . '.'
+            );
+        }
+
+        return $columnas;
     }
 
     /**

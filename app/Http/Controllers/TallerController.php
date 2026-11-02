@@ -215,8 +215,9 @@ class TallerController extends Controller {
                 throw new \RuntimeException(implode(' | ', $problemas));
             }
 
-            // 2. Fila 1 = títulos; el resto datos. Valida "nombre" y "direccion".
-            $excel->leerRegistros($archivo->getRealPath());
+            // 2. Fila 1 = títulos. Solo se valida el encabezado aquí; el
+            // resto del archivo lo valida el job antes de insertar.
+            $excel->validarEncabezados($archivo->getRealPath());
 
             // 3. Todo válido: guardar y encolar la importación.
             $rutaRelativa = $archivo->store('imports/talleres', 'local');
@@ -230,14 +231,15 @@ class TallerController extends Controller {
                 $usuario?->email,
                 $usuario?->name,
                 $usuario?->id,
+                $request->attributes->get('importacion_excel_id'),
             );
 
             Myhelp::EscribirEnLog($this, 'uploadExcel ENCOLADO', $nombreArchivo);
 
             return back()->with(
                 'success',
-                'Archivo validado correctamente. La importación se está procesando; '
-                . 'en breve podrás ver la información actualizada.'
+                'Archivo recibido correctamente. La importación se está procesando; '
+                . 'si alguna fila tiene errores recibirás el detalle por correo.'
             );
         } catch (\Throwable $e) {
             if ($rutaRelativa) {

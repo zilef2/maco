@@ -157,6 +157,7 @@ class ExcelUsuariosImportTest extends TestCase
         $job->handle(
             app(ExcelUsuariosService::class),
             app(ImportacionExcelNotificador::class),
+            app(\App\Services\ExcelImportacionTracker::class),
         );
 
         $this->assertDatabaseHas('users', ['email' => 'ana@macondas.com']);
@@ -193,6 +194,11 @@ class ExcelUsuariosImportTest extends TestCase
         $response->assertRedirect();
         $response->assertSessionHas('success');
         Queue::assertPushed(ImportarUsuariosJob::class);
+
+        $this->assertDatabaseHas('importacion_excels', [
+            'entidad' => 'usuario',
+            'estado' => \App\Models\ImportacionExcel::ESTADO_PROCESANDO,
+        ]);
     }
 
     public function test_la_plantilla_de_usuarios_trae_las_columnas_y_dos_ejemplos(): void

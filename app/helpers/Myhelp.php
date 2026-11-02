@@ -4,6 +4,7 @@ namespace App\helpers;
 
 use App\Models\Equipo;
 use App\Models\User;
+use App\Services\Bitacora;
 use Carbon\Carbon;
 use Carbon\Translator;
 use Illuminate\Database\Eloquent\Collection;
@@ -273,7 +274,12 @@ class Myhelp {
 	
 	public static function EscribirEnLog($thiis, $clase = '', $mensaje = '', $returnPermission = true, $critico = false) {
 		$permissions = $returnPermission ? (auth()->user()->roles->pluck('name')[0] ?? null) : null;
-		
+
+		// La misma etiqueta que alimenta storage/logs llena actividad_registros:
+		// ahí el análisis de Actividad puede ver quién hizo qué, sobre qué registro
+		// y con qué resultado, cosas que el archivo de log no tiene.
+		Bitacora::desdeEtiquetaLegacy($thiis, (string) $clase, (string) $mensaje);
+
 		if($returnPermission && $permissions === null) 
 			abort(403, 'Unauthorized, user has no roles');
 			

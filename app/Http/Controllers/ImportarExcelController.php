@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\helpers\Myhelp;
 use App\Models\Parametro;
+use App\Services\ExcelImportacionTracker;
 use App\Services\PlantillasExcelService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -15,7 +16,8 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 class ImportarExcelController extends Controller
 {
     public function __construct(
-        protected PlantillasExcelService $plantillas
+        protected PlantillasExcelService $plantillas,
+        protected ExcelImportacionTracker $tracker,
     ) {}
     /**
      * Registro único de Parametro donde se guarda qué entidades tienen
@@ -60,6 +62,7 @@ class ImportarExcelController extends Controller
             [
                 'id'                  => 'producto',
                 'nombre'              => 'Productos',
+                'grupo'               => 'Inventario',
                 'descripcion'         => 'Catálogo de productos: referencias internas y títulos de Shopify',
                 'ruta'                => route('Producto.upload-excel'),
                 'nota'                => 'Si el código interno ya existe se actualiza el registro; si no, se crea. La columna "Opciones" también acepta el nombre "Rango".',
@@ -67,6 +70,7 @@ class ImportarExcelController extends Controller
             [
                 'id'                  => 'material',
                 'nombre'              => 'Materiales',
+                'grupo'               => 'Inventario',
                 'descripcion'         => 'Inventario de materias primas e insumos de producción',
                 'ruta'                => route('Material.upload-excel'),
                 'nota'                => 'Carga masiva por código de material: actualiza si existe, crea si no. "Proveedor habitual" debe existir en la app.',
@@ -74,6 +78,7 @@ class ImportarExcelController extends Controller
             [
                 'id'                  => 'estado_operacion',
                 'nombre'              => 'Estados de Operación',
+                'grupo'               => 'Listas',
                 'descripcion'         => 'Máquina de estados de las órdenes de producción',
                 'ruta'                => route('EstadoOperacion.upload-excel'),
                 'nota'                => 'Si el nombre del estado ya existe se actualiza; si no, se crea.',
@@ -81,6 +86,7 @@ class ImportarExcelController extends Controller
             [
                 'id'                  => 'taller',
                 'nombre'              => 'Talleres',
+                'grupo'               => 'Producción',
                 'descripcion'         => 'Talleres de confección a los que se asignan las órdenes de producción',
                 'ruta'                => route('Taller.upload-excel'),
                 'nota'                => 'La fila 1 debe contener los títulos de las columnas. El nombre es obligatorio; la dirección es opcional. La importación se procesa en segundo plano y recibirás un correo con el resultado.',
@@ -88,6 +94,7 @@ class ImportarExcelController extends Controller
             [
                 'id'                  => 'proveedor',
                 'nombre'              => 'Proveedores',
+                'grupo'               => 'Personas',
                 'descripcion'         => 'Directorio de proveedores y sus datos de contacto',
                 'ruta'                => route('Proveedor.upload-excel'),
                 'nota'                => 'La fila 1 debe contener los títulos de las columnas. El NIT y el nombre comercial son obligatorios. Si el proveedor ya existe (mismo NIT o mismo nombre comercial) se actualiza; si no, se crea. Las celdas vacías no borran los datos que ya tenía. La importación se procesa en segundo plano y recibirás un correo con el resultado.',
@@ -95,21 +102,25 @@ class ImportarExcelController extends Controller
             [
                 'id'                  => 'usuario',
                 'nombre'              => 'Usuarios',
+                'grupo'               => 'Personas',
                 'descripcion'         => 'Cuentas de acceso del personal y su rol',
                 'ruta'                => route('user.upload-excel'),
                 'nota'                => 'La fila 1 debe contener los títulos de las columnas. Nombre, email, identificación y rol son obligatorios. Si el usuario ya existe (mismo email o misma identificación) se actualiza; si no, se crea con la contraseña identificación + "*". El rol debe existir previamente en la aplicación. La importación se procesa en segundo plano y recibirás un correo y una notificación al finalizar.',
             ],
         ];
 
+        $metricas = $this->tracker->promedios();
+
         // Las columnas y el archivo descargable salen de la misma definición,
         // así la tarjeta y el formato .xlsx nunca se contradicen.
-        $entidades = array_map(function (array $entidad): array {
+        $entidades = array_map(function (array $entidad) use ($metricas): array {
             $clave = $entidad['id'];
 
             return $entidad + [
                 'columnas_requeridas' => $this->plantillas->titulosRequeridos($clave),
                 'columnas_opcionales' => $this->plantillas->titulosOpcionales($clave),
                 'plantilla'           => route('ImportarExcel.plantilla', ['clave' => $clave]),
+                'metrica'             => $metricas[$clave] ?? null,
             ];
         }, $entidades);
 

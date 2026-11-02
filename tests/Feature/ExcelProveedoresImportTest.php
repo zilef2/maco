@@ -146,10 +146,18 @@ class ExcelProveedoresImportTest extends TestCase
         $rutaRelativa = 'imports/proveedores/proveedores.xlsx';
         Storage::disk('local')->put($rutaRelativa, file_get_contents($ruta));
 
-        $job = new ImportarProveedoresJob($rutaRelativa, 'proveedores.xlsx', null, null);
+        $registro = \App\Models\ImportacionExcel::create([
+            'entidad' => 'proveedor',
+            'archivo' => 'proveedores.xlsx',
+            'estado' => \App\Models\ImportacionExcel::ESTADO_PENDIENTE,
+            'iniciado_en' => microtime(true),
+        ]);
+
+        $job = new ImportarProveedoresJob($rutaRelativa, 'proveedores.xlsx', null, null, null, $registro->id);
         $job->handle(
             app(ExcelProveedoresService::class),
             app(ImportacionExcelNotificador::class),
+            app(\App\Services\ExcelImportacionTracker::class),
         );
 
         $this->assertDatabaseHas('proveedors', ['nombre_comercial' => 'Proveedor Notificado']);
@@ -157,6 +165,11 @@ class ExcelProveedoresImportTest extends TestCase
             'mensaje' => 'La lectura de los proveedores en el archivo de excel ha finalizado',
             'prioridad' => 'alta',
         ]);
+
+        $registro->refresh();
+        $this->assertSame(\App\Models\ImportacionExcel::ESTADO_COMPLETADO, $registro->estado);
+        $this->assertSame(1, $registro->creados);
+        $this->assertNotNull($registro->duracion_ms);
     }
 
     public function test_la_plantilla_trae_las_columnas_y_dos_ejemplos(): void

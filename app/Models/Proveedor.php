@@ -74,13 +74,16 @@ class Proveedor extends Model
 
             // Auto-generate codigo_proveedor if not set (format: PRV-1, PRV-2, ...)
             if (empty($proveedor->codigo_proveedor)) {
-                $ultimo = Proveedor::orderBy('codigo_proveedor', 'desc')->value('codigo_proveedor');
-                if ($ultimo) {
-                    $num = intval(substr($ultimo, 4)) + 1; // Extract number after "PRV-"
-                    $proveedor->codigo_proveedor = 'PRV-' . str_pad($num, 3, '0', STR_PAD_LEFT);
-                } else {
-                    $proveedor->codigo_proveedor = 'PRV-001';
-                }
+                // Se ordena por la clave primaria, no por el código textual:
+                // así la consulta usa el índice y "PRV-1000" no queda antes
+                // que "PRV-999". En cargas masivas la generación se hace una
+                // sola vez desde el servicio de Excel.
+                $ultimo = Proveedor::query()
+                    ->whereNotNull('codigo_proveedor')
+                    ->orderByDesc('id')
+                    ->value('codigo_proveedor');
+                $numero = ((int) preg_replace('/\D+/', '', (string) $ultimo)) + 1;
+                $proveedor->codigo_proveedor = 'PRV-' . str_pad((string) $numero, 3, '0', STR_PAD_LEFT);
             }
         });
     }

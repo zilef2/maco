@@ -21,6 +21,7 @@ use App\Models\Proveedor;
 use App\Models\RecepcionCalidad;
 use App\Models\Taller;
 use App\Http\Requests\StoreOrdenProduccionRequest;
+use App\Services\Bitacora;
 use App\Services\CostoMaterialOpService;
 use App\Services\CostoRecepcionOpService;
 use App\Traits\MaterialMovimientoTrait;
@@ -848,6 +849,14 @@ class OrdenProduccionController extends Controller {
             && $data['numero_op'] !== $OrdenProduccion->numero_op
             && OrdenProduccion::where('numero_op', $data['numero_op'])->whereKeyNot($OrdenProduccion->id)->exists()) {
             DB::rollBack();
+            Bitacora::rechazo(
+                'OrdenProduccion',
+                'numeroDuplicado',
+                'El número '.$data['numero_op'].' ya está asignado a otra OP.',
+                'OrdenProduccion',
+                $OrdenProduccion->id,
+            );
+
             return back()->withErrors(['numero_op' => 'Ya existe una OP con el número ' . $data['numero_op'] . '.']);
         }
 
@@ -973,6 +982,14 @@ class OrdenProduccionController extends Controller {
             && $data['numero_op'] !== $OrdenProduccion->numero_op
             && OrdenProduccion::where('numero_op', $data['numero_op'])->whereKeyNot($OrdenProduccion->id)->exists()) {
             DB::rollBack();
+            Bitacora::rechazo(
+                'OrdenProduccion',
+                'numeroDuplicado',
+                'El número '.$data['numero_op'].' ya está asignado a otra OP.',
+                'OrdenProduccion',
+                $OrdenProduccion->id,
+            );
+
             return back()->withErrors(['numero_op' => 'Ya existe una OP con el número ' . $data['numero_op'] . '.']);
         }
 
@@ -1269,17 +1286,25 @@ class OrdenProduccionController extends Controller {
         $estadoActual = $OrdenProduccion->estadoOp;
         $permitidos = $estadoActual?->idsPuedePasarA() ?? [];
         $estadoSolicitadoId = (int) $datos['estado_op_id'];
+        $nuevoEstado = EstadoOperacion::find($estadoSolicitadoId);
 
         // Reenviar el estado actual es válido: permite ajustar solo el estado secundario.
         $esMismoEstado = $estadoSolicitadoId === (int) $OrdenProduccion->estado_op_id;
 
         if (! $esMismoEstado && ! in_array($estadoSolicitadoId, $permitidos, true)) {
+            Bitacora::rechazo(
+                'OrdenProduccion',
+                'transicionNoPermitida',
+                "'{$estadoActual?->nombre}' → '{$nuevoEstado?->nombre}' no es una transición permitida.",
+                'OrdenProduccion',
+                $OrdenProduccion->id,
+            );
+
             return back()->withErrors([
                 'estado_op_id' => "Transición no permitida desde el estado '{$estadoActual?->nombre}'.",
             ]);
         }
 
-        $nuevoEstado = EstadoOperacion::find($estadoSolicitadoId);
         $secundarioId = $datos['estado_op_secundario_id'] ?? null;
         $secundarioNombre = $secundarioId
             ? EstadoOperacion::whereKey($secundarioId)->value('nombre')
@@ -1290,6 +1315,14 @@ class OrdenProduccionController extends Controller {
             if (! in_array($nuevoEstado?->nombre, self::PAR_COEXISTENCIA, true)
                 || ! in_array($secundarioNombre, self::PAR_COEXISTENCIA, true)
                 || $secundarioNombre === $nuevoEstado?->nombre) {
+                Bitacora::rechazo(
+                    'OrdenProduccion',
+                    'estadosIncompatibles',
+                    "'{$nuevoEstado?->nombre}' + '{$secundarioNombre}' no pueden coexistir.",
+                    'OrdenProduccion',
+                    $OrdenProduccion->id,
+                );
+
                 return back()->withErrors([
                     'estado_op_secundario_id' => 'Solo «Esperando materiales» y «Procesos externos» pueden coexistir como estados simultáneos.',
                 ]);
@@ -1313,12 +1346,28 @@ class OrdenProduccionController extends Controller {
 
         if ($entraProcesoExterno) {
             if (empty($procesoExternoDatos['proveedor_destino_id']) || $itemsProceso->isEmpty()) {
+                Bitacora::rechazo(
+                    'OrdenProduccion',
+                    'procesoExternoIncompleto',
+                    'Falta el proveedor destino o los materiales de la salida.',
+                    'OrdenProduccion',
+                    $OrdenProduccion->id,
+                );
+
                 return back()->withErrors([
                     'proceso_externo' => 'Registre el proveedor destino y al menos un material para el proceso externo.',
                 ]);
             }
 
             if (empty(trim((string) ($procesoExternoDatos['etapa_componente'] ?? '')))) {
+                Bitacora::rechazo(
+                    'OrdenProduccion',
+                    'procesoExternoIncompleto',
+                    'Falta la etapa o componente del proceso externo.',
+                    'OrdenProduccion',
+                    $OrdenProduccion->id,
+                );
+
                 return back()->withErrors([
                     'proceso_externo.etapa_componente' => 'Indique la etapa o componente del proceso externo.',
                 ]);
@@ -1351,6 +1400,14 @@ class OrdenProduccionController extends Controller {
 
         // Una OP no puede cerrarse mientras queden pares en reparación.
         if ($nuevoEstado?->nombre === 'Cerrada' && $totalEnReparacionEfectivo > 0) {
+            Bitacora::rechazo(
+                'OrdenProduccion',
+                'cierreBloqueado',
+                "Quedan {$totalEnReparacionEfectivo} par(es) en reparación.",
+                'OrdenProduccion',
+                $OrdenProduccion->id,
+            );
+
             return back()->withErrors([
                 'estado_op_id' => "No se puede cerrar la OP: aún hay {$totalEnReparacionEfectivo} par(es) en reparación.",
             ]);
@@ -1419,6 +1476,14 @@ class OrdenProduccionController extends Controller {
             && ProcesoExterno::where('orden_produccion_id', $OrdenProduccion->id)
                 ->whereNull('fecha_regreso_real')
                 ->exists()) {
+            Bitacora::rechazo(
+                'OrdenProduccion',
+                'faltaFechaRegreso',
+                'Hay procesos externos sin fecha real de regreso.',
+                'OrdenProduccion',
+                $OrdenProduccion->id,
+            );
+
             return back()->withErrors([
                 'fecha_regreso_real' => 'Indique la fecha real de regreso de los procesos externos.',
             ]);
@@ -1614,6 +1679,14 @@ class OrdenProduccionController extends Controller {
             $esperada = (int) $distribucion->cantidad_planificada;
 
             if ($suma > $esperada) {
+                Bitacora::rechazo(
+                    'OrdenProduccion',
+                    'recepcionFueraDePlan',
+                    "Talla {$distribucion->talla}: {$suma} recibido(s) contra {$esperada} planificado(s).",
+                    'OrdenProduccion',
+                    $orden->id,
+                );
+
                 return back()->withErrors([
                     'recepciones' => "Talla {$distribucion->talla}: la suma ({$suma}) supera la cantidad esperada ({$esperada}).",
                 ]);
