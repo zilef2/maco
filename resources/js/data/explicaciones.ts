@@ -211,7 +211,7 @@ export const explicaciones: Explicacion[] = [
                 filas: [
                     ['Aprobada', 'El par pasó el control de calidad.', 'Es lo único que entra al inventario disponible.'],
                     ['En reparación', 'El par vuelve al taller a corregirse.', 'No entra a inventario y todos los pares en reparación comparten una fecha de compromiso pendiente.'],
-                    ['No recuperable', 'El par se perdió o no tiene arreglo.', 'Sale de la cuenta de la OP; queda como merma de producción.'],
+                    ['No recuperable', 'El par se perdió o no tiene arreglo.', 'Sale de la cuenta de la OP y deja un registro de merma (se totaliza en /Merma).'],
                 ],
             },
             {
@@ -285,6 +285,109 @@ export const explicaciones: Explicacion[] = [
             'app/Models/CompromisoReparacion.php',
             'tablas recepcion_calidads, compromisos_reparacion, notificaciones (columna fecha_programada)',
             'resources/js/pages/OrdenProduccion/CambiarEstadoModal.vue',
+        ],
+    },
+    {
+        id: 'op-merma-desde-no-recuperable',
+        categoria: 'OP',
+        categoriaLabel: 'Órdenes de producción',
+        subcategoria: 'Merma',
+        titulo: 'La merma nace del «No recuperable»: no se registra a mano',
+        resumen:
+            'Cada talla que queda con pares «No recuperable» en la recepción de una OP deja un registro de merma, y la pantalla de Mermas se limita a totalizarlos por mes y por periodo.',
+        etiquetas: [
+            'merma',
+            'mermas',
+            'no recuperable',
+            'pares perdidos',
+            'productos perdidos',
+            'valor perdido',
+            'cuánto se pierde al mes',
+            'merma a 60 días',
+            'merma por mes',
+            'porcentaje de pérdida',
+        ],
+        actualizada: '2026-11-03',
+        bloques: [
+            {
+                tipo: 'texto',
+                texto:
+                    'La pantalla /Merma es de solo lectura y no tiene botón de «Agregar»: una merma no es un dato que alguien deba digitar, sino la consecuencia de lo que ya se registró en la recepción de calidad. Su origen es siempre el formulario «Cambiar estado» de una OP con el estado «Recibiendo», en la columna «No recuperable».',
+            },
+            {
+                tipo: 'subtitulo',
+                texto: 'Cómo nace, se corrige o desaparece una merma',
+            },
+            {
+                tipo: 'pasos',
+                items: [
+                    'En «Cambiar estado» (OP en «Recibiendo») se digitan las tres cantidades por talla: aprobada, en reparación y no recuperable.',
+                    'Al guardar, cada talla con no recuperable deja UN registro de merma ligado a esa recepción (la llave es la recepción, así que re-guardar no duplica).',
+                    '«Guardar avance» también la registra: no hay que esperar el cierre de la OP para que la pérdida quede anotada.',
+                    'Si al volver a guardar la recepción la talla sube o baja su no recuperable, el registro se ajusta. Si queda en cero, se borra.',
+                    'Un par que estaba en reparación y al regresar se marca no recuperable entra en la merma de esa talla en el siguiente guardado.',
+                ],
+            },
+            {
+                tipo: 'tabla',
+                columnas: ['Campo de la merma', 'De dónde sale'],
+                filas: [
+                    ['Orden de producción', 'La OP de la recepción.'],
+                    ['Producto / material y talla', 'El objetivo y la talla de la fila de recepción (en una OP de materiales, el objetivo es el material procesado).'],
+                    ['Piezas perdidas', 'La cantidad digitada en «No recuperable».'],
+                    ['Fecha de registro', 'La fecha de recepción anotada en el formulario.'],
+                    ['Costo unitario', 'El costo de materiales de una unidad del producto o material, con la ficha técnica y los precios guardados en la OP.'],
+                    ['Valor perdido', 'Piezas perdidas × costo unitario; es el mismo criterio con el que se calcula «Pérdidas en mermas» del cierre.'],
+                    ['Registrado por', 'Quién guardó el cambio de estado.'],
+                ],
+            },
+            {
+                tipo: 'subtitulo',
+                texto: 'Qué se puede totalizar',
+            },
+            {
+                tipo: 'lista',
+                items: [
+                    'Periodo: mes actual, últimos 30 días, últimos 60 días o todo el histórico.',
+                    'Tarjetas del periodo: pares perdidos, valor perdido, órdenes afectadas y pérdida sobre lo esperado (piezas perdidas entre lo esperado de las tallas con merma).',
+                    'Tabla «Pérdidas por mes»: piezas, valor y órdenes de cada mes. Presionar un mes filtra el detalle a ese mes.',
+                    'Detalle de una fila: cómo quedó esa talla (esperada, aprobada, en reparación, no recuperable), su costo y quién la registró, con un acceso a la OP de origen.',
+                ],
+            },
+            {
+                tipo: 'preguntas',
+                pares: [
+                    {
+                        pregunta: '¿Puedo editar o borrar una merma desde /Merma?',
+                        respuesta:
+                            'No. Se corrige desde la OP: abrir «Cambiar estado» con la OP en «Recibiendo» y volver a guardar la recepción con la cantidad correcta.',
+                    },
+                    {
+                        pregunta: '¿Por qué el costo unitario sale en cero?',
+                        respuesta:
+                            'Porque la ficha técnica del producto (o del material procesado) no tiene materiales con precio, o la OP no tiene guardados sus precios. La cantidad perdida sí queda registrada.',
+                    },
+                    {
+                        pregunta: '¿Borrar una OP deja mermas huérfanas?',
+                        respuesta:
+                            'No. Las mermas se eliminan con la OP, junto con sus recepciones y sus cierres.',
+                    },
+                ],
+            },
+            {
+                tipo: 'nota',
+                tono: 'info',
+                texto:
+                    'Ejemplo: la OP-103 recibe Zapatillas Runner Pro y marca 2 no recuperables en la talla 38 y 1 en la talla 39. En /Merma aparecen dos registros (uno por talla) que suman 3 pares perdidos; si el mes siguiente se re-guarda la talla 38 con 1 no recuperable, el registro baja a 1 en lugar de abrir uno nuevo.',
+            },
+        ],
+        fuentes: [
+            'app/Services/MermaRecepcionService.php (sincronizar)',
+            'app/Http/Controllers/OrdenProduccionController.php (cambiarEstado, guardarRecepcionBorrador)',
+            'app/Http/Controllers/MermaController.php (index)',
+            'app/Services/CostoRecepcionOpService.php (unitarios, resumenCierre)',
+            'tablas mermas (recepcion_calidad_id único), recepcion_calidads',
+            'resources/js/pages/Merma/Index.vue',
         ],
     },
     {

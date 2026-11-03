@@ -191,7 +191,7 @@ class ProductoController extends Controller {
             }
         }
 
-        foreach (['precio_venta_producto', 'precio_estimado'] as $columna) {
+        foreach (['precio_venta_producto'] as $columna) {
             $precio = (string) $request->input($columna, '');
             if ($precio === 'con_precio') {
                 $Productos->whereNotNull($columna);
@@ -297,7 +297,7 @@ class ProductoController extends Controller {
             $datos[$campo] = (string) ($datos[$campo] ?? '');
         }
         $datos['Estado'] = ($datos['Estado'] ?? '') === '' ? 1 : (int) $datos['Estado'];
-        foreach (['costo_anticipado', 'precio_venta_producto', 'precio_estimado'] as $campo) {
+        foreach (['costo_anticipado', 'precio_venta_producto'] as $campo) {
             if (($datos[$campo] ?? null) === '') {
                 $datos[$campo] = null;
             }
@@ -373,7 +373,7 @@ class ProductoController extends Controller {
             $datos[$campo] = (string) ($datos[$campo] ?? '');
         }
         $datos['Estado'] = ($datos['Estado'] ?? '') === '' ? 1 : (int) $datos['Estado'];
-        foreach (['costo_anticipado', 'precio_venta_producto', 'precio_estimado'] as $campo) {
+        foreach (['costo_anticipado', 'precio_venta_producto'] as $campo) {
             if (($datos[$campo] ?? null) === '') {
                 $datos[$campo] = null;
             }
@@ -428,7 +428,6 @@ class ProductoController extends Controller {
             'instrucciones'        => ['nullable', 'string', 'max:5000'],
             'costo_anticipado'      => ['nullable', 'numeric', 'min:0'],
             'precio_venta_producto'      => ['nullable', 'numeric', 'min:0'],
-            'precio_estimado'      => ['nullable', 'numeric', 'min:0'],
             // Ficha técnica (opcional): se registra junto al producto.
             'materiales'           => ['nullable', 'array'],
             'materiales.*.material_componente_id' => ['required', 'integer', 'exists:materials,id'],

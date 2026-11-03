@@ -244,6 +244,8 @@ class MaterialController extends Controller {
     /**
      * Registra la compra de uno o varios materiales desde la vista de
      * Materiales. La unidad no se recibe: se toma la del material.
+     * El precio unitario se guarda como un cambio de precio del material
+     * (material_prices), que es de donde salen los costos.
      */
     public function registrarCompra(Request $request): RedirectResponse {
         Myhelp::EscribirEnLog($this, ' Begin STORE:MaterialCompra');
@@ -252,6 +254,7 @@ class MaterialController extends Controller {
             'materiales' => ['required', 'array', 'min:1'],
             'materiales.*.material_id' => ['required', 'integer', 'exists:materials,id'],
             'materiales.*.cantidad' => ['required', 'numeric', 'min:0.01'],
+            'materiales.*.precio' => ['required', 'numeric', 'min:0.01'],
         ]);
 
         $compras = collect($datos['materiales'])
@@ -260,6 +263,8 @@ class MaterialController extends Controller {
             ->map(fn ($filas, $materialId) => [
                 'material_id' => (int) $materialId,
                 'cantidad' => round($filas->sum(fn ($fila) => (float) $fila['cantidad']), 2),
+                // Si el mismo material se repite, manda el precio de la última fila.
+                'precio' => round((float) $filas->last()['precio'], 2),
             ])
             ->sortBy('material_id')
             ->values()
@@ -298,6 +303,13 @@ class MaterialController extends Controller {
                     'Compra de material'
                 );
 
+                // El precio de esta compra queda como cambio de precio del
+                // material: alimenta el costo unitario y el promedio.
+                $material->prices()->create([
+                    'precio' => round((float) $compra['precio'], 2),
+                    'fecha' => now()->toDateString(),
+                ]);
+
                 $registradas++;
             }
 
@@ -307,7 +319,7 @@ class MaterialController extends Controller {
 
             return back()->with(
                 'success',
-                'Se registraron ' . $registradas . ' compra(s) de material. Las entradas quedaron en el histórico.'
+                'Se registraron ' . $registradas . ' compra(s) de material. Las entradas y los precios quedaron en el histórico.'
             );
         } catch (\Throwable $e) {
             DB::rollBack();

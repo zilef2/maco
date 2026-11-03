@@ -26,7 +26,6 @@ class Producto extends Model
         'instrucciones',
         'costo_anticipado',
         'precio_venta_producto',
-        'precio_estimado',
     ];
 
     //     05 ficha ensamble

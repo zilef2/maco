@@ -27,7 +27,6 @@ class ProductoFactory extends Factory
             'descripcion' => null,
             'costo_anticipado' => 10,
             'precio_venta_producto' => 20,
-            'precio_estimado' => 25,
         ];
     }
 }

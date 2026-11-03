@@ -65,39 +65,6 @@ const navGroups: NavGroup[] = [
 
 const navDropdown: NavGroup[] = [
     {
-        label: 'Fichas y Kit',
-        icon: Layers,
-        items: [
-            {
-                title: 'FichaTecnicaMateriales',
-                href: '/FichaTecnicaMateriales',
-                icon: FileSpreadsheet,
-            },
-            {
-                title: 'FichaEnsamble',
-                href: '/FichaEnsamble',
-                icon: FileSpreadsheet,
-            },
-            // {
-            //     title: 'FichaEnsambleMaterial',
-            //     href: '/FichaEnsambleMaterial',
-            //     icon: FileSpreadsheet,
-            // },
-            {
-                title: 'KitProceso',
-                href: '/KitProceso',
-                icon: PackageCheck,
-            },
-            {
-		title: 'Procesoop',
-		href: '/Procesoop',
-		icon: LayoutGrid,
-	},
-	//aquipuesSide
-
-        ],
-    },
-    {
         label: 'Taller & Externo',
         icon: Building2,
         items: [
@@ -113,6 +80,48 @@ const navDropdown: NavGroup[] = [
             },
         ],
     },
+    {
+        label: 'Fichas y Procesos',
+        icon: Layers,
+        items: [
+            {
+                title: 'FichaTecnicaMateriales',
+                href: '/FichaTecnicaMateriales',
+                icon: FileSpreadsheet,
+            },
+            // {
+            //     title: 'FichaEnsamble',
+            //     href: '/FichaEnsamble',
+            //     icon: FileSpreadsheet,
+            // },
+            // {
+            //     title: 'FichaEnsambleMaterial',
+            //     href: '/FichaEnsambleMaterial',
+            //     icon: FileSpreadsheet,
+            // },
+            // {
+            //     title: 'KitProceso',
+            //     href: '/KitProceso',
+            //     icon: PackageCheck,
+            // },
+            //aquipuesSide
+
+        ],
+    },
+    {
+        label: 'Mantenimiento',
+        icon: Layers,
+        items: [
+            {
+                title: 'Procesoop',
+                href: '/Procesoop',
+                icon: LayoutGrid,
+            },
+            //aquipuesSide
+
+        ],
+    },
+    
     // {
     //     label: 'Listas',
     //     icon: Database,
@@ -180,7 +189,7 @@ const navDropdown: NavGroup[] = [
                 href: '/Merma',
                 icon: LayoutGrid,
             },
-            
+
         ],
     },
     {
@@ -237,7 +246,7 @@ const navDropdown: NavGroup[] = [
 
 // const footerAdminItems = [
 //     ];
-    const footerSuperItems = [
+const footerSuperItems = [
     {
         title: 'Desarrollo',
         href: '/desarrollo',

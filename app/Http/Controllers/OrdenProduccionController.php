@@ -24,6 +24,7 @@ use App\Http\Requests\StoreOrdenProduccionRequest;
 use App\Services\Bitacora;
 use App\Services\CostoMaterialOpService;
 use App\Services\CostoRecepcionOpService;
+use App\Services\MermaRecepcionService;
 use App\Traits\MaterialMovimientoTrait;
 use App\helpers\Myhelp;
 use App\helpers\MyModels;
@@ -47,7 +48,8 @@ class OrdenProduccionController extends Controller {
 
     public function __construct(
         protected CostoMaterialOpService $costosMateriales,
-        protected CostoRecepcionOpService $costosRecepcion
+        protected CostoRecepcionOpService $costosRecepcion,
+        protected MermaRecepcionService $mermasRecepcion
     ) {
         $this->thisAtributos = (new OrdenProduccion())->getFillable();
     }
@@ -1434,6 +1436,7 @@ class OrdenProduccionController extends Controller {
         $estadoFinalId = (int) ($estadoFinal?->id ?? $estadoSolicitadoId);
         $estadoFinalNombre = $estadoFinal?->nombre ?? $nuevoEstado?->nombre;
         $recepcionesGeneradas = 0;
+        $mermasRegistradas = 0;
         $procesosCreados = 0;
         $materialesDescontados = 0;
         $productosIncrementados = 0;
@@ -1517,6 +1520,7 @@ class OrdenProduccionController extends Controller {
             $esCierre,
             $cierreDatos,
             &$recepcionesGeneradas,
+            &$mermasRegistradas,
             &$procesosCreados,
             &$materialesDescontados,
             &$productosIncrementados,
@@ -1553,6 +1557,7 @@ class OrdenProduccionController extends Controller {
 
             if (!empty($recepciones)) {
                 $recepcionesGeneradas = RecepcionCalidad::generarDesdeOrden($OrdenProduccion, $recepciones, $fechaRecepcion);
+                $mermasRegistradas = $this->mermasRecepcion->sincronizar($OrdenProduccion, Auth::id());
                 $productosIncrementados = $this->incrementarProductos($OrdenProduccion, $recepciones);
                 $compromisosAvisados = $this->registrarCompromisosReparacion($OrdenProduccion, $recepciones);
             }
@@ -1617,6 +1622,9 @@ class OrdenProduccionController extends Controller {
         $mensaje = __('app.label.updated_successfully2', ['nombre' => $identificador]);
         if ($recepcionesGeneradas > 0) {
             $mensaje .= ' Se generaron ' . $recepcionesGeneradas . ' registros de recepción de calidad.';
+        }
+        if ($mermasRegistradas > 0) {
+            $mensaje .= ' ' . $mermasRegistradas . ' par(es) no recuperable(s) quedaron registrados como merma.';
         }
         if ($procesosCreados > 0) {
             $mensaje .= ' Se registraron ' . $procesosCreados . ' materiales en proceso externo.';
@@ -1738,6 +1746,12 @@ class OrdenProduccionController extends Controller {
         // que al reabrir el formulario no se pierda lo ya digitado.
         $compromisosAvisados = $this->registrarCompromisosReparacion($orden, $filasCompromiso);
 
+        // Lo digitado como no recuperable ya es pérdida: se registra como merma
+        // aunque la recepción todavía esté a medias.
+        $mermasRegistradas = $guardadas > 0
+            ? $this->mermasRecepcion->sincronizar($orden, Auth::id())
+            : 0;
+
         // Una OP con al menos un producto recibido ya está «Recibiendo», sin
         // importar en qué quedó cada par (aprobado, en reparación o no
         // recuperable). No se toca una OP ya cerrada.
@@ -1760,6 +1774,9 @@ class OrdenProduccionController extends Controller {
         Myhelp::EscribirEnLog($this, 'RECEPCION-BORRADOR:OrdenProduccions', 'OrdenProduccion id:' . $orden->id . ' | ' . $identificador . ' | ' . $guardadas . ' fila(s)' . ($pasoARecibiendo ? ' | pasó a Recibiendo' : ''), false);
 
         $mensaje = 'Avance de recepción guardado. Los valores se conservarán al terminar.';
+        if ($mermasRegistradas > 0) {
+            $mensaje .= ' ' . $mermasRegistradas . ' par(es) no recuperable(s) quedaron registrados como merma.';
+        }
         if ($pasoARecibiendo) {
             $mensaje .= ' La OP pasó a «Recibiendo».';
         }

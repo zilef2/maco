@@ -1091,7 +1091,7 @@ watch(
                             <b class="text-gray-900 dark:text-gray-100">{{ cantidadPlanificada }}</b>
                         </span>
                         <span>
-                            Costo fichas:
+                            Costo Materiales:
                             <b class="text-gray-900 dark:text-gray-100">{{ formatdinero(costoFichas) }}</b>
                         </span>
                         <span>

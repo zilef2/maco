@@ -234,12 +234,66 @@ class DashboardController extends Controller
         $inicioMes = now()->startOfMonth();
 
         $recepciones = RecepcionCalidad::query()
+            ->with('productoReferencia')
             ->where('fecha_recepcion', '>=', $inicioMes)
-            ->selectRaw('COALESCE(SUM(cantidad_recibida), 0) AS recibidos,
-                COALESCE(SUM(cantidad_aprobada), 0) AS aprobados,
-                COALESCE(SUM(cantidad_en_reparacion), 0) AS en_reparacion,
-                COALESCE(SUM(cantidad_no_recuperable), 0) AS no_recuperables')
-            ->first();
+            ->get();
+
+        $recibidos = 0;
+        $aprobados = 0;
+        $enReparacion = 0;
+        $noRecuperables = 0;
+
+        $detallesRecibidos = [];
+        $detallesAprobados = [];
+        $detallesReparacion = [];
+        $detallesNoRecuperables = [];
+
+        foreach ($recepciones as $r) {
+            $recibida = (int) ($r->cantidad_recibida ?? 0);
+            $aprobada = (int) ($r->cantidad_aprobada ?? 0);
+            $reparacion = (int) ($r->cantidad_en_reparacion ?? 0);
+            $noRecuperable = (int) ($r->cantidad_no_recuperable ?? 0);
+
+            $recibidos += $recibida;
+            $aprobados += $aprobada;
+            $enReparacion += $reparacion;
+            $noRecuperables += $noRecuperable;
+
+            $productoNombre = $r->productoReferencia
+                ? ($r->productoReferencia->Titulo_Shopify ?: ($r->productoReferencia->Codigo_interno ?: 'Producto #' . $r->productoReferencia->id))
+                : ('Producto #' . ($r->producto_referencia_id ?? 'N/A'));
+
+            $createdAt = $r->created_at ? (string) $r->created_at : null;
+
+            if ($recibida > 0) {
+                $detallesRecibidos[] = [
+                    'producto' => $productoNombre,
+                    'cantidad' => $recibida,
+                    'created_at' => $createdAt,
+                ];
+            }
+            if ($aprobada > 0) {
+                $detallesAprobados[] = [
+                    'producto' => $productoNombre,
+                    'cantidad' => $aprobada,
+                    'created_at' => $createdAt,
+                ];
+            }
+            if ($reparacion > 0) {
+                $detallesReparacion[] = [
+                    'producto' => $productoNombre,
+                    'cantidad' => $reparacion,
+                    'created_at' => $createdAt,
+                ];
+            }
+            if ($noRecuperable > 0) {
+                $detallesNoRecuperables[] = [
+                    'producto' => $productoNombre,
+                    'cantidad' => $noRecuperable,
+                    'created_at' => $createdAt,
+                ];
+            }
+        }
 
         $compras = OrdenProduccionCostoMaterial::query()
             ->where('created_at', '>=', $inicioMes)
@@ -267,10 +321,14 @@ class DashboardController extends Controller
             ->count();
 
         return [
-            'pares_recibidos' => (int) ($recepciones->recibidos ?? 0),
-            'pares_aprobados' => (int) ($recepciones->aprobados ?? 0),
-            'en_reparacion' => (int) ($recepciones->en_reparacion ?? 0),
-            'no_recuperables' => (int) ($recepciones->no_recuperables ?? 0),
+            'pares_recibidos' => $recibidos,
+            'pares_aprobados' => $aprobados,
+            'en_reparacion' => $enReparacion,
+            'no_recuperables' => $noRecuperables,
+            'detalles_pares_recibidos' => $detallesRecibidos,
+            'detalles_pares_aprobados' => $detallesAprobados,
+            'detalles_en_reparacion' => $detallesReparacion,
+            'detalles_no_recuperables' => $detallesNoRecuperables,
             'costo_materiales' => (int) ($compras ?? 0),
             'desviacion_costos' => (int) ($desviacion ?? 0),
             'movimientos_entradas' => (int) ($movimientos->entradas ?? 0),

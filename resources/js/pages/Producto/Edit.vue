@@ -63,7 +63,6 @@ const form = useForm({
     instrucciones: '',
     costo_anticipado: '' as string | number,
     precio_venta_producto: '' as string | number,
-    precio_estimado: '' as string | number,
     materiales: [] as any[],
     procesos: [] as any[],
 });
@@ -163,7 +162,6 @@ watchEffect(() => {
     form.instrucciones = producto.instrucciones ?? '';
     form.costo_anticipado = producto.costo_anticipado ?? '';
     form.precio_venta_producto = producto.precio_venta_producto ?? '';
-    form.precio_estimado = producto.precio_estimado ?? '';
     form.materiales = (producto.ficha_materiales ?? []).map((material: any) => ({
         material_componente_id: material.material_componente_id,
         consumo_estandar: material.consumo_estandar ?? 1,
@@ -466,15 +464,6 @@ watchEffect(() => {
                                     v-model="form.precio_venta_producto" placeholder="$0"
                                     :error="form.errors.precio_venta_producto" />
                                 <InputError class="mt-2" :message="form.errors.precio_venta_producto" />
-                            </div>
-
-                            <div>
-                                <InputLabel for="precio_estimado"
-                                    :value="lang().t('app.label.precio_estimado') || 'Precio estimado'" />
-                                <TextInput id="precio_estimado" type="number" step="0.01" min="0"
-                                    class="mt-1 block w-full text-right tabular-nums" v-model="form.precio_estimado"
-                                    placeholder="0.00" :error="form.errors.precio_estimado" />
-                                <InputError class="mt-2" :message="form.errors.precio_estimado" />
                             </div>
 
                             <div class="md:col-span-3">

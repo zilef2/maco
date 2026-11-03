@@ -93,7 +93,8 @@ Route::middleware('auth', 'verified')->group(function () {
 	Route::get("/ImportarExcel/plantilla/{clave}", [\App\Http\Controllers\ImportarExcelController::class, 'descargarPlantilla'])->name('ImportarExcel.plantilla');
 	Route::resource("/EstadoOpMaterial", \App\Http\Controllers\EstadoOpMaterialController::class);
 	Route::resource("/EmpresaExterna", \App\Http\Controllers\EmpresaExternaController::class);
-	Route::resource("/Merma", \App\Http\Controllers\MermaController::class);
+	// La merma no se registra a mano: es el «No recuperable» de la recepción de la OP.
+	Route::get("/Merma", [\App\Http\Controllers\MermaController::class, 'index'])->name('Merma.index');
 	Route::resource("/FichaEnsamble", \App\Http\Controllers\FichaEnsambleController::class);
 	Route::resource("/FichaEnsambleMaterial", \App\Http\Controllers\FichaEnsambleMaterialController::class);
 

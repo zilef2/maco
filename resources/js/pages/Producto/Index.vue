@@ -78,7 +78,6 @@ const columnas = [
     { key: 'Control_de_variante', label: 'Variante', sortable: true, align: 'left', headerClass: 'hidden min-w-[170px] xl:table-cell', cellClass: 'hidden min-w-[170px] xl:table-cell' },
     { key: 'Estado', label: 'Estado', sortable: true, align: 'left', headerClass: 'w-[110px]', cellClass: 'w-[110px]' },
     { key: 'precio_venta_producto', label: 'Precio', sortable: true, align: 'right', headerClass: 'w-[140px]', cellClass: 'w-[140px]' },
-    { key: 'precio_estimado', label: 'Precio estimado', sortable: true, align: 'right', headerClass: 'w-[150px]', cellClass: 'w-[150px]' },
     { key: 'tallas', label: 'Tallas', sortable: false, align: 'left', headerClass: 'hidden min-w-[150px] md:table-cell', cellClass: 'hidden min-w-[150px] md:table-cell' },
 ] as const;
 
@@ -95,7 +94,6 @@ const titulos = [
     { order: 'descripcion', label: 'descripcion', type: 'text' },
     { order: 'costo_anticipado', label: 'costo_anticipado', type: 'number' },
     { order: 'precio_venta_producto', label: 'precio_venta_producto', type: 'number' },
-    { order: 'precio_estimado', label: 'precio_estimado', type: 'number' },
 ];
 
 const data = reactive({
@@ -348,7 +346,6 @@ const opcionesTallas = computed(() => opcionesBinarias('_tieneTallas', { con: 'C
 const opcionesCantidad = computed(() => opcionesBinarias('_tieneCantidad', { con: 'Con cantidad', sin: 'Sin cantidad' }));
 const opcionesFicha = computed(() => opcionesBinarias('_tieneFicha', { con: 'Con ficha', sin: 'Sin ficha' }));
 const opcionesPrecioPreventa = computed(() => opcionesPrecio('precio_venta_producto'));
-const opcionesPrecioEstimado = computed(() => opcionesPrecio('precio_estimado'));
 
 const filtradas = computed(() =>
     baseFiltrada.value.filter((producto: any) => {
@@ -372,8 +369,6 @@ const filtradas = computed(() =>
         }
         if (precioPreventaFiltro.value === 'con_precio' && !tienePrecio(producto.precio_venta_producto)) return false;
         if (precioPreventaFiltro.value === 'sin_precio' && tienePrecio(producto.precio_venta_producto)) return false;
-        if (precioEstimadoFiltro.value === 'con_precio' && !tienePrecio(producto.precio_estimado)) return false;
-        if (precioEstimadoFiltro.value === 'sin_precio' && tienePrecio(producto.precio_estimado)) return false;
         if (tallasFiltro.value === 'con' && !tieneTallas(producto)) return false;
         if (tallasFiltro.value === 'sin' && tieneTallas(producto)) return false;
         if (cantidadFiltro.value === 'con' && !tieneCantidad(producto)) return false;
@@ -894,13 +889,6 @@ const recargar = () => {
                                             Anticipado {{ formatearPrecio(producto.costo_anticipado) }}
                                         </span>
                                     </div>
-                                </td>
-
-                                <td class="px-3 py-3 text-right align-top">
-                                    <span class="font-medium tabular-nums text-foreground">
-                                        {{ formatearPrecio(producto.precio_estimado,
-                                        decimalesDe(producto.precio_estimado)) }}
-                                    </span>
                                 </td>
 
                                 <td class="hidden px-3 py-3 align-top md:table-cell">

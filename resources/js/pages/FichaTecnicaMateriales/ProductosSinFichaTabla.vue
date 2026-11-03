@@ -82,14 +82,6 @@ const columnas: ColumnaTabla[] = [
         valor: (producto: any) => Number(producto.precio_venta_producto ?? 0),
     },
     {
-        key: 'precio_estimado',
-        label: 'Precio estimado',
-        sortable: true,
-        align: 'right',
-        headerClass: 'w-[150px]',
-        valor: (producto: any) => Number(producto.precio_estimado ?? 0),
-    },
-    {
         key: 'tallas',
         label: 'Tallas',
         sortable: true,
@@ -339,12 +331,6 @@ const iconoAccion =
                                     Anticipado {{ formatearPrecio(producto.costo_anticipado) }}
                                 </span>
                             </div>
-                        </td>
-
-                        <td class="px-3 py-3 text-right align-top">
-                            <span class="font-medium tabular-nums text-foreground">
-                                {{ formatearPrecio(producto.precio_estimado, decimalesDe(producto.precio_estimado)) }}
-                            </span>
                         </td>
 
                         <td class="hidden px-3 py-3 align-top md:table-cell">
