@@ -143,7 +143,7 @@
         { "name": "Titulo_Shopify", "type": "varchar(255)" },
         { "name": "Familia_normalizada", "type": "varchar(255)" },
         { "name": "Estado", "type": "varchar(255)" },
-        { "name": "precio_preventa", "type": "int" },
+        { "name": "precio_venta_producto", "type": "int" },
         { "name": "created_at", "type": "timestamp" }
       ]
     },

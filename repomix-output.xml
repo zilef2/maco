@@ -20754,7 +20754,7 @@ class ImportarExcelController extends Controller
                 'columnas_opcionales' => [
                     'ID producto Shopify', 'Categoria original', 'Familia normalizada',
                     'Control de variante', 'Opciones', 'Rango', 'Estado',
-                    'Observaciones', 'Descripcion', 'Precio predicho', 'Precio preventa',
+                    'Observaciones', 'Descripcion', 'Precio predicho', 'Precio venta',
                 ],
                 'nota' => 'Si el código interno ya existe se actualiza el registro; si no, se crea. La columna "Rango" se guarda en "Opciones".',
             ],
@@ -38636,7 +38636,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
             <line x1="414" y1="714" x2="724" y2="714" class="c-grid er-row-rule" stroke-width="0.5"/>
 
 
-            <text data-detail="context" x="456" y="729" class="t-primary" font-size="11">precio_preventa</text>
+            <text data-detail="context" x="456" y="729" class="t-primary" font-size="11">precio_venta_producto</text>
             <text data-detail="context" x="712" y="729" class="er-type" font-size="10.5" text-anchor="end">int</text>
           </g>
           <g data-detail="context" data-er-row="7">
@@ -48688,7 +48688,7 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
         { "name": "Titulo_Shopify", "type": "varchar(255)" },
         { "name": "Familia_normalizada", "type": "varchar(255)" },
         { "name": "Estado", "type": "varchar(255)" },
-        { "name": "precio_preventa", "type": "int" },
+        { "name": "precio_venta_producto", "type": "int" },
         { "name": "created_at", "type": "timestamp" }
       ]
     },
@@ -60827,7 +60827,7 @@ const COLUMNAS_OPCIONALES = [
     'Observaciones',
     'Descripcion',
     'Precio predicho',
-    'Precio preventa',
+    'Precio venta',
 ];
 
 const form = useForm({
@@ -69577,7 +69577,7 @@ return new class extends Migration
             $table->string('Observaciones')->nullable();
             $table->text('descripcion')->nullable();
             $table->integer('precio_predicho')->nullable();
-            $table->integer('precio_preventa')->nullable();
+            $table->integer('precio_venta_producto')->nullable();
             $table->timestamps();
         });
     }
@@ -78213,7 +78213,7 @@ class ProductoSeeder extends Seeder
                 'Observaciones' => 'Modelo estrella para la campaña de temporada primavera-verano.',
                 'descripcion' => 'Zapatillas de running con amortiguación de alto impacto, malla transpirable y suela de caucho antideslizante.',
                 'precio_predicho' => 189900,
-                'precio_preventa' => 169900,
+                'precio_venta_producto' => 169900,
             ],
             [
                 'Codigo_interno' => 'ZAP-URB-'.rand(100, 999),
@@ -78227,7 +78227,7 @@ class ProductoSeeder extends Seeder
                 'Observaciones' => null,
                 'descripcion' => 'Sneakers casuales de diseño minimalista, ideales para uso diario con plantilla acolchada y suela ligera.',
                 'precio_predicho' => 129900,
-                'precio_preventa' => 119900,
+                'precio_venta_producto' => 119900,
             ],
         ];
 
@@ -86282,7 +86282,7 @@ const form = useForm({
     Observaciones: '',
     descripcion: '',
     precio_predicho: '' as string | number,
-    precio_preventa: '' as string | number,
+    precio_venta_producto: '' as string | number,
 });
 
 const toggleEstado = () => {
@@ -86324,7 +86324,7 @@ watchEffect(() => {
             form.Observaciones = 'Observación genérica ' + valueRAn
             form.descripcion = 'Descripción genérica ' + valueRAn
             form.precio_predicho = valueRAn * 10000
-            form.precio_preventa = valueRAn * 12000
+            form.precio_venta_producto = valueRAn * 12000
         }
     }
 });
@@ -86501,11 +86501,11 @@ watchEffect(() => {
                             </div>
 
                             <div>
-                                <InputLabel for="precio_preventa" :value="lang().t('app.label.precio_preventa') || 'Precio preventa'" />
-                                <TextInput id="precio_preventa" type="number" step="any" min="0" class="mt-1 block w-full"
-                                    v-model="form.precio_preventa" placeholder="Precio preventa (opcional)"
-                                    :error="form.errors.precio_preventa" />
-                                <InputError class="mt-2" :message="form.errors.precio_preventa" />
+                                <InputLabel for="precio_venta_producto" :value="lang().t('app.label.precio_venta_producto') || 'Precio venta'" />
+                                <TextInput id="precio_venta_producto" type="number" step="any" min="0" class="mt-1 block w-full"
+                                    v-model="form.precio_venta_producto" placeholder="Precio venta (opcional)"
+                                    :error="form.errors.precio_venta_producto" />
+                                <InputError class="mt-2" :message="form.errors.precio_venta_producto" />
                             </div>
 
                             <div class="md:col-span-3">
@@ -87824,7 +87824,7 @@ class ProductoController extends Controller {
             'observaciones'      => 'Observaciones',
             'descripcion'        => 'descripcion',
             'preciopredicho'     => 'precio_predicho',
-            'preciopreventa'     => 'precio_preventa',
+            'precioventa'     => 'precio_venta_producto',
         ];
 
         $normalizarTexto = fn (string $texto): string => strtr(
@@ -87923,7 +87923,7 @@ class ProductoController extends Controller {
                 'Observaciones'         => $texto($registro['Observaciones'] ?? ''),
                 'descripcion'           => mb_substr(strip_tags((string) ($registro['descripcion'] ?? '')), 0, 5000),
                 'precio_predicho'       => $entero($registro['precio_predicho'] ?? null),
-                'precio_preventa'       => $entero($registro['precio_preventa'] ?? null),
+                'precio_venta_producto'       => $entero($registro['precio_venta_producto'] ?? null),
             ];
         }
 
@@ -87955,7 +87955,7 @@ class ProductoController extends Controller {
                         'Observaciones'       => '',
                         'descripcion'         => '',
                         'precio_predicho'     => 0,
-                        'precio_preventa'     => 0,
+                        'precio_venta_producto'     => 0,
                     ];
                     Producto::create($registro);
                     $creados++;
@@ -88005,7 +88005,7 @@ class Producto extends Model
          'Observaciones',
          'descripcion',
          'precio_predicho',
-         'precio_preventa'
+         'precio_venta_producto'
         ];
 
 //     05 ficha ensamble
@@ -92827,7 +92827,7 @@ const titulos = [
     { order: 'Observaciones', label: 'Observaciones', type: 'string' },
     { order: 'descripcion', label: 'descripcion', type: 'text' },
     { order: 'precio_predicho', label: 'precio_predicho', type: 'number' },
-    { order: 'precio_preventa', label: 'precio_preventa', type: 'number' },
+    { order: 'precio_venta_producto', label: 'precio_venta_producto', type: 'number' },
 ];
 
 </script>
@@ -94229,7 +94229,7 @@ return [
 		'foto_derecha' => 'foto_derecha',
 		'foto_izquierda' => 'foto_izquierda',
 		'precio_ponderado' => 'precio_ponderado',
-		'precio_preventa' => 'precio_preventa',
+		'precio_venta_producto' => 'precio_venta_producto',
 		'Talla' => 'Talla',
 		'referencia' => 'referencia',
 		'Codigo_interno' => 'Código_interno',
@@ -94591,7 +94591,7 @@ return [
 		'foto_derecha' => 'foto_derecha',
 		'foto_izquierda' => 'foto_izquierda',
 		'precio_ponderado' => 'precio_ponderado',
-		'precio_preventa' => 'precio_preventa',
+		'precio_venta_producto' => 'precio_venta_producto',
 		'Talla' => 'Talla',
 		'referencia' => 'referencia',
 		'tipo' => 'tipo',

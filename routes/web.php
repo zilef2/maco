@@ -105,6 +105,7 @@ Route::middleware('auth', 'verified')->group(function () {
 			'subcategoria' => $request->query('subcategoria'),
 		]);
 	})->name('Explicaciones.index');
+	Route::resource("/Procesoop", \App\Http\Controllers\ProcesoopController::class);
 	//aquipues
 }); //fin verified
 

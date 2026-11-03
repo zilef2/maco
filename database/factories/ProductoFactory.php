@@ -26,7 +26,7 @@ class ProductoFactory extends Factory
             'Observaciones' => null,
             'descripcion' => null,
             'costo_anticipado' => 10,
-            'precio_preventa' => 20,
+            'precio_venta_producto' => 20,
             'precio_estimado' => 25,
         ];
     }

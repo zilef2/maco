@@ -30,7 +30,8 @@ class Material extends Model
         'variante_atributo_sugerido',
         'proveedor_habitual',
         'material_procesado',
-        'observaciones'];
+        'observaciones',
+        'costo_material'];
 
     public function movimientos(): HasMany
     {

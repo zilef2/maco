@@ -2,11 +2,10 @@
 
 namespace App\Models;
 
-use Illuminate\Support\Facades\DB;
-
 use Database\Factories\ProductoFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 
 class Producto extends Model
 {
@@ -15,27 +14,28 @@ class Producto extends Model
 
     protected $fillable = [
         'Codigo_interno',
-         'ID_producto_Shopify',
-         'Categoria_original',
-         'Familia_normalizada',
-         'Titulo_Shopify',
-         'Control_de_variante',
-         'Opciones',
-         'Estado',
-         'Observaciones',
-         'descripcion',
-         'costo_anticipado',
-         'precio_preventa',
-         'precio_estimado'
-        ];
+        'ID_producto_Shopify',
+        'Categoria_original',
+        'Familia_normalizada',
+        'Titulo_Shopify',
+        'Control_de_variante',
+        'Opciones',
+        'Estado',
+        'Observaciones',
+        'descripcion',
+        'instrucciones',
+        'costo_anticipado',
+        'precio_venta_producto',
+        'precio_estimado',
+    ];
 
-//     05 ficha ensamble
-// OP
-// Producto / referencia
-// Cantidad total
-// Colección
-// Taller
-// Fecha entrega
+    //     05 ficha ensamble
+    // OP
+    // Producto / referencia
+    // Cantidad total
+    // Colección
+    // Taller
+    // Fecha entrega
 
     public function ordenesProduccion()
     {
@@ -55,6 +55,15 @@ class Producto extends Model
     public function recepcionesCalidad()
     {
         return $this->hasMany(RecepcionCalidad::class, 'producto_referencia_id');
+    }
+
+    /**
+     * Procesos del producto con su coste. La suma de coste_proceso, multiplicada
+     * por la cantidad de cada producto, define el costo de proceso de la OP.
+     */
+    public function procesos()
+    {
+        return $this->hasMany(Procesoop::class, 'producto_id');
     }
 
     public static function getFillableWithTypes(): array

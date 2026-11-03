@@ -7,9 +7,10 @@ import PrimaryButton from '@/components/PrimaryButton.vue';
 import SecondaryButton from '@/components/SecondaryButton.vue';
 import TextInput from '@/components/TextInput.vue';
 import EditorMateriales from '@/pages/FichaTecnicaMateriales/EditorMateriales.vue';
+import EditorProcesos from '@/pages/Producto/EditorProcesos.vue';
 import { MAX_TALLAS_POR_RANGO, TALLAS_ALFABETICAS, useTallasVariante } from '@/composables/useTallasVariante';
 import { dineroANumero } from '@/global.ts';
-import { CheckCircleIcon, ClipboardDocumentListIcon, CubeIcon, DocumentTextIcon, PencilSquareIcon } from '@heroicons/vue/24/solid';
+import { CheckCircleIcon, ClipboardDocumentListIcon, Cog6ToothIcon, CubeIcon, DocumentTextIcon, PencilSquareIcon } from '@heroicons/vue/24/solid';
 import { useForm } from '@inertiajs/vue3';
 import { computed, watch, watchEffect } from 'vue';
 import vSelect from 'vue-select';
@@ -59,10 +60,12 @@ const form = useForm({
     Estado: 1,
     Observaciones: '',
     descripcion: '',
+    instrucciones: '',
     costo_anticipado: '' as string | number,
-    precio_preventa: '' as string | number,
+    precio_venta_producto: '' as string | number,
     precio_estimado: '' as string | number,
     materiales: [] as any[],
+    procesos: [] as any[],
 });
 
 const { modo, rango, tallasEscogidas, tallas, alternarTalla, rangoDemasiadoGrande, opcionesTexto, sembrar } =
@@ -119,6 +122,16 @@ const update = () => {
                         consumo_estandar: dineroANumero(fila.consumo_estandar),
                         costo_asociado_teorico: dineroANumero(fila.costo_asociado_teorico),
                     })),
+            // Los procesos tampoco se tocan con la OP activa: alimentan el
+            // costo de proceso de las órdenes.
+            procesos: fichaBloqueada.value
+                ? []
+                : datos.procesos
+                    .filter((fila: any) => String(fila.nombre ?? '').trim() !== '')
+                    .map((fila: any) => ({
+                        nombre: String(fila.nombre).trim(),
+                        coste_proceso: dineroANumero(fila.coste_proceso),
+                    })),
         }))
         .put(route('Producto.update', props.Productoa?.id), {
             preserveScroll: true,
@@ -147,14 +160,19 @@ watchEffect(() => {
     form.Estado = Number(producto.Estado) === 0 ? 0 : 1;
     form.Observaciones = producto.Observaciones ?? '';
     form.descripcion = producto.descripcion ?? '';
+    form.instrucciones = producto.instrucciones ?? '';
     form.costo_anticipado = producto.costo_anticipado ?? '';
-    form.precio_preventa = producto.precio_preventa ?? '';
+    form.precio_venta_producto = producto.precio_venta_producto ?? '';
     form.precio_estimado = producto.precio_estimado ?? '';
     form.materiales = (producto.ficha_materiales ?? []).map((material: any) => ({
         material_componente_id: material.material_componente_id,
         consumo_estandar: material.consumo_estandar ?? 1,
         unidad_medida: material.unidad_medida ?? '',
         costo_asociado_teorico: material.costo_asociado_teorico ?? '',
+    }));
+    form.procesos = (producto.producto_procesos ?? []).map((proceso: any) => ({
+        nombre: proceso.nombre ?? '',
+        coste_proceso: proceso.coste_proceso ?? '',
     }));
 });
 </script>
@@ -164,9 +182,11 @@ watchEffect(() => {
         <Modal :show="props.show" @close="emit('close')" :maxWidth="'xl5'">
             <form class="p-0" @submit.prevent="update">
                 <!-- Encabezado -->
-                <div class="px-6 pt-6 pb-4 border-b border-gray-200 dark:border-gray-700 bg-gradient-to-r from-indigo-50 via-white to-violet-50 dark:from-gray-800 dark:via-gray-800 dark:to-gray-800 rounded-t-lg">
+                <div
+                    class="px-6 pt-6 pb-4 border-b border-gray-200 dark:border-gray-700 bg-gradient-to-r from-indigo-50 via-white to-violet-50 dark:from-gray-800 dark:via-gray-800 dark:to-gray-800 rounded-t-lg">
                     <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                        <span class="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white">
+                        <span
+                            class="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white">
                             <PencilSquareIcon class="w-5 h-5" />
                         </span>
                         {{ lang().t('app.label.edit') }} {{ props.title }}
@@ -179,13 +199,15 @@ watchEffect(() => {
                 <div class="px-6 py-5 space-y-7 max-h-[70vh] overflow-y-auto scrollbar-table">
                     <!-- Información principal -->
                     <div>
-                        <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-1.5 mb-4">
+                        <h3
+                            class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-1.5 mb-4">
                             <ClipboardDocumentListIcon class="w-4 h-4 text-gray-400 dark:text-gray-500" />
                             Información principal
                         </h3>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
                             <div>
-                                <InputLabel for="Codigo_interno" :value="lang().t('app.label.Codigo_interno') || 'Código interno'" />
+                                <InputLabel for="Codigo_interno"
+                                    :value="lang().t('app.label.Codigo_interno') || 'Código interno'" />
                                 <TextInput id="Codigo_interno" type="text" class="mt-1 block w-full"
                                     v-model="form.Codigo_interno" required placeholder="Código interno"
                                     :error="form.errors.Codigo_interno" />
@@ -193,26 +215,22 @@ watchEffect(() => {
                             </div>
 
                             <div>
-                                <InputLabel for="Familia_normalizada" :value="lang().t('app.label.Familia_normalizada') || 'Familia normalizada'" />
-                                <v-select
-                                    v-if="optionsPara('Familia_normalizada').length"
-                                    id="Familia_normalizada"
-                                    :options="optionsPara('Familia_normalizada')"
-                                    :reduce="(item: any) => item.nombre"
-                                    label="nombre"
-                                    v-model="form.Familia_normalizada"
-                                    placeholder="Seleccione familia"
-                                    append-to-body
-                                    class="mt-1 block w-full"
-                                />
-                                <p v-else class="mt-1 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs font-medium text-amber-800 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
+                                <InputLabel for="Familia_normalizada"
+                                    :value="lang().t('app.label.Familia_normalizada') || 'Familia normalizada'" />
+                                <v-select v-if="optionsPara('Familia_normalizada').length" id="Familia_normalizada"
+                                    :options="optionsPara('Familia_normalizada')" :reduce="(item: any) => item.nombre"
+                                    label="nombre" v-model="form.Familia_normalizada" placeholder="Seleccione familia"
+                                    append-to-body class="mt-1 block w-full" />
+                                <p v-else
+                                    class="mt-1 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs font-medium text-amber-800 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
                                     Falta configurar familia_normalizada en la lista desplegable (categoría: Producto).
                                 </p>
                                 <InputError class="mt-2" :message="form.errors.Familia_normalizada" />
                             </div>
 
                             <div class="md:col-span-2">
-                                <InputLabel for="Titulo_Shopify" :value="lang().t('app.label.Titulo_Shopify') || 'Título Shopify / Nombre'" />
+                                <InputLabel for="Titulo_Shopify"
+                                    :value="lang().t('app.label.Titulo_Shopify') || 'Título Shopify / Nombre'" />
                                 <TextInput id="Titulo_Shopify" type="text" class="mt-1 block w-full"
                                     v-model="form.Titulo_Shopify" required placeholder="Título Shopify"
                                     :error="form.errors.Titulo_Shopify" />
@@ -220,48 +238,47 @@ watchEffect(() => {
                             </div>
 
                             <div class="md:col-span-2">
-                                <InputLabel for="descripcion" :value="lang().t('app.label.descripcion') || 'Descripción'" />
-                                <textarea
-                                    id="descripcion"
-                                    rows="2"
+                                <InputLabel for="descripcion"
+                                    :value="lang().t('app.label.descripcion') || 'Descripción'" />
+                                <textarea id="descripcion" rows="2"
                                     class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 focus:border-indigo-500 dark:focus:border-indigo-600 focus:ring-indigo-500 dark:focus:ring-indigo-600 shadow-sm text-sm"
                                     v-model="form.descripcion"
-                                    placeholder="Descripción del producto (opcional)"
-                                ></textarea>
+                                    placeholder="Descripción del producto (opcional)"></textarea>
                                 <InputError class="mt-2" :message="form.errors.descripcion" />
                             </div>
 
+                            <div class="md:col-span-2">
+                                <InputLabel for="instrucciones" value="Instrucciones" />
+                                <textarea id="instrucciones" rows="2"
+                                    class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 focus:border-indigo-500 dark:focus:border-indigo-600 focus:ring-indigo-500 dark:focus:ring-indigo-600 shadow-sm text-sm"
+                                    v-model="form.instrucciones"
+                                    placeholder="Instrucciones de producción (opcional)"></textarea>
+                                <InputError class="mt-2" :message="form.errors.instrucciones" />
+                            </div>
+
                             <div>
-                                <InputLabel for="Categoria_original" :value="lang().t('app.label.Categoria_original') || 'Categoría original'" />
-                                <v-select
-                                    v-if="optionsPara('Categoria_original').length"
-                                    id="Categoria_original"
-                                    :options="optionsPara('Categoria_original')"
-                                    :reduce="(item: any) => item.nombre"
-                                    label="nombre"
-                                    v-model="form.Categoria_original"
-                                    placeholder="Seleccione categoría"
-                                    class="mt-1 block w-full"
-                                />
-                                <p v-else class="mt-1 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs font-medium text-amber-800 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
+                                <InputLabel for="Categoria_original"
+                                    :value="lang().t('app.label.Categoria_original') || 'Categoría original'" />
+                                <v-select v-if="optionsPara('Categoria_original').length" id="Categoria_original"
+                                    :options="optionsPara('Categoria_original')" :reduce="(item: any) => item.nombre"
+                                    label="nombre" v-model="form.Categoria_original" placeholder="Seleccione categoría"
+                                    class="mt-1 block w-full" />
+                                <p v-else
+                                    class="mt-1 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs font-medium text-amber-800 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
                                     Falta configurar categoria_original en la lista desplegable (categoría: Producto).
                                 </p>
                                 <InputError class="mt-2" :message="form.errors.Categoria_original" />
                             </div>
 
                             <div>
-                                <InputLabel for="Control_de_variante" :value="lang().t('app.label.Control_de_variante') || 'Control de variante'" />
-                                <v-select
-                                    v-if="optionsPara('Control_de_variante').length"
-                                    id="Control_de_variante"
-                                    :options="optionsPara('Control_de_variante')"
-                                    :reduce="(item: any) => item.nombre"
-                                    label="nombre"
-                                    v-model="form.Control_de_variante"
-                                    placeholder="Seleccione control de variante"
-                                    class="mt-1 block w-full"
-                                />
-                                <p v-else class="mt-1 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs font-medium text-amber-800 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
+                                <InputLabel for="Control_de_variante"
+                                    :value="lang().t('app.label.Control_de_variante') || 'Control de variante'" />
+                                <v-select v-if="optionsPara('Control_de_variante').length" id="Control_de_variante"
+                                    :options="optionsPara('Control_de_variante')" :reduce="(item: any) => item.nombre"
+                                    label="nombre" v-model="form.Control_de_variante"
+                                    placeholder="Seleccione control de variante" class="mt-1 block w-full" />
+                                <p v-else
+                                    class="mt-1 rounded-md border border-amber-300 bg-amber-50 p-2 text-xs font-medium text-amber-800 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200">
                                     Falta configurar control_de_variante en la lista desplegable (categoría: Producto).
                                 </p>
                                 <InputError class="mt-2" :message="form.errors.Control_de_variante" />
@@ -296,7 +313,8 @@ watchEffect(() => {
                                             Se guardarán {{ tallas.length }} distribuciones:
                                             {{ tallas.slice(0, 6).join(', ') }}{{ tallas.length > 6 ? ', …' : '' }}
                                         </span>
-                                        <span v-else-if="rangoDemasiadoGrande" class="text-amber-600 dark:text-amber-400">
+                                        <span v-else-if="rangoDemasiadoGrande"
+                                            class="text-amber-600 dark:text-amber-400">
                                             El rango debe generar como máximo {{ MAX_TALLAS_POR_RANGO }} tallas.
                                         </span>
                                         <span v-else>
@@ -308,8 +326,7 @@ watchEffect(() => {
                                 <!-- Talla alfabética: elección individual -->
                                 <div v-else-if="modo === 'alfabetica'" class="mt-1 flex flex-wrap gap-2">
                                     <button v-for="talla in TALLAS_ALFABETICAS" :key="talla" type="button"
-                                        @click="alternarTalla(talla)"
-                                        :aria-pressed="tallasEscogidas.includes(talla)"
+                                        @click="alternarTalla(talla)" :aria-pressed="tallasEscogidas.includes(talla)"
                                         class="h-9 min-w-[3rem] rounded-lg border px-3 text-sm font-medium transition-colors"
                                         :class="tallasEscogidas.includes(talla)
                                             ? 'border-indigo-600 bg-indigo-600 text-white'
@@ -328,7 +345,8 @@ watchEffect(() => {
 
                                 <p v-if="modo === 'numerica' || modo === 'alfabetica'"
                                     class="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                                    Las cantidades planificadas de cada talla se ajustan desde el botón «Tallas» del listado.
+                                    Las cantidades planificadas de cada talla se ajustan desde el botón «Tallas» del
+                                    listado.
                                 </p>
 
                                 <InputError class="mt-2" :message="form.errors.Opciones" />
@@ -338,7 +356,8 @@ watchEffect(() => {
 
                     <!-- Ficha técnica de materiales -->
                     <div>
-                        <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
+                        <h3
+                            class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
                             <CubeIcon class="w-4 h-4 text-gray-400 dark:text-gray-500" />
                             Ficha técnica de materiales
                         </h3>
@@ -358,26 +377,37 @@ watchEffect(() => {
                             Opcional. Los materiales se guardan en la ficha técnica de este producto.
                         </p>
 
-                        <EditorMateriales
-                            v-model="form.materiales"
-                            :opciones="props.losSelect"
-                            :errors="form.errors"
-                            :disabled="fichaBloqueada"
-                        />
+                        <EditorMateriales v-model="form.materiales" :opciones="props.losSelect" :errors="form.errors"
+                            :disabled="fichaBloqueada" />
                         <InputError class="mt-2" :message="form.errors.materiales" />
                         <InputError class="mt-1" :message="form.errors.productos" />
                     </div>
 
+                    <!-- Procesos -->
+                    <div>
+                        <h3
+                            class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
+                            <Cog6ToothIcon class="w-4 h-4 text-gray-400 dark:text-gray-500" />
+                            Procesos
+                        </h3>
+                        <p class="mt-1 mb-3 pl-6 text-xs text-gray-400 dark:text-gray-500">
+                            El total de estos costes por unidad forma el costo de proceso de la OP.
+                            <span v-if="fichaBloqueada" class="font-medium text-amber-700 dark:text-amber-300">
+                                Bloqueado: el producto está en una OP activa.
+                            </span>
+                        </p>
+                        <EditorProcesos v-model="form.procesos" :errors="form.errors" :disabled="fichaBloqueada" />
+                        <InputError class="mt-2" :message="form.errors.procesos" />
+                    </div>
+
                     <!-- Estado -->
                     <div>
-                        <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-1.5 mb-3">
+                        <h3
+                            class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-1.5 mb-3">
                             <CheckCircleIcon class="w-4 h-4 text-gray-400 dark:text-gray-500" />
                             Estado
                         </h3>
-                        <div
-                            role="switch" tabindex="0"
-                            :aria-checked="form.Estado == 1"
-                            @click="toggleEstado"
+                        <div role="switch" tabindex="0" :aria-checked="form.Estado == 1" @click="toggleEstado"
                             @keydown.space.prevent="toggleEstado"
                             class="flex items-center justify-between gap-4 px-4 py-3 rounded-xl border cursor-pointer transition-colors"
                             :class="form.Estado == 1
@@ -389,9 +419,11 @@ watchEffect(() => {
                                     {{ form.Estado == 1 ? 'Sí — activo (se guarda como 1)' : 'No — inactivo (se guarda como 0)' }}
                                 </span>
                             </div>
-                            <span class="relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors duration-200"
+                            <span
+                                class="relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors duration-200"
                                 :class="form.Estado == 1 ? 'bg-emerald-600' : 'bg-gray-300 dark:bg-gray-600'">
-                                <span class="inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform duration-200"
+                                <span
+                                    class="inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform duration-200"
                                     :class="form.Estado == 1 ? 'translate-x-6' : 'translate-x-1'" />
                             </span>
                         </div>
@@ -399,16 +431,19 @@ watchEffect(() => {
 
                     <!-- Campos opcionales -->
                     <div>
-                        <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-1.5 mb-1">
+                        <h3
+                            class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-1.5 mb-1">
                             <DocumentTextIcon class="w-4 h-4 text-gray-400 dark:text-gray-500" />
                             Campos opcionales
                         </h3>
                         <p class="text-xs text-gray-400 dark:text-gray-500 mb-3 pl-6">
                             Los siguientes campos son opcionales: puede dejarlos vacíos.
                         </p>
-                        <div class="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-4 rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-4">
+                        <div
+                            class="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-4 rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-4">
                             <div>
-                                <InputLabel for="ID_producto_Shopify" :value="lang().t('app.label.ID_producto_Shopify') || 'ID Shopify'" />
+                                <InputLabel for="ID_producto_Shopify"
+                                    :value="lang().t('app.label.ID_producto_Shopify') || 'ID Shopify'" />
                                 <TextInput id="ID_producto_Shopify" type="text" class="mt-1 block w-full"
                                     v-model="form.ID_producto_Shopify" placeholder="ID Producto Shopify (opcional)"
                                     :error="form.errors.ID_producto_Shopify" />
@@ -416,7 +451,8 @@ watchEffect(() => {
                             </div>
 
                             <div>
-                                <InputLabel for="costo_anticipado" :value="lang().t('app.label.costo_anticipado') || 'Costo anticipado'" />
+                                <InputLabel for="costo_anticipado"
+                                    :value="lang().t('app.label.costo_anticipado') || 'Costo anticipado'" />
                                 <MoneyInput id="costo_anticipado" class="mt-1 block w-full"
                                     v-model="form.costo_anticipado" placeholder="$0"
                                     :error="form.errors.costo_anticipado" />
@@ -424,31 +460,30 @@ watchEffect(() => {
                             </div>
 
                             <div>
-                                <InputLabel for="precio_preventa" :value="lang().t('app.label.precio_preventa') || 'Precio preventa'" />
-                                <MoneyInput id="precio_preventa" class="mt-1 block w-full"
-                                    v-model="form.precio_preventa" placeholder="$0"
-                                    :error="form.errors.precio_preventa" />
-                                <InputError class="mt-2" :message="form.errors.precio_preventa" />
+                                <InputLabel for="precio_venta_producto"
+                                    :value="lang().t('app.label.precio_venta_producto') || 'Precio preventa'" />
+                                <MoneyInput id="precio_venta_producto" class="mt-1 block w-full"
+                                    v-model="form.precio_venta_producto" placeholder="$0"
+                                    :error="form.errors.precio_venta_producto" />
+                                <InputError class="mt-2" :message="form.errors.precio_venta_producto" />
                             </div>
 
                             <div>
-                                <InputLabel for="precio_estimado" :value="lang().t('app.label.precio_estimado') || 'Precio estimado'" />
+                                <InputLabel for="precio_estimado"
+                                    :value="lang().t('app.label.precio_estimado') || 'Precio estimado'" />
                                 <TextInput id="precio_estimado" type="number" step="0.01" min="0"
-                                    class="mt-1 block w-full text-right tabular-nums"
-                                    v-model="form.precio_estimado" placeholder="0.00"
-                                    :error="form.errors.precio_estimado" />
+                                    class="mt-1 block w-full text-right tabular-nums" v-model="form.precio_estimado"
+                                    placeholder="0.00" :error="form.errors.precio_estimado" />
                                 <InputError class="mt-2" :message="form.errors.precio_estimado" />
                             </div>
 
                             <div class="md:col-span-3">
-                                <InputLabel for="Observaciones" :value="lang().t('app.label.Observaciones') || 'Observaciones'" />
-                                <textarea
-                                    id="Observaciones"
-                                    rows="2"
+                                <InputLabel for="Observaciones"
+                                    :value="lang().t('app.label.Observaciones') || 'Observaciones'" />
+                                <textarea id="Observaciones" rows="2"
                                     class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 focus:border-indigo-500 dark:focus:border-indigo-600 focus:ring-indigo-500 dark:focus:ring-indigo-600 shadow-sm text-sm"
                                     v-model="form.Observaciones"
-                                    placeholder="Observaciones adicionales (opcional)"
-                                ></textarea>
+                                    placeholder="Observaciones adicionales (opcional)"></textarea>
                                 <InputError class="mt-2" :message="form.errors.Observaciones" />
                             </div>
                         </div>
@@ -456,7 +491,8 @@ watchEffect(() => {
                 </div>
 
                 <!-- Pie -->
-                <div class="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3 bg-gray-50 dark:bg-gray-800/50 rounded-b-lg">
+                <div
+                    class="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3 bg-gray-50 dark:bg-gray-800/50 rounded-b-lg">
                     <SecondaryButton :disabled="form.processing" type="button" @click="emit('close')">
                         {{ lang().t('app.button.close') }}
                     </SecondaryButton>

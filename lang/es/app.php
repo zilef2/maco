@@ -261,7 +261,7 @@ return [
 		'foto_derecha' => 'foto_derecha',
 		'foto_izquierda' => 'foto_izquierda',
 		'precio_ponderado' => 'precio_ponderado',
-		'precio_preventa' => 'Precio preventa',
+		'precio_venta_producto' => 'Precio venta',
 		'Talla' => 'Talla',
 		'referencia' => 'referencia',
 		'Codigo_interno' => 'Código_interno',
@@ -445,6 +445,11 @@ return [
 		'aporta' => 'aporta',
 		'variante_especificacion' => 'variante_especificacion',
 		'proceso_previo' => 'proceso_previo',
+		'procesoop' => 'Procesoop',
+		'Procesoop' => 'Procesoop',
+		'nombre' => 'nombre',
+		'producto_id' => 'producto_id',
+		'coste_proceso' => 'coste_proceso',
 		//aquipues
 	    
     ],
@@ -674,7 +679,7 @@ return [
 		'foto_derecha' => 'foto_derecha',
 		'foto_izquierda' => 'foto_izquierda',
 		'precio_ponderado' => 'precio_ponderado',
-		'precio_preventa' => 'Precio preventa',
+		'precio_venta_producto' => 'Precio venta',
 		'Talla' => 'Talla',
 		'referencia' => 'referencia',
 		'tipo' => 'tipo',
@@ -871,6 +876,11 @@ return [
 		'aporta' => 'aporta',
 		'variante_especificacion' => 'variante_especificacion',
 		'proceso_previo' => 'proceso_previo',
+		'procesoop' => 'Procesoop',
+		'Procesoop' => 'Procesoop',
+		'nombre' => 'nombre',
+		'producto_id' => 'producto_id',
+		'coste_proceso' => 'coste_proceso',
 		//aquipues
     ],
 ];

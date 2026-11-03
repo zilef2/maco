@@ -12,6 +12,7 @@ import DistribucionTallas from '@/pages/OrdenProduccion/DistribucionTallas.vue';
 import KitProcesoOPModal from '@/pages/OrdenProduccion/KitProcesoOPModal.vue';
 import CambiarEstadoModal from '@/pages/OrdenProduccion/CambiarEstadoModal.vue';
 import DetalleEstadoModal from '@/pages/OrdenProduccion/DetalleEstadoModal.vue';
+import MaterialesOPModal from '@/pages/OrdenProduccion/MaterialesOPModal.vue';
 import SacarMaterialesModal from '@/pages/ProcesoExterno/SacarMaterialesModal.vue';
 
 import {
@@ -679,6 +680,8 @@ const data = reactive({
     detalleEstadoOp: null as any,
     salidaOpen: false,
     salidaOp: null as any,
+    materialesOpen: false,
+    materialesOp: null as any,
 });
 
 const abrirNuevo = () => {
@@ -712,6 +715,13 @@ const abrirDetalleEstado = (op: any) => {
     data.detalleEstadoOpen = true;
 };
 
+// Inventario vs. necesidad de la OP: accesible desde la columna Cantidad
+// para cualquier estado.
+const abrirMaterialesOp = (op: any) => {
+    data.materialesOp = op ?? null;
+    data.materialesOpen = true;
+};
+
 const accionesFila = computed(() => {
     const arr: Array<{ id: string; label: string; icon: any; visible?: (op: any) => boolean }> = [];
     if (puede(['update OrdenProduccion'])) {
@@ -741,6 +751,7 @@ const onAccionFila = (id: string, op: any) => {
         data.kitProcesoOpen = false;
         data.cambioEstadoOpen = false;
         data.salidaOpen = false;
+        data.materialesOpen = false;
         data.ordenEditando = op;
     }
     if (id === 'kit') abrirKitProceso(op);
@@ -901,45 +912,6 @@ const titulos = [
                     </div>
                 </div>
             </div>
-
-            <!-- Guía de estados: qué pasa y quién interviene -->
-            <section class="rounded-xl border border-border bg-card shadow-sm">
-                <details open class="group">
-                    <summary
-                        class="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden"
-                    >
-                        <div class="min-w-0">
-                            <h2 class="text-sm font-semibold text-foreground">Qué pasa en cada estado</h2>
-                            <p class="mt-0.5 text-xs text-muted-foreground">
-                                Quién interviene y qué se espera de la orden en cada paso del proceso.
-                            </p>
-                        </div>
-                        <ChevronDownIcon
-                            class="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180"
-                        />
-                    </summary>
-
-                    <dl class="grid gap-x-4 gap-y-3 border-t border-border px-4 py-3 sm:grid-cols-2 xl:grid-cols-4">
-                        <div v-for="estado in guiaEstados" :key="estado.id" class="flex gap-2.5">
-                            <span class="mt-1.5 h-2 w-2 shrink-0 rounded-full" :class="estiloEstado(estado.nombre).dot"></span>
-                            <div class="min-w-0">
-                                <dt class="text-sm font-medium text-foreground">{{ estado.nombre }}</dt>
-                                <dd class="mt-0.5 text-xs leading-relaxed text-muted-foreground">
-                                    <span class="font-medium text-foreground/80">{{ estado.area }}</span>
-                                    —
-                                    <template v-for="(parte, indice) in estado.partes" :key="indice">
-                                        <span
-                                            v-if="parte.entidad"
-                                            class="font-bold text-blue-600 dark:text-blue-400"
-                                        >{{ parte.texto }}</span>
-                                        <span v-else>{{ parte.texto }}</span>
-                                    </template>
-                                </dd>
-                            </div>
-                        </div>
-                    </dl>
-                </details>
-            </section>
 
             <!-- Superficie principal: barra de filtros + tabla + paginación -->
             <div class="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
@@ -1115,16 +1087,23 @@ const titulos = [
                                     </div>
                                 </td>
 
-                                <!-- Cantidad -->
+                                <!-- Cantidad: clic para ver materiales vs. inventario -->
                                 <td class="px-3 py-3 text-right align-top">
-                                    <div class="flex flex-col items-end gap-0.5">
-                                        <span class="font-semibold tabular-nums text-foreground">
+                                    <button
+                                        type="button"
+                                        @click="abrirMaterialesOp(op)"
+                                        title="Ver materiales necesarios y existencia"
+                                        aria-haspopup="dialog"
+                                        class="group flex flex-col items-end gap-0.5 rounded-md px-1 py-0.5 -mx-1 transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                                    >
+                                        <span class="inline-flex items-center gap-1 font-semibold tabular-nums text-foreground underline decoration-dotted underline-offset-4 group-hover:decoration-solid">
                                             {{ zilef_nuber_format(op.cantidad_planificada, 0, false) }}
+                                            <ChevronRightIcon class="h-3 w-3 text-muted-foreground opacity-60" />
                                         </span>
                                         <span class="text-[11px] tabular-nums text-muted-foreground">
                                             {{ (op.distribuciones_por_tallas || []).length }} tallas
                                         </span>
-                                    </div>
+                                    </button>
                                 </td>
 
                                 <!-- Costos de la OP: fichas + proceso = total -->
@@ -1770,6 +1749,45 @@ const titulos = [
                     </div>
                 </div>
             </section>
+
+            <!-- Guía de estados: qué pasa y quién interviene -->
+            <section class="rounded-xl border border-border bg-card shadow-sm">
+                <details class="group">
+                    <summary
+                        class="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-2.5 [&::-webkit-details-marker]:hidden"
+                    >
+                        <div class="min-w-0">
+                            <h2 class="text-xs font-semibold text-foreground">Qué pasa en cada estado</h2>
+                            <p class="mt-0.5 text-[11px] text-muted-foreground">
+                                Quién interviene y qué se espera de la orden en cada paso del proceso.
+                            </p>
+                        </div>
+                        <ChevronDownIcon
+                            class="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-180"
+                        />
+                    </summary>
+
+                    <dl class="grid gap-x-4 gap-y-2 border-t border-border px-4 py-3 sm:grid-cols-2 xl:grid-cols-4">
+                        <div v-for="estado in guiaEstados" :key="estado.id" class="flex gap-2">
+                            <span class="mt-1 h-1.5 w-1.5 shrink-0 rounded-full" :class="estiloEstado(estado.nombre).dot"></span>
+                            <div class="min-w-0">
+                                <dt class="text-[11px] font-semibold text-foreground">{{ estado.nombre }}</dt>
+                                <dd class="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+                                    <span class="font-medium text-foreground/80">{{ estado.area }}</span>
+                                    —
+                                    <template v-for="(parte, indice) in estado.partes" :key="indice">
+                                        <span
+                                            v-if="parte.entidad"
+                                            class="font-bold text-blue-600 dark:text-blue-400"
+                                        >{{ parte.texto }}</span>
+                                        <span v-else>{{ parte.texto }}</span>
+                                    </template>
+                                </dd>
+                            </div>
+                        </div>
+                    </dl>
+                </details>
+            </section>
         </div>
 
         <!-- Modales (acciones que sí hablan con el backend) -->
@@ -1838,6 +1856,8 @@ const titulos = [
         />
 
         <SacarMaterialesModal :show="data.salidaOpen" @close="data.salidaOpen = false" :op="data.salidaOp" />
+
+        <MaterialesOPModal :show="data.materialesOpen" @close="data.materialesOpen = false" :op="data.materialesOp" />
     </AppLayout>
 </template>
 

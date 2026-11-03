@@ -31,7 +31,7 @@ class ProductoTest extends TestCase
             'Control_de_variante' => 'Talla',
             'Opciones' => 'S,M',
             'Estado' => 1,
-            'precio_preventa' => 100,
+            'precio_venta_producto' => 100,
             'tallas' => ['S', 'M'],
             'materiales' => [[
                 'material_componente_id' => $componente->id,

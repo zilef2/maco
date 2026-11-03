@@ -24,7 +24,7 @@ return new class extends Migration
             $table->string('Observaciones')->nullable();
             $table->text('descripcion')->nullable();
             $table->integer('precio_predicho')->nullable();
-            $table->integer('precio_preventa')->nullable();
+            $table->integer('precio_venta_producto')->nullable();
             $table->timestamps();
         });
     }

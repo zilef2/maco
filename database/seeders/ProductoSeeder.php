@@ -25,7 +25,7 @@ class ProductoSeeder extends Seeder
                 'Observaciones' => 'Modelo estrella para la campaña de temporada primavera-verano.',
                 'descripcion' => 'Zapatillas de running con amortiguación de alto impacto, malla transpirable y suela de caucho antideslizante.',
                 'costo_anticipado' => 189900,
-                'precio_preventa' => 169900,
+                'precio_venta_producto' => 169900,
             ],
             [
                 'Codigo_interno' => 'ZAP-URB-'.rand(100, 999),
@@ -39,7 +39,7 @@ class ProductoSeeder extends Seeder
                 'Observaciones' => null,
                 'descripcion' => 'Sneakers casuales de diseño minimalista, ideales para uso diario con plantilla acolchada y suela ligera.',
                 'costo_anticipado' => 129900,
-                'precio_preventa' => 119900,
+                'precio_venta_producto' => 119900,
             ],
         ];
 

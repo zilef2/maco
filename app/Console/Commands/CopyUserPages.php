@@ -50,36 +50,13 @@ class CopyUserPages extends Command
         // Cada entrada: [ 'NombreModelo', 'required' => [...], 'optional' => [...] ]
         return [
     [
-        'FichaEnsamble',
+        'Procesoop',
         'required' => [
-            // Cabecera Ficha de Ensamble
-            'orden_produccion_id'    => 'foreign', // OP vinculada
-            'producto_referencia_id' => 'foreign', // Producto / referencia (ej. Colibrí Esmeralda)
-            'taller_id'              => 'foreign', // Taller que realizará el ensamble
-            'cantidad_total'         => 'number',  // Cantidad total planificada
-            'fecha_entrega'          => 'date',    // Fecha de entrega al taller
+            'nombre'          => 'string',   
+            'producto_id'     => 'foreign',
+            'coste_proceso'     => 'dinero',
         ],
         'optional' => [
-            'coleccion'              => 'string',  // Colección a la que pertenece la referencia
-            'imagen_referencia_url'  => 'string',  // Fotografía de referencia del producto terminado
-            'instrucciones_especiales' => 'text',  // Instrucciones o notas de ensamble para el taller
-        ],
-    ],
-    [
-        'FichaEnsambleMaterial',
-        'required' => [
-            // Listado de materiales entregados
-            'ficha_ensamble_id'      => 'foreign', // Ficha de ensamble padre
-            'material_id'            => 'foreign', // Material / componente (Cuero, Capelladas, Sesgo, etc.)
-            'cantidad'               => 'number',  // Cantidad requerida/entregada
-            'unidad_medida'          => 'string',  // Unidad (pie, unidad, metro, par)
-            'aporta'                 => 'string',  // Quién lo aporta (ej: 'Macondas', 'Taller')
-        ],
-        'optional' => [
-            'variante_especificacion'=> 'string',  // Variante o especificación técnica
-            'proceso_previo'         => 'string',  // Proceso previo (ej: 'Embarretado + sublimación', 'Corte + pedrería')
-            'verificado'             => 'boolean', // Checkbox de comprobación/verificación
-            'observaciones'          => 'text',    // Observaciones particulares del ítem
         ],
     ],
 ];

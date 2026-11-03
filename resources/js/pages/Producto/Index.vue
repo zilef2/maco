@@ -77,7 +77,7 @@ const columnas = [
     { key: 'Categoria_original', label: 'Categoría', sortable: true, align: 'left', headerClass: 'hidden min-w-[190px] lg:table-cell', cellClass: 'hidden min-w-[190px] lg:table-cell' },
     { key: 'Control_de_variante', label: 'Variante', sortable: true, align: 'left', headerClass: 'hidden min-w-[170px] xl:table-cell', cellClass: 'hidden min-w-[170px] xl:table-cell' },
     { key: 'Estado', label: 'Estado', sortable: true, align: 'left', headerClass: 'w-[110px]', cellClass: 'w-[110px]' },
-    { key: 'precio_preventa', label: 'Precio', sortable: true, align: 'right', headerClass: 'w-[140px]', cellClass: 'w-[140px]' },
+    { key: 'precio_venta_producto', label: 'Precio', sortable: true, align: 'right', headerClass: 'w-[140px]', cellClass: 'w-[140px]' },
     { key: 'precio_estimado', label: 'Precio estimado', sortable: true, align: 'right', headerClass: 'w-[150px]', cellClass: 'w-[150px]' },
     { key: 'tallas', label: 'Tallas', sortable: false, align: 'left', headerClass: 'hidden min-w-[150px] md:table-cell', cellClass: 'hidden min-w-[150px] md:table-cell' },
 ] as const;
@@ -94,7 +94,7 @@ const titulos = [
     { order: 'Observaciones', label: 'Observaciones', type: 'string' },
     { order: 'descripcion', label: 'descripcion', type: 'text' },
     { order: 'costo_anticipado', label: 'costo_anticipado', type: 'number' },
-    { order: 'precio_preventa', label: 'precio_preventa', type: 'number' },
+    { order: 'precio_venta_producto', label: 'precio_venta_producto', type: 'number' },
     { order: 'precio_estimado', label: 'precio_estimado', type: 'number' },
 ];
 
@@ -347,7 +347,7 @@ const opcionesBinarias = (campo: string, textos: { con: string; sin: string }) =
 const opcionesTallas = computed(() => opcionesBinarias('_tieneTallas', { con: 'Con tallas', sin: 'Sin tallas' }));
 const opcionesCantidad = computed(() => opcionesBinarias('_tieneCantidad', { con: 'Con cantidad', sin: 'Sin cantidad' }));
 const opcionesFicha = computed(() => opcionesBinarias('_tieneFicha', { con: 'Con ficha', sin: 'Sin ficha' }));
-const opcionesPrecioPreventa = computed(() => opcionesPrecio('precio_preventa'));
+const opcionesPrecioPreventa = computed(() => opcionesPrecio('precio_venta_producto'));
 const opcionesPrecioEstimado = computed(() => opcionesPrecio('precio_estimado'));
 
 const filtradas = computed(() =>
@@ -370,8 +370,8 @@ const filtradas = computed(() =>
         ) {
             return false;
         }
-        if (precioPreventaFiltro.value === 'con_precio' && !tienePrecio(producto.precio_preventa)) return false;
-        if (precioPreventaFiltro.value === 'sin_precio' && tienePrecio(producto.precio_preventa)) return false;
+        if (precioPreventaFiltro.value === 'con_precio' && !tienePrecio(producto.precio_venta_producto)) return false;
+        if (precioPreventaFiltro.value === 'sin_precio' && tienePrecio(producto.precio_venta_producto)) return false;
         if (precioEstimadoFiltro.value === 'con_precio' && !tienePrecio(producto.precio_estimado)) return false;
         if (precioEstimadoFiltro.value === 'sin_precio' && tienePrecio(producto.precio_estimado)) return false;
         if (tallasFiltro.value === 'con' && !tieneTallas(producto)) return false;
@@ -535,25 +535,21 @@ const recargar = () => {
 </script>
 
 <template>
+
     <Head :title="props.title" />
 
     <AppLayout>
         <div class="flex flex-col gap-4 p-4 sm:p-6">
             <div class="flex flex-col gap-3">
                 <nav class="flex items-center gap-1.5 text-xs text-muted-foreground" aria-label="Ruta de navegación">
-                    <Link
-                        :href="route('dashboard')"
-                        class="rounded-sm transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
+                    <Link :href="route('dashboard')"
+                        class="rounded-sm transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                         Dashboard
                     </Link>
                     <template v-for="(miga, i) in (props.breadcrumbs || [])" :key="i">
                         <ChevronRightIcon class="h-3 w-3 opacity-60" />
-                        <Link
-                            v-if="miga.href"
-                            :href="miga.href"
-                            class="rounded-sm transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        >
+                        <Link v-if="miga.href" :href="miga.href"
+                            class="rounded-sm transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                             {{ miga.label }}
                         </Link>
                         <span v-else class="font-medium text-foreground">{{ miga.label }}</span>
@@ -563,7 +559,8 @@ const recargar = () => {
                 <div class="flex flex-wrap items-end justify-between gap-3">
                     <div class="min-w-0">
                         <h1 class="text-2xl font-semibold tracking-tight text-foreground">Productos</h1>
-                        <p class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground" role="status" aria-live="polite">
+                        <p class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground"
+                            role="status" aria-live="polite">
                             <span class="tabular-nums">
                                 <span class="font-medium text-foreground">{{ totalRegistros }}</span>
                                 {{ totalRegistros === 1 ? 'producto' : 'productos' }}
@@ -577,10 +574,8 @@ const recargar = () => {
                                 <span class="font-medium text-foreground">{{ visibles.length }}</span>
                                 en esta página
                             </span>
-                            <span
-                                v-if="hayFiltros"
-                                class="inline-flex items-center gap-1 rounded-full border border-border bg-muted/60 px-2 py-0.5 text-[11px] font-medium text-foreground"
-                            >
+                            <span v-if="hayFiltros"
+                                class="inline-flex items-center gap-1 rounded-full border border-border bg-muted/60 px-2 py-0.5 text-[11px] font-medium text-foreground">
                                 <FunnelIcon class="h-3 w-3" />
                                 {{ filtrosActivos }}
                                 {{ filtrosActivos === 1 ? 'filtro activo' : 'filtros activos' }}
@@ -589,33 +584,21 @@ const recargar = () => {
                     </div>
 
                     <div class="flex flex-wrap items-center gap-2">
-                        <button
-                            type="button"
-                            @click="recargar"
-                            :disabled="cargando"
-                            title="Actualizar datos"
+                        <button type="button" @click="recargar" :disabled="cargando" title="Actualizar datos"
                             aria-label="Actualizar datos"
-                            class="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50"
-                        >
+                            class="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50">
                             <ArrowPathIcon class="h-4 w-4" :class="{ 'animate-spin': cargando }" />
                         </button>
 
-                        <PrimaryButton
-                            v-if="can(['create Producto'])"
-                            type="button"
+                        <PrimaryButton v-if="can(['create Producto'])" type="button"
                             class="h-9 bg-emerald-600 hover:bg-emerald-700 focus:ring-emerald-500"
-                            @click="data.importOpen = true"
-                        >
+                            @click="data.importOpen = true">
                             <ArrowUpTrayIcon class="mr-1.5 h-4 w-4" />
                             Cargar Excel
                         </PrimaryButton>
 
-                        <PrimaryButton
-                            v-if="can(['create Producto'])"
-                            type="button"
-                            class="h-9"
-                            @click="data.createOpen = true"
-                        >
+                        <PrimaryButton v-if="can(['create Producto'])" type="button" class="h-9"
+                            @click="data.createOpen = true">
                             <PlusIcon class="mr-1.5 h-4 w-4" />
                             Nuevo producto
                         </PrimaryButton>
@@ -627,30 +610,19 @@ const recargar = () => {
                 <div class="flex flex-col gap-2.5 border-b border-border p-3">
                     <div class="flex flex-wrap items-center gap-2">
                         <div class="relative min-w-[220px] flex-1">
-                            <MagnifyingGlassIcon class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                            <input
-                                v-model="busqueda"
-                                type="search"
-                                aria-label="Buscar productos"
+                            <MagnifyingGlassIcon
+                                class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                            <input v-model="busqueda" type="search" aria-label="Buscar productos"
                                 placeholder="Buscar por código o título…"
-                                class="h-9 w-full rounded-md border border-input bg-background pl-9 pr-9 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30"
-                            />
-                            <button
-                                v-if="busqueda"
-                                type="button"
-                                @click="busqueda = ''"
-                                aria-label="Limpiar búsqueda"
-                                class="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                            >
+                                class="h-9 w-full rounded-md border border-input bg-background pl-9 pr-9 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30" />
+                            <button v-if="busqueda" type="button" @click="busqueda = ''" aria-label="Limpiar búsqueda"
+                                class="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                 <XMarkIcon class="h-3.5 w-3.5" />
                             </button>
                         </div>
 
-                        <select
-                            v-model="categoriaFiltro"
-                            aria-label="Filtrar por categoría"
-                            :class="[selectClass, 'max-w-[220px]']"
-                        >
+                        <select v-model="categoriaFiltro" aria-label="Filtrar por categoría"
+                            :class="[selectClass, 'max-w-[220px]']">
                             <option value="">Todas las categorías</option>
                             <option v-for="opcion in categoriasDisponibles" :key="opcion.value" :value="opcion.value">
                                 {{ opcion.label }}
@@ -658,20 +630,13 @@ const recargar = () => {
                         </select>
 
                         <div class="flex items-center gap-1.5">
-                            <span class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Estado</span>
-                            <div
-                                class="inline-flex h-9 items-stretch overflow-hidden rounded-md border border-border bg-card shadow-sm"
-                                role="group"
-                                aria-label="Filtrar productos por estado"
-                            >
-                                <button
-                                    v-for="opcion in opcionesEstado"
-                                    :key="opcion.value || 'todos'"
-                                    type="button"
-                                    @click="estadoFiltro = opcion.value"
-                                    :aria-pressed="estadoFiltro === opcion.value"
-                                    :class="segmentoClass(estadoFiltro === opcion.value)"
-                                >
+                            <span
+                                class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Estado</span>
+                            <div class="inline-flex h-9 items-stretch overflow-hidden rounded-md border border-border bg-card shadow-sm"
+                                role="group" aria-label="Filtrar productos por estado">
+                                <button v-for="opcion in opcionesEstado" :key="opcion.value || 'todos'" type="button"
+                                    @click="estadoFiltro = opcion.value" :aria-pressed="estadoFiltro === opcion.value"
+                                    :class="segmentoClass(estadoFiltro === opcion.value)">
                                     {{ opcion.label }}
                                     <span class="ml-1 tabular-nums opacity-70">{{ opcion.count }}</span>
                                 </button>
@@ -679,13 +644,10 @@ const recargar = () => {
                         </div>
 
                         <DropdownMenu>
-                            <DropdownMenuTrigger
-                                type="button"
-                                :class="[
-                                    'inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-card px-3 text-xs font-medium text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
-                                    filtrosAvanzados > 0 ? 'border-foreground/20 bg-muted' : '',
-                                ]"
-                            >
+                            <DropdownMenuTrigger type="button" :class="[
+                                'inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-card px-3 text-xs font-medium text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+                                filtrosAvanzados > 0 ? 'border-foreground/20 bg-muted' : '',
+                            ]">
                                 <FunnelIcon class="h-3.5 w-3.5" />
                                 Más filtros
                                 <span v-if="filtrosAvanzados > 0" class="tabular-nums">{{ filtrosAvanzados }}</span>
@@ -696,7 +658,8 @@ const recargar = () => {
                                         Familia
                                         <select v-model="familiaFiltro" :class="selectClass">
                                             <option value="">Todas</option>
-                                            <option v-for="opcion in familiasDisponibles" :key="opcion.value" :value="opcion.value">
+                                            <option v-for="opcion in familiasDisponibles" :key="opcion.value"
+                                                :value="opcion.value">
                                                 {{ opcion.label }}
                                             </option>
                                         </select>
@@ -706,7 +669,8 @@ const recargar = () => {
                                         Control de variante
                                         <select v-model="controlVarianteFiltro" :class="selectClass">
                                             <option value="">Todos</option>
-                                            <option v-for="opcion in controlesVarianteDisponibles" :key="opcion.value" :value="opcion.value">
+                                            <option v-for="opcion in controlesVarianteDisponibles" :key="opcion.value"
+                                                :value="opcion.value">
                                                 {{ opcion.label }}
                                             </option>
                                         </select>
@@ -714,18 +678,15 @@ const recargar = () => {
 
                                     <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
                                         Opciones contiene
-                                        <input
-                                            v-model="opcionFiltro"
-                                            type="search"
-                                            placeholder="Ej. S, M, L o 21-30"
-                                            :class="selectClass"
-                                        />
+                                        <input v-model="opcionFiltro" type="search" placeholder="Ej. S, M, L o 21-30"
+                                            :class="selectClass" />
                                     </label>
 
                                     <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
                                         Precio preventa
                                         <select v-model="precioPreventaFiltro" :class="selectClass">
-                                            <option v-for="opcion in opcionesPrecioPreventa" :key="opcion.value" :value="opcion.value">
+                                            <option v-for="opcion in opcionesPrecioPreventa" :key="opcion.value"
+                                                :value="opcion.value">
                                                 {{ opcion.label }}
                                             </option>
                                         </select>
@@ -734,7 +695,8 @@ const recargar = () => {
                                     <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
                                         Precio estimado
                                         <select v-model="precioEstimadoFiltro" :class="selectClass">
-                                            <option v-for="opcion in opcionesPrecioEstimado" :key="opcion.value" :value="opcion.value">
+                                            <option v-for="opcion in opcionesPrecioEstimado" :key="opcion.value"
+                                                :value="opcion.value">
                                                 {{ opcion.label }}
                                             </option>
                                         </select>
@@ -743,7 +705,8 @@ const recargar = () => {
                                     <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
                                         Tallas
                                         <select v-model="tallasFiltro" :class="selectClass">
-                                            <option v-for="opcion in opcionesTallas" :key="opcion.value" :value="opcion.value">
+                                            <option v-for="opcion in opcionesTallas" :key="opcion.value"
+                                                :value="opcion.value">
                                                 {{ opcion.label }}
                                             </option>
                                         </select>
@@ -752,7 +715,8 @@ const recargar = () => {
                                     <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
                                         Cantidad planificada
                                         <select v-model="cantidadFiltro" :class="selectClass">
-                                            <option v-for="opcion in opcionesCantidad" :key="opcion.value" :value="opcion.value">
+                                            <option v-for="opcion in opcionesCantidad" :key="opcion.value"
+                                                :value="opcion.value">
                                                 {{ opcion.label }}
                                             </option>
                                         </select>
@@ -761,7 +725,8 @@ const recargar = () => {
                                     <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
                                         Ficha técnica
                                         <select v-model="fichaFiltro" :class="selectClass">
-                                            <option v-for="opcion in opcionesFicha" :key="opcion.value" :value="opcion.value">
+                                            <option v-for="opcion in opcionesFicha" :key="opcion.value"
+                                                :value="opcion.value">
                                                 {{ opcion.label }}
                                             </option>
                                         </select>
@@ -774,12 +739,8 @@ const recargar = () => {
                             <option v-for="n in [10, 25, 50, 100]" :key="n" :value="n">{{ n }} / página</option>
                         </select>
 
-                        <button
-                            v-if="hayFiltros"
-                            type="button"
-                            @click="limpiarFiltros"
-                            class="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-card px-3 text-xs font-medium text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                        >
+                        <button v-if="hayFiltros" type="button" @click="limpiarFiltros"
+                            class="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-card px-3 text-xs font-medium text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
                             <XMarkIcon class="h-3.5 w-3.5" />
                             Limpiar
                         </button>
@@ -790,54 +751,37 @@ const recargar = () => {
                     <table class="w-full min-w-[1330px] border-collapse text-sm">
                         <thead>
                             <tr>
-                                <th
-                                    v-if="can(['issuperadmin'])"
-                                    scope="col"
-                                    class="w-10 bg-muted px-3 py-2.5"
-                                >
-                                    <input
-                                        type="checkbox"
-                                        :checked="todosSeleccionados"
-                                        :indeterminate="algunoSeleccionado"
-                                        @change="toggleTodos"
+                                <th v-if="can(['issuperadmin'])" scope="col" class="w-10 bg-muted px-3 py-2.5">
+                                    <input type="checkbox" :checked="todosSeleccionados"
+                                        :indeterminate="algunoSeleccionado" @change="toggleTodos"
                                         class="h-4 w-4 rounded border-border accent-foreground"
-                                        aria-label="Seleccionar todos"
-                                    />
+                                        aria-label="Seleccionar todos" />
                                 </th>
-                                <th
-                                    v-for="col in columnas"
-                                    :key="col.key"
-                                    scope="col"
-                                    :aria-sort="col.sortable ? ariaSort(col.key) : undefined"
-                                    :class="[
+                                <th v-for="col in columnas" :key="col.key" scope="col"
+                                    :aria-sort="col.sortable ? ariaSort(col.key) : undefined" :class="[
                                         'bg-muted px-3 py-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground',
                                         col.align === 'right' ? 'text-right' : 'text-left',
                                         col.headerClass,
-                                    ]"
-                                >
-                                    <button
-                                        v-if="col.sortable"
-                                        type="button"
-                                        @click="ordenarPor(col.key)"
-                                        :class="[
-                                            'group/sort inline-flex items-center gap-1 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
-                                            col.align === 'right' ? 'w-full justify-end' : '',
-                                        ]"
-                                    >
+                                    ]">
+                                    <button v-if="col.sortable" type="button" @click="ordenarPor(col.key)" :class="[
+                                        'group/sort inline-flex items-center gap-1 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+                                        col.align === 'right' ? 'w-full justify-end' : '',
+                                    ]">
                                         <span>{{ col.label }}</span>
-                                        <span class="text-muted-foreground/60 transition-colors group-hover/sort:text-foreground">
+                                        <span
+                                            class="text-muted-foreground/60 transition-colors group-hover/sort:text-foreground">
                                             <ChevronUpIcon v-if="indicador(col.key) === 'asc'" class="h-3 w-3" />
-                                            <ChevronDownIcon v-else-if="indicador(col.key) === 'desc'" class="h-3 w-3" />
-                                            <ChevronUpDownIcon v-else class="h-3 w-3 opacity-0 transition-opacity group-hover/sort:opacity-100" />
+                                            <ChevronDownIcon v-else-if="indicador(col.key) === 'desc'"
+                                                class="h-3 w-3" />
+                                            <ChevronUpDownIcon v-else
+                                                class="h-3 w-3 opacity-0 transition-opacity group-hover/sort:opacity-100" />
                                         </span>
                                     </button>
                                     <span v-else>{{ col.label }}</span>
                                 </th>
 
-                                <th
-                                    scope="col"
-                                    class="sticky right-0 z-30 w-[104px] border-l border-border bg-muted px-2 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground"
-                                >
+                                <th scope="col"
+                                    class="sticky right-0 z-30 w-[104px] border-l border-border bg-muted px-2 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                                     Acciones
                                 </th>
                             </tr>
@@ -857,31 +801,23 @@ const recargar = () => {
                         </tbody>
 
                         <tbody v-else-if="visibles.length" :key="paginaActual" class="mat-page">
-                            <tr
-                                v-for="producto in visibles"
-                                :key="producto.id"
+                            <tr v-for="producto in visibles" :key="producto.id"
                                 class="group border-b border-border/60 transition-colors last:border-0 hover:bg-muted/40"
-                                :class="{ 'bg-primary/5': seleccionados.has(producto.id) }"
-                            >
+                                :class="{ 'bg-primary/5': seleccionados.has(producto.id) }">
                                 <td v-if="can(['issuperadmin'])" class="w-10 px-3 py-3 align-top">
-                                    <input
-                                        type="checkbox"
-                                        :checked="seleccionados.has(producto.id)"
+                                    <input type="checkbox" :checked="seleccionados.has(producto.id)"
                                         @change="toggleProducto(producto.id)"
                                         class="h-4 w-4 rounded border-border accent-foreground"
-                                        :aria-label="`Seleccionar ${producto.Codigo_interno || producto.Titulo_Shopify}`"
-                                    />
+                                        :aria-label="`Seleccionar ${producto.Codigo_interno || producto.Titulo_Shopify}`" />
                                 </td>
                                 <td class="px-3 py-3 align-top">
                                     <div class="flex flex-col gap-0.5">
                                         <span class="font-semibold tabular-nums tracking-tight text-foreground">
                                             {{ texto(producto.Codigo_interno) }}
                                         </span>
-                                        <span
-                                            v-if="producto.ID_producto_Shopify"
+                                        <span v-if="producto.ID_producto_Shopify"
                                             class="block max-w-[140px] truncate text-[10px] text-muted-foreground"
-                                            :title="producto.ID_producto_Shopify"
-                                        >
+                                            :title="producto.ID_producto_Shopify">
                                             {{ producto.ID_producto_Shopify }}
                                         </span>
                                     </div>
@@ -889,10 +825,12 @@ const recargar = () => {
 
                                 <td class="px-3 py-3 align-top">
                                     <div class="flex max-w-[300px] flex-col gap-0.5">
-                                        <span class="truncate font-medium text-foreground" :title="producto.Titulo_Shopify">
+                                        <span class="truncate font-medium text-foreground"
+                                            :title="producto.Titulo_Shopify">
                                             {{ texto(producto.Titulo_Shopify) }}
                                         </span>
-                                        <span class="truncate text-[11px] text-muted-foreground" :title="producto.descripcion">
+                                        <span class="truncate text-[11px] text-muted-foreground"
+                                            :title="producto.descripcion">
                                             {{ texto(producto.descripcion, 'Sin descripción') }}
                                         </span>
                                     </div>
@@ -903,11 +841,9 @@ const recargar = () => {
                                         <span class="font-semibold tabular-nums text-foreground">
                                             {{ Number(producto.cantidad ?? 0) }}
                                         </span>
-                                        <span
-                                            v-if="detalleTallasDe(producto)"
+                                        <span v-if="detalleTallasDe(producto)"
                                             class="max-w-[130px] truncate text-[11px] tabular-nums text-muted-foreground"
-                                            :title="detalleTallasDe(producto)"
-                                        >
+                                            :title="detalleTallasDe(producto)">
                                             {{ detalleTallasDe(producto) }}
                                         </span>
                                     </div>
@@ -915,10 +851,12 @@ const recargar = () => {
 
                                 <td class="hidden px-3 py-3 align-top lg:table-cell">
                                     <div class="flex max-w-[210px] flex-col gap-0.5">
-                                        <span class="truncate text-sm text-foreground" :title="producto.Categoria_original">
+                                        <span class="truncate text-sm text-foreground"
+                                            :title="producto.Categoria_original">
                                             {{ texto(producto.Categoria_original) }}
                                         </span>
-                                        <span class="truncate text-[11px] text-muted-foreground" :title="producto.Familia_normalizada">
+                                        <span class="truncate text-[11px] text-muted-foreground"
+                                            :title="producto.Familia_normalizada">
                                             {{ texto(producto.Familia_normalizada, 'Sin familia') }}
                                         </span>
                                     </div>
@@ -926,10 +864,12 @@ const recargar = () => {
 
                                 <td class="hidden px-3 py-3 align-top xl:table-cell">
                                     <div class="flex max-w-[190px] flex-col gap-0.5">
-                                        <span class="truncate text-sm text-foreground" :title="producto.Control_de_variante">
+                                        <span class="truncate text-sm text-foreground"
+                                            :title="producto.Control_de_variante">
                                             {{ texto(producto.Control_de_variante) }}
                                         </span>
-                                        <span class="truncate text-[11px] text-muted-foreground" :title="producto.Opciones">
+                                        <span class="truncate text-[11px] text-muted-foreground"
+                                            :title="producto.Opciones">
                                             {{ texto(producto.Opciones, 'Sin opciones') }}
                                         </span>
                                     </div>
@@ -938,9 +878,9 @@ const recargar = () => {
                                 <td class="px-3 py-3 align-top">
                                     <span
                                         class="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium"
-                                        :class="estadoEstilo(producto.Estado).badge"
-                                    >
-                                        <span class="h-1.5 w-1.5 rounded-full" :class="estadoEstilo(producto.Estado).dot"></span>
+                                        :class="estadoEstilo(producto.Estado).badge">
+                                        <span class="h-1.5 w-1.5 rounded-full"
+                                            :class="estadoEstilo(producto.Estado).dot"></span>
                                         {{ estadoNormalizado(producto.Estado) }}
                                     </span>
                                 </td>
@@ -948,7 +888,7 @@ const recargar = () => {
                                 <td class="px-3 py-3 text-right align-top">
                                     <div class="flex flex-col items-end gap-0.5">
                                         <span class="font-semibold tabular-nums text-foreground">
-                                            {{ formatearPrecio(producto.precio_preventa) }}
+                                            {{ formatearPrecio(producto.precio_venta_producto) }}
                                         </span>
                                         <span class="text-[11px] tabular-nums text-muted-foreground">
                                             Anticipado {{ formatearPrecio(producto.costo_anticipado) }}
@@ -958,70 +898,52 @@ const recargar = () => {
 
                                 <td class="px-3 py-3 text-right align-top">
                                     <span class="font-medium tabular-nums text-foreground">
-                                        {{ formatearPrecio(producto.precio_estimado, decimalesDe(producto.precio_estimado)) }}
+                                        {{ formatearPrecio(producto.precio_estimado,
+                                        decimalesDe(producto.precio_estimado)) }}
                                     </span>
                                 </td>
 
                                 <td class="hidden px-3 py-3 align-top md:table-cell">
                                     <div class="flex max-w-[190px] flex-wrap items-center gap-1">
-                                        <span
-                                            v-for="talla in tallasDe(producto).slice(0, 3)"
-                                            :key="talla"
-                                            class="inline-flex min-w-6 items-center justify-center rounded border border-border bg-muted/60 px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground"
-                                        >
+                                        <span v-for="talla in tallasDe(producto).slice(0, 3)" :key="talla"
+                                            class="inline-flex min-w-6 items-center justify-center rounded border border-border bg-muted/60 px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground">
                                             {{ talla }}
                                         </span>
-                                        <span
-                                            v-if="tallasDe(producto).length > 3"
+                                        <span v-if="tallasDe(producto).length > 3"
                                             class="inline-flex min-w-6 items-center justify-center rounded border border-border bg-muted/60 px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground"
-                                            :title="tallasDe(producto).slice(3).join(', ')"
-                                        >
+                                            :title="tallasDe(producto).slice(3).join(', ')">
                                             +{{ tallasDe(producto).length - 3 }}
                                         </span>
-                                        <span v-if="!tallasDe(producto).length" class="text-xs text-muted-foreground">—</span>
+                                        <span v-if="!tallasDe(producto).length"
+                                            class="text-xs text-muted-foreground">—</span>
                                     </div>
                                 </td>
 
                                 <td
-                                    class="sticky right-0 z-10 w-[104px] border-l border-border/60 bg-card px-2 py-2 align-middle shadow-[-8px_0_16px_-16px_rgba(0,0,0,0.35)] transition-colors group-hover:bg-muted/40"
-                                >
+                                    class="sticky right-0 z-10 w-[104px] border-l border-border/60 bg-card px-2 py-2 align-middle shadow-[-8px_0_16px_-16px_rgba(0,0,0,0.35)] transition-colors group-hover:bg-muted/40">
                                     <div class="flex items-center justify-end gap-1">
-                                        <button
-                                            v-if="can(['update Producto'])"
-                                            type="button"
-                                            @click="accionFila('tallas', producto)"
-                                            title="Tallas"
+                                        <button v-if="can(['update Producto'])" type="button"
+                                            @click="accionFila('tallas', producto)" title="Tallas"
                                             :aria-label="`Editar tallas de ${producto.Codigo_interno || producto.Titulo_Shopify}`"
-                                            class="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                                        >
+                                            class="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
                                             <SquaresPlusIcon class="h-4 w-4" />
                                         </button>
-                                        <button
-                                            v-if="can(['update Producto'])"
-                                            type="button"
-                                            @click="accionFila('edit', producto)"
-                                            title="Editar"
+                                        <button v-if="can(['update Producto'])" type="button"
+                                            @click="accionFila('edit', producto)" title="Editar"
                                             :aria-label="`Editar ${producto.Codigo_interno || producto.Titulo_Shopify}`"
-                                            class="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                                        >
+                                            class="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
                                             <PencilIcon class="h-4 w-4" />
                                         </button>
                                         <DropdownMenu>
-                                            <DropdownMenuTrigger
-                                                type="button"
-                                                title="Acciones"
+                                            <DropdownMenuTrigger type="button" title="Acciones"
                                                 :aria-label="`Acciones de ${producto.Codigo_interno || producto.Titulo_Shopify}`"
-                                                class="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                                            >
+                                                class="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
                                                 <EllipsisVerticalIcon class="h-4 w-4" />
                                             </DropdownMenuTrigger>
                                             <DropdownMenuContent align="end" class="w-56 p-1">
-                                                <DropdownMenuItem
-                                                    v-if="can(['delete Producto'])"
-                                                    @click="accionFila('delete', producto)"
-                                                    variant="destructive"
-                                                    class="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-xs font-medium"
-                                                >
+                                                <DropdownMenuItem v-if="can(['delete Producto'])"
+                                                    @click="accionFila('delete', producto)" variant="destructive"
+                                                    class="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-xs font-medium">
                                                     <TrashIcon class="h-4 w-4" />
                                                     <span>Eliminar</span>
                                                 </DropdownMenuItem>
@@ -1036,7 +958,8 @@ const recargar = () => {
                             <tr>
                                 <td :colspan="columnas.length + 1" class="px-6 py-16">
                                     <div class="mx-auto flex max-w-sm flex-col items-center text-center">
-                                        <div class="flex h-12 w-12 items-center justify-center rounded-full border border-border bg-muted/60">
+                                        <div
+                                            class="flex h-12 w-12 items-center justify-center rounded-full border border-border bg-muted/60">
                                             <FunnelIcon v-if="hayFiltros" class="h-5 w-5 text-muted-foreground" />
                                             <CubeIcon v-else class="h-5 w-5 text-muted-foreground" />
                                         </div>
@@ -1050,21 +973,13 @@ const recargar = () => {
                                                     : 'Crea el primer producto o carga un Excel para empezar.'
                                             }}
                                         </p>
-                                        <button
-                                            v-if="hayFiltros"
-                                            type="button"
-                                            @click="limpiarFiltros"
-                                            class="mt-4 inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                                        >
+                                        <button v-if="hayFiltros" type="button" @click="limpiarFiltros"
+                                            class="mt-4 inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
                                             <XMarkIcon class="h-3.5 w-3.5" />
                                             Limpiar filtros
                                         </button>
-                                        <PrimaryButton
-                                            v-else-if="can(['create Producto'])"
-                                            type="button"
-                                            class="mt-4"
-                                            @click="data.createOpen = true"
-                                        >
+                                        <PrimaryButton v-else-if="can(['create Producto'])" type="button" class="mt-4"
+                                            @click="data.createOpen = true">
                                             <PlusIcon class="mr-1.5 h-4 w-4" />
                                             Crear el primer producto
                                         </PrimaryButton>
@@ -1075,53 +990,32 @@ const recargar = () => {
                     </table>
                 </div>
 
-                <DataPagination
-                    v-if="!cargando"
-                    :current-page="paginaActual"
-                    :last-page="ultimaPagina"
-                    :from="desde"
-                    :to="hasta"
-                    :total="totalRegistros"
-                    :item-label="totalRegistros === 1 ? 'producto' : 'productos'"
-                    @page="cambiarPagina"
-                />
+                <DataPagination v-if="!cargando" :current-page="paginaActual" :last-page="ultimaPagina" :from="desde"
+                    :to="hasta" :total="totalRegistros" :item-label="totalRegistros === 1 ? 'producto' : 'productos'"
+                    @page="cambiarPagina" />
             </div>
         </div>
 
         <Teleport to="body">
-            <Transition
-                enter-active-class="transition duration-200 ease-out"
-                enter-from-class="translate-y-4 opacity-0"
-                enter-to-class="translate-y-0 opacity-100"
-                leave-active-class="transition duration-150 ease-in"
-                leave-from-class="translate-y-0 opacity-100"
-                leave-to-class="translate-y-4 opacity-0"
-            >
-                <div
-                    v-if="can(['issuperadmin']) && seleccionados.size > 0"
-                    class="fixed bottom-6 left-1/2 z-50 -translate-x-1/2"
-                >
+            <Transition enter-active-class="transition duration-200 ease-out" enter-from-class="translate-y-4 opacity-0"
+                enter-to-class="translate-y-0 opacity-100" leave-active-class="transition duration-150 ease-in"
+                leave-from-class="translate-y-0 opacity-100" leave-to-class="translate-y-4 opacity-0">
+                <div v-if="can(['issuperadmin']) && seleccionados.size > 0"
+                    class="fixed bottom-6 left-1/2 z-50 -translate-x-1/2">
                     <div
-                        class="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-2.5 shadow-xl ring-1 ring-black/5"
-                    >
+                        class="flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-2.5 shadow-xl ring-1 ring-black/5">
                         <span class="text-sm font-medium text-foreground">
                             {{ seleccionados.size }}
                             {{ seleccionados.size === 1 ? 'producto seleccionado' : 'productos seleccionados' }}
                         </span>
                         <div class="h-4 w-px bg-border" />
-                        <button
-                            type="button"
-                            @click="eliminarSeleccionados"
-                            class="inline-flex items-center gap-1.5 rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                        >
+                        <button type="button" @click="eliminarSeleccionados"
+                            class="inline-flex items-center gap-1.5 rounded-md bg-red-600 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 focus-visible:ring-offset-background">
                             <TrashIcon class="h-3.5 w-3.5" />
                             Eliminar
                         </button>
-                        <button
-                            type="button"
-                            @click="limpiarSeleccion"
-                            class="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        >
+                        <button type="button" @click="limpiarSeleccion"
+                            class="inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                             <XMarkIcon class="h-3.5 w-3.5" />
                             Cancelar
                         </button>
@@ -1131,18 +1025,10 @@ const recargar = () => {
         </Teleport>
 
         <Teleport to="body">
-            <Transition
-                enter-active-class="transition duration-200 ease-out"
-                enter-from-class="opacity-0"
-                enter-to-class="opacity-100"
-                leave-active-class="transition duration-150 ease-in"
-                leave-from-class="opacity-100"
-                leave-to-class="opacity-0"
-            >
-                <div
-                    v-if="data.deleteBulkOpen"
-                    class="fixed inset-0 z-50 flex items-center justify-center p-4"
-                >
+            <Transition enter-active-class="transition duration-200 ease-out" enter-from-class="opacity-0"
+                enter-to-class="opacity-100" leave-active-class="transition duration-150 ease-in"
+                leave-from-class="opacity-100" leave-to-class="opacity-0">
+                <div v-if="data.deleteBulkOpen" class="fixed inset-0 z-50 flex items-center justify-center p-4">
                     <div class="absolute inset-0 bg-black/40 backdrop-blur-sm" @click="data.deleteBulkOpen = false" />
                     <div class="relative w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-xl">
                         <h2 class="text-base font-semibold text-foreground">Eliminar productos</h2>
@@ -1153,20 +1039,12 @@ const recargar = () => {
                             Esta acción no se puede deshacer.
                         </p>
                         <div class="mt-6 flex justify-end gap-2">
-                            <button
-                                type="button"
-                                @click="data.deleteBulkOpen = false"
-                                :disabled="data.deletingBulk"
-                                class="inline-flex items-center rounded-md border border-border bg-card px-4 py-2 text-sm font-medium text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50"
-                            >
+                            <button type="button" @click="data.deleteBulkOpen = false" :disabled="data.deletingBulk"
+                                class="inline-flex items-center rounded-md border border-border bg-card px-4 py-2 text-sm font-medium text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50">
                                 Cancelar
                             </button>
-                            <button
-                                type="button"
-                                @click="confirmarEliminarBulk"
-                                :disabled="data.deletingBulk"
-                                class="inline-flex items-center gap-1.5 rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50"
-                            >
+                            <button type="button" @click="confirmarEliminarBulk" :disabled="data.deletingBulk"
+                                class="inline-flex items-center gap-1.5 rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50">
                                 <TrashIcon class="h-4 w-4" />
                                 {{ data.deletingBulk ? 'Eliminando...' : 'Sí, eliminar' }}
                             </button>
@@ -1178,53 +1056,25 @@ const recargar = () => {
 
         <ImportarProductoModal :show="data.importOpen" @close="data.importOpen = false" />
 
-        <Create
-            v-if="can(['create Producto'])"
-            :numberPermissions="props.numberPermissions"
-            :titulos="titulos"
-            :show="data.createOpen"
-            @close="data.createOpen = false"
-            :title="props.title"
-            :losSelect="props.losSelect"
-        />
+        <Create v-if="can(['create Producto'])" :numberPermissions="props.numberPermissions" :titulos="titulos"
+            :show="data.createOpen" @close="data.createOpen = false" :title="props.title"
+            :losSelect="props.losSelect" />
 
-        <Edit
-            v-if="can(['update Producto'])"
-            :titulos="titulos"
-            :numberPermissions="props.numberPermissions"
-            :show="data.editOpen"
-            @close="data.editOpen = false"
-            :Productoa="data.Productoo"
-            :title="props.title"
-            :losSelect="props.losSelect"
-        />
+        <Edit v-if="can(['update Producto'])" :titulos="titulos" :numberPermissions="props.numberPermissions"
+            :show="data.editOpen" @close="data.editOpen = false" :Productoa="data.Productoo" :title="props.title"
+            :losSelect="props.losSelect" />
 
-        <Delete
-            v-if="can(['delete Producto'])"
-            :numberPermissions="props.numberPermissions"
-            :show="data.deleteOpen"
-            @close="data.deleteOpen = false"
-            :Productoa="data.Productoo"
-            :title="props.title"
-        />
+        <Delete v-if="can(['delete Producto'])" :numberPermissions="props.numberPermissions" :show="data.deleteOpen"
+            @close="data.deleteOpen = false" :Productoa="data.Productoo" :title="props.title" />
 
-        <DistribucionTallas
-            v-if="can(['update Producto'])"
-            :show="data.distribucionOpen"
-            @close="data.distribucionOpen = false"
-            :title="props.title"
-            :productoId="data.distribucionProducto?.id"
+        <DistribucionTallas v-if="can(['update Producto'])" :show="data.distribucionOpen"
+            @close="data.distribucionOpen = false" :title="props.title" :productoId="data.distribucionProducto?.id"
             :productoLabel="data.distribucionProducto?.Codigo_interno"
             :items="data.distribucionProducto?.distribuciones_por_tallas || []"
-            :ordenesTallas="data.distribucionProducto?.ordenes_con_tallas || []"
-        />
+            :ordenesTallas="data.distribucionProducto?.ordenes_con_tallas || []" />
 
-        <ModalDependenciasProducto
-            :show="data.modalBloqueadosOpen"
-            :bloqueados="data.productosBloqueados"
-            :eliminados="data.productosEliminados"
-            @close="data.modalBloqueadosOpen = false"
-        />
+        <ModalDependenciasProducto :show="data.modalBloqueadosOpen" :bloqueados="data.productosBloqueados"
+            :eliminados="data.productosEliminados" @close="data.modalBloqueadosOpen = false" />
     </AppLayout>
 </template>
 
@@ -1234,6 +1084,7 @@ const recargar = () => {
         opacity: 0;
         transform: translateY(3px);
     }
+
     to {
         opacity: 1;
         transform: translateY(0);

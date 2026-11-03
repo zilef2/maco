@@ -368,6 +368,14 @@ class CostoMaterialOpService
         }
 
         $total = round($total, 2);
+
+        // El costo de proceso de la OP ya no se digita: se deriva de los
+        // procesos de sus productos antes de cerrar el costo total.
+        $costoProceso = $this->costoProceso($op);
+        if (round((float) ($op->costo_proceso ?? 0), 2) !== $costoProceso) {
+            $op->forceFill(['costo_proceso' => $costoProceso])->saveQuietly();
+        }
+
         $op->actualizarCostoTotal($total);
 
         return $total;
@@ -494,6 +502,87 @@ class CostoMaterialOpService
         return $this->recalcularLista($ids);
     }
 
+    /**
+     * Costo de proceso de la OP: la suma de coste_proceso de los procesos de
+     * cada producto, multiplicada por las unidades de ese producto en la OP.
+     * Ya no se digita a mano: el campo de la OP siempre sale de aquí.
+     */
+    public function costoProceso(OrdenProduccion $op): float
+    {
+        $cantidades = $this->cantidadesPorProducto($op);
+
+        $total = 0.0;
+        foreach ($this->productos($op) as $producto) {
+            $cantidad = (float) ($cantidades[$producto->id] ?? 0);
+            if ($cantidad <= 0) {
+                continue;
+            }
+
+            $costeProcesos = (float) $producto->procesos->sum('coste_proceso');
+            $total += $costeProcesos * $cantidad;
+        }
+
+        return round($total, 2);
+    }
+
+    /**
+     * Renueva el costo de proceso guardado en la OP y, con él, el costo total.
+     */
+    public function guardarCostoProceso(OrdenProduccion $op): float
+    {
+        $costoProceso = $this->costoProceso($op);
+
+        if (round((float) ($op->costo_proceso ?? 0), 2) !== $costoProceso) {
+            $op->forceFill(['costo_proceso' => $costoProceso])->saveQuietly();
+        }
+
+        $op->actualizarCostoTotal();
+
+        return $costoProceso;
+    }
+
+    /**
+     * Renueva las OPs abiertas que usan alguno de estos productos: los procesos
+     * del producto cambiaron y con ellos el costo de proceso de la OP.
+     *
+     * @param  list<int>  $productoIds
+     * @return int Cantidad de OPs recalculadas.
+     */
+    public function recalcularCostoProcesoPorProductos(array $productoIds): int
+    {
+        if (empty($productoIds)) {
+            return 0;
+        }
+
+        $cerradaId = EstadoOperacion::where('nombre', 'Cerrada')->value('id');
+
+        $ops = OrdenProduccion::query()
+            ->with(['productos.procesos', 'productoReferencia.procesos', 'distribucionesPorTallas', 'costosMateriales'])
+            ->where(function ($consulta) use ($productoIds, $cerradaId) {
+                $consulta->whereNull('estado_op_id')
+                    ->orWhere('estado_op_id', '!=', $cerradaId);
+
+                $consulta->where(function ($sub) use ($productoIds) {
+                    $sub->whereIn('producto_referencia_id', $productoIds)
+                        ->orWhereHas('productos', function ($pivot) use ($productoIds) {
+                            $pivot->whereIn('productos.id', $productoIds);
+                        });
+                });
+            })
+            ->get();
+
+        foreach ($ops as $op) {
+            $this->guardarCostoProceso($op);
+        }
+
+        if ($ops->isNotEmpty()) {
+            Cache::increment('op_index_version');
+            Cache::forget('op_selects');
+        }
+
+        return $ops->count();
+    }
+
     private function recalcularLista(Collection $opIds): int
     {
         $cerradaId = EstadoOperacion::where('nombre', 'Cerrada')->value('id');
@@ -503,6 +592,8 @@ class CostoMaterialOpService
                 'productos.fichaTecnica.materiales',
                 'productoReferencia.fichaTecnica.materiales',
                 'materiales.fichaTecnica.materiales',
+                'productos.procesos',
+                'productoReferencia.procesos',
                 'distribucionesPorTallas',
                 'costosMateriales',
             ])

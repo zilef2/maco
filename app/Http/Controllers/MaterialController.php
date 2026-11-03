@@ -668,32 +668,32 @@ class MaterialController extends Controller {
         $hoja->setTitle('Materiales');
 
         $encabezados = [
-            'Codigo material',
+            'Código material',
+            'Código categoría',
+            'Categoría',
+            'Código base',
             'Nombre base',
-            'Categoria',
+            'Modelo / diseño / acabado',
+            'Color',
+            'Talla / tamaño',
             'Unidad inventario',
-            'Estado',
-            'Maneja color (SI/NO)',
-            'Maneja talla (SI/NO)',
-            'Maneja otra variante (SI/NO)',
-            'Variante atributo sugerido',
             'Proveedor habitual',
+            'Estado',
             'Observaciones',
-            'Todas_las_variantes',
-            'Es producido (SI/NO)',
+            'Costo',
         ];
 
         $hoja->fromArray($encabezados, null, 'A1');
         $hoja->fromArray([
             [
-                'MAT-30', 'Botón forrado', 'Tapas', 240, 'Activo',
-                'SI', 'NO', 'NO', 'Color', '', 'Ejemplo con colores',
-                'Rojo, Azul, Negro', 'NO',
+                'MAT-30', '', 'Tapas', '', 'Botón forrado',
+                'Liso', 'Rojo, Azul, Negro', '', 'Unidades',
+                '', 'Activo', 'Ejemplo con colores', 15000,
             ],
             [
-                'MAT-31', 'Tela poliéster', 'Tela', 1500, 'Inactivo',
-                'NO', 'SI', 'NO', 'Talla', '', 'Ejemplo con tallas',
-                'S, M, L, XL', 'SI',
+                'MAT-31', '', 'Tela', '', 'Tela poliéster',
+                '', '', 'S, M, L, XL', 'Metros',
+                '', 'Activo', 'Ejemplo con tallas', 8500,
             ],
         ], null, 'A2');
 
@@ -761,10 +761,7 @@ class MaterialController extends Controller {
         $columnasRequeridas = [
             'codigo_material',
             'nombre_base',
-            'categoria',
-            'unidad_inventario',
             'estado',
-            'todas_las_variantes',
         ];
 
         // Rótulos de sección del Excel (celdas decorativas): se ignoran en silencio.
@@ -772,12 +769,22 @@ class MaterialController extends Controller {
 
         $aliasColumnas = [
             'codigomaterial'          => 'codigo_material',
+            'codigomaterial'          => 'codigo_material',
             'codigo'                  => 'codigo_material',
             'nombrebase'              => 'nombre_base',
             'nombre'                  => 'nombre_base',
+            'codigobase'              => 'codigo_base',
             'categoria'               => 'categoria',
+            'codigocategoria'         => 'codigo_categoria',
             'unidadinventario'        => 'unidad_inventario',
             'unidad'                  => 'unidad_inventario',
+            'modelodisenoabacado'     => 'variante_atributo_sugerido',
+            'modelodisenoacabado'     => 'variante_atributo_sugerido',
+            'modelodiseno'            => 'variante_atributo_sugerido',
+            'modelo'                  => 'variante_atributo_sugerido',
+            'color'                   => 'colores_lista',
+            'tallatamano'             => 'tallas_lista',
+            'talla'                   => 'tallas_lista',
             'manejacolor'             => 'maneja_color',
             'manejatalla'             => 'maneja_talla',
             'manejaotravariante'      => 'maneja_otra_variante',
@@ -785,11 +792,12 @@ class MaterialController extends Controller {
             'estado'                  => 'estado',
             'varianteatributosugerido'=> 'variante_atributo_sugerido',
             'proveedorhabitual'       => 'proveedor_habitual',
+            'proveedor'               => 'proveedor_habitual',
             'observaciones'           => 'observaciones',
-            // Lista única de presentaciones separadas por coma; alimenta
-            // material_variants (orden = posición, tipo = color o variante).
             'todaslasvariantes'       => 'todas_las_variantes',
             'esproducido'             => 'es_producido',
+            'costo'                   => 'costo_material',
+            'costomaterial'           => 'costo_material',
         ];
 
         $normalizarTexto = fn (string $texto): string => strtr(
@@ -908,14 +916,8 @@ class MaterialController extends Controller {
                 continue;
             }
 
-            // Unidad inventario: en este formato es la cantidad entera de stock
-            // y se guarda en existencia_actual (no se generan movimientos).
-            $cantidadTexto = trim((string) ($registro['unidad_inventario'] ?? ''));
-            $existencia = filter_var($cantidadTexto, FILTER_VALIDATE_INT);
-            if ($cantidadTexto === '' || $existencia === false || $existencia < 0) {
-                $errores[] = "Fila {$filaExcel}: Unidad inventario debe ser una cantidad entera (0 o más) y llegó \"{$cantidadTexto}\"";
-                continue;
-            }
+            // Unidad inventario: en este formato trae el nombre de la unidad (ej: "Metros", "Unidades").
+            $unidadInventario = trim(strip_tags((string) ($registro['unidad_inventario'] ?? '')));
 
             $estadoBruto = (string) ($registro['estado'] ?? '');
             $estadoTexto = $normalizarTexto($estadoBruto);
@@ -933,12 +935,20 @@ class MaterialController extends Controller {
                 continue;
             }
 
-            // Todas_las_variantes alimenta material_variants: el orden es la
-            // posición en la lista (0, 1, 2…) y el tipo se deduce de "Maneja
-            // color": SI → colores, NO → variantes.
-            $listaVariantes = Material::normalizarListaVariantes($registro['todas_las_variantes'] ?? null);
-            $colores = $manejaColor ? $listaVariantes : [];
-            $variantes = $manejaColor ? [] : $listaVariantes;
+            // Columnas "Color" y "Talla / tamaño" alimentan material_variants.
+            // Si existe la columna legacy "todas_las_variantes" también se acepta.
+            $coloresRaw   = $registro['colores_lista'] ?? $registro['todas_las_variantes'] ?? null;
+            $tallasRaw    = $registro['tallas_lista'] ?? null;
+            $colores      = Material::normalizarListaVariantes($coloresRaw);
+            $tallasLista  = Material::normalizarListaVariantes($tallasRaw);
+            $variantes    = !empty($tallasLista) ? $tallasLista : (!$manejaColor ? Material::normalizarListaVariantes($registro['todas_las_variantes'] ?? null) : []);
+
+            if (!empty($colores)) {
+                $manejaColor = true;
+            }
+            if (!empty($tallasLista)) {
+                $manejaTalla = true;
+            }
 
             $proveedorTexto = trim((string) ($registro['proveedor_habitual'] ?? ''));
             $proveedorId = null;
@@ -956,12 +966,17 @@ class MaterialController extends Controller {
             $atributoSugerido = trim(strip_tags((string) ($registro['variante_atributo_sugerido'] ?? '')));
             $observaciones = trim(strip_tags((string) ($registro['observaciones'] ?? '')));
 
+            $costoRaw = $registro['costo_material'] ?? null;
+            $costo = ($costoRaw !== null && $costoRaw !== '')
+                ? (float) str_replace(',', '.', (string) $costoRaw)
+                : null;
+
             $registros[] = [
                 'datos' => [
                     'codigo_material'            => $codigo,
                     'nombre_base'                => $nombre,
                     'categoria'                  => mb_substr(strip_tags((string) ($registro['categoria'] ?? '')), 0, 255),
-                    'existencia_actual'          => $existencia,
+                    'unidad_inventario'          => $unidadInventario !== '' ? mb_substr($unidadInventario, 0, 255) : null,
                     'maneja_color'               => $manejaColor,
                     'maneja_talla'               => $manejaTalla,
                     'maneja_otra_variante'       => $manejaOtraVariante,
@@ -970,10 +985,11 @@ class MaterialController extends Controller {
                     'proveedor_habitual'         => $proveedorId,
                     'observaciones'              => $observaciones !== '' ? mb_substr($observaciones, 0, 255) : null,
                     'material_procesado'         => $parsearBooleano($registro['es_producido'] ?? '') ? 1 : 0,
+                    'costo_material'             => $costo,
                 ],
-                'colores' => $colores,
+                'colores'   => $colores,
                 'variantes' => $variantes,
-                'fila' => $filaExcel,
+                'fila'      => $filaExcel,
             ];
         }
 
@@ -1004,12 +1020,10 @@ class MaterialController extends Controller {
                     : null;
 
                 if ($material) {
-                    // El nuevo formato no trae el nombre de la unidad (la columna
-                    // trae cantidad), así que se conserva la unidad ya registrada.
                     $material->update($datos);
                     $actualizados++;
                 } else {
-                    $material = Material::create([...$datos, 'unidad_inventario' => 'Unidades']);
+                    $material = Material::create($datos);
                     $existentes[$codigoMaterial] = $material->id;
                     $creados++;
                 }

@@ -65,33 +65,6 @@ const navGroups: NavGroup[] = [
 
 const navDropdown: NavGroup[] = [
     {
-        label: 'Producción',
-        icon: Factory,
-        items: [
-            // {
-            //     title: 'ProcesoExterno',
-            //     href: '/ProcesoExterno',
-            //     icon: ArrowLeftRight,
-            // },
-            {
-                title: 'RecepcionCalidad',
-                href: '/RecepcionCalidad',
-                icon: ShieldCheck,
-            },
-            {
-                title: 'CierreOrdenProduccion',
-                href: '/CierreOrdenProduccion',
-                icon: CheckCircle2,
-            },
-            {
-                title: 'Merma',
-                href: '/Merma',
-                icon: LayoutGrid,
-            },
-            //aquipuesSide
-        ],
-    },
-    {
         label: 'Fichas y Kit',
         icon: Layers,
         items: [
@@ -115,6 +88,13 @@ const navDropdown: NavGroup[] = [
                 href: '/KitProceso',
                 icon: PackageCheck,
             },
+            {
+		title: 'Procesoop',
+		href: '/Procesoop',
+		icon: LayoutGrid,
+	},
+	//aquipuesSide
+
         ],
     },
     {
@@ -156,7 +136,7 @@ const navDropdown: NavGroup[] = [
     //     ],
     // },
     {
-        label: 'Referencias', //que no se pueden editar
+        label: 'Solo Lectura', //que no se pueden editar
         icon: BookmarkCheck,
         items: [
             {
@@ -174,6 +154,33 @@ const navDropdown: NavGroup[] = [
                 href: '/Distribucion_por_tallas',
                 icon: Grid3x3,
             },
+        ],
+    },
+    {
+        label: 'PosProducción',
+        icon: Factory,
+        items: [
+            // {
+            //     title: 'ProcesoExterno',
+            //     href: '/ProcesoExterno',
+            //     icon: ArrowLeftRight,
+            // },
+            {
+                title: 'RecepcionCalidad',
+                href: '/RecepcionCalidad',
+                icon: ShieldCheck,
+            },
+            {
+                title: 'CierreOrdenProduccion',
+                href: '/CierreOrdenProduccion',
+                icon: CheckCircle2,
+            },
+            {
+                title: 'Merma',
+                href: '/Merma',
+                icon: LayoutGrid,
+            },
+            
         ],
     },
     {
@@ -202,45 +209,40 @@ const navDropdown: NavGroup[] = [
                 href: '/ImportarExcel',
                 icon: FileUp,
             },
-            {
-                title: 'Explicaciones',
-                href: '/Explicaciones',
-                icon: BookOpen,
-            },
+            // {
+            //     title: 'Explicaciones',
+            //     href: '/Explicaciones',
+            //     icon: BookOpen,
+            // },
         ],
     },
-    {
-        label: 'Dudas',
-        icon: Settings,
-        items: [
+    // {
+    //     label: 'Dudas',
+    //     icon: Settings,
+    //     items: [
 
-            {
-                title: 'Merma',
-                href: '/Merma',
-                icon: LayoutGrid,
-            },
-            // {
-            //     title: 'FichaEnsamble',
-            //     href: '/FichaEnsamble',
-            //     icon: FileSpreadsheet,
-            // },
-            // {
-            //     title: 'KitProceso',
-            //     href: '/KitProceso',
-            //     icon: PackageCheck,
-            // },
-        ],
-    },
+    //         {
+    //             title: 'FichaEnsamble',
+    //             href: '/FichaEnsamble',
+    //             icon: FileSpreadsheet,
+    //         },
+    //         {
+    //             title: 'KitProceso',
+    //             href: '/KitProceso',
+    //             icon: PackageCheck,
+    //         },
+    //     ],
+    // },
 ];
 
-const footerAdminItems = [
+// const footerAdminItems = [
+//     ];
+    const footerSuperItems = [
     {
         title: 'Desarrollo',
         href: '/desarrollo',
         icon: Folder,
     },
-];
-const footerSuperItems = [
     {
         title: 'Actividad',
         href: '/Actividad',
@@ -274,9 +276,9 @@ const footerNavItems = [
             <NavMain :groups="navGroups" :dropdown="navDropdown" />
         </SidebarContent>
 
-        <SidebarFooter class="hidden md:flex" v-if="can(['isadmin'])">
+        <!-- <SidebarFooter class="hidden md:flex" v-if="can(['isadmin'])">
             <NavFooter :items="footerAdminItems" />
-        </SidebarFooter>
+        </SidebarFooter> -->
         <SidebarFooter class="hidden md:flex" v-if="can(['issuperadmin'])">
             <NavFooter :items="footerSuperItems" />
         </SidebarFooter>

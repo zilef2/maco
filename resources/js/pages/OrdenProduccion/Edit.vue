@@ -152,6 +152,7 @@ const opcionesProducto = computed(() => {
             name: p.Titulo_Shopify || p.Codigo_interno || `Producto #${p.id}`,
             Opciones: p.Opciones ?? '',
             distribuciones_por_tallas: [],
+            costo_proceso_total: (p.procesos || []).reduce((s: number, x: any) => s + (Number(x.coste_proceso) || 0), 0),
         }));
     return [...conFicha, ...adjuntos];
 });
@@ -249,59 +250,6 @@ const form = useForm({
     materiales_cantidad: {} as Record<number, number>,
 });
 
-// El input muestra el costo con separadores de miles mientras se escribe, pero
-// el formulario conserva y envía únicamente el número (ej. 1234567).
-const normalizarCostoProceso = (valor: number | string): number => {
-    const numero = Number(valor);
-    return Number.isFinite(numero) && numero > 0 ? Math.round(numero) : 0;
-};
-
-const formatearCostoProceso = (valor: number | string): string => {
-    const numero = normalizarCostoProceso(valor);
-    return numero ? '$' + String(numero).replace(/\B(?=(\d{3})+(?!\d))/g, '.') : '';
-};
-
-const posicionTrasDigitos = (texto: string, cantidad: number): number => {
-    if (cantidad <= 0) return 0;
-
-    let vistos = 0;
-    for (let i = 0; i < texto.length; i++) {
-        if (/\d/.test(texto[i])) {
-            vistos++;
-            if (vistos === cantidad) return i + 1;
-        }
-    }
-
-    return texto.length;
-};
-
-const costoProcesoTexto = ref('');
-
-watch(
-    () => form.costo_proceso,
-    () => {
-        costoProcesoTexto.value = formatearCostoProceso(form.costo_proceso);
-    },
-    { immediate: true },
-);
-
-const alEscribirCostoProceso = (event: Event) => {
-    const input = event.target as HTMLInputElement;
-    const digitosAntesDelCursor = input.value
-        .slice(0, input.selectionStart ?? input.value.length)
-        .replace(/\D/g, '').length;
-    const digitos = input.value.replace(/\D/g, '');
-    const numero = normalizarCostoProceso(digitos);
-
-    form.costo_proceso = numero;
-    costoProcesoTexto.value = formatearCostoProceso(numero);
-
-    const formateado = costoProcesoTexto.value;
-    input.value = formateado;
-    const posicion = posicionTrasDigitos(formateado, digitosAntesDelCursor);
-    input.setSelectionRange(posicion, posicion);
-};
-
 // El formulario muestra el número, el tipo y la fecha aunque estén bloqueados,
 // pero esos campos nunca viajan en el update: así el backend conserva el valor
 // registrado y no depende de que el navegador haya ocultado el input.
@@ -326,6 +274,44 @@ form.transform((datos: any) => {
 });
 
 const totalTallas = computed(() => distribucion.items.reduce((acc, i) => acc + (Number(i.cantidad_planificada) || 0), 0));
+
+// Costo de proceso de la OP: suma de los procesos de cada producto por las
+// unidades de ese producto en la orden. No se digita; el backend guarda esta
+// misma fórmula al recalcular los costos.
+const costoProcesoDerivado = computed(() => {
+    if (esOpMaterial.value) return 0;
+
+    const cantidades: Record<number, number> = {};
+    let sinProducto = 0;
+    for (const item of distribucion.items) {
+        const cantidad = Number(item.cantidad_planificada) || 0;
+        if (item.producto_id) {
+            cantidades[item.producto_id] = (cantidades[item.producto_id] || 0) + cantidad;
+        } else {
+            sinProducto += cantidad;
+        }
+    }
+
+    const destino = productosSel[0]?.id;
+    if (!Object.keys(cantidades).length) {
+        if (destino) cantidades[destino] = totalTallas.value || (Number(form.cantidad_planificada) || 0);
+    } else if (sinProducto > 0 && destino) {
+        cantidades[destino] = (cantidades[destino] || 0) + sinProducto;
+    }
+
+    return productosSel.reduce((total: number, p) => {
+        const opcion: any = opcionesProducto.value.find((o: any) => o.id === p.id);
+        return total + (Number(opcion?.costo_proceso_total) || 0) * (cantidades[p.id] || 0);
+    }, 0);
+});
+
+watch(
+    costoProcesoDerivado,
+    (valor) => {
+        form.costo_proceso = Math.round(valor);
+    },
+    { immediate: true },
+);
 
 const parsearOpciones = (opciones: unknown): string[] => {
     const partes = String(opciones ?? '')
@@ -475,7 +461,6 @@ const cargarOp = () => {
 
     form.numero_op = registro.numero_op ?? '';
     form.cantidad_planificada = registro.cantidad_planificada != null ? String(registro.cantidad_planificada) : '';
-    form.costo_proceso = normalizarCostoProceso(registro.costo_proceso);
     form.fecha_prevista_envio_taller = String(registro.fecha_prevista_envio_taller ?? '').substring(0, 10);
     form.taller_id = registro.taller_id ?? '';
     form.tipo = registro.tipo ?? (registro.externa ? 'externa' : 'taller');
@@ -638,21 +623,20 @@ watch([() => props.show, () => op.value.id], cargarOp, { immediate: true, flush:
                     </div>
 
                     <div>
-                        <InputLabel for="costo_proceso" value="Costo del proceso" />
-                        <TextInput
-                            id="costo_proceso"
-                            type="text"
-                            inputmode="numeric"
-                            autocomplete="off"
-                            class="mt-1 block w-full"
-                            :model-value="costoProcesoTexto"
-                            placeholder="$0"
-                            @input="alEscribirCostoProceso"
-                        />
+                        <InputLabel value="Costo del proceso" />
+                        <div
+                            class="mt-1 flex h-10 w-full items-center justify-between rounded-md border border-gray-200 bg-gray-50 px-3 dark:border-gray-700 dark:bg-gray-900/40"
+                        >
+                            <span class="text-sm font-semibold tabular-nums text-gray-900 dark:text-gray-100">
+                                {{ formatdinero(costoProcesoDerivado) }}
+                            </span>
+                            <span class="text-[11px] font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500">
+                                Automático
+                            </span>
+                        </div>
                         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                            Se suma al costo de las fichas para obtener el total de la OP.
+                            Suma de los procesos de cada producto de la OP por su cantidad planificada. Se recalcula solo.
                         </p>
-                        <InputError class="mt-2" :message="form.errors.costo_proceso" />
                     </div>
 
                     <div v-if="form.tipo !== 'externa'">

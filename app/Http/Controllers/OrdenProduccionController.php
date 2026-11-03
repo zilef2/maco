@@ -60,7 +60,7 @@ class OrdenProduccionController extends Controller {
         $claveListado = 'op_index_v11_' . $this->versionCache();
         $OrdenProduccions = Cache::remember($claveListado, now()->addMinutes(10), function () {
             return OrdenProduccion::query()
-                ->with(['productoReferencia.fichaTecnica.materiales', 'taller', 'empresaExterna', 'estadoOp', 'responsable', 'distribucionesPorTallas.producto', 'distribucionesPorTallas.material', 'productos.fichaTecnica.materiales', 'materiales.fichaTecnica.materiales', 'recepcionesCalidad.materialReferencia', 'compromisosReparacion.materialReferencia', 'kitProcesos.material', 'procesosExternos.materialOrigen', 'procesosExternos.proveedorDestino', 'cierres', 'costosMateriales.material', 'costosCambios.material', 'costosCambios.usuario'])
+                ->with(['productoReferencia.fichaTecnica.materiales', 'taller', 'empresaExterna', 'estadoOp', 'responsable', 'distribucionesPorTallas.producto', 'distribucionesPorTallas.material', 'productos.fichaTecnica.materiales', 'productos.procesos', 'materiales.fichaTecnica.materiales', 'recepcionesCalidad.materialReferencia', 'compromisosReparacion.materialReferencia', 'kitProcesos.material', 'procesosExternos.materialOrigen', 'procesosExternos.proveedorDestino', 'cierres', 'costosMateriales.material', 'costosCambios.material', 'costosCambios.usuario'])
                 ->orderByDesc('updated_at')
                 ->get()
                 ->map(function ($op) {
@@ -421,7 +421,7 @@ class OrdenProduccionController extends Controller {
                 $material->id => $this->costosMateriales->precioUnitario($material, $metodoCostos),
             ]);
 
-        $productos = Producto::with(['fichaTecnica.materiales.material', 'distribucionesPorTallas'])->get(['id', 'Titulo_Shopify', 'Codigo_interno', 'Opciones'])
+        $productos = Producto::with(['fichaTecnica.materiales.material', 'distribucionesPorTallas', 'procesos'])->get(['id', 'Titulo_Shopify', 'Codigo_interno', 'Opciones'])
             ->map(function ($producto) use ($preciosPorMaterial, $metodoCostos) {
                 $nombre = $producto->Titulo_Shopify ?: ($producto->Codigo_interno ?: 'Producto #' . $producto->id);
                 $ficha = $producto->fichaTecnica->first();
@@ -439,6 +439,15 @@ class OrdenProduccionController extends Controller {
                         'cantidad_planificada' => $d->cantidad_planificada,
                     ])->values()->all(),
                     'ficha' => $ficha ? ['nombre' => $ficha->nombre] : null,
+                    // Procesos del producto: el costo de proceso de la OP se
+                    // deriva de su suma por cada unidad planificada.
+                    'procesos' => $producto->procesos
+                        ->sortBy('id')
+                        ->map(fn ($p) => [
+                            'nombre'        => $p->nombre,
+                            'coste_proceso' => (float) $p->coste_proceso,
+                        ])->values()->all(),
+                    'costo_proceso_total' => round((float) $producto->procesos->sum('coste_proceso'), 2),
                     'ficha_materiales' => $ficha?->materiales->map(fn ($fila) => [
                         'material_id'       => $fila->material_componente_id,
                         'nombre'            => trim(($fila->material?->codigo_material ? $fila->material->codigo_material . ' — ' : '') . $fila->material?->nombre_base),
@@ -665,8 +674,9 @@ class OrdenProduccionController extends Controller {
         $materialesPivot = $this->materialesPivotDesdeRequest($request);
         $esModoMaterial = !empty($materialesPivot);
 
-        $data = $request->only(['cantidad_planificada', 'costo_proceso', 'fecha_prevista_envio_taller', 'taller_id', 'tipo', 'empresa_externa_id', 'id_shopify_producto', 'observaciones', 'estado_op_material_id', 'externa']);
-        $data['costo_proceso'] = round((float) ($data['costo_proceso'] ?? 0), 2);
+        // El costo de proceso no se digita: se deriva de los procesos de los
+        // productos al recalcular los costos de la OP.
+        $data = $request->only(['cantidad_planificada', 'fecha_prevista_envio_taller', 'taller_id', 'tipo', 'empresa_externa_id', 'id_shopify_producto', 'observaciones', 'estado_op_material_id', 'externa']);
         $data['user_id'] = $request->user()?->id;
         $data['producto_referencia_id'] = $request->filled('producto_referencia_id') ? $request->input('producto_referencia_id') : null;
         if ($esModoMaterial) {
@@ -818,11 +828,8 @@ class OrdenProduccionController extends Controller {
             ? !empty($materialesPivot)
             : ($request->filled('id') && OrdenProduccion::find((int) $request->input('id'))?->materiales()->exists());
 
-        $data = $request->only(['numero_op', 'cantidad_planificada', 'costo_proceso', 'fecha_prevista_envio_taller', 'taller_id', 'tipo', 'empresa_externa_id', 'id_shopify_producto', 'observaciones', 'estado_op_material_id', 'externa']);
+        $data = $request->only(['numero_op', 'cantidad_planificada', 'fecha_prevista_envio_taller', 'taller_id', 'tipo', 'empresa_externa_id', 'id_shopify_producto', 'observaciones', 'estado_op_material_id', 'externa']);
         $data = array_map(fn ($v) => $v === '' ? null : $v, $data);
-        if (array_key_exists('costo_proceso', $data)) {
-            $data['costo_proceso'] = round((float) ($data['costo_proceso'] ?? 0), 2);
-        }
         $data = $this->normalizarTipo($data);
         $data['estado_op_id'] = EstadoOperacion::where('nombre', 'Borrador')->value('id');
         if ($esModoMaterial) {
@@ -841,7 +848,6 @@ class OrdenProduccionController extends Controller {
         if (!$OrdenProduccion->exists) {
             // El responsable de una OP nueva es siempre el usuario logeado.
             $data['user_id'] = $request->user()?->id;
-            $data['costo_proceso'] = round((float) ($data['costo_proceso'] ?? 0), 2);
             // OP nueva: el número se calcula en el servidor (mayor registrado + 1)
             // y no se confía en el valor del formulario, para no repetir códigos.
             $data['numero_op'] = OrdenProduccion::siguienteNumeroOp();
@@ -962,10 +968,7 @@ class OrdenProduccionController extends Controller {
             }
         }
 
-        $data = $request->only(['numero_op', 'cantidad_planificada', 'costo_proceso', 'fecha_prevista_envio_taller', 'taller_id', 'tipo', 'empresa_externa_id', 'id_shopify_producto', 'observaciones', 'estado_op_material_id', 'externa']);
-        if (array_key_exists('costo_proceso', $data)) {
-            $data['costo_proceso'] = round((float) ($data['costo_proceso'] ?? 0), 2);
-        }
+        $data = $request->only(['numero_op', 'cantidad_planificada', 'fecha_prevista_envio_taller', 'taller_id', 'tipo', 'empresa_externa_id', 'id_shopify_producto', 'observaciones', 'estado_op_material_id', 'externa']);
         $data['producto_referencia_id'] = $request->filled('producto_referencia_id') ? $request->input('producto_referencia_id') : null;
         if ($esModoMaterial) {
             $data['cantidad_planificada'] = array_sum(array_map(
@@ -1059,6 +1062,8 @@ class OrdenProduccionController extends Controller {
             'productos.fichaTecnica.materiales',
             'productoReferencia.fichaTecnica.materiales',
             'materiales.fichaTecnica.materiales',
+            'productos.procesos',
+            'productoReferencia.procesos',
             'distribucionesPorTallas',
             'costosMateriales',
         ]);

@@ -55,6 +55,7 @@ class MyModels {
 			'Merma',
 			'FichaEnsamble',
 			'FichaEnsambleMaterial',
+			'Procesoop',
 			//aquipues
 
 		];

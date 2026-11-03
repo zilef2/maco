@@ -34,7 +34,8 @@ class ProductoController extends Controller {
     public function __construct(
         protected \App\Services\ListaDesplegableService $listaDesplegableService,
         protected FichaTecnicaService $fichaTecnicaService,
-        protected ProductoService $productoService
+        protected ProductoService $productoService,
+        protected \App\Services\CostoMaterialOpService $costoMaterialOpService
     ) {
         $this->thisAtributos = (new Producto())->getFillable(); //not using
     }
@@ -47,7 +48,7 @@ class ProductoController extends Controller {
         // viven en el frontend (igual que Materiales), así que aquí no se lee
         // ningún parámetro de filtro.
         $Productos = Producto::query()
-            ->with(['distribucionesPorTallas.ordenesProduccion', 'fichaTecnica.materiales'])
+            ->with(['distribucionesPorTallas.ordenesProduccion', 'fichaTecnica.materiales', 'procesos'])
             ->orderByDesc('updated_at')
             ->get()
             ->map(function ($producto) use ($bloqueos) {
@@ -67,6 +68,17 @@ class ProductoController extends Controller {
                 $producto->ficha_bloqueo_detalle = collect($bloqueo)
                     ->map(fn ($estado, $numeroOp) => $numeroOp . ' (' . $estado . ')')
                     ->implode(', ');
+
+                // Procesos del producto: sus filas y el costo total que aporta a
+                // la OP (se multiplica por la cantidad del producto).
+                $producto->producto_procesos = $producto->procesos
+                    ->sortBy('id')
+                    ->map(fn ($proceso) => [
+                        'id'            => $proceso->id,
+                        'nombre'        => $proceso->nombre,
+                        'coste_proceso' => (float) $proceso->coste_proceso,
+                    ])->values()->all();
+                $producto->costo_proceso_total = round((float) $producto->procesos->sum('coste_proceso'), 2);
 
                 // Cantidad total del producto: la suma de lo planificado por talla,
                 // el mismo total que muestra el modal «Distribución por Tallas».
@@ -179,7 +191,7 @@ class ProductoController extends Controller {
             }
         }
 
-        foreach (['precio_preventa', 'precio_estimado'] as $columna) {
+        foreach (['precio_venta_producto', 'precio_estimado'] as $columna) {
             $precio = (string) $request->input($columna, '');
             if ($precio === 'con_precio') {
                 $Productos->whereNotNull($columna);
@@ -270,6 +282,9 @@ class ProductoController extends Controller {
         $tallas = $this->normalizarTallas($datos['tallas'] ?? []);
         unset($datos['tallas']);
 
+        $procesos = $this->procesosDesdeRequest($datos);
+        unset($datos['procesos']);
+
         // Un control "sin talla" no tiene opciones: se guarda vacío sin tallas derivadas.
         if (in_array(trim((string) ($datos['Control_de_variante'] ?? '')), self::CONTROLES_SIN_TALLA, true)) {
             $datos['Opciones'] = '';
@@ -282,16 +297,17 @@ class ProductoController extends Controller {
             $datos[$campo] = (string) ($datos[$campo] ?? '');
         }
         $datos['Estado'] = ($datos['Estado'] ?? '') === '' ? 1 : (int) $datos['Estado'];
-        foreach (['costo_anticipado', 'precio_preventa', 'precio_estimado'] as $campo) {
+        foreach (['costo_anticipado', 'precio_venta_producto', 'precio_estimado'] as $campo) {
             if (($datos[$campo] ?? null) === '') {
                 $datos[$campo] = null;
             }
         }
 
-        $Producto = DB::transaction(function () use ($datos, $materiales, $tallas) {
+        $Producto = DB::transaction(function () use ($datos, $materiales, $tallas, $procesos) {
             $Producto = Producto::create(Arr::only($datos, (new Producto())->getFillable()));
 
             $this->sincronizarDistribucionesPorTalla($Producto, $tallas);
+            $this->sincronizarProcesos($Producto, $procesos);
 
             if (!empty($materiales)) {
                 $this->fichaTecnicaService->guardar([
@@ -340,6 +356,12 @@ class ProductoController extends Controller {
         $tallas = $this->normalizarTallas($datos['tallas'] ?? []);
         unset($datos['tallas']);
 
+        $procesos = $this->procesosDesdeRequest($datos);
+        unset($datos['procesos']);
+        // Como con los materiales de la ficha: si el formulario envía la zona
+        // bloqueada (lista vacía), los procesos registrados se conservan.
+        $editaProcesos = !empty($procesos);
+
         if (in_array(trim((string) ($datos['Control_de_variante'] ?? '')), self::CONTROLES_SIN_TALLA, true)) {
             $datos['Opciones'] = '';
             $tallas = [];
@@ -351,17 +373,24 @@ class ProductoController extends Controller {
             $datos[$campo] = (string) ($datos[$campo] ?? '');
         }
         $datos['Estado'] = ($datos['Estado'] ?? '') === '' ? 1 : (int) $datos['Estado'];
-        foreach (['costo_anticipado', 'precio_preventa', 'precio_estimado'] as $campo) {
+        foreach (['costo_anticipado', 'precio_venta_producto', 'precio_estimado'] as $campo) {
             if (($datos[$campo] ?? null) === '') {
                 $datos[$campo] = null;
             }
         }
 
-        DB::transaction(function () use ($Producto, $datos, $materiales, $editaTallas, $tallas) {
+        DB::transaction(function () use ($Producto, $datos, $materiales, $editaTallas, $tallas, $editaProcesos, $procesos) {
             $Producto->update(Arr::only($datos, (new Producto())->getFillable()));
 
             if ($editaTallas) {
                 $this->sincronizarDistribucionesPorTalla($Producto, $tallas);
+            }
+
+            // Los procesos definen el costo de proceso de las OPs abiertas que
+            // usan este producto: se renueva al cambiar las filas.
+            if ($editaProcesos) {
+                $this->sincronizarProcesos($Producto, $procesos);
+                $this->costoMaterialOpService->recalcularCostoProcesoPorProductos([$Producto->id]);
             }
 
             // La ficha solo se toca si el formulario envía materiales; el servicio
@@ -396,8 +425,9 @@ class ProductoController extends Controller {
             'Estado'               => ['nullable', 'integer', 'in:0,1'],
             'Observaciones'        => ['nullable', 'string', 'max:255'],
             'descripcion'          => ['nullable', 'string', 'max:5000'],
+            'instrucciones'        => ['nullable', 'string', 'max:5000'],
             'costo_anticipado'      => ['nullable', 'numeric', 'min:0'],
-            'precio_preventa'      => ['nullable', 'numeric', 'min:0'],
+            'precio_venta_producto'      => ['nullable', 'numeric', 'min:0'],
             'precio_estimado'      => ['nullable', 'numeric', 'min:0'],
             // Ficha técnica (opcional): se registra junto al producto.
             'materiales'           => ['nullable', 'array'],
@@ -405,6 +435,11 @@ class ProductoController extends Controller {
             'materiales.*.consumo_estandar'       => ['required', 'numeric', 'min:0'],
             'materiales.*.unidad_medida'          => ['nullable', 'string', 'max:255'],
             'materiales.*.costo_asociado_teorico' => ['nullable', 'numeric', 'min:0'],
+            // Procesos del producto: su suma × la cantidad define el costo de
+            // proceso de la OP.
+            'procesos'             => ['nullable', 'array', 'max:50'],
+            'procesos.*.nombre'    => ['required', 'string', 'max:255'],
+            'procesos.*.coste_proceso' => ['nullable', 'numeric', 'min:0'],
             // Tallas derivadas del control de variante (alta y edición).
             'tallas'               => ['nullable', 'array', 'max:50'],
             'tallas.*'             => ['required', 'string', 'max:20'],
@@ -434,6 +469,33 @@ class ProductoController extends Controller {
      *
      * @param  array<int, string>  $tallas
      */
+    /**
+     * Filtra las filas de procesos enviadas por el formulario: se ignora las
+     * que quedaron sin nombre.
+     *
+     * @return list<array{nombre: string, coste_proceso: mixed}>
+     */
+    private function procesosDesdeRequest(array $datos): array {
+        return collect($datos['procesos'] ?? [])
+            ->filter(fn ($fila) => trim((string) ($fila['nombre'] ?? '')) !== '')
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Reemplaza los procesos del producto con las filas recibidas.
+     */
+    private function sincronizarProcesos(Producto $Producto, array $procesos): void {
+        $Producto->procesos()->delete();
+
+        foreach ($procesos as $fila) {
+            $Producto->procesos()->create([
+                'nombre'        => trim((string) $fila['nombre']),
+                'coste_proceso' => (float) ($fila['coste_proceso'] ?? 0),
+            ]);
+        }
+    }
+
     private function sincronizarDistribucionesPorTalla(Producto $Producto, array $tallas): void {
         $registradas = $Producto->distribucionesPorTallas()
             ->get()
@@ -675,7 +737,7 @@ class ProductoController extends Controller {
             'descripcion'        => 'descripcion',
             'preciopredicho'     => 'costo_anticipado',
             'costoanticipado'    => 'costo_anticipado',
-            'preciopreventa'     => 'precio_preventa',
+            'preciopreventa'     => 'precio_venta_producto',
         ];
 
         $normalizarTexto = fn (string $texto): string => strtr(
@@ -774,7 +836,7 @@ class ProductoController extends Controller {
                 'Observaciones'         => $texto($registro['Observaciones'] ?? ''),
                 'descripcion'           => mb_substr(strip_tags((string) ($registro['descripcion'] ?? '')), 0, 5000),
                 'costo_anticipado'       => $entero($registro['costo_anticipado'] ?? null),
-                'precio_preventa'       => $entero($registro['precio_preventa'] ?? null),
+                'precio_venta_producto'       => $entero($registro['precio_venta_producto'] ?? null),
             ];
         }
 
@@ -806,7 +868,7 @@ class ProductoController extends Controller {
                         'Observaciones'       => '',
                         'descripcion'         => '',
                         'costo_anticipado'     => 0,
-                        'precio_preventa'     => 0,
+                        'precio_venta_producto'     => 0,
                     ];
                     Producto::create($registro);
                     $creados++;
