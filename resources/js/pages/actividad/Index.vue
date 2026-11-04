@@ -2,13 +2,14 @@
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import AppLayout from '@/layouts/AppLayout.vue';
+import AccionesSuperadmin from '@/pages/actividad/AccionesSuperadmin.vue';
 import type { BreadcrumbItem } from '@/types';
 import { Head, router } from '@inertiajs/vue3';
 import { BarChart } from 'echarts/charts';
 import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components';
 import { use } from 'echarts/core';
 import { CanvasRenderer } from 'echarts/renderers';
-import { AlertTriangle, Ban, ChevronLeft, ChevronRight, LogIn, MousePointerClick, TriangleAlert } from 'lucide-vue-next';
+import { AlertTriangle, Ban, ChevronLeft, ChevronRight, LogIn, LogOut, MousePointerClick, TriangleAlert } from 'lucide-vue-next';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import VChart from 'vue-echarts';
 
@@ -19,7 +20,7 @@ interface Paso {
     etiqueta: string;
     ruta: string;
     metodo: string;
-    tipo: 'negocio' | 'escritura' | 'navegacion';
+    tipo: 'negocio' | 'escritura' | 'navegacion' | 'marcador';
     entidad: string | null;
     detalle: string | null;
     otras: number;
@@ -27,6 +28,7 @@ interface Paso {
     error: string | null;
     duracion_ms: number | null;
     intervalo_seg: number | null;
+    pausa: boolean;
     anormal: boolean;
 }
 
@@ -34,6 +36,7 @@ interface UsuarioRitmo {
     id: number;
     nombre: string;
     acciones: number;
+    pausas: number;
     negocio: number;
     fallidas: number;
     conexiones: number;
@@ -49,8 +52,9 @@ interface UsuarioRitmo {
 const props = defineProps({
     breadcrumbs: Object as () => BreadcrumbItem[],
     title: String,
+    esAmbienteTest: Boolean,
     filtro: Object as () => { dias: number; factor: number; umbral: number; foco: string; usuario: number | null },
-    opciones: Object as () => { dias: number[]; factor: number[]; umbral: number[]; focos: Record<string, string> },
+    opciones: Object as () => { dias: number[]; factor: number[]; umbral: number[]; focos: Record<string, string>; pausa_min: number },
     resumen: Object as () => {
         acciones: number;
         usuarios: number;
@@ -138,6 +142,10 @@ const pasosPorDia = computed(() => {
 });
 
 const anomaliasCamino = computed(() => props.camino.pasos.filter((paso) => paso.anormal).length);
+
+const pausasCamino = computed(() => props.camino.pasos.filter((paso) => paso.pausa).length);
+
+const pausasTotales = computed(() => props.usuarios.reduce((total, usuario) => total + usuario.pausas, 0));
 
 const anomaliasTotales = computed(() => props.usuarios.reduce((total, usuario) => total + usuario.anomalias, 0));
 
@@ -329,6 +337,7 @@ onUnmounted(() => observadorTema?.disconnect());
                             <p class="text-xl font-bold" :class="anomaliasTotales ? 'text-red-600 dark:text-red-400' : 'text-foreground'">
                                 {{ numero(anomaliasTotales) }}
                             </p>
+                            <p class="text-muted-foreground text-[10px]">{{ numero(pausasTotales) }} pausa(s) sin el sistema, no cuentan</p>
                         </div>
                     </CardContent>
                 </Card>
@@ -368,6 +377,10 @@ onUnmounted(() => observadorTema?.disconnect());
                                 <span :class="anomaliasCamino ? 'font-semibold text-red-600' : ''">
                                     {{ anomaliasCamino }} salto(s) anormal(es).
                                 </span>
+                                <span v-if="pausasCamino">
+                                    · {{ pausasCamino }} pausa(s): el usuario estuvo más de {{ props.opciones.pausa_min }} min fuera o el navegador
+                                    avisó que dejó la pestaña; esas no se consideran anomalía.</span
+                                >
                             </p>
                         </div>
                         <select
@@ -391,77 +404,103 @@ onUnmounted(() => observadorTema?.disconnect());
                                 <p class="text-muted-foreground mb-1 font-mono text-[10px] tracking-widest uppercase">Día {{ grupo.dia }}</p>
 
                                 <div v-for="(paso, indice) in grupo.pasos" :key="paso.hora + indice">
-                                    <!-- El intervalo vive entre pasos: así se ve el tiempo perdido -->
-                                    <div v-if="paso.intervalo_seg !== null" class="flex items-center gap-2 py-0.5 pl-3">
-                                        <span class="h-5 w-px" :class="paso.anormal ? 'bg-red-500' : 'bg-sidebar-border'" />
+                                    <!-- El aviso del navegador no es una acción: separa y explica la pausa -->
+                                    <div v-if="paso.tipo === 'marcador'" class="flex items-center gap-2 py-1 pl-3">
+                                        <span class="border-sidebar-border flex-1 border-t border-dashed" />
                                         <span
-                                            class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold"
-                                            :class="
-                                                paso.anormal
-                                                    ? 'bg-red-500/15 text-red-600 ring-1 ring-red-500/40 dark:text-red-400'
-                                                    : 'bg-muted text-muted-foreground'
-                                            "
+                                            class="text-muted-foreground bg-muted/60 inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold"
                                         >
-                                            <TriangleAlert v-if="paso.anormal" class="h-3 w-3" />
-                                            {{ tiempoLegible(paso.intervalo_seg) }}
+                                            <LogOut class="h-3 w-3" />
+                                            {{ paso.etiqueta }} · {{ paso.hora.slice(6) }}
                                         </span>
+                                        <span class="border-sidebar-border flex-1 border-t border-dashed" />
                                     </div>
 
-                                    <div
-                                        class="flex items-start gap-2 rounded-md border px-2.5 py-1.5"
-                                        :class="paso.anormal ? 'border-red-500/50 bg-red-500/5' : 'border-sidebar-border/50 bg-background'"
-                                    >
-                                        <span class="mt-1 h-2.5 w-2.5 shrink-0 rounded-full" :class="colorPunto(paso)" />
-
-                                        <div class="min-w-0 flex-1">
-                                            <div class="flex items-center gap-2">
-                                                <span class="text-muted-foreground w-[80px] shrink-0 font-mono text-[11px]">
-                                                    {{ paso.hora.slice(6) }}
-                                                </span>
-                                                <span class="text-foreground min-w-0 truncate text-xs font-medium">
-                                                    {{ paso.etiqueta }}
-                                                </span>
-                                                <span
-                                                    v-if="paso.otras"
-                                                    class="shrink-0 rounded bg-emerald-500/15 px-1.5 py-0.5 font-mono text-[9px] font-semibold text-emerald-700 dark:text-emerald-400"
-                                                    :title="`${paso.otras} acción(es) de negocio más en la misma petición`"
-                                                >
-                                                    +{{ paso.otras }}
-                                                </span>
-                                                <span
-                                                    v-if="paso.entidad"
-                                                    class="text-muted-foreground hidden shrink-0 font-mono text-[10px] sm:inline"
-                                                >
-                                                    {{ paso.entidad }}
-                                                </span>
-                                                <span class="text-muted-foreground hidden min-w-0 flex-1 truncate font-mono text-[10px] lg:inline">
-                                                    /{{ paso.ruta }}
-                                                </span>
-                                                <span
-                                                    class="border-sidebar-border/60 text-muted-foreground shrink-0 rounded border px-1.5 py-0.5 font-mono text-[9px] uppercase"
-                                                >
-                                                    {{ paso.metodo }}
-                                                </span>
-                                                <span
-                                                    v-if="pasoFalla(paso)"
-                                                    class="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 font-mono text-[9px] text-amber-700 dark:text-amber-400"
-                                                >
-                                                    {{ paso.status ?? 'rechazada' }}
-                                                </span>
-                                                <span class="text-muted-foreground w-[52px] shrink-0 text-right font-mono text-[10px]">
-                                                    {{ duracionLegible(paso.duracion_ms) }}
-                                                </span>
-                                            </div>
-
-                                            <p
-                                                v-if="paso.error || paso.detalle"
-                                                class="mt-1 truncate pl-[88px] text-[11px]"
-                                                :class="paso.error ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'"
+                                    <template v-else>
+                                        <!-- El intervalo vive entre pasos: así se ve el tiempo perdido -->
+                                        <div v-if="paso.intervalo_seg !== null" class="flex items-center gap-2 py-0.5 pl-3">
+                                            <span
+                                                class="h-5 w-px"
+                                                :class="
+                                                    paso.anormal
+                                                        ? 'bg-red-500'
+                                                        : paso.pausa
+                                                          ? 'border-sidebar-border border-l border-dashed'
+                                                          : 'bg-sidebar-border'
+                                                "
+                                            />
+                                            <span
+                                                class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold"
+                                                :class="
+                                                    paso.anormal
+                                                        ? 'bg-red-500/15 text-red-600 ring-1 ring-red-500/40 dark:text-red-400'
+                                                        : 'bg-muted text-muted-foreground'
+                                                "
                                             >
-                                                {{ paso.error ?? paso.detalle }}
-                                            </p>
+                                                <TriangleAlert v-if="paso.anormal" class="h-3 w-3" />
+                                                {{ tiempoLegible(paso.intervalo_seg) }}
+                                                <span v-if="paso.pausa" class="font-normal">sin el sistema</span>
+                                            </span>
                                         </div>
-                                    </div>
+
+                                        <div
+                                            class="flex items-start gap-2 rounded-md border px-2.5 py-1.5"
+                                            :class="paso.anormal ? 'border-red-500/50 bg-red-500/5' : 'border-sidebar-border/50 bg-background'"
+                                        >
+                                            <span class="mt-1 h-2.5 w-2.5 shrink-0 rounded-full" :class="colorPunto(paso)" />
+
+                                            <div class="min-w-0 flex-1">
+                                                <div class="flex items-center gap-2">
+                                                    <span class="text-muted-foreground w-[80px] shrink-0 font-mono text-[11px]">
+                                                        {{ paso.hora.slice(6) }}
+                                                    </span>
+                                                    <span class="text-foreground min-w-0 truncate text-xs font-medium">
+                                                        {{ paso.etiqueta }}
+                                                    </span>
+                                                    <span
+                                                        v-if="paso.otras"
+                                                        class="shrink-0 rounded bg-emerald-500/15 px-1.5 py-0.5 font-mono text-[9px] font-semibold text-emerald-700 dark:text-emerald-400"
+                                                        :title="`${paso.otras} acción(es) de negocio más en la misma petición`"
+                                                    >
+                                                        +{{ paso.otras }}
+                                                    </span>
+                                                    <span
+                                                        v-if="paso.entidad"
+                                                        class="text-muted-foreground hidden shrink-0 font-mono text-[10px] sm:inline"
+                                                    >
+                                                        {{ paso.entidad }}
+                                                    </span>
+                                                    <span
+                                                        class="text-muted-foreground hidden min-w-0 flex-1 truncate font-mono text-[10px] lg:inline"
+                                                    >
+                                                        /{{ paso.ruta }}
+                                                    </span>
+                                                    <span
+                                                        class="border-sidebar-border/60 text-muted-foreground shrink-0 rounded border px-1.5 py-0.5 font-mono text-[9px] uppercase"
+                                                    >
+                                                        {{ paso.metodo }}
+                                                    </span>
+                                                    <span
+                                                        v-if="pasoFalla(paso)"
+                                                        class="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 font-mono text-[9px] text-amber-700 dark:text-amber-400"
+                                                    >
+                                                        {{ paso.status ?? 'rechazada' }}
+                                                    </span>
+                                                    <span class="text-muted-foreground w-[52px] shrink-0 text-right font-mono text-[10px]">
+                                                        {{ duracionLegible(paso.duracion_ms) }}
+                                                    </span>
+                                                </div>
+
+                                                <p
+                                                    v-if="paso.error || paso.detalle"
+                                                    class="mt-1 truncate pl-[88px] text-[11px]"
+                                                    :class="paso.error ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'"
+                                                >
+                                                    {{ paso.error ?? paso.detalle }}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </template>
                                 </div>
                             </div>
 
@@ -478,7 +517,8 @@ onUnmounted(() => observadorTema?.disconnect());
                 <CardHeader>
                     <CardTitle class="text-sm">Ritmo por usuario</CardTitle>
                     <p class="text-muted-foreground text-xs">
-                        Promedio y mediana de minutos entre acción y acción. Haz clic en una fila para ver su camino.
+                        Promedio y mediana de minutos entre acción y acción. Las pausas ({{ props.opciones.pausa_min }} min fuera o aviso del
+                        navegador) se muestran aparte y no entran en esos tiempos. Haz clic en una fila para ver su camino.
                     </p>
                 </CardHeader>
                 <CardContent class="overflow-x-auto">
@@ -494,6 +534,7 @@ onUnmounted(() => observadorTema?.disconnect());
                                 <th class="py-2 pr-3 text-right font-semibold">Mediana</th>
                                 <th class="py-2 pr-3 text-right font-semibold">Umbral</th>
                                 <th class="py-2 pr-3 text-right font-semibold">Máximo</th>
+                                <th class="py-2 pr-3 text-right font-semibold">Pausas</th>
                                 <th class="py-2 pr-3 text-right font-semibold">Anomalías</th>
                                 <th class="py-2 pr-3 font-semibold">Última</th>
                             </tr>
@@ -520,6 +561,7 @@ onUnmounted(() => observadorTema?.disconnect());
                                 <td class="text-muted-foreground py-2 pr-3 text-right font-mono">{{ usuario.mediana_min }} min</td>
                                 <td class="text-muted-foreground py-2 pr-3 text-right font-mono">{{ usuario.umbral_min }} min</td>
                                 <td class="text-muted-foreground py-2 pr-3 text-right font-mono">{{ usuario.max_min }} min</td>
+                                <td class="text-muted-foreground py-2 pr-3 text-right font-mono">{{ numero(usuario.pausas) }}</td>
                                 <td class="py-2 pr-3 text-right">
                                     <span
                                         class="rounded-full px-2 py-0.5 font-mono text-[11px] font-semibold"
@@ -531,7 +573,7 @@ onUnmounted(() => observadorTema?.disconnect());
                                 <td class="text-muted-foreground py-2 font-mono text-[11px]">{{ usuario.ultima }} · {{ usuario.ultima_accion }}</td>
                             </tr>
                             <tr v-if="!props.usuarios.length">
-                                <td colspan="11" class="text-muted-foreground py-8 text-center">Sin usuarios en el período</td>
+                                <td colspan="12" class="text-muted-foreground py-8 text-center">Sin usuarios en el período</td>
                             </tr>
                         </tbody>
                     </table>
@@ -648,6 +690,8 @@ onUnmounted(() => observadorTema?.disconnect());
                     </CardContent>
                 </Card>
             </div>
+
+            <AccionesSuperadmin :es-ambiente-test="props.esAmbienteTest" />
         </div>
     </AppLayout>
 </template>

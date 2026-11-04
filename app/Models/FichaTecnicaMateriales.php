@@ -11,9 +11,9 @@ class FichaTecnicaMateriales extends Model
     use HasFactory;
 
     protected $fillable = [
-        'ficha_tecnica_id', 
+        // 'ficha_tecnica_id', 
         'material_componente_id',
-        'aporta', //
+        'aporta',
         'estado_al_llegar_ensamble',
         'unidad_medida',
         'consumo_estandar',

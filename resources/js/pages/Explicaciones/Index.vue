@@ -99,6 +99,42 @@ const copiar = async (explicacion: Explicacion) => {
         copiado.value = '';
     }
 };
+
+
+
+const fases = ref([
+  {
+    nombre: 'Planeación',
+    descripcion: 'Levantamiento de requisitos, diseño de arquitectura, definición de objetivos y aprobación formal del cronograma y alcance.',
+    alerta: 'Última etapa para solicitar modificaciones o nuevos requisitos.',
+    colorAlerta: 'bg-emerald-100 text-emerald-700'
+  },
+  {
+    nombre: 'Desarrollo',
+    descripcion: 'El equipo de ingeniería programa el código fuente y construye la infraestructura del software basándose estrictamente en el diseño aprobado.',
+    alerta: 'Alcance congelado. No se admiten cambios.',
+    colorAlerta: 'bg-rose-100 text-rose-700'
+  },
+  {
+    nombre: 'Pruebas (QA)',
+    descripcion: 'Auditoría de calidad, pruebas de estrés, validación de seguridad y corrección de errores para asegurar que el sistema es robusto y funcional.',
+    alerta: null,
+    colorAlerta: null
+  },
+  {
+    nombre: 'Despliegue',
+    descripcion: 'Migración del sistema a los servidores de producción, configuración final y entrega al cliente para su uso real.',
+    alerta: null,
+    colorAlerta: null
+  },
+  {
+    nombre: 'Posproducción',
+    descripcion: 'Soporte técnico, monitoreo de estabilidad, copias de seguridad y mantenimiento preventivo tras el lanzamiento.',
+    alerta: null,
+    colorAlerta: null
+  }
+]);
+
 </script>
 
 <template>
@@ -306,5 +342,48 @@ const copiar = async (explicacion: Explicacion) => {
                 </div>
             </section>
         </div>
+<hr>
+<hr>
+  <div class="max-w-4xl mx-auto p-8 font-sans text-slate-800">
+    <h1 class="text-3xl font-bold text-center mb-8 text-indigo-900">
+      Ciclo de Vida del Proyecto
+    </h1>
+    
+    <!-- Bloque de advertencia sobre la Congelación de Alcance -->
+    <div class="bg-amber-50 border-l-4 border-amber-500 p-6 mb-8 rounded-r-lg shadow-sm">
+      <h2 class="text-xl font-bold text-amber-800 mb-2">
+        Punto de Congelación de Alcance (Scope Freeze)
+      </h2>
+      <p class="text-amber-700">
+        Para garantizar la excelencia y estabilidad de su producto, <strong>una vez finalizada la fase de Planeación, los requisitos quedan estrictamente congelados</strong>. Integrar nuevas funcionalidades durante las etapas de Desarrollo o Pruebas recorta el tiempo vital de aseguramiento de calidad (QA), poniendo en riesgo la integridad del software y los tiempos de entrega. Cualquier nuevo requerimiento identificado después de este punto será documentado y programado para una siguiente fase (Versión 2.0).
+      </p>
+    </div>
+
+    <!-- Línea de tiempo de las fases -->
+    <div class="space-y-6">
+      <div 
+        v-for="(fase, index) in fases" 
+        :key="index" 
+        class="flex items-start bg-white p-6 rounded-xl shadow-sm border border-slate-100"
+      >
+        <div class="flex-shrink-0 bg-indigo-100 text-indigo-800 font-bold h-12 w-12 flex items-center justify-center rounded-full text-xl">
+          {{ index + 1 }}
+        </div>
+        <div class="ml-6">
+          <h3 class="text-xl font-bold text-slate-800">{{ fase.nombre }}</h3>
+          <p class="text-slate-600 mt-2">{{ fase.descripcion }}</p>
+          
+          <!-- Etiqueta de alerta visual para la fase de planeación y desarrollo -->
+          <div 
+            v-if="fase.alerta" 
+            :class="['mt-3 inline-block text-sm px-3 py-1 rounded-full font-semibold', fase.colorAlerta]"
+          >
+            {{ fase.alerta }}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
     </AppLayout>
 </template>

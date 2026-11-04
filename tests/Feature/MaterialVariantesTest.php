@@ -121,10 +121,10 @@ class MaterialVariantesTest extends TestCase
         $archivo = $this->archivoExcel([
             [
                 'codigo_material', 'nombre_base', 'categoria', 'unidad_inventario',
-                'estado', 'colores', 'variantes',
+                'estado', 'colores', 'variantes', 'costo', 'procesado',
             ],
-            ['MAT-EXCEL-COLOR', 'Tela color', 'Tela', 'm', 'Activo', 'Rojo, Azul', ''],
-            ['MAT-EXCEL-VAR', 'Tela talla', 'Tela', 'm', 'Activo', '', 'S, M, L'],
+            ['MAT-EXCEL-COLOR', 'Tela color', 'Tela', 'm', 'Activo', 'Rojo, Azul', '', 8500, 'si'],
+            ['MAT-EXCEL-VAR', 'Tela talla', 'Tela', 'm', 'Activo', '', 'S, M, L', 7200, 'no'],
         ]);
 
         $response = $this->actingAs($user)->post(route('Material.upload-excel'), [
@@ -153,9 +153,9 @@ class MaterialVariantesTest extends TestCase
         $archivo = $this->archivoExcel([
             [
                 'codigo_material', 'nombre_base', 'categoria', 'unidad_inventario',
-                'estado', 'colores', 'variantes',
+                'estado', 'colores', 'variantes', 'costo', 'procesado',
             ],
-            ['MAT-EXCEL-AMBAS', 'Tela mixta', 'Tela', 'm', 'Activo', 'Rojo', 'S'],
+            ['MAT-EXCEL-AMBAS', 'Tela mixta', 'Tela', 'm', 'Activo', 'Rojo', 'S', 5000, 'no'],
         ]);
 
         $response = $this->actingAs($user)->post(route('Material.upload-excel'), [

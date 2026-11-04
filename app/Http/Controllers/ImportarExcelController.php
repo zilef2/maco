@@ -27,9 +27,11 @@ class ImportarExcelController extends Controller
 
     /**
      * Entidades que se muestran en el panel informativo y que, por ahora,
-     * tienen la carga por Excel habilitada.
+     * tienen la carga por Excel habilitada. Los proveedores no están: se
+     * cargan con el archivo de talleres, cuya columna de clasificación decide
+     * el destino de cada fila.
      */
-    private const ENTIDADES_CON_EXCEL_DEFAULT = ['producto', 'material', 'estado_operacion', 'taller', 'proveedor', 'usuario'];
+    private const ENTIDADES_CON_EXCEL_DEFAULT = ['producto', 'material', 'estado_operacion', 'taller', 'usuario'];
 
     private const CATALOGO_ENTIDADES = [
         ['clave' => 'producto', 'nombre' => 'Producto', 'grupo' => 'Inventario'],
@@ -45,7 +47,6 @@ class ImportarExcelController extends Controller
         ['clave' => 'estado_operacion', 'nombre' => 'Estado de operación', 'grupo' => 'Listas'],
         ['clave' => 'pendientes_produccion', 'nombre' => 'Pendientes producción', 'grupo' => 'Listas'],
         ['clave' => 'distribucion_por_tallas', 'nombre' => 'Distribución por tallas', 'grupo' => 'Listas'],
-        ['clave' => 'proveedor', 'nombre' => 'Proveedor', 'grupo' => 'Personas'],
         ['clave' => 'usuario', 'nombre' => 'Usuario', 'grupo' => 'Personas'],
     ];
 
@@ -73,7 +74,7 @@ class ImportarExcelController extends Controller
                 'grupo'               => 'Inventario',
                 'descripcion'         => 'Inventario de materias primas e insumos de producción',
                 'ruta'                => route('Material.upload-excel'),
-                'nota'                => 'Carga masiva por código de material: actualiza si existe, crea si no. "Proveedor habitual" debe existir en la app.',
+                'nota'                => 'Carga masiva por código de material: actualiza si existe, crea si no. "Proveedor habitual" debe existir en la app; se reconoce mejor por su NIT (900347285-7).',
             ],
             [
                 'id'                  => 'estado_operacion',
@@ -87,17 +88,9 @@ class ImportarExcelController extends Controller
                 'id'                  => 'taller',
                 'nombre'              => 'Talleres',
                 'grupo'               => 'Producción',
-                'descripcion'         => 'Talleres de confección a los que se asignan las órdenes de producción',
+                'descripcion'         => 'Ficha de terceros: talleres, empresas externas y proveedores',
                 'ruta'                => route('Taller.upload-excel'),
-                'nota'                => 'La fila 1 debe contener los títulos de las columnas. El nombre es obligatorio; la dirección es opcional. La importación se procesa en segundo plano y recibirás un correo con el resultado.',
-            ],
-            [
-                'id'                  => 'proveedor',
-                'nombre'              => 'Proveedores',
-                'grupo'               => 'Personas',
-                'descripcion'         => 'Directorio de proveedores y sus datos de contacto',
-                'ruta'                => route('Proveedor.upload-excel'),
-                'nota'                => 'La fila 1 debe contener los títulos de las columnas. El NIT y el nombre comercial son obligatorios. Si el proveedor ya existe (mismo NIT o mismo nombre comercial) se actualiza; si no, se crea. Las celdas vacías no borran los datos que ya tenía. La importación se procesa en segundo plano y recibirás un correo con el resultado.',
+                'nota'                => 'La fila 1 debe contener los títulos de las columnas. El nombre, el tipo proveedor y la columna "proveedor o externa o macondas" son obligatorios; el código se autogenera si queda vacío. Esa columna decide dónde va cada fila: macondas se guarda en Taller, taller de proceso externo en Empresa externa y proveedor en Proveedor; cualquier otro valor o una celda vacía cancela la subida antes de procesar el archivo. Si el registro ya existe (mismo código, mismo NIT o mismo nombre) se actualiza; las celdas vacías no borran los datos que ya tenía. La importación se procesa en segundo plano y recibirás un correo con el resultado.',
             ],
             [
                 'id'                  => 'usuario',
@@ -133,7 +126,7 @@ class ImportarExcelController extends Controller
     }
 
     /**
-     * Descarga el formato .xlsx de una entidad: columnas y dos filas de
+     * Descarga el formato .xlsx de una entidad: columnas y las filas de
      * ejemplo con las que se arma el archivo de carga.
      */
     public function descargarPlantilla(string $clave): StreamedResponse

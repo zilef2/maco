@@ -57,6 +57,7 @@ const props = defineProps({
     numberPermissions: Number,
     losSelect: Object,
     titulos: Array,
+    columnasExcel: { type: Array as () => any[], default: () => [] },
     prevision: { type: Object as () => any, default: () => null },
 });
 
@@ -71,7 +72,7 @@ const filas = computed<any[]>(() => (props.materiales as any[]) ?? []);
 const busqueda = ref('');
 const categoriaFiltro = ref<string | 'todos'>('todos');
 const proveedorFiltro = ref<number | 'todos'>('todos');
-const estadoFiltro = ref<string | 'todos'>('todos');
+const estadoFiltro = ref<string | 'todos'>('Activo');
 const unidadFiltro = ref<string | 'todos'>('todos');
 const varianteFiltro = ref<string | 'todos'>('todos');
 const precioFiltro = ref<string | 'sin_precio' | 'con_precio'>('todos');
@@ -318,7 +319,7 @@ const filtrosBarra = computed(
         (categoriaFiltro.value !== 'todos' ? 1 : 0) +
         (proveedorFiltro.value !== 'todos' ? 1 : 0) +
         (precioFiltro.value !== 'todos' ? 1 : 0) +
-        (estadoFiltro.value !== 'todos' ? 1 : 0),
+        (estadoFiltro.value !== 'Activo' ? 1 : 0),
 );
 
 const filtrosDropdown = computed(
@@ -348,7 +349,7 @@ const limpiarFiltros = () => {
     busqueda.value = '';
     categoriaFiltro.value = 'todos';
     proveedorFiltro.value = 'todos';
-    estadoFiltro.value = 'todos';
+    estadoFiltro.value = 'Activo';
     unidadFiltro.value = 'todos';
     varianteFiltro.value = 'todos';
     precioFiltro.value = 'todos';
@@ -522,7 +523,9 @@ const recargar = () => {
 /* Títulos para los modales de crear/editar (mismo contrato de antes). */
 const titulos = [
     { order: 'codigo_material', label: 'codigo_material', type: 'string' },
+    { order: 'codigo_categoria', label: 'codigo_categoria', type: 'string' },
     { order: 'categoria', label: 'categoria', type: 'string' },
+    { order: 'codigo_base', label: 'codigo_base', type: 'string' },
     { order: 'nombre_base', label: 'nombre_base', type: 'string' },
     { order: 'unidad_inventario', label: 'unidad_inventario', type: 'string' },
     { order: 'existencia_actual', label: 'existencia_actual', type: 'dinero' },
@@ -1279,7 +1282,7 @@ const titulos = [
             @close="data.historialMultipleOpen = false"
         />
 
-        <ImportarMaterialModal :show="data.importOpen" @close="data.importOpen = false" />
+        <ImportarMaterialModal :show="data.importOpen" :columnas="props.columnasExcel" @close="data.importOpen = false" />
 
         <RegistrarCompra
             v-if="can(['update Material'])"

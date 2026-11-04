@@ -53,7 +53,7 @@ const props = defineProps({
 const filas = computed<any[]>(() => props.productos ?? []);
 
 const busqueda = ref('');
-const estadoFiltro = ref('');
+const estadoFiltro = ref('Activo');
 const categoriaFiltro = ref('');
 const familiaFiltro = ref('');
 const controlVarianteFiltro = ref('');
@@ -433,7 +433,8 @@ const filtrosActivos = computed(
     () =>
         filtrosAvanzados.value
         + (busqueda.value.trim() !== '' ? 1 : 0)
-        + (estadoFiltro.value !== '' ? 1 : 0)
+        // "Activo" es el valor con el que abre la lista, no un filtro aplicado.
+        + (estadoFiltro.value !== 'Activo' ? 1 : 0)
         + (categoriaFiltro.value !== '' ? 1 : 0),
 );
 
@@ -501,7 +502,7 @@ const accionFila = (accion: string, producto: any) => {
 
 const limpiarFiltros = () => {
     busqueda.value = '';
-    estadoFiltro.value = '';
+    estadoFiltro.value = 'Activo';
     categoriaFiltro.value = '';
     familiaFiltro.value = '';
     controlVarianteFiltro.value = '';

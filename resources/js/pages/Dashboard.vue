@@ -4,11 +4,13 @@ import { Head } from '@inertiajs/vue3';
 import { type BreadcrumbItem } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import DashboardKpiModal from '@/components/DashboardKpiModal.vue';
 import {
     AlertCircle,
     ArrowDownToLine,
     Boxes,
     CalendarDays,
+    ChevronRight,
     Coins,
     PackageCheck,
     RefreshCw,
@@ -16,7 +18,7 @@ import {
     TrendingDown,
     Wrench,
 } from 'lucide-vue-next';
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, reactive } from 'vue';
 import { use } from 'echarts/core';
 import { BarChart, LineChart, PieChart } from 'echarts/charts';
 import {
@@ -41,7 +43,6 @@ const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Dashboard', href: '/dashboard' },
 ];
 
-const dias = ref(30);
 const opcionesPeriodo = [
     { dias: 7, etiqueta: '7 días' },
     { dias: 30, etiqueta: '30 días' },
@@ -49,22 +50,31 @@ const opcionesPeriodo = [
     { dias: 365, etiqueta: '1 año' },
 ];
 
-const datos = ref<any>(null);
-const notificacionesRojas = ref<NotificacionItem[]>([]);
-const cargando = ref(true);
-const actualizado = ref('');
+const state = reactive({
+    dias: 30,
+    datos: null as any,
+    notificacionesRojas: [] as NotificacionItem[],
+    cargando: true,
+    actualizado: '',
+    esOscuro: false,
+    modal: {
+        abierto: false,
+        tipo: '',
+        titulo: '',
+        items: [] as any[],
+    },
+});
 
-const esOscuro = ref(false);
 let observadorTema: MutationObserver | null = null;
 let timer: any = null;
 
 const formatoPlata = (v: number) => '$' + Math.round(v || 0).toLocaleString('es-CO');
 const formatoNumero = (v: number) => (v || 0).toLocaleString('es-CO');
 
-const colorTexto = computed(() => (esOscuro.value ? '#cbd5e1' : '#475569'));
-const colorLinea = computed(() => (esOscuro.value ? 'rgba(148,163,184,.14)' : 'rgba(100,116,139,.14)'));
-const fondoTooltip = computed(() => (esOscuro.value ? '#1e293b' : '#ffffff'));
-const bordeTooltip = computed(() => (esOscuro.value ? 'rgba(148,163,184,.25)' : '#e2e8f0'));
+const colorTexto = computed(() => (state.esOscuro ? '#cbd5e1' : '#475569'));
+const colorLinea = computed(() => (state.esOscuro ? 'rgba(148,163,184,.14)' : 'rgba(100,116,139,.14)'));
+const fondoTooltip = computed(() => (state.esOscuro ? '#1e293b' : '#ffffff'));
+const bordeTooltip = computed(() => (state.esOscuro ? 'rgba(148,163,184,.25)' : '#e2e8f0'));
 
 const baseEje = computed(() => ({
     axisLine: { lineStyle: { color: colorLinea.value } },
@@ -77,8 +87,8 @@ const baseTooltip = computed(() => ({
     trigger: 'axis',
     backgroundColor: fondoTooltip.value,
     borderColor: bordeTooltip.value,
-    textStyle: { color: esOscuro.value ? '#f1f5f9' : '#0f172a', fontSize: 12 },
-    axisPointer: { type: 'shadow' as const, shadowStyle: { color: esOscuro.value ? 'rgba(148,163,184,.08)' : 'rgba(100,116,139,.08)' } },
+    textStyle: { color: state.esOscuro ? '#f1f5f9' : '#0f172a', fontSize: 12 },
+    axisPointer: { type: 'shadow' as const, shadowStyle: { color: state.esOscuro ? 'rgba(148,163,184,.08)' : 'rgba(100,116,139,.08)' } },
 }));
 
 const baseLegenda = computed(() => ({
@@ -99,7 +109,7 @@ const degradado = (de: string, a: string, horizontal = false) => ({
 const etiquetaFecha = (v: string) => (v.length === 10 ? `${v.slice(8, 10)}/${v.slice(5, 7)}` : v);
 
 const opcionesMovimientos = computed(() => {
-    const m = datos.value?.movimientos;
+    const m = state.datos?.movimientos;
     if (!m) return {};
     return {
         tooltip: baseTooltip.value,
@@ -121,7 +131,7 @@ const opcionesMovimientos = computed(() => {
 });
 
 const opcionesProduccion = computed(() => {
-    const p = datos.value?.produccion;
+    const p = state.datos?.produccion;
     if (!p) return {};
     const serie = (nombre: string, data: number[], de: string, a: string) => ({
         name: nombre, type: 'line', stack: 'total', smooth: true, showSymbol: false,
@@ -153,14 +163,14 @@ const opcionesProduccion = computed(() => {
 const PALETA = ['#6366f1', '#22c55e', '#f59e0b', '#ec4899', '#06b6d4', '#8b5cf6', '#f97316', '#14b8a6', '#e11d48', '#84cc16'];
 
 const opcionesExistencias = computed(() => {
-    const e = datos.value?.existencias;
+    const e = state.datos?.existencias;
     if (!e || e.length === 0) return {};
     return {
         tooltip: {
             trigger: 'item',
             backgroundColor: fondoTooltip.value,
             borderColor: bordeTooltip.value,
-            textStyle: { color: esOscuro.value ? '#f1f5f9' : '#0f172a', fontSize: 12 },
+            textStyle: { color: state.esOscuro ? '#f1f5f9' : '#0f172a', fontSize: 12 },
             formatter: (p: any) => `${p.name}<br/>${formatoNumero(p.value)} unidades (${p.percent}%)`,
         },
         legend: { ...baseLegenda.value, orient: 'vertical', right: 4, top: 'middle', itemGap: 10 },
@@ -170,7 +180,7 @@ const opcionesExistencias = computed(() => {
             radius: ['38%', '68%'],
             center: ['38%', '52%'],
             roseType: 'radius',
-            itemStyle: { borderRadius: 8, borderColor: esOscuro.value ? '#0f172a' : '#ffffff', borderWidth: 2 },
+            itemStyle: { borderRadius: 8, borderColor: state.esOscuro ? '#0f172a' : '#ffffff', borderWidth: 2 },
             label: { show: false },
             emphasis: { scaleSize: 8 },
             color: PALETA,
@@ -180,7 +190,7 @@ const opcionesExistencias = computed(() => {
 });
 
 const opcionesCompras = computed(() => {
-    const c = datos.value?.compras;
+    const c = state.datos?.compras;
     if (!c || c.labels.length === 0) return {};
     return {
         tooltip: { ...baseTooltip.value, formatter: (params: any[]) => {
@@ -207,14 +217,14 @@ const opcionesCompras = computed(() => {
                 name: 'Precio promedio de compras', type: 'line', yAxisIndex: 1, data: c.precio_promedio,
                 smooth: true, symbolSize: 8,
                 lineStyle: { width: 3, color: '#f59e0b' },
-                itemStyle: { color: '#f59e0b', borderColor: esOscuro.value ? '#0f172a' : '#fff', borderWidth: 2 },
+                itemStyle: { color: '#f59e0b', borderColor: state.esOscuro ? '#0f172a' : '#fff', borderWidth: 2 },
             },
         ],
     };
 });
 
 const opcionesDesviaciones = computed(() => {
-    const d = datos.value?.desviaciones;
+    const d = state.datos?.desviaciones;
     if (!d || d.ops.length === 0) return {};
     return {
         tooltip: { ...baseTooltip.value, formatter: (params: any[]) => {
@@ -230,7 +240,7 @@ const opcionesDesviaciones = computed(() => {
         series: [
             {
                 name: 'Costo planeado', type: 'bar', data: d.planeado, barMaxWidth: 20,
-                itemStyle: { borderRadius: [6, 6, 0, 0], color: esOscuro.value ? 'rgba(148,163,184,.5)' : '#cbd5e1' },
+                itemStyle: { borderRadius: [6, 6, 0, 0], color: state.esOscuro ? 'rgba(148,163,184,.5)' : '#cbd5e1' },
             },
             {
                 name: 'Costo real', type: 'bar', data: d.real, barMaxWidth: 20,
@@ -241,7 +251,7 @@ const opcionesDesviaciones = computed(() => {
 });
 
 const opcionesRecepcionCalidad = computed(() => {
-    const r = datos.value?.recepcionCalidadPorOp;
+    const r = state.datos?.recepcionCalidadPorOp;
     if (!r || r.ops.length === 0) return {};
     return {
         tooltip: { ...baseTooltip.value, formatter: (params: any[]) => {
@@ -271,50 +281,124 @@ const opcionesRecepcionCalidad = computed(() => {
     };
 });
 
-const mes = computed(() => datos.value?.mes ?? {});
+const mes = computed(() => state.datos?.mes ?? {});
 
 const kpis = computed(() => [
-    { icon: PackageCheck, etiqueta: 'Pares aprobados', valor: formatoNumero(mes.value.pares_aprobados), color: 'text-lime-500', fondo: 'bg-lime-500/10' },
-    { icon: Boxes, etiqueta: 'Pares recibidos', valor: formatoNumero(mes.value.pares_recibidos), color: 'text-sky-500', fondo: 'bg-sky-500/10' },
-    { icon: Wrench, etiqueta: 'En reparación', valor: formatoNumero(mes.value.en_reparacion), color: 'text-amber-500', fondo: 'bg-amber-500/10' },
-    { icon: TrendingDown, etiqueta: 'No recuperables', valor: formatoNumero(mes.value.no_recuperables), color: 'text-red-500', fondo: 'bg-red-500/10' },
-    { icon: Coins, etiqueta: 'Costo de materiales', valor: formatoPlata(mes.value.costo_materiales), color: 'text-indigo-500', fondo: 'bg-indigo-500/10' },
-    { icon: Scale, etiqueta: 'Desviación de costos', valor: `${(mes.value.desviacion_costos ?? 0) >= 0 ? '+' : ''}${formatoPlata(mes.value.desviacion_costos)}`, color: (mes.value.desviacion_costos ?? 0) > 0 ? 'text-red-500' : 'text-emerald-500', fondo: 'bg-slate-500/10' },
-    { icon: ArrowDownToLine, etiqueta: 'Entradas / salidas', valor: `${formatoNumero(mes.value.movimientos_entradas)} / ${formatoNumero(mes.value.movimientos_salidas)}`, color: 'text-teal-500', fondo: 'bg-teal-500/10' },
-    { icon: CalendarDays, etiqueta: 'OPs activas (en Recibiendo)', valor: `${formatoNumero(mes.value.ops_activas)} (${formatoNumero(mes.value.ops_recibiendo)})`, color: 'text-violet-500', fondo: 'bg-violet-500/10' },
+    {
+        tipo: 'pares_aprobados',
+        icon: PackageCheck,
+        etiqueta: 'Pares aprobados',
+        valor: formatoNumero(mes.value.pares_aprobados),
+        color: 'text-lime-500',
+        fondo: 'bg-lime-500/10',
+        items: mes.value.detalles_pares_aprobados || [],
+    },
+    {
+        tipo: 'pares_recibidos',
+        icon: Boxes,
+        etiqueta: 'Pares recibidos',
+        valor: formatoNumero(mes.value.pares_recibidos),
+        color: 'text-sky-500',
+        fondo: 'bg-sky-500/10',
+        items: mes.value.detalles_pares_recibidos || [],
+    },
+    {
+        tipo: 'en_reparacion',
+        icon: Wrench,
+        etiqueta: 'En reparación',
+        valor: formatoNumero(mes.value.en_reparacion),
+        color: 'text-amber-500',
+        fondo: 'bg-amber-500/10',
+        items: mes.value.detalles_en_reparacion || [],
+    },
+    {
+        tipo: 'no_recuperables',
+        icon: TrendingDown,
+        etiqueta: 'No recuperables',
+        valor: formatoNumero(mes.value.no_recuperables),
+        color: 'text-red-500',
+        fondo: 'bg-red-500/10',
+        items: mes.value.detalles_no_recuperables || [],
+    },
+    {
+        tipo: 'costo_materiales',
+        icon: Coins,
+        etiqueta: 'Costo de materiales',
+        valor: formatoPlata(mes.value.costo_materiales),
+        color: 'text-indigo-500',
+        fondo: 'bg-indigo-500/10',
+        items: mes.value.detalles_costo_materiales || [],
+    },
+    {
+        tipo: 'desviacion_costos',
+        icon: Scale,
+        etiqueta: 'Desviación de costos',
+        valor: `${(mes.value.desviacion_costos ?? 0) >= 0 ? '+' : ''}${formatoPlata(mes.value.desviacion_costos)}`,
+        color: (mes.value.desviacion_costos ?? 0) > 0 ? 'text-red-500' : 'text-emerald-500',
+        fondo: 'bg-slate-500/10',
+        items: mes.value.detalles_desviacion_costos || [],
+    },
+    {
+        tipo: 'movimientos',
+        icon: ArrowDownToLine,
+        etiqueta: 'Entradas / salidas',
+        valor: `${formatoNumero(mes.value.movimientos_entradas)} / ${formatoNumero(mes.value.movimientos_salidas)}`,
+        color: 'text-teal-500',
+        fondo: 'bg-teal-500/10',
+        items: mes.value.detalles_movimientos || [],
+    },
+    {
+        tipo: 'ops_activas',
+        icon: CalendarDays,
+        etiqueta: 'OPs activas (en Recibiendo)',
+        valor: `${formatoNumero(mes.value.ops_activas)} (${formatoNumero(mes.value.ops_recibiendo)})`,
+        color: 'text-violet-500',
+        fondo: 'bg-violet-500/10',
+        items: mes.value.detalles_ops_activas || [],
+    },
 ]);
 
+const abrirModal = (kpi: any) => {
+    state.modal.tipo = kpi.tipo;
+    state.modal.titulo = kpi.etiqueta;
+    state.modal.items = kpi.items || [];
+    state.modal.abierto = true;
+};
+
+const cerrarModal = () => {
+    state.modal.abierto = false;
+};
+
 const cargar = async () => {
-    cargando.value = true;
+    state.cargando = true;
     try {
         const [respDatos, respNotif] = await Promise.all([
-            fetch(`/dashboard/datos?dias=${dias.value}`, { headers: { Accept: 'application/json' } }),
+            fetch(`/dashboard/datos?dias=${state.dias}`, { headers: { Accept: 'application/json' } }),
             fetch('/notificaciones', { headers: { Accept: 'application/json' } }),
         ]);
         if (respDatos.ok) {
-            datos.value = await respDatos.json();
-            actualizado.value = datos.value.generado_en ?? '';
+            state.datos = await respDatos.json();
+            state.actualizado = state.datos.generado_en ?? '';
         }
         if (respNotif.ok) {
             const data = await respNotif.json();
-            notificacionesRojas.value = (data.notificaciones || []).filter((n: NotificacionItem) => n.prioridad === 'alta');
+            state.notificacionesRojas = (data.notificaciones || []).filter((n: NotificacionItem) => n.prioridad === 'alta');
         }
     } catch {
-        // Silencioso: el siguiente sondeo reintenta
     } finally {
-        cargando.value = false;
+        state.cargando = false;
     }
 };
 
 const cambiarPeriodo = (nuevosDias: number) => {
-    dias.value = nuevosDias;
+    state.dias = nuevosDias;
     cargar();
 };
 
 onMounted(() => {
-    esOscuro.value = document.documentElement.classList.contains('dark');
+    state.esOscuro = document.documentElement.classList.contains('dark');
     observadorTema = new MutationObserver(() => {
-        esOscuro.value = document.documentElement.classList.contains('dark');
+        state.esOscuro = document.documentElement.classList.contains('dark');
     });
     observadorTema.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
 
@@ -332,19 +416,18 @@ onUnmounted(() => {
     <Head title="Dashboard" />
 
     <AppLayout :breadcrumbs="breadcrumbs">
-        <div class="flex h-full flex-1 flex-col gap-4 p-4">
+        <div class="flex h-full flex-1 flex-col gap-6 p-4">
 
-            <!-- Zona 1: notificaciones rojas (solo si existen) -->
-            <div v-if="notificacionesRojas.length > 0"
+            <div v-if="state.notificacionesRojas.length > 0"
                 class="rounded-xl border-2 border-red-500/60 bg-red-500/5 p-4 dark:bg-red-500/10">
                 <div class="mb-2 flex items-center gap-2">
                     <AlertCircle class="h-5 w-5 text-red-500" />
                     <span class="text-sm font-bold text-red-600 dark:text-red-400">
-                        Notificaciones rojas ({{ notificacionesRojas.length }})
+                        Notificaciones rojas ({{ state.notificacionesRojas.length }})
                     </span>
                 </div>
                 <ul class="space-y-1.5">
-                    <li v-for="notif in notificacionesRojas" :key="notif.id"
+                    <li v-for="notif in state.notificacionesRojas" :key="notif.id"
                         class="flex items-start gap-2 text-sm text-foreground">
                         <span class="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-red-500" />
                         <span class="font-medium leading-snug">{{ notif.mensaje }}</span>
@@ -355,107 +438,135 @@ onUnmounted(() => {
                 </ul>
             </div>
 
-            <!-- Zona 2: gráficos -->
-            <div class="flex flex-wrap items-center justify-between gap-2">
-                <h2 class="text-lg font-semibold text-foreground">Reportes por período</h2>
-                <div class="flex items-center gap-2">
-                    <span v-if="actualizado" class="text-xs text-muted-foreground">
-                        Actualizado {{ actualizado }} · se refresca cada 20 s
-                    </span>
-                    <Button variant="ghost" size="sm" class="h-8 w-8 p-0 cursor-pointer" title="Actualizar ahora"
-                        @click="cargar">
-                        <RefreshCw class="h-4 w-4" :class="cargando ? 'animate-spin' : ''" />
-                    </Button>
-                    <div class="flex rounded-lg border border-sidebar-border/60 p-0.5">
-                        <button v-for="opcion in opcionesPeriodo" :key="opcion.dias" @click="cambiarPeriodo(opcion.dias)"
-                            class="rounded-md px-3 py-1 text-xs font-medium transition-colors cursor-pointer"
-                            :class="dias === opcion.dias
-                                ? 'bg-primary text-primary-foreground'
-                                : 'text-muted-foreground hover:text-foreground'">
-                            {{ opcion.etiqueta }}
-                        </button>
+            <div class="flex flex-col gap-3">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                        <h2 class="text-lg font-semibold text-foreground">Resultados del mes</h2>
+                        <p class="text-xs text-muted-foreground">Haz clic en cualquier tarjeta para ver el detalle de los productos y movimientos</p>
                     </div>
+                </div>
+
+                <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                    <Card
+                        v-for="kpi in kpis"
+                        :key="kpi.etiqueta"
+                        class="group cursor-pointer border border-border/80 transition-all hover:border-primary/50 hover:bg-muted/20 hover:shadow-md active:scale-[0.99]"
+                        @click="abrirModal(kpi)"
+                    >
+                        <CardContent class="flex items-center justify-between p-4">
+                            <div class="flex items-center gap-3 min-w-0">
+                                <div class="grid h-10 w-10 shrink-0 place-items-center rounded-xl transition-transform group-hover:scale-105" :class="kpi.fondo">
+                                    <component :is="kpi.icon" class="h-5 w-5" :class="kpi.color" />
+                                </div>
+                                <div class="min-w-0">
+                                    <p class="truncate text-xs text-muted-foreground">{{ kpi.etiqueta }}</p>
+                                    <p class="text-lg font-bold text-foreground">{{ kpi.valor }}</p>
+                                </div>
+                            </div>
+                            <div class="text-muted-foreground opacity-50 transition-all group-hover:opacity-100 group-hover:translate-x-0.5 group-hover:text-primary">
+                                <ChevronRight class="h-4 w-4" />
+                            </div>
+                        </CardContent>
+                    </Card>
                 </div>
             </div>
 
-            <div v-if="!datos && cargando" class="grid min-h-[40vh] place-items-center text-sm text-muted-foreground">
-                Cargando reportes…
-            </div>
-
-            <div v-else class="grid gap-4 md:grid-cols-2">
-                <Card>
-                    <CardHeader class="pb-2">
-                        <CardTitle class="text-sm font-semibold">Movimientos de materiales (entradas vs salidas)</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <VChart :option="opcionesMovimientos" autoresize style="width: 100%; height: 18rem" />
-                    </CardContent>
-                </Card>
-
-                <Card>
-                    <CardHeader class="pb-2">
-                        <CardTitle class="text-sm font-semibold">Producción recibida en calidad</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <VChart :option="opcionesProduccion" autoresize style="width: 100%; height: 18rem" />
-                    </CardContent>
-                </Card>
-
-                <Card>
-                    <CardHeader class="pb-2">
-                        <CardTitle class="text-sm font-semibold">Existencias por categoría de material</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <VChart v-if="datos?.existencias?.length" :option="opcionesExistencias" autoresize style="width: 100%; height: 18rem" />
-                        <div v-else class="grid h-72 place-items-center text-sm text-muted-foreground">Sin existencias registradas</div>
-                    </CardContent>
-                </Card>
-
-                <Card>
-                    <CardHeader class="pb-2">
-                        <CardTitle class="text-sm font-semibold">Costos y desviaciones por OP cerrada</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <VChart v-if="datos?.desviaciones?.ops?.length" :option="opcionesDesviaciones" autoresize style="width: 100%; height: 18rem" />
-                        <div v-else class="grid h-72 place-items-center text-sm text-muted-foreground">Sin cierres con costo real en el período</div>
-                    </CardContent>
-                </Card>
-
-                <Card>
-                    <CardHeader class="pb-2">
-                        <CardTitle class="text-sm font-semibold">Recepción por OP: esperada, recibida, no recuperable</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <VChart v-if="datos?.recepcionCalidadPorOp?.ops?.length" :option="opcionesRecepcionCalidad" autoresize style="width: 100%; height: 18rem" />
-                        <div v-else class="grid h-72 place-items-center text-sm text-muted-foreground">Sin recepciones de calidad en el período</div>
-                    </CardContent>
-                </Card>
-
-                <Card class="md:col-span-2">
-                    <CardHeader class="pb-2">
-                        <CardTitle class="text-sm font-semibold">Compras: costo de materiales asignado y precio promedio mensual</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <VChart :option="opcionesCompras" autoresize style="width: 100%; height: 18rem" />
-                    </CardContent>
-                </Card>
-            </div>
-
-            <!-- Zona 3: resultados del mes -->
-            <h2 class="text-lg font-semibold text-foreground">Resultados del mes</h2>
-            <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <Card v-for="kpi in kpis" :key="kpi.etiqueta">
-                    <CardContent class="flex items-center gap-3 p-4">
-                        <div class="grid h-10 w-10 shrink-0 place-items-center rounded-xl" :class="kpi.fondo">
-                            <component :is="kpi.icon" class="h-5 w-5" :class="kpi.color" />
+            <div class="flex flex-col gap-3">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                        <h2 class="text-lg font-semibold text-foreground">Reportes por período</h2>
+                        <span v-if="state.actualizado" class="text-xs text-muted-foreground">
+                            Actualizado {{ state.actualizado }} · se refresca cada 20 s
+                        </span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <Button variant="ghost" size="sm" class="h-8 w-8 p-0 cursor-pointer" title="Actualizar ahora"
+                            @click="cargar">
+                            <RefreshCw class="h-4 w-4" :class="state.cargando ? 'animate-spin' : ''" />
+                        </Button>
+                        <div class="flex rounded-lg border border-sidebar-border/60 p-0.5">
+                            <button v-for="opcion in opcionesPeriodo" :key="opcion.dias" @click="cambiarPeriodo(opcion.dias)"
+                                class="rounded-md px-3 py-1 text-xs font-medium transition-colors cursor-pointer"
+                                :class="state.dias === opcion.dias
+                                    ? 'bg-primary text-primary-foreground'
+                                    : 'text-muted-foreground hover:text-foreground'">
+                                {{ opcion.etiqueta }}
+                            </button>
                         </div>
-                        <div class="min-w-0">
-                            <p class="truncate text-xs text-muted-foreground">{{ kpi.etiqueta }}</p>
-                            <p class="text-lg font-bold text-foreground">{{ kpi.valor }}</p>
-                        </div>
-                    </CardContent>
-                </Card>
+                    </div>
+                </div>
+
+                <div v-if="!state.datos && state.cargando" class="grid min-h-[40vh] place-items-center text-sm text-muted-foreground">
+                    Cargando reportes…
+                </div>
+
+                <div v-else class="grid gap-4 md:grid-cols-2">
+                    <Card>
+                        <CardHeader class="pb-2">
+                            <CardTitle class="text-sm font-semibold">Movimientos de materiales (entradas vs salidas)</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <VChart :option="opcionesMovimientos" autoresize style="width: 100%; height: 18rem" />
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader class="pb-2">
+                            <CardTitle class="text-sm font-semibold">Producción recibida en calidad</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <VChart :option="opcionesProduccion" autoresize style="width: 100%; height: 18rem" />
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader class="pb-2">
+                            <CardTitle class="text-sm font-semibold">Existencias por categoría de material</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <VChart v-if="state.datos?.existencias?.length" :option="opcionesExistencias" autoresize style="width: 100%; height: 18rem" />
+                            <div v-else class="grid h-72 place-items-center text-sm text-muted-foreground">Sin existencias registradas</div>
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader class="pb-2">
+                            <CardTitle class="text-sm font-semibold">Costos y desviaciones por OP cerrada</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <VChart v-if="state.datos?.desviaciones?.ops?.length" :option="opcionesDesviaciones" autoresize style="width: 100%; height: 18rem" />
+                            <div v-else class="grid h-72 place-items-center text-sm text-muted-foreground">Sin cierres con costo real en el período</div>
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardHeader class="pb-2">
+                            <CardTitle class="text-sm font-semibold">Recepción por OP: esperada, recibida, no recuperable</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <VChart v-if="state.datos?.recepcionCalidadPorOp?.ops?.length" :option="opcionesRecepcionCalidad" autoresize style="width: 100%; height: 18rem" />
+                            <div v-else class="grid h-72 place-items-center text-sm text-muted-foreground">Sin recepciones de calidad en el período</div>
+                        </CardContent>
+                    </Card>
+
+                    <Card class="md:col-span-2">
+                        <CardHeader class="pb-2">
+                            <CardTitle class="text-sm font-semibold">Compras: costo de materiales asignado y precio promedio mensual</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                            <VChart :option="opcionesCompras" autoresize style="width: 100%; height: 18rem" />
+                        </CardContent>
+                    </Card>
+                </div>
             </div>
+
+            <DashboardKpiModal
+                :show="state.modal.abierto"
+                :tipo="state.modal.tipo"
+                :titulo="state.modal.titulo"
+                :items="state.modal.items"
+                @close="cerrarModal"
+            />
         </div>
     </AppLayout>
 </template>

@@ -27,9 +27,14 @@ Route::get('dashboard/datos', [DashboardController::class, 'datos'])
 // Bitácora de navegación y tiempos entre acciones: solo superadmin.
 Route::middleware(['auth', 'verified', 'role:superadmin'])->group(function () {
 	Route::get('/Actividad', [\App\Http\Controllers\ActividadController::class, 'index'])->name('Actividad.index');
+	Route::post('/superadmin/purgar-datos-prueba', [\App\Http\Controllers\SuperadminAccionesController::class, 'purgarDatosPrueba'])->name('superadmin.purgar-datos-prueba');
 });
 
 Route::middleware('auth', 'verified')->group(function () {
+	// El navegador avisa cuando el usuario deja la pestaña: sin esto, una hora
+	// sin usar el sistema se leía como una hora trabajando en ella.
+	Route::post('/sesion/estado', [\App\Http\Controllers\SesionEstadoController::class, 'store'])->name('sesion.estado');
+
 	Route::resource('/role', RoleController::class)->except('create', 'show', 'edit');
 	Route::post('/role/destroy-bulk', [RoleController::class, 'destroyBulk'])->name('role.destroy-bulk');
 	Route::resource('/permission', PermissionController::class)->except('create', 'show', 'edit');

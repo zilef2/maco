@@ -322,7 +322,23 @@ class ExcelProveedoresService
                 }
                 unset($datos);
 
-                foreach (array_chunk($nuevos, 500) as $bloque) {
+                // El insert por bloques arma una sola sentencia: todas las filas
+                // deben traer las mismas columnas y en el mismo orden, y aquí
+                // cada fila guarda solo las celdas que el archivo llenó.
+                $columnas = [];
+                foreach ($nuevos as $datos) {
+                    foreach (array_keys($datos) as $campo) {
+                        $columnas[$campo] = true;
+                    }
+                }
+                $columnas = array_keys($columnas);
+
+                $filas = array_map(
+                    fn (array $datos): array => array_replace(array_fill_keys($columnas, null), $datos),
+                    $nuevos
+                );
+
+                foreach (array_chunk($filas, 500) as $bloque) {
                     Proveedor::insert($bloque);
                 }
             }

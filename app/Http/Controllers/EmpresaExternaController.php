@@ -2,7 +2,10 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StoreEmpresaExternaRequest;
+use App\Http\Requests\UpdateEmpresaExternaRequest;
 use App\Models\EmpresaExterna;
+use App\Models\Proveedor;
 use App\helpers\Myhelp;
 use App\helpers\MyModels;
 use Illuminate\Database\Eloquent\Collection;
@@ -49,8 +52,13 @@ class EmpresaExternaController extends Controller {
             'filters' => $request->all(['search', 'field', 'order']),
             'perPage' => (int)$perPage,
             'numberPermissions' => $numberPermissions,
-            'losSelect'         => $this->losSelect(EmpresaExterna::class, 'EmpresaExterna'),
+            'losSelect'         => $this->losSelect(EmpresaExterna::class, 'EmpresaExterna', 'nombre_comercial'),
 	        'titulos'           => EmpresaExterna::getFillableWithTypes(),
+            'opcionesSelect'    => [
+                'tipo_proveedor' => Proveedor::TIPOS_PROVEEDOR,
+                'estado' => Proveedor::ESTADOS,
+                'forma_pago' => Proveedor::FORMAS_PAGO,
+            ],
 
         ]);
     }
@@ -90,12 +98,10 @@ class EmpresaExternaController extends Controller {
 	}
     //</editor-fold>
 
-    public function store(Request $request): RedirectResponse {
+    public function store(StoreEmpresaExternaRequest $request): RedirectResponse {
         $permissions = Myhelp::EscribirEnLog($this, ' Begin STORE:EmpresaExternas');
         DB::beginTransaction();
-//        $no_nada = $request->no_nada['id'];
-//        $request->merge(['no_nada_id' => $request->no_nada['id']]);
-        $EmpresaExterna = EmpresaExterna::create($request->all());
+        $EmpresaExterna = EmpresaExterna::create($request->validated());
 
         DB::commit();
         $this->invalidarCache();
@@ -117,12 +123,11 @@ class EmpresaExternaController extends Controller {
     public function edit($id) {
     }
 
-    public function update(Request $request, $id): RedirectResponse {
+    public function update(UpdateEmpresaExternaRequest $request, $id): RedirectResponse {
         $permissions = Myhelp::EscribirEnLog($this, ' Begin UPDATE:EmpresaExternas');
         DB::beginTransaction();
         $EmpresaExterna = EmpresaExterna::findOrFail($id);
-//        $request->merge(['no_nada_id' => $request->no_nada['id']]);
-        $EmpresaExterna->update($request->all());
+        $EmpresaExterna->update($request->validated());
 
         DB::commit();
         $this->invalidarCache();

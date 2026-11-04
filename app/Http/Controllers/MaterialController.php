@@ -13,6 +13,7 @@ use App\Services\ListaDesplegableService;
 use App\Services\CostoMaterialOpService;
 use App\Services\MaterialBulkDeleteService;
 use App\Services\MaterialCompraPredictorService;
+use App\Services\PlantillasExcelService;
 use App\helpers\Myhelp;
 use App\helpers\MyModels;
 use Illuminate\Database\Eloquent\Collection;
@@ -24,8 +25,7 @@ use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 use PhpOffice\PhpSpreadsheet\IOFactory;
-use PhpOffice\PhpSpreadsheet\Spreadsheet;
-use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use App\Traits\MaterialMovimientoTrait;
 
@@ -42,7 +42,8 @@ class MaterialController extends Controller {
         protected CostoMaterialOpService $costosMateriales,
         protected FichaTecnicaService $fichaTecnicaService,
         protected MaterialBulkDeleteService $bulkDelete,
-        protected MaterialCompraPredictorService $compraPredictor
+        protected MaterialCompraPredictorService $compraPredictor,
+        protected PlantillasExcelService $plantillas
     ) {
 //        $this->middleware('permission:create Material', ['only' => ['create', 'store']]);
 //        $this->middleware('permission:read Material', ['only' => ['index', 'show']]);
@@ -140,6 +141,8 @@ class MaterialController extends Controller {
                 'unidad_medida'             => $this->fichaTecnicaService->opcionesMateriales()['unidad_medida'],
             ],
 	        'titulos'           => Material::getFillableWithTypes(),
+            // La ayuda del modal de subida sale del mismo formato descargable.
+            'columnasExcel'     => $this->plantillas->columnas('material'),
 
         ]);
     }
@@ -341,9 +344,13 @@ class MaterialController extends Controller {
         
         // Validar precio de última compra (obligatorio) y, si el material se
         // marca como procesado, las líneas de su ficha técnica.
+        // El código del material no se digita: lo arma el modelo con el par
+        // codigo_categoria + codigo_base (TEX-LFI-4).
         $request->validate([
             'last_purchase_price' => 'required|numeric|min:0',
             'last_purchase_date' => 'required|date',
+            'codigo_categoria' => 'nullable|string|regex:/^[\p{L} ]*$/u',
+            'codigo_base' => 'nullable|string|regex:/^[\p{L} ]*$/u',
             'materiales' => 'nullable|array',
             'materiales.*.material_componente_id' => 'nullable|integer|exists:materials,id',
             'materiales.*.consumo_estandar' => 'nullable|numeric|min:0',
@@ -356,13 +363,7 @@ class MaterialController extends Controller {
         $colores = Material::normalizarListaVariantes($request->input('colores', []));
         $variantes = Material::normalizarListaVariantes($request->input('variantes', []));
 
-        if (!empty($colores) && !empty($variantes)) {
-            throw \Illuminate\Validation\ValidationException::withMessages([
-                'colores' => 'Un material no puede tener colores y otras variantes al mismo tiempo. Usa solo una de las dos listas.',
-            ]);
-        }
-
-        $datos = $request->except(['materiales', 'last_purchase_price', 'last_purchase_date', 'colores', 'variantes']);
+        $datos = $request->except(['materiales', 'last_purchase_price', 'last_purchase_date', 'colores', 'variantes', 'codigo_material']);
         $datos['proveedor_habitual'] = $this->normalizarProveedorHabitual($datos['proveedor_habitual'] ?? null);
         $Material = Material::create($datos);
         $Material->sincronizarVariantes($colores, $variantes);
@@ -543,6 +544,8 @@ class MaterialController extends Controller {
         try {
 
         $request->validate([
+            'codigo_categoria' => 'nullable|string|regex:/^[\p{L} ]*$/u',
+            'codigo_base' => 'nullable|string|regex:/^[\p{L} ]*$/u',
             'materiales' => 'nullable|array',
             'materiales.*.material_componente_id' => 'nullable|integer|exists:materials,id',
             'materiales.*.consumo_estandar' => 'nullable|numeric|min:0',
@@ -666,59 +669,26 @@ class MaterialController extends Controller {
     //  CARGA MASIVA DESDE EXCEL
     // ─────────────────────────────────────────────────────────
     /**
-     * Plantilla del formato actual: las presentaciones van en una única
-     * columna (Todas_las_variantes, separadas por coma) y alimentan la tabla
-     * material_variants. Su tipo se deduce de "Maneja color": SI → colores,
-     * NO → variantes; el orden es la posición en la lista (0, 1, 2…).
-     * "Unidad inventario" trae la cantidad actual de stock (entero) y se
-     * guarda en existencia_actual; el nombre de la unidad no se importa.
+     * Plantilla descargable de materiales. La define PlantillasExcelService,
+     * que es también de donde sale la tarjeta del Centro de Importación, para
+     * que el formato y la ayuda nunca se contradigan.
+     *
+     * Las presentaciones van en "Color" o en "Talla / tamaño" (separadas por
+     * coma) y alimentan la tabla material_variants; el orden en la lista es la
+     * posición de la variante. "Unidad inventario" trae el nombre de la unidad
+     * de medida (Unidades, Metros…), no la cantidad en stock.
      */
     public function descargarPlantillaExcel(): StreamedResponse
     {
-        $spreadsheet = new Spreadsheet();
-        $hoja = $spreadsheet->getActiveSheet();
-        $hoja->setTitle('Materiales');
+        $writer = $this->plantillas->escribir('material');
 
-        $encabezados = [
-            'Código material',
-            'Código categoría',
-            'Categoría',
-            'Código base',
-            'Nombre base',
-            'Modelo / diseño / acabado',
-            'Color',
-            'Talla / tamaño',
-            'Unidad inventario',
-            'Proveedor habitual',
-            'Estado',
-            'Observaciones',
-            'Costo',
-        ];
-
-        $hoja->fromArray($encabezados, null, 'A1');
-        $hoja->fromArray([
-            [
-                'MAT-30', '', 'Tapas', '', 'Botón forrado',
-                'Liso', 'Rojo, Azul, Negro', '', 'Unidades',
-                '', 'Activo', 'Ejemplo con colores', 15000,
-            ],
-            [
-                'MAT-31', '', 'Tela', '', 'Tela poliéster',
-                '', '', 'S, M, L, XL', 'Metros',
-                '', 'Activo', 'Ejemplo con tallas', 8500,
-            ],
-        ], null, 'A2');
-
-        $hoja->getStyle('A1:M1')->getFont()->setBold(true);
-        foreach (range('A', 'M') as $columna) {
-            $hoja->getColumnDimension($columna)->setAutoSize(true);
+        if ($writer === null) {
+            abort(404, 'No hay plantilla de materiales.');
         }
-
-        $writer = new Xlsx($spreadsheet);
 
         return response()->streamDownload(function () use ($writer) {
             $writer->save('php://output');
-        }, 'plantilla-materiales.xlsx', [
+        }, $this->plantillas->nombreArchivo('material'), [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         ]);
     }
@@ -768,19 +738,19 @@ class MaterialController extends Controller {
         }
 
         // 5. Normalizar encabezados (acepta snake_case y nombres legibles)
-        // "unidad_inventario" conserva el nombre interno de la columna, pero
-        // en este formato trae la cantidad entera de stock (→ existencia_actual).
+        // "codigo_material" es la clave con la que se reconoce un material ya
+        // cargado; "unidad_inventario" trae el nombre de la unidad de medida.
         $columnasRequeridas = [
             'codigo_material',
             'nombre_base',
             'estado',
+            'procesado',
         ];
 
         // Rótulos de sección del Excel (celdas decorativas): se ignoran en silencio.
         $rotulosDeSeccion = ['opcionales', 'requeridos', 'obligatorios'];
 
         $aliasColumnas = [
-            'codigomaterial'          => 'codigo_material',
             'codigomaterial'          => 'codigo_material',
             'codigo'                  => 'codigo_material',
             'nombrebase'              => 'nombre_base',
@@ -805,11 +775,14 @@ class MaterialController extends Controller {
             'varianteatributosugerido'=> 'variante_atributo_sugerido',
             'proveedorhabitual'       => 'proveedor_habitual',
             'proveedor'               => 'proveedor_habitual',
+            'nitproveedor'            => 'nit_proveedor',
+            'nitproveedorhabitual'    => 'nit_proveedor',
+            'nit'                     => 'nit_proveedor',
             'observaciones'           => 'observaciones',
             'todaslasvariantes'       => 'todas_las_variantes',
-            'esproducido'             => 'es_producido',
             'costo'                   => 'costo_material',
             'costomaterial'           => 'costo_material',
+            'procesado'               => 'procesado',
         ];
 
         $normalizarTexto = fn (string $texto): string => strtr(
@@ -859,16 +832,40 @@ class MaterialController extends Controller {
             );
         }
 
+        // "Procesado" acompaña a "Costo": el archivo solo se acepta cuando la
+        // columna viene en la celda siguiente, que es el orden de la plantilla.
+        $posiciones = array_flip(array_keys($filaEncabezados));
+        $columnaCosto = null;
+        $columnaProcesado = null;
+        foreach ($encabezado as $col => $claveCanonica) {
+            if ($claveCanonica === 'costo_material') {
+                $columnaCosto = $posiciones[$col];
+            }
+            if ($claveCanonica === 'procesado') {
+                $columnaProcesado = $posiciones[$col];
+            }
+        }
+        if ($columnaCosto === null || $columnaProcesado !== $columnaCosto + 1) {
+            $esperada = $columnaCosto === null
+                ? null
+                : Coordinate::stringFromColumnIndex($columnaCosto + 2);
+            return back()->with(
+                'error',
+                'La columna "Procesado" (si o no) debe ir justo después de "Costo"'
+                . ($esperada !== null ? ", en la columna {$esperada} del archivo." : ', y falta "Costo" para ubicarla.')
+            );
+        }
+
         // 6. Construir registros (sin tocar la BD aún: primero validar todo)
         $parsearBooleano = function ($valor): bool {
             $clave = preg_replace('/[^a-z]/', '', mb_strtolower(trim((string) $valor)));
             return in_array($clave, ['si', 's', 'yes', 'y', 'true', 't', '1'], true);
         };
 
-        // El Excel puede traer el nombre o el código del proveedor; la columna
-        // guarda el id. Se indexan todas las formas en que la app muestra a un
-        // proveedor para que la validación sea flexible (sin mayúsculas, tildes
-        // ni puntuación): "Proveedor 55N68X" = "proveedor55n68x" = "55N68X ".
+        // El Excel puede traer el NIT, el nombre o el código del proveedor; la
+        // columna guarda el id. Se indexan todas las formas en que la app lo
+        // identifica (sin mayúsculas, tildes ni puntuación). El NIT es la forma
+        // fiable: "900347285-7" = "9003472857" = "900.347.285-7".
         $normalizarClave = fn (?string $texto): string => (string) preg_replace(
             '/[^a-z0-9]/',
             '',
@@ -876,13 +873,15 @@ class MaterialController extends Controller {
         );
 
         $proveedoresPorClave = [];
+        $proveedoresPorNombre = [];
 
-        foreach (Proveedor::query()->get(['id', 'codigo_proveedor', 'nombre_comercial', 'razon_social', 'nombre']) as $proveedor) {
+        foreach (Proveedor::query()->get(['id', 'codigo_proveedor', 'nombre_comercial', 'razon_social', 'nombre', 'nit']) as $proveedor) {
             $identificadores = [
                 $proveedor->nombre_comercial,
                 $proveedor->razon_social,
                 $proveedor->nombre,
                 $proveedor->codigo_proveedor,
+                $proveedor->nit,
                 // Código visual que usa el listado cuando no hay codigo_proveedor.
                 'PRV-' . $proveedor->id,
                 'PROV-' . $proveedor->id,
@@ -893,6 +892,22 @@ class MaterialController extends Controller {
                 $clave = $normalizarClave($identificador);
                 if ($clave !== '' && !isset($proveedoresPorClave[$clave])) {
                     $proveedoresPorClave[$clave] = (int) $proveedor->id;
+                }
+            }
+
+            $nombres = [$proveedor->nombre_comercial, $proveedor->razon_social, $proveedor->nombre];
+
+            foreach ($nombres as $nombre) {
+                // "LA CASA DE LOS CORDONES" admite "Casa de los cordones": el
+                // artículo inicial no es parte del nombre con que se le escribe.
+                $sinArticulo = preg_replace('/^(la|el|los|las|un|una)\s+/u', '', $normalizarTexto((string) $nombre));
+                foreach ([$nombre, $sinArticulo] as $variante) {
+                    $clave = $normalizarClave($variante);
+                    if ($clave === '') {
+                        continue;
+                    }
+                    $proveedoresPorClave[$clave] ??= (int) $proveedor->id;
+                    $proveedoresPorNombre[$clave] = (int) $proveedor->id;
                 }
             }
         }
@@ -915,18 +930,35 @@ class MaterialController extends Controller {
                 continue;
             }
 
-            $codigo = mb_strtoupper(trim((string) ($registro['codigo_material'] ?? '')));
-            $nombre = trim((string) ($registro['nombre_base'] ?? ''));
+            $nombre = trim(strip_tags((string) ($registro['nombre_base'] ?? '')));
+            $categoriaTexto = trim(strip_tags((string) ($registro['categoria'] ?? '')));
 
-            if ($codigo === '' || $nombre === '') {
-                $errores[] = "Fila {$filaExcel}: faltan datos obligatorios (Codigo material y Nombre base)";
+            if ($nombre === '') {
+                $errores[] = "Fila {$filaExcel}: falta el Nombre base, que es obligatorio";
                 continue;
             }
 
-            if (!preg_match('/^MAT-\d+$/', $codigo)) {
-                $errores[] = "Fila {$filaExcel}: el código \"{$codigo}\" no tiene el formato MAT-30";
+            // El código puede venir vacío: el material toma el siguiente número
+            // libre del par. Si viene, se acepta CAT-BASE-N y se le quitan los
+            // ceros a la izquierda (TEX-LFL-005 es el mismo TEX-LFL-5).
+            $codigoBruto = trim((string) ($registro['codigo_material'] ?? ''));
+            $codigo = Material::normalizarCodigo($codigoBruto);
+
+            if ($codigoBruto !== '' && ($codigo === null || !preg_match(Material::PATRON_CODIGO, $codigo))) {
+                $errores[] = "Fila {$filaExcel}: el código \"{$codigoBruto}\" no tiene el formato CAT-BASE-N (ej: TEX-LFI-4)";
                 continue;
             }
+
+            // El par forma el prefijo del código: primero lo que digita el
+            // archivo, luego el propio prefijo del código de la fila y por
+            // último la abreviatura del nombre de la categoría y del material.
+            $partesCodigo = $codigo !== null ? explode('-', $codigo) : [];
+            $categoriaCodigo = Material::normalizarFragmento($registro['codigo_categoria'] ?? null)
+                ?: ($partesCodigo[0] ?? '');
+            $baseCodigo = Material::normalizarFragmento($registro['codigo_base'] ?? null)
+                ?: ($partesCodigo[1] ?? '');
+            $prefijo = ($categoriaCodigo ?: Material::abreviar($categoriaTexto))
+                . '-' . ($baseCodigo ?: Material::abreviar($nombre));
 
             // Unidad inventario: en este formato trae el nombre de la unidad (ej: "Metros", "Unidades").
             $unidadInventario = trim(strip_tags((string) ($registro['unidad_inventario'] ?? '')));
@@ -938,22 +970,29 @@ class MaterialController extends Controller {
                 continue;
             }
 
+            // Procesado solo admite si o no; el vacío se lee como no.
+            $procesadoBruto = trim(strip_tags((string) ($registro['procesado'] ?? '')));
+            $procesadoTexto = preg_replace('/[^a-z]/', '', $normalizarTexto($procesadoBruto));
+            if (!in_array($procesadoTexto, ['si', 'no', ''], true)) {
+                $errores[] = "Fila {$filaExcel}: Procesado debe ser si o no y llegó \"{$procesadoBruto}\"";
+                continue;
+            }
+            $procesado = $procesadoTexto === 'si' ? 1 : 0;
+
             $manejaColor = $parsearBooleano($registro['maneja_color'] ?? '');
             $manejaTalla = $parsearBooleano($registro['maneja_talla'] ?? '');
             $manejaOtraVariante = $parsearBooleano($registro['maneja_otra_variante'] ?? '');
 
-            if ($manejaColor && $manejaOtraVariante) {
-                $errores[] = "Fila {$filaExcel}: un material no puede manejar color y otra variante al mismo tiempo.";
-                continue;
-            }
-
-            // Columnas "Color" y "Talla / tamaño" alimentan material_variants.
-            // Si existe la columna legacy "todas_las_variantes" también se acepta.
-            $coloresRaw   = $registro['colores_lista'] ?? $registro['todas_las_variantes'] ?? null;
-            $tallasRaw    = $registro['tallas_lista'] ?? null;
-            $colores      = Material::normalizarListaVariantes($coloresRaw);
-            $tallasLista  = Material::normalizarListaVariantes($tallasRaw);
-            $variantes    = !empty($tallasLista) ? $tallasLista : (!$manejaColor ? Material::normalizarListaVariantes($registro['todas_las_variantes'] ?? null) : []);
+            // Columnas "Color" y "Talla / tamaño" alimentan material_variants y
+            // pueden llenarse las dos: un material sí admite colores y otras
+            // variantes a la vez. La columna legacy "todas_las_variantes" solo se
+            // usa cuando la fila no trajo ninguna de las dos, para no registrar
+            // lo mismo repetido.
+            $colores      = Material::normalizarListaVariantes($registro['colores_lista'] ?? null);
+            $tallasLista  = Material::normalizarListaVariantes($registro['tallas_lista'] ?? null);
+            $variantes    = !empty($tallasLista)
+                ? $tallasLista
+                : (empty($colores) ? Material::normalizarListaVariantes($registro['todas_las_variantes'] ?? null) : []);
 
             if (!empty($colores)) {
                 $manejaColor = true;
@@ -961,18 +1000,33 @@ class MaterialController extends Controller {
             if (!empty($tallasLista)) {
                 $manejaTalla = true;
             }
+            if (!empty($variantes)) {
+                $manejaOtraVariante = true;
+            }
 
-            $proveedorTexto = trim((string) ($registro['proveedor_habitual'] ?? ''));
+            // Primero el NIT, si el archivo lo trae; si no, el nombre o código
+            // de la columna «Proveedor habitual».
+            $nitTexto = trim(strip_tags((string) ($registro['nit_proveedor'] ?? '')));
+            $proveedorTexto = trim(strip_tags((string) ($registro['proveedor_habitual'] ?? '')));
             $proveedorId = null;
+            $claveProveedor = '';
 
-            if ($proveedorTexto !== '') {
-                $claveProveedor = $normalizarClave($proveedorTexto);
-                $proveedorId = $claveProveedor !== '' ? ($proveedoresPorClave[$claveProveedor] ?? null) : null;
-
-                if ($proveedorId === null) {
-                    // Se lista una sola vez aunque se repita escrito de otra forma.
-                    $proveedoresDesconocidos[$claveProveedor] ??= $proveedorTexto;
+            foreach ([$nitTexto, $proveedorTexto] as $textoProveedor) {
+                if ($textoProveedor === '') {
+                    continue;
                 }
+                $clave = $normalizarClave($textoProveedor);
+                $claveProveedor = $claveProveedor !== '' ? $claveProveedor : $clave;
+                $proveedorId = $this->buscarProveedor($clave, $proveedoresPorClave, $proveedoresPorNombre);
+                if ($proveedorId !== null) {
+                    $claveProveedor = $clave;
+                    break;
+                }
+            }
+
+            if ($proveedorId === null && $claveProveedor !== '') {
+                // Se lista una sola vez aunque se repita escrito de otra forma.
+                $proveedoresDesconocidos[$claveProveedor] ??= ($nitTexto !== '' ? $nitTexto : $proveedorTexto);
             }
 
             $atributoSugerido = trim(strip_tags((string) ($registro['variante_atributo_sugerido'] ?? '')));
@@ -983,22 +1037,52 @@ class MaterialController extends Controller {
                 ? (float) str_replace(',', '.', (string) $costoRaw)
                 : null;
 
+            $fragmentos = explode('-', $prefijo);
+            $existe = $codigo !== null && isset($existentes[$codigo]);
+
+            if (!$existe && !preg_match(Material::PATRON_CODIGO, $prefijo . '-1')) {
+                $errores[] = "Fila {$filaExcel}: no se puede formar el código material; escriba Código categoría y Código base (o Categoría y Nombre base)";
+                continue;
+            }
+
+            $datos = [
+                'nombre_base'                => $nombre,
+                'unidad_inventario'          => $unidadInventario !== '' ? mb_substr($unidadInventario, 0, 255) : 'Unidades',
+                'maneja_color'               => $manejaColor,
+                'maneja_talla'               => $manejaTalla,
+                'maneja_otra_variante'       => $manejaOtraVariante,
+                'estado'                     => ucfirst($estadoTexto),
+                'variante_atributo_sugerido' => $atributoSugerido !== '' ? mb_substr($atributoSugerido, 0, 255) : null,
+                'proveedor_habitual'         => $proveedorId,
+                'observaciones'              => $observaciones !== '' ? mb_substr($observaciones, 0, 255) : null,
+                'material_procesado'         => $procesado,
+                'costo_material'             => $costo,
+            ];
+
+            // El par forma el prefijo del código y manda siempre el modelo, que
+            // respeta el número de la fila cuando está libre y autogenera lo
+            // contrario. Así volver a subir el mismo archivo no duplica nada.
+            if ($codigo !== null) {
+                $datos['codigo_material'] = $codigo;
+            }
+
+            // El par solo se cambia cuando el archivo lo trae escrito: en blanco
+            // conserva el del material existente.
+            if (!$existe || $categoriaCodigo !== '') {
+                $datos['codigo_categoria'] = $existe ? $categoriaCodigo : $fragmentos[0];
+            }
+            if (!$existe || $baseCodigo !== '') {
+                $datos['codigo_base'] = $existe ? $baseCodigo : $fragmentos[1];
+            }
+            if ($categoriaTexto !== '') {
+                $datos['categoria'] = mb_substr($categoriaTexto, 0, 255);
+            } elseif (!$existe) {
+                $datos['categoria'] = '';
+            }
+
             $registros[] = [
-                'datos' => [
-                    'codigo_material'            => $codigo,
-                    'nombre_base'                => $nombre,
-                    'categoria'                  => mb_substr(strip_tags((string) ($registro['categoria'] ?? '')), 0, 255),
-                    'unidad_inventario'          => $unidadInventario !== '' ? mb_substr($unidadInventario, 0, 255) : null,
-                    'maneja_color'               => $manejaColor,
-                    'maneja_talla'               => $manejaTalla,
-                    'maneja_otra_variante'       => $manejaOtraVariante,
-                    'estado'                     => ucfirst($estadoTexto),
-                    'variante_atributo_sugerido' => $atributoSugerido !== '' ? mb_substr($atributoSugerido, 0, 255) : null,
-                    'proveedor_habitual'         => $proveedorId,
-                    'observaciones'              => $observaciones !== '' ? mb_substr($observaciones, 0, 255) : null,
-                    'material_procesado'         => $parsearBooleano($registro['es_producido'] ?? '') ? 1 : 0,
-                    'costo_material'             => $costo,
-                ],
+                'datos'     => $datos,
+                'codigo'    => $codigo,
                 'colores'   => $colores,
                 'variantes' => $variantes,
                 'fila'      => $filaExcel,
@@ -1009,40 +1093,59 @@ class MaterialController extends Controller {
         if (!empty($proveedoresDesconocidos)) {
             return back()->with(
                 'error',
-                'Hay proveedores desconocidos: ' . implode(', ', $proveedoresDesconocidos)
+                'No se encontró este proveedor, escriba su NIT (ej: 900347285-7), su nombre comercial o su código: '
+                . $this->acortarAvisos(array_values($proveedoresDesconocidos), ', ')
             );
         }
         if (!empty($errores)) {
-            return back()->with('error', 'No se importó nada por los siguientes problemas: ' . implode(' | ', $errores));
+            return back()->with('error', 'No se importó nada por los siguientes problemas: ' . $this->acortarAvisos($errores));
         }
         if (empty($registros)) {
             return back()->with('error', 'El archivo no contiene filas de datos.');
         }
 
-        // 7. Insertar/actualizar registros (upsert por codigo_material)
+        // 7. Insertar/actualizar registros (se empareja por codigo_material)
         $creados     = 0;
         $actualizados = 0;
         DB::beginTransaction();
         try {
             foreach ($registros as $registro) {
-                $datos = $registro['datos'];
-                $codigoMaterial = $datos['codigo_material'];
-                $material = isset($existentes[$codigoMaterial])
-                    ? Material::find($existentes[$codigoMaterial])
-                    : null;
+                $fila = $registro['fila'];
 
-                if ($material) {
-                    $material->update($datos);
-                    $actualizados++;
-                } else {
-                    $material = Material::create($datos);
-                    $existentes[$codigoMaterial] = $material->id;
-                    $creados++;
+                try {
+                    $codigoMaterial = $registro['codigo'];
+                    $material = $codigoMaterial !== null && isset($existentes[$codigoMaterial])
+                        ? Material::find($existentes[$codigoMaterial])
+                        : null;
+
+                    if ($material) {
+                        $material->update($registro['datos']);
+                        $actualizados++;
+                    } else {
+                        // El modelo arma el código con el par, así que se registra
+                        // tanto el código generado como el que traía la fila.
+                        $material = Material::create($registro['datos']);
+                        $existentes[$material->codigo_material] ??= $material->id;
+                        if ($codigoMaterial !== null) {
+                            $existentes[$codigoMaterial] ??= $material->id;
+                        }
+                        $creados++;
+                    }
+
+                    // Lista vacía borra las variantes anteriores; los indicadores
+                    // maneja_color/maneja_otra_variante se recalculan dentro.
+                    $material->sincronizarVariantes($registro['colores'], $registro['variantes']);
+                } catch (\Throwable $e) {
+                    // El aviso tiene que decir en qué fila del Excel nació el
+                    // problema; si no, el usuario no sabe qué corregir. Las
+                    // validaciones del modelo no traen mensaje útil en
+                    // getMessage(), hay que leer su lista de errores.
+                    $mensaje = $e instanceof \Illuminate\Validation\ValidationException
+                        ? (string) collect($e->errors())->flatten()->first()
+                        : $e->getMessage();
+
+                    throw new \RuntimeException("Fila {$fila}: " . $mensaje, 0, $e);
                 }
-
-                // Lista vacía borra las variantes anteriores; los indicadores
-                // maneja_color/maneja_otra_variante se recalculan dentro.
-                $material->sincronizarVariantes($registro['colores'], $registro['variantes']);
             }
             DB::commit();
             $this->invalidarCache();
@@ -1055,8 +1158,60 @@ class MaterialController extends Controller {
         Myhelp::EscribirEnLog($this, 'uploadExcel OK', "Creados: {$creados} | Actualizados: {$actualizados}");
         $avisoIgnoradas = empty($encabezadosIgnorados)
             ? ''
-            : ' Columnas ignoradas (encabezado no reconocido): ' . implode(', ', $encabezadosIgnorados) . '.';
+            : ' Columnas ignoradas (encabezado no reconocido): ' . $this->acortarAvisos($encabezadosIgnorados, ', ') . '.';
         return back()->with('success', "Importación completada: {$creados} creado(s), {$actualizados} actualizado(s).{$avisoIgnoradas}");
+    }
+
+    /**
+     * Un aviso de importación no puede ocupar toda la pantalla: se muestran
+     * como máximo 7 y el resto se resume.
+     *
+     * @param array<int, string> $avisos
+     */
+    private function acortarAvisos(array $avisos, string $separador = ' | ', int $maximo = 7): string
+    {
+        $mostrados = array_slice(array_values($avisos), 0, $maximo);
+        $restantes = count($avisos) - count($mostrados);
+
+        if ($restantes > 0) {
+            $mostrados[] = "y {$restantes} más";
+        }
+
+        return implode($separador, $mostrados);
+    }
+
+    /**
+     * Id del proveedor que corresponde a lo que escribió el Excel: NIT, nombre
+     * comercial, razón social o código, ya normalizados. Si nada coincide de
+     * forma exacta, se acepta el único proveedor cuyo nombre contenga lo
+     * escrito (o al revés), así «Casa de los cordones» sirve para registrar
+     * «LA CASA DE LOS CORDONES». Con dos candidatos se prefiere avisar antes
+     * que asignar el proveedor equivocado.
+     *
+     * @param array<string, int> $porClave
+     * @param array<string, int> $porNombre
+     */
+    private function buscarProveedor(string $clave, array $porClave, array $porNombre): ?int
+    {
+        if ($clave === '') {
+            return null;
+        }
+        if (isset($porClave[$clave])) {
+            return $porClave[$clave];
+        }
+        if (mb_strlen($clave) < 5) {
+            return null;
+        }
+
+        $candidatos = [];
+
+        foreach ($porNombre as $claveProveedor => $idProveedor) {
+            if (str_contains($claveProveedor, $clave) || str_contains($clave, $claveProveedor)) {
+                $candidatos[$idProveedor] = true;
+            }
+        }
+
+        return count($candidatos) === 1 ? (int) array_key_first($candidatos) : null;
     }
 
 }

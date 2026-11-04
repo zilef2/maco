@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StoreTallerRequest;
+use App\Http\Requests\UpdateTallerRequest;
+use App\Models\Proveedor;
 use App\Models\Taller;
 use App\Jobs\ImportarTalleresJob;
 use App\Services\ExcelTalleresService;
@@ -43,13 +46,25 @@ class TallerController extends Controller {
             'total' => $Tallers->count(),
             'breadcrumbs' => [['label' => __('app.label.' . $this->FromController), 'href' => route($this->FromController . '.index')]],
             'title' => __('app.label.' . $this->FromController),
-            'filters' => $request->all(['search', 'field', 'order']),
+            'filters' => $request->all(['search', 'field', 'order', 'tipo_proveedor', 'estado']),
             'perPage' => (int)$perPage,
             'numberPermissions' => $numberPermissions,
-            'losSelect'         => $this->losSelect(Taller::class, ' Taller','proveeNombre'),
+            'losSelect'         => $this->losSelect(Taller::class, ' Taller', 'nombre_comercial'),
 	        'titulos'           => Taller::getFillableWithTypes(),
+            'opcionesSelect'    => $this->opcionesSelect(),
 
         ]);
+    }
+
+    /**
+     * Catálogos de la ficha del tercero, para los filtros y los formularios.
+     */
+    private function opcionesSelect(): array {
+        return [
+            'tipo_proveedor' => Proveedor::TIPOS_PROVEEDOR,
+            'estado' => Proveedor::ESTADOS,
+            'forma_pago' => Proveedor::FORMAS_PAGO,
+        ];
     }
 
 	public function losSelect(string $modelClass, string $label, string $displayField = 'nombre'): array {
@@ -73,13 +88,27 @@ class TallerController extends Controller {
 	}
     public function Filtros($request): Builder {
         $Tallers = Taller::query();
-        if ($request->has('search')) {
-            $Tallers = $Tallers->where(function ($query) use ($request) {
-                $query->where('nombre', 'LIKE', "%" . $request->search . "%")
-                    //                    ->orWhere('codigo', 'LIKE', "%" . $request->search . "%")
-                    //                    ->orWhere('identificacion', 'LIKE', "%" . $request->search . "%")
-                ;
+        if ($request->filled('search')) {
+            $buscar = '%' . $request->search . '%';
+            $Tallers = $Tallers->where(function ($query) use ($buscar) {
+                $query->where('nombre_comercial', 'LIKE', $buscar)
+                    ->orWhere('nombre', 'LIKE', $buscar)
+                    ->orWhere('codigo_taller', 'LIKE', $buscar)
+                    ->orWhere('nit', 'LIKE', $buscar)
+                    ->orWhere('razon_social', 'LIKE', $buscar)
+                    ->orWhere('ciudad', 'LIKE', $buscar)
+                    ->orWhere('direccion', 'LIKE', $buscar)
+                    ->orWhere('persona_contacto', 'LIKE', $buscar)
+                    ->orWhere('que_suministra', 'LIKE', $buscar);
             });
+        }
+
+        if ($request->filled('tipo_proveedor')) {
+            $Tallers = $Tallers->where('tipo_proveedor', $request->tipo_proveedor);
+        }
+
+        if ($request->filled('estado')) {
+            $Tallers = $Tallers->where('estado', $request->estado);
         }
 
         if ($request->has(['field', 'order'])) {
@@ -115,12 +144,10 @@ class TallerController extends Controller {
         return $paginated;
     }
 
-    public function store(Request $request): RedirectResponse {
+    public function store(StoreTallerRequest $request): RedirectResponse {
         $permissions = Myhelp::EscribirEnLog($this, ' Begin STORE:Tallers');
         DB::beginTransaction();
-//        $no_nada = $request->no_nada['id'];
-//        $request->merge(['no_nada_id' => $request->no_nada['id']]);
-        $Taller = Taller::create($request->all());
+        $Taller = Taller::create($request->validated());
 
         DB::commit();
         Myhelp::EscribirEnLog($this, 'STORE:Tallers EXITOSO', 'Taller id:' . $Taller->id . ' | ' . $Taller->nombre, false);
@@ -141,12 +168,11 @@ class TallerController extends Controller {
     public function edit($id) {
     }
 
-    public function update(Request $request, $id): RedirectResponse {
+    public function update(UpdateTallerRequest $request, $id): RedirectResponse {
         $permissions = Myhelp::EscribirEnLog($this, ' Begin UPDATE:Tallers');
         DB::beginTransaction();
         $Taller = Taller::findOrFail($id);
-//        $request->merge(['no_nada_id' => $request->no_nada['id']]);
-        $Taller->update($request->all());
+        $Taller->update($request->validated());
 
         DB::commit();
         Myhelp::EscribirEnLog($this, 'UPDATE:Tallers EXITOSO', 'Taller id:' . $Taller->id . ' | ' . $Taller->nombre, false);
@@ -179,9 +205,9 @@ class TallerController extends Controller {
     /**
      * Carga masiva de talleres desde Excel.
      *
-     * Valida de forma síncrona (tamaño, escaneo de seguridad, columnas y
-     * filas) y solo si todo está correcto encola el job que inserta en la BD
-     * y envía los correos.
+     * Valida de forma síncrona (tamaño, escaneo de seguridad, columnas y el
+     * destino de cada fila) y solo si todo está correcto encola el job que
+     * inserta en la BD y envía los correos.
      */
     public function uploadExcel(
         Request $request,
@@ -215,11 +241,16 @@ class TallerController extends Controller {
                 throw new \RuntimeException(implode(' | ', $problemas));
             }
 
-            // 2. Fila 1 = títulos. Solo se valida el encabezado aquí; el
-            // resto del archivo lo valida el job antes de insertar.
+            // 2. Fila 1 = títulos. El resto de los datos lo valida el job
+            // antes de insertar.
             $excel->validarEncabezados($archivo->getRealPath());
 
-            // 3. Todo válido: guardar y encolar la importación.
+            // 3. El destino de cada fila se comprueba aquí, no en el job: una
+            // celda vacía o fuera de la lista cancela la subida, porque esa
+            // fila terminaría guardada en la entidad equivocada.
+            $excel->validarDestinos($archivo->getRealPath());
+
+            // 4. Todo válido: guardar y encolar la importación.
             $rutaRelativa = $archivo->store('imports/talleres', 'local');
             if (!$rutaRelativa) {
                 throw new \RuntimeException('No se pudo guardar el archivo para su procesamiento.');

@@ -508,25 +508,28 @@ class OrdenProduccionController extends Controller {
                 ];
             });
 
-        $talleres = Taller::all(['id', 'nombre'])
+        $talleres = Taller::all(['id', 'nombre', 'nombre_comercial'])
             ->map(function ($taller) {
+                // Los desplegables muestran el nombre comercial del taller.
+                $nombre = $taller->nombre_comercial ?: $taller->nombre;
                 return [
                     'id'    => $taller->id,
                     'value' => $taller->id,
-                    'name'  => $taller->nombre,
-                    'label' => $taller->nombre,
-                    'title' => $taller->nombre,
+                    'name'  => $nombre,
+                    'label' => $nombre,
+                    'title' => $nombre,
                 ];
             });
 
-        $empresasExternas = EmpresaExterna::all(['id', 'nombre'])
+        $empresasExternas = EmpresaExterna::all(['id', 'nombre', 'nombre_comercial'])
             ->map(function ($empresa) {
+                $nombre = $empresa->nombre_comercial ?: $empresa->nombre;
                 return [
                     'id'    => $empresa->id,
                     'value' => $empresa->id,
-                    'name'  => $empresa->nombre,
-                    'label' => $empresa->nombre,
-                    'title' => $empresa->nombre,
+                    'name'  => $nombre,
+                    'label' => $nombre,
+                    'title' => $nombre,
                 ];
             });
 

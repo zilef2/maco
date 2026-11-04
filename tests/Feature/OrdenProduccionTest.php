@@ -49,7 +49,7 @@ class OrdenProduccionTest extends TestCase
         $taller = Taller::create(['nombre' => 'Taller de prueba', 'direccion' => 'Calle 1 # 2-3']);
         $this->assertDatabaseHas('tallers', ['nombre' => 'Taller de prueba']);
 
-        $empresaExterna = EmpresaExterna::create(['nombre' => 'Empresa de prueba', 'actividad' => 'Confección']);
+        $empresaExterna = EmpresaExterna::create(['nombre_comercial' => 'Empresa de prueba', 'que_suministra' => 'Confección']);
         $this->assertDatabaseHas('empresa_externas', ['nombre' => 'Empresa de prueba']);
 
         $otroUsuario = User::factory()->create();

@@ -389,6 +389,8 @@ return [
 		'celular2' => 'Celular 2',
 		'material' => 'Material',
 		'codigo_material' => 'Código material',
+		'codigo_categoria' => 'Código categoría',
+		'codigo_base' => 'Código base',
 		'nombre_base' => 'Nombre base',
 		'unidad_inventario' => 'Unidad de inventario',
 		'variante_atributo_sugerido' => 'Variante (atributo sugerido)',

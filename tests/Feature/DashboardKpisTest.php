@@ -40,26 +40,36 @@ class DashboardKpisTest extends TestCase
             'pares_aprobados',
             'en_reparacion',
             'no_recuperables',
+            'detalles_pares_recibidos',
+            'detalles_pares_aprobados',
+            'detalles_en_reparacion',
+            'detalles_no_recuperables',
             'costo_materiales',
+            'detalles_costo_materiales',
             'desviacion_costos',
+            'detalles_desviacion_costos',
             'movimientos_entradas',
             'movimientos_salidas',
+            'detalles_movimientos',
             'ops_activas',
             'ops_recibiendo',
+            'detalles_ops_activas',
         ]]);
 
-        $this->assertSame([
-            'pares_recibidos' => 0,
-            'pares_aprobados' => 0,
-            'en_reparacion' => 0,
-            'no_recuperables' => 0,
-            'costo_materiales' => 0,
-            'desviacion_costos' => 0,
-            'movimientos_entradas' => 0,
-            'movimientos_salidas' => 0,
-            'ops_activas' => 0,
-            'ops_recibiendo' => 0,
-        ], $response->json('mes'));
+        $this->assertSame(0, $response->json('mes.pares_recibidos'));
+        $this->assertSame(0, $response->json('mes.pares_aprobados'));
+        $this->assertSame(0, $response->json('mes.en_reparacion'));
+        $this->assertSame(0, $response->json('mes.no_recuperables'));
+        $this->assertSame([], $response->json('mes.detalles_pares_recibidos'));
+        $this->assertSame([], $response->json('mes.detalles_pares_aprobados'));
+        $this->assertSame([], $response->json('mes.detalles_en_reparacion'));
+        $this->assertSame([], $response->json('mes.detalles_no_recuperables'));
+        $this->assertSame(0, $response->json('mes.costo_materiales'));
+        $this->assertSame(0, $response->json('mes.desviacion_costos'));
+        $this->assertSame(0, $response->json('mes.movimientos_entradas'));
+        $this->assertSame(0, $response->json('mes.movimientos_salidas'));
+        $this->assertSame(0, $response->json('mes.ops_activas'));
+        $this->assertSame(0, $response->json('mes.ops_recibiendo'));
     }
 
     /**
@@ -115,6 +125,21 @@ class DashboardKpisTest extends TestCase
         $this->assertSame(10, $mes['pares_recibidos']);
         $this->assertSame(5, $mes['pares_aprobados']);
         $this->assertSame(1, $mes['en_reparacion']);
+    }
+
+    public function test_devuelve_detalles_de_pares_recibidos_en_el_mes(): void
+    {
+        $op = $this->op($this->estado('Recibiendo'));
+        $this->recepcion($op, ['recibida' => 8, 'aprobada' => 6, 'reparacion' => 1, 'no_recuperable' => 1]);
+
+        $mes = $this->kpis();
+
+        $this->assertNotEmpty($mes['detalles_pares_recibidos']);
+        $this->assertSame(8, $mes['detalles_pares_recibidos'][0]['cantidad']);
+        $this->assertArrayHasKey('producto', $mes['detalles_pares_recibidos'][0]);
+        $this->assertArrayHasKey('op', $mes['detalles_pares_recibidos'][0]);
+        $this->assertArrayHasKey('talla', $mes['detalles_pares_recibidos'][0]);
+        $this->assertArrayHasKey('fecha', $mes['detalles_pares_recibidos'][0]);
     }
 
     /**

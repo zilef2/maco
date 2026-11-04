@@ -3,7 +3,7 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import DataPagination from '@/components/DataPagination.vue';
 import PrimaryButton from '@/components/PrimaryButton.vue';
 import { Head, Link, router } from '@inertiajs/vue3';
-import { reactive, watch } from 'vue';
+import { computed, reactive, watch } from 'vue';
 import pkg from 'lodash';
 
 import {
@@ -65,6 +65,15 @@ const props = defineProps({
     },
 });
 
+// Con la lista sin filtrar en la URL se arranca viendo solo los activos.
+const estadoPorDefecto = 'Activo';
+
+const opcionesEstado = [
+    { value: '', label: 'Ambos' },
+    { value: 'Activo', label: 'Activos' },
+    { value: 'Inactivo', label: 'Inactivos' },
+];
+
 const data = reactive({
     params: {
         search: props.filters?.search ?? '',
@@ -72,7 +81,7 @@ const data = reactive({
         order: props.filters?.order ?? 'desc',
         perPage: props.perPage ?? 10,
         tipo_proveedor: props.filters?.tipo_proveedor ?? '',
-        estado: props.filters?.estado ?? '',
+        estado: props.filters?.estado ?? estadoPorDefecto,
         forma_pago: props.filters?.forma_pago ?? '',
         clasificacion: props.filters?.clasificacion ?? '',
     },
@@ -84,6 +93,13 @@ const data = reactive({
 });
 
 const selectClass = 'h-9 rounded-md border border-input bg-background px-2.5 text-xs text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30';
+
+const segmentoClass = (activo: boolean) => [
+    'whitespace-nowrap border-l border-border px-2.5 text-xs font-medium transition first:border-l-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+    activo
+        ? 'bg-foreground text-background shadow-sm'
+        : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+];
 
 const aplicarFiltros = debounce(() => {
     const query = pickBy(data.params, (v) => v !== '' && v !== null && v !== undefined);
@@ -132,11 +148,19 @@ const cambiarPagina = (pagina: number) => {
 const limpiarFiltros = () => {
     data.params.search = '';
     data.params.tipo_proveedor = '';
-    data.params.estado = '';
+    data.params.estado = estadoPorDefecto;
     data.params.forma_pago = '';
     data.params.clasificacion = '';
     aplicarFiltros();
 };
+
+const hayFiltros = computed(
+    () => !!data.params.search
+        || !!data.params.tipo_proveedor
+        || data.params.estado !== estadoPorDefecto
+        || !!data.params.forma_pago
+        || !!data.params.clasificacion,
+);
 
 const abrirEditar = (proveedor: any) => {
     data.proveedorSeleccionado = proveedor;
@@ -258,23 +282,31 @@ const abrirEliminar = (proveedor: any) => {
                             </option>
                         </select>
 
-                        <select v-model="data.params.estado" :class="selectClass">
-                            <option value="">Todos los estados</option>
-                            <option
-                                v-for="opcion in (props.opcionesSelect?.estado || [])"
-                                :key="opcion"
-                                :value="opcion"
-                            >
-                                {{ opcion }}
-                            </option>
-                        </select>
+                        <div class="flex items-center gap-1.5">
+                            <span
+                                class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Estado</span>
+                            <div
+                                class="inline-flex h-9 items-stretch overflow-hidden rounded-md border border-border bg-card shadow-sm"
+                                role="group" aria-label="Filtrar proveedores por estado">
+                                <button
+                                    v-for="opcion in opcionesEstado"
+                                    :key="opcion.value || 'ambos'"
+                                    type="button"
+                                    :aria-pressed="data.params.estado === opcion.value"
+                                    :class="segmentoClass(data.params.estado === opcion.value)"
+                                    @click="data.params.estado = opcion.value"
+                                >
+                                    {{ opcion.label }}
+                                </button>
+                            </div>
+                        </div>
 
                         <select v-model.number="data.params.perPage" :class="selectClass">
                             <option v-for="n in [10, 25, 50, 100]" :key="n" :value="n">{{ n }} / pág</option>
                         </select>
 
                         <button
-                            v-if="data.params.search || data.params.tipo_proveedor || data.params.estado || data.params.forma_pago || data.params.clasificacion"
+                            v-if="hayFiltros"
                             type="button"
                             @click="limpiarFiltros"
                             class="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-card px-2.5 text-xs font-medium text-foreground shadow-sm transition hover:bg-muted"

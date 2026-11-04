@@ -78,6 +78,11 @@ const navDropdown: NavGroup[] = [
                 href: '/Taller',
                 icon: Building2,
             },
+            {
+                title: 'Proveedor',
+                href: '/Proveedor',
+                icon: Truck,
+            },
         ],
     },
     {
@@ -88,6 +93,11 @@ const navDropdown: NavGroup[] = [
                 title: 'FichaTecnicaMateriales',
                 href: '/FichaTecnicaMateriales',
                 icon: FileSpreadsheet,
+            },
+             {
+                title: 'Proceso',
+                href: '/Procesoop',
+                icon: LayoutGrid,
             },
             // {
             //     title: 'FichaEnsamble',
@@ -108,19 +118,15 @@ const navDropdown: NavGroup[] = [
 
         ],
     },
-    {
-        label: 'Mantenimiento',
-        icon: Layers,
-        items: [
-            {
-                title: 'Procesoop',
-                href: '/Procesoop',
-                icon: LayoutGrid,
-            },
-            //aquipuesSide
+    // {
+    //     label: 'Mantenimiento',
+    //     icon: Layers,
+    //     items: [
+           
+    //         //aquipuesSide
 
-        ],
-    },
+    //     ],
+    // },
     
     // {
     //     label: 'Listas',

@@ -36,7 +36,7 @@ const destory = () => {
                     {{ lang().t('app.label.delete') }} {{ props.title }}
                 </h2>
                 <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                    {{ lang().t('app.label.delete_confirm') }} <b>{{ props.Tallera?.name }}</b>?
+                    {{ lang().t('app.label.delete_confirm') }} <b>{{ props.Tallera?.nombre_comercial || props.Tallera?.nombre }}</b>?
                 </p>
                 <div class="mt-6 flex justify-end">
                     <SecondaryButton :disabled="form.processing" @click="emit('close')"> {{ lang().t('app.button.close')

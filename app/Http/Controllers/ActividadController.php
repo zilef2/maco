@@ -39,6 +39,22 @@ class ActividadController extends Controller
 
     private const METODOS_ESCRITURA = ['POST', 'PUT', 'PATCH', 'DELETE'];
 
+    /**
+     * Avisos del navegador: son el borde de una ausencia, no acciones del
+     * usuario. Se muestran aparte y convierten en pausa el salto que viene detrás.
+     */
+    private const MARCADORES = [
+        ActividadRegistro::ACCION_CIERRE_NAVEGADOR,
+        ActividadRegistro::ACCION_PESTANA_OCULTA,
+        ActividadRegistro::ACCION_PESTANA_VISIBLE,
+    ];
+
+    /**
+     * Sin aviso del navegador, un salto más largo que esto también es una pausa:
+     * nadie estuvo media hora mirando una pantalla sin hacer nada.
+     */
+    private const PAUSA_SEGUNDOS = 1800;
+
     /** Filas máximo por usuario para medir intervalos. */
     private const TOPES_SERIE = 4000;
 
@@ -73,6 +89,9 @@ class ActividadController extends Controller
         'cierreBloqueado' => 'Cierre bloqueado',
         'recepcionFueraDePlan' => 'Recepción fuera de plan',
         'numeroDuplicado' => 'Número de OP duplicado',
+        'cierre' => 'Cerró la pestaña',
+        'oculta' => 'Dejó la pestaña',
+        'visible' => 'Volvió a la pestaña',
     ];
 
     public function index(Request $request): Response
@@ -101,6 +120,7 @@ class ActividadController extends Controller
         return Inertia::render('actividad/Index', [
             'breadcrumbs' => [['title' => 'Actividad', 'href' => route('Actividad.index')]],
             'title' => 'Actividad y tiempos',
+            'esAmbienteTest' => config('app.env') === 'test' || app()->environment('test'),
             'filtro' => [
                 'dias' => $dias,
                 'factor' => $factor,
@@ -113,6 +133,7 @@ class ActividadController extends Controller
                 'factor' => self::FACTORES_PERMITIDOS,
                 'umbral' => self::UMBRALES_PERMITIDOS,
                 'focos' => ['todo' => 'Todo', 'acciones' => 'Solo acciones', 'navegacion' => 'Solo navegación'],
+                'pausa_min' => intdiv(self::PAUSA_SEGUNDOS, 60),
             ],
             'resumen' => $this->resumen($resumenBase, $desde),
             'porHora' => $this->porHora($resumenBase),
@@ -188,9 +209,8 @@ class ActividadController extends Controller
 
         return $series
             ->map(fn (Collection $serie) => $serie
-                ->filter(fn (object $paso) => $foco === 'acciones'
-                    ? $paso->tipo !== 'navegacion'
-                    : $paso->tipo === 'navegacion')
+                ->filter(fn (object $paso) => $paso->tipo === 'marcador'
+                    || ($foco === 'acciones' ? $paso->tipo !== 'navegacion' : $paso->tipo === 'navegacion'))
                 ->values())
             ->filter(fn (Collection $serie) => $serie->isNotEmpty());
     }
@@ -267,6 +287,7 @@ class ActividadController extends Controller
                 ->first(fn (object $fila) => $http !== null && $fila->modulo === $http->modulo)
                 ?? ($negocios[0] ?? $http ?? $grupo[0]);
             $metodo = $http?->metodo ?? $referencia->metodo;
+            $esMarcador = in_array($referencia->accion, self::MARCADORES, true);
 
             $pasos[] = (object) [
                 'id' => $referencia->id,
@@ -283,9 +304,11 @@ class ActividadController extends Controller
                 'duracion_ms' => $http?->duracion_ms ?? $referencia->duracion_ms,
                 'created_at' => $grupo[0]->created_at,
                 'fecha_ts' => $grupo[0]->fecha_ts,
-                'tipo' => $negocios !== []
-                    ? 'negocio'
-                    : (in_array($metodo, self::METODOS_ESCRITURA, true) ? 'escritura' : 'navegacion'),
+                'tipo' => $esMarcador
+                    ? 'marcador'
+                    : ($negocios !== []
+                        ? 'negocio'
+                        : (in_array($metodo, self::METODOS_ESCRITURA, true) ? 'escritura' : 'navegacion')),
                 'otras' => max(0, count($negocios) - 1),
             ];
         }
@@ -313,6 +336,10 @@ class ActividadController extends Controller
 
         foreach ($series as $serie) {
             foreach ($serie as $paso) {
+                if ($paso->tipo === 'marcador') {
+                    continue;
+                }
+
                 $hora = (int) Carbon::parse($paso->created_at)->format('G');
                 $acciones++;
                 $porHora[$hora]++;
@@ -395,27 +422,51 @@ class ActividadController extends Controller
     }
 
     /**
-     * Intervalos entre acciones consecutivas del mismo usuario.
+     * Saltos entre pasos consecutivos del mismo usuario.
      *
-     * @return array{intervalos: array<int,int>, pasos: array<int, array{fila: object, intervalo: int|null}>}
+     * Los avisos del navegador se devuelven dentro de `pasos`, para que el camino
+     * los dibuje, pero su función es marcar de `pausa` al paso que viene después:
+     * después de un «cerró la pestaña» el tiempo que sigue no es trabajo lento.
+     * Un salto largo sin aviso también es pausa (PAUSA_SEGUNDOS), y ninguno de los
+     * dos entra en la mediana: si no, una noche entre dos visitas volvería el
+     * umbral inservible para todo el día.
+     *
+     * @return array{intervalos: array<int,int>, pasos: array<int, array{fila: object, intervalo: int|null, pausa: bool}>}
      */
     private function intervalos(Collection $serie): array
     {
         $intervalos = [];
         $pasos = [];
         $anterior = null;
+        $seFue = false;
 
         foreach ($serie as $fila) {
+            if ($fila->tipo === 'marcador') {
+                // Las varias solapas del mismo usuario avisan en el mismo segundo:
+                // en el camino basta una línea que diga que el usuario se fue.
+                if ($seFue) {
+                    continue;
+                }
+
+                $pasos[] = ['fila' => $fila, 'intervalo' => null, 'pausa' => false];
+                $seFue = true;
+
+                continue;
+            }
+
             $segundos = $anterior === null
                 ? null
                 : $fila->fecha_ts - $anterior->fecha_ts;
 
-            if ($segundos !== null) {
+            $pausa = $segundos !== null && ($seFue || $segundos > self::PAUSA_SEGUNDOS);
+
+            if ($segundos !== null && ! $pausa) {
                 $intervalos[] = $segundos;
             }
 
-            $pasos[] = ['fila' => $fila, 'intervalo' => $segundos];
+            $pasos[] = ['fila' => $fila, 'intervalo' => $segundos, 'pausa' => $pausa];
             $anterior = $fila;
+            $seFue = false;
         }
 
         return ['intervalos' => $intervalos, 'pasos' => $pasos];
@@ -459,7 +510,9 @@ class ActividadController extends Controller
 
     /**
      * Ritmo de cada usuario: promedio y mediana entre acción y acción, con sus
-     * saltos anormales. Ordenado por anomalías para que lo raro salga primero.
+     * saltos anormales y sus pausas. Ordenado por anomalías para que lo raro
+     * salga primero. La mediana se calcula solo con los saltos dentro de una
+     * misma presencia, que es el ritmo real del usuario.
      */
     private function usuarios(Collection $series, int $factor, int $umbralMin): array
     {
@@ -473,9 +526,20 @@ class ActividadController extends Controller
             $conexiones = 0;
             $negocio = 0;
             $fallidas = 0;
+            $pausas = 0;
+            $pasosReales = 0;
 
             foreach ($pasos as $paso) {
-                if ($paso['intervalo'] !== null && $paso['intervalo'] > $umbral) {
+                if ($paso['fila']->tipo === 'marcador') {
+                    continue;
+                }
+
+                $pasosReales++;
+
+                // Estar sin el usuario delante no es un retraso de trabajo.
+                if ($paso['pausa']) {
+                    $pausas++;
+                } elseif ($paso['intervalo'] !== null && $paso['intervalo'] > $umbral) {
                     $anomalias++;
                 }
 
@@ -495,7 +559,8 @@ class ActividadController extends Controller
             $filas[] = [
                 'id' => (int) $usuarioId,
                 'nombre' => $serie->first()->nombre_usuario ?? 'Sin nombre',
-                'acciones' => $serie->count(),
+                'acciones' => $pasosReales,
+                'pausas' => $pausas,
                 'negocio' => $negocio,
                 'fallidas' => $fallidas,
                 'conexiones' => $conexiones,
@@ -531,6 +596,11 @@ class ActividadController extends Controller
         $filas = [];
         foreach ($pasos as $paso) {
             $fila = $paso['fila'];
+            $anormal = $fila->tipo !== 'marcador'
+                && ! $paso['pausa']
+                && $paso['intervalo'] !== null
+                && $paso['intervalo'] > $umbral;
+
             $filas[] = [
                 'hora' => Carbon::parse($fila->created_at)->format('d-m H:i:s'),
                 'etiqueta' => $this->etiqueta($fila),
@@ -546,7 +616,8 @@ class ActividadController extends Controller
                 'error' => $fila->error,
                 'duracion_ms' => $fila->duracion_ms,
                 'intervalo_seg' => $paso['intervalo'],
-                'anormal' => $paso['intervalo'] !== null && $paso['intervalo'] > $umbral,
+                'pausa' => $paso['pausa'],
+                'anormal' => $anormal,
             ];
         }
 
@@ -577,13 +648,25 @@ class ActividadController extends Controller
             $total = count($pasos);
 
             for ($i = 1; $i < $total; $i++) {
-                $clave = $this->etiqueta($pasos[$i - 1]['fila']) . '|' . $this->etiqueta($pasos[$i]['fila']);
+                $de = $pasos[$i - 1];
+                $a = $pasos[$i];
 
-                $pares[$clave] ??= ['de' => $this->etiqueta($pasos[$i - 1]['fila']), 'a' => $this->etiqueta($pasos[$i]['fila']), 'veces' => 0, 'segundos' => 0, 'anormales' => 0];
+                // Un salto que cruza una pausa, o que nace de un aviso del
+                // navegador, no forma parte del camino típico del usuario.
+                if ($a['intervalo'] === null
+                    || $a['pausa']
+                    || $de['fila']->tipo === 'marcador'
+                    || $a['fila']->tipo === 'marcador') {
+                    continue;
+                }
+
+                $clave = $this->etiqueta($de['fila']) . '|' . $this->etiqueta($a['fila']);
+
+                $pares[$clave] ??= ['de' => $this->etiqueta($de['fila']), 'a' => $this->etiqueta($a['fila']), 'veces' => 0, 'segundos' => 0, 'anormales' => 0];
                 $pares[$clave]['veces']++;
-                $pares[$clave]['segundos'] += (int) $pasos[$i]['intervalo'];
+                $pares[$clave]['segundos'] += (int) $a['intervalo'];
 
-                if ($pasos[$i]['intervalo'] > $umbral) {
+                if ($a['intervalo'] > $umbral) {
                     $pares[$clave]['anormales']++;
                 }
             }

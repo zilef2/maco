@@ -31,6 +31,9 @@ class RegistrarActividad
     /** Rutas que no son navegación de negocio sino pollings internos. */
     private const IGNORAR_RUTAS = [
         'dashboard.datos',
+        // El aviso del navegador ya deja su propia fila de acción; la petición
+        // que lo transporta no es un paso del usuario.
+        'sesion.estado',
     ];
 
     /**

@@ -6,162 +6,229 @@ import PrimaryButton from '@/components/PrimaryButton.vue';
 import SecondaryButton from '@/components/SecondaryButton.vue';
 import TextInput from '@/components/TextInput.vue';
 import { useForm } from '@inertiajs/vue3';
-import { onMounted, reactive, watchEffect } from 'vue';
-import '@vuepic/vue-datepicker/dist/main.css'
-import vSelect from "vue-select";
-import "vue-select/dist/vue-select.css";
-
-// --------------------------- ** -------------------------
+import { computed, reactive, watch } from 'vue';
 
 const props = defineProps({
-    show: Boolean,
-    title: String,
-    roles: Object,
-    titulos: Object, //parametros de la clase principal
-    losSelect: Object,
-    numberPermissions: Number,
-})
-const emit = defineEmits(["close"]);
-
-const data = reactive({
-    params: {
-        pregunta: ''
+    show: { type: Boolean, default: false },
+    title: { type: String, default: 'Taller' },
+    opcionesSelect: {
+        type: Object,
+        default: () => ({
+            tipo_proveedor: ['Materia prima', 'Servicio', 'Mixto', 'Otro'],
+            estado: ['Activo', 'Inactivo'],
+            forma_pago: ['Contado', 'Crédito 8 días', 'Crédito 15 días', 'Crédito 30 días', 'Anticipo', 'Otro'],
+        }),
     },
-})
-
-//very usefull
-const justNames = props.titulos.map(names => {
-    if (names['order'] !== 'noquiero'
-        // &&
-        // names['order'] !== 'noquiero1'
-    )
-        return names['order']
-})
-const form = useForm({ ...Object.fromEntries(justNames.map(field => [field, ''])) });
-onMounted(() => {
-    if (props.numberPermissions > 9) {
-
-        const valueRAn = Math.floor(Math.random() * (9) + 1)
-        form.nombre = 'nombre genenerico ' + (valueRAn);
-        form.codigo = (valueRAn);
-        // form.hora_inicial = '0'+valueRAn+':00'//temp
-        // form.fecha = '2023-06-01'
-
-    }
 });
 
-const printForm = [];
-props.titulos.forEach(names => {
-    if (names['order'] !== 'noquiero'
-        // && names['order'] !== 'noquiero1'
-    )
-        printForm.push({
-            idd: names['order'], label: names['label'], type: names['type']
-        })
+const emit = defineEmits(['close']);
+
+const form = useForm({
+    nit: '',
+    nombre_comercial: '',
+    razon_social: '',
+    direccion: '',
+    observaciones_direccion: '',
+    correo_electronico: '',
+    ciudad: '',
+    telefono_principal: '',
+    tipo_proveedor: '',
+    que_suministra: '',
+    persona_contacto: '',
+    celular_contacto: '',
+    forma_pago: '',
+    tiempo_entrega: '',
+    estado: 'Activo',
+    observaciones_generales: '',
 });
 
-function ValidarVacios() {
-    let result = true
-    printForm.forEach(element => {
-        if (!form[element.idd]) {
-            console.log("=>(Create.vue:70) falta esto papa element.idd", element.idd);
-            result = false
-            return result
-        }
+const estado = reactive({ guardarYContinuar: false });
+
+const etiquetas: Record<string, string> = {
+    nit: 'NIT',
+    nombre_comercial: 'Nombre',
+    razon_social: 'Razón social',
+    direccion: 'Dirección',
+    observaciones_direccion: 'Observaciones dirección',
+    correo_electronico: 'Correo',
+    ciudad: 'Ciudad',
+    telefono_principal: 'Teléfono',
+    tipo_proveedor: 'Tipo proveedor',
+    que_suministra: 'Qué suministra',
+    persona_contacto: 'Persona de contacto',
+    celular_contacto: 'Celular',
+    forma_pago: 'Plazo de pago',
+    tiempo_entrega: 'Tiempo habitual de entrega',
+    estado: 'Estado',
+    observaciones_generales: 'Observaciones generales',
+};
+
+const camposObligatorios = ['nombre_comercial', 'tipo_proveedor', 'estado'];
+
+const camposOpcionales = [
+    'nit',
+    'razon_social',
+    'direccion',
+    'observaciones_direccion',
+    'correo_electronico',
+    'ciudad',
+    'telefono_principal',
+    'que_suministra',
+    'persona_contacto',
+    'celular_contacto',
+    'forma_pago',
+    'tiempo_entrega',
+    'observaciones_generales',
+];
+
+const opcionesDe = (campo: string): string[] =>
+    (props.opcionesSelect as any)?.[campo] ?? [];
+
+const claseEstado = (opcion: string): string =>
+    opcion === 'Activo' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-rose-600 text-white shadow-sm';
+
+const inputClass =
+    'mt-1 block h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30';
+
+const closeModal = () => {
+    emit('close');
+    form.reset();
+    form.clearErrors();
+};
+
+const submit = (continuar = false) => {
+    estado.guardarYContinuar = continuar;
+    form.post(route('Taller.store'), {
+        preserveScroll: true,
+        onSuccess: () => {
+            form.reset();
+            form.clearErrors();
+            if (!continuar) emit('close');
+        },
     });
-    return result
-}
+};
 
-const create = () => {
-    if (ValidarVacios()) {
-        // console.log("🧈 debu pieza_id:", form.pieza_id);
-        form.post(route('Taller.store'), {
-            preserveScroll: true,
-            onSuccess: () => {
-                emit("close")
-                form.reset()
-            },
-            onError: () => null,
-            onFinish: () => null,
-        })
-    } else {
-        console.log('Hay campos vacios')
-    }
-}
+watch(
+    () => props.show,
+    (abierto) => {
+        if (abierto) {
+            form.reset();
+            form.clearErrors();
+            // codigo_taller lo genera el modelo (TAL-001, TAL-002, ...)
+            form.estado = 'Activo';
+        }
+    },
+);
 
-watchEffect(() => {
-    if (props.show) {
-        form.errors = {}
-    }
-})
-
-
-//very usefull
-const sexos = [{ label: 'Masculino', value: 0 }, { label: 'Femenino', value: 1 }];
+const opcionesEstado = computed(() => opcionesDe('estado'));
 </script>
 
 <template>
-    <section class="space-y-6">
-        <Modal :show="props.show" @close="emit('close')" :maxWidth="'xl4'">
-            <form class="p-6" @submit.prevent="create">
-                <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100">
-                    {{ lang().t('app.label.add') }} {{ props.title }}
-                </h2>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div v-for="(atributosform, indice) in printForm" :key="indice">
+    <Modal :show="props.show" @close="closeModal" maxWidth="xl6">
+        <form class="p-6" @submit.prevent="submit(false)">
+            <div class="border-b border-border pb-4">
+                <h2 class="text-lg font-semibold text-foreground">Nuevo taller</h2>
+                <p class="mt-1 text-sm text-muted-foreground">
+                    Datos generales, de contacto y comerciales del taller.
+                </p>
+            </div>
 
-                        <div v-if="atributosform.type === 'foreign'" id="SelectVue" class="">
-                            <label name="labelSelectVue"> {{ atributosform.label }} </label>
-                            <v-select :options="props.losSelect[0]" v-model="form[atributosform.idd]"
-                                :reduce="element => element.value" label="name"></v-select>
-                            <InputError class="mt-2" :message="form.errors[atributosform.idd]" />
-                        </div>
+            <div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <div v-for="campo in camposObligatorios" :key="campo">
+                    <InputLabel :for="campo" :value="etiquetas[campo]" />
 
-
-                        <!-- tiempo -->
-                        <div v-else-if="atributosform.type === 'time'" id="SelectVue">
-                            <InputLabel :for="atributosform.label"
-                                :value="lang().t('app.label')[atributosform.label]" />
-                            <TextInput :id="atributosform.idd" :type="atributosform.type" class="mt-1 block w-full"
-                                v-model="form[atributosform.idd]" required :placeholder="atributosform.label"
-                                :error="form.errors[atributosform.idd]" step="3600" />
-                            <InputError class="mt-2" :message="form.errors[atributosform.idd]" />
-                        </div>
-
-
-                        <!-- normal -->
-                        <div v-else class="">
-                            <InputLabel :for="atributosform.label"
-                                :value="lang().t('app.label')[atributosform.label]" />
-                            <TextInput :id="atributosform.idd" :type="atributosform.type" class="mt-1 block w-full"
-                                v-model="form[atributosform.idd]" required :placeholder="atributosform.label"
-                                :error="form.errors[atributosform.idd]" />
-                            <InputError class="mt-2" :message="form.errors[atributosform.idd]" />
-                        </div>
+                    <div
+                        v-if="campo === 'estado'"
+                        class="mt-1 inline-flex items-center gap-1 rounded-md border border-input bg-muted p-1"
+                        role="group"
+                        :aria-label="etiquetas[campo]"
+                    >
+                        <button
+                            v-for="opcion in opcionesEstado"
+                            :key="opcion"
+                            type="button"
+                            :aria-pressed="form[campo as keyof typeof form] === opcion"
+                            :class="[
+                                'rounded px-3 py-1.5 text-sm font-medium transition-colors',
+                                form[campo as keyof typeof form] === opcion
+                                    ? claseEstado(opcion)
+                                    : 'text-muted-foreground hover:bg-background hover:text-foreground',
+                            ]"
+                            @click="form[campo as keyof typeof form] = opcion as any"
+                        >
+                            {{ opcion }}
+                        </button>
                     </div>
+
+                    <select
+                        v-else-if="campo === 'tipo_proveedor'"
+                        :id="campo"
+                        v-model="form[campo as keyof typeof form]"
+                        :class="inputClass"
+                    >
+                        <option value="">Seleccione un tipo</option>
+                        <option v-for="opcion in opcionesDe(campo)" :key="opcion" :value="opcion">{{ opcion }}</option>
+                    </select>
+
+                    <TextInput
+                        v-else
+                        :id="campo"
+                        v-model="form[campo as keyof typeof form]"
+                        type="text"
+                        :class="inputClass"
+                        :error="form.errors[campo]"
+                    />
+                    <InputError class="mt-1" :message="form.errors[campo]" />
                 </div>
-                <div class=" my-8 flex justify-end">
-                    <SecondaryButton :disabled="form.processing" @click="emit('close')"> {{ lang().t('app.button.close')
-                        }}
-                    </SecondaryButton>
-                    <PrimaryButton class="ml-3" :class="{ 'opacity-25': form.processing }" :disabled="form.processing"
-                        @click="create">
-                        {{ lang().t('app.button.add') }} {{ form.processing ? '...' : '' }}
-                    </PrimaryButton>
+            </div>
+
+            <div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <div v-for="campo in camposOpcionales" :key="campo">
+                    <InputLabel :for="campo" :value="etiquetas[campo]" />
+
+                    <select
+                        v-if="campo === 'forma_pago'"
+                        :id="campo"
+                        v-model="form[campo as keyof typeof form]"
+                        :class="inputClass"
+                    >
+                        <option value="">Seleccione un plazo</option>
+                        <option v-for="opcion in opcionesDe(campo)" :key="opcion" :value="opcion">{{ opcion }}</option>
+                    </select>
+
+                    <TextInput
+                        v-else
+                        :id="campo"
+                        v-model="form[campo as keyof typeof form]"
+                        :type="campo === 'correo_electronico' ? 'email' : 'text'"
+                        :class="inputClass"
+                        :placeholder="campo === 'nit' ? 'Ej. 900.123.456-7' : campo === 'tiempo_entrega' ? 'Ej. 30 días' : ''"
+                        :error="form.errors[campo]"
+                    />
+                    <InputError class="mt-1" :message="form.errors[campo]" />
                 </div>
-            </form>
-        </Modal>
-    </section>
+            </div>
+
+            <p class="mt-4 text-xs text-muted-foreground">
+                El código del taller se genera solo al guardar (TAL-001, TAL-002, ...).
+            </p>
+
+            <div class="mt-6 flex justify-end gap-3 border-t border-border pt-4">
+                <SecondaryButton :disabled="form.processing" type="button" @click="closeModal">
+                    Cancelar
+                </SecondaryButton>
+                <PrimaryButton
+                    type="button"
+                    :disabled="form.processing"
+                    class="bg-muted-foreground hover:bg-foreground"
+                    @click="submit(true)"
+                >
+                    {{ form.processing && estado.guardarYContinuar ? 'Guardando...' : 'Guardar y continuar' }}
+                </PrimaryButton>
+                <PrimaryButton :disabled="form.processing" type="submit">
+                    {{ form.processing && !estado.guardarYContinuar ? 'Guardando...' : 'Guardar taller' }}
+                </PrimaryButton>
+            </div>
+        </form>
+    </Modal>
 </template>
-
-<style>
-[name="labelSelectVue"],
-.muted {
-    color: #1b416699;
-}
-
-[name="labelSelectVue"] {
-    /* font-size: 22px; */
-    font-weight: 600;
-}
-</style>

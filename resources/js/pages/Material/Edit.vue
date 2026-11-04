@@ -8,6 +8,7 @@ import TextInput from '@/components/TextInput.vue';
 import EditorMateriales from '@/pages/FichaTecnicaMateriales/EditorMateriales.vue';
 import { ClipboardDocumentListIcon, SwatchIcon } from '@heroicons/vue/24/solid';
 import { useForm } from '@inertiajs/vue3';
+import { normalizarFragmentoCodigo } from '@/lib/utils';
 import { computed, watchEffect } from 'vue';
 import '@vuepic/vue-datepicker/dist/main.css'
 import vSelect from "vue-select";
@@ -38,7 +39,7 @@ const form = useForm({
     last_purchase_price: '',
     last_purchase_date: new Date().toISOString().split('T')[0],
     materiales: [] as any[],
-    // Variantes: colores u otras variantes, nunca ambas.
+    // Variantes: colores y otras variantes conviven en el mismo material.
     colores: [] as string[],
     variantes: [] as string[],
 });
@@ -63,8 +64,8 @@ const esMaterialProcesado = computed(() => Number(form.material_procesado) === 1
 
 /**
  * Las listas de variantes se capturan como texto separado por coma o punto y
- * coma. Escribir en una lista limpia la otra: un material se identifica por
- * colores o por otras variantes, no por ambas.
+ * coma. Un material puede tener colores y otras variantes a la vez, así que
+ * escribir en una lista no toca la otra.
  */
 const parsearListaVariantes = (texto: string): string[] =>
     Array.from(new Set(texto.split(/[,;]+/).map((valor) => valor.trim()).filter(Boolean)));
@@ -73,7 +74,6 @@ const coloresTexto = computed({
     get: () => (form.colores ?? []).join(', '),
     set: (valor: string) => {
         form.colores = parsearListaVariantes(valor);
-        if (form.colores.length) form.variantes = [];
     },
 });
 
@@ -81,7 +81,6 @@ const variantesTexto = computed({
     get: () => (form.variantes ?? []).join(', '),
     set: (valor: string) => {
         form.variantes = parsearListaVariantes(valor);
-        if (form.variantes.length) form.colores = [];
     },
 });
 
@@ -193,7 +192,8 @@ const update = () => {
                         {{ lang().t('app.label.edit') }} {{ props.title }}
                     </h2>
                     <p class="mt-1.5 text-sm text-gray-500 dark:text-gray-400 pl-10">
-                        Modifica los datos del material. El código y la existencia no son editables.
+                        Modifica los datos del material. La existencia no es editable y el código se arma con el par
+                        categoría/base.
                     </p>
                 </div>
 
@@ -232,6 +232,35 @@ const update = () => {
                                         </span>
                                     </div>
                                     <InputError class="mt-2" :message="form.errors.estado" />
+                                </div>
+
+                                <!-- código material: lo arma el servidor con el par categoría/base -->
+                                <div v-else-if="atributosform.idd === 'codigo_material'">
+                                    <InputLabel :for="atributosform.label"
+                                        :value="lang().t('app.label')[atributosform.label] || atributosform.label" />
+                                    <TextInput :id="atributosform.idd" class="mt-1 block w-full bg-gray-100 dark:bg-gray-800/60 cursor-not-allowed opacity-70"
+                                        v-model="form[atributosform.idd]" disabled />
+                                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                        Se forma con el código de la categoría y el código base (TEX-LFI-4). Si cambias el
+                                        par, el material toma el siguiente número libre del prefijo nuevo.
+                                    </p>
+                                    <InputError class="mt-2" :message="form.errors[atributosform.idd]" />
+                                </div>
+
+                                <!-- par de códigos que forma el prefijo del material -->
+                                <div v-else-if="['codigo_categoria', 'codigo_base'].includes(atributosform.idd)">
+                                    <InputLabel :for="atributosform.label"
+                                        :value="lang().t('app.label')[atributosform.label] || atributosform.label" />
+                                    <TextInput :id="atributosform.idd" type="text"
+                                        class="mt-1 block w-full uppercase tracking-widest"
+                                        v-model="form[atributosform.idd]" :maxlength="3"
+                                        :placeholder="atributosform.idd === 'codigo_categoria' ? 'TEX' : 'LFI'"
+                                        @blur="form[atributosform.idd] = normalizarFragmentoCodigo(form[atributosform.idd])"
+                                        :error="form.errors[atributosform.idd]" />
+                                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                        Hasta 3 letras. Determina el prefijo del código del material.
+                                    </p>
+                                    <InputError class="mt-2" :message="form.errors[atributosform.idd]" />
                                 </div>
 
                                 <!-- proveedor habitual: FK hacia Proveedor -->
@@ -327,8 +356,8 @@ const update = () => {
                             Variantes del material
                         </h3>
                         <p class="text-xs text-gray-400 dark:text-gray-500 mb-3 pl-6">
-                            Registra los colores o las otras variantes (por ejemplo tallas). Separa los valores con coma.
-                            Un material no puede tener colores y otras variantes al mismo tiempo.
+                            Registra los colores y las otras variantes (por ejemplo tallas). Separa los valores con
+                            coma: un material sí puede tener las dos listas a la vez.
                         </p>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
                             <div>
@@ -338,7 +367,7 @@ const update = () => {
                                     placeholder="Rojo, Azul, Negro"
                                     :error="form.errors.colores" />
                                 <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                                    Si escribes colores, se limpian las otras variantes.
+                                    Al guardar, esta lista reemplaza los colores del material.
                                 </p>
                                 <InputError class="mt-2" :message="form.errors.colores" />
                             </div>
@@ -349,7 +378,7 @@ const update = () => {
                                     placeholder="S, M, L, XL"
                                     :error="form.errors.variantes" />
                                 <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                                    Si escribes otras variantes, se limpian los colores.
+                                    Al guardar, esta lista reemplaza las otras variantes del material.
                                 </p>
                                 <InputError class="mt-2" :message="form.errors.variantes" />
                             </div>

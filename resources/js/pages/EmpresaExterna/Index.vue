@@ -37,6 +37,14 @@ const props = defineProps({
     numberPermissions: Number,
     losSelect: Object,
     titulos: Array as () => any[],
+    opcionesSelect: {
+        type: Object,
+        default: () => ({
+            tipo_proveedor: ['Materia prima', 'Servicio', 'Mixto', 'Otro'],
+            estado: ['Activo', 'Inactivo'],
+            forma_pago: ['Contado', 'Crédito 8 días', 'Crédito 15 días', 'Crédito 30 días', 'Anticipo', 'Otro'],
+        }),
+    },
 });
 
 /* --------------------------------------------------------------------------
@@ -47,8 +55,11 @@ const props = defineProps({
 const filas = computed<any[]>(() => (props.empresa_externas as any[]) ?? []);
 
 const busqueda = ref('');
-const actividadFiltro = ref<string | 'todos'>('todos');
-const sortKey = ref('nombre');
+const tipoFiltro = ref<string | 'todos'>('todos');
+// 'Activo' es como abre la lista; '' es "Ambos".
+const estadoPorDefecto = 'Activo';
+const estadoFiltro = ref<string>(estadoPorDefecto);
+const sortKey = ref('nombre_comercial');
 const sortDir = ref<'asc' | 'desc'>('asc');
 const porPagina = ref<number>(props.perPage ?? 10);
 const pagina = ref(1);
@@ -64,36 +75,54 @@ const normalizar = (valor: any): string =>
 const preparadas = computed(() =>
     filas.value.map((e: any) => ({
         ...e,
-        _busqueda: normalizar([e.nombre, e.actividad, e.direccion, e.numero_contacto].join(' ')),
+        _busqueda: normalizar(
+            [
+                e.codigo_empresa_externa,
+                e.nit,
+                e.nombre_comercial,
+                e.nombre,
+                e.razon_social,
+                e.ciudad,
+                e.direccion,
+                e.persona_contacto,
+                e.que_suministra,
+            ].join(' '),
+        ),
     })),
 );
 
-const actividadesDisponibles = computed(() => {
-    const grupos = new Map<string, { value: string; count: number }>();
-    preparadas.value.forEach((e: any) => {
-        const raw = String(e.actividad ?? '').trim();
-        if (!raw) return;
-        const clave = normalizar(raw);
-        const prev = grupos.get(clave);
-        if (prev) {
-            prev.count++;
-        } else {
-            grupos.set(clave, { value: raw, count: 1 });
-        }
-    });
-    return Array.from(grupos.values()).sort((a, b) => a.value.localeCompare(b.value, 'es'));
-});
-
-const filtradas = computed(() =>
+// Base del segmento de estado: todo menos el estado, para que los conteos no
+// cambien al elegir una de sus opciones.
+const baseSinEstado = computed(() =>
     preparadas.value.filter((e: any) => {
         if (busqueda.value.trim() && !e._busqueda.includes(normalizar(busqueda.value))) {
             return false;
         }
-        if (actividadFiltro.value !== 'todos' && normalizar(e.actividad) !== normalizar(actividadFiltro.value)) {
+        if (tipoFiltro.value !== 'todos' && normalizar(e.tipo_proveedor) !== normalizar(tipoFiltro.value)) {
             return false;
         }
         return true;
     }),
+);
+
+const opcionesEstado = computed(() => [
+    { value: '', label: 'Ambos', count: baseSinEstado.value.length },
+    {
+        value: 'Activo',
+        label: 'Activos',
+        count: baseSinEstado.value.filter((e: any) => normalizar(e.estado) === 'activo').length,
+    },
+    {
+        value: 'Inactivo',
+        label: 'Inactivos',
+        count: baseSinEstado.value.filter((e: any) => normalizar(e.estado) === 'inactivo').length,
+    },
+]);
+
+const filtradas = computed(() =>
+    baseSinEstado.value.filter((e: any) =>
+        estadoFiltro.value ? normalizar(e.estado) === normalizar(estadoFiltro.value) : true,
+    ),
 );
 
 const collator = new Intl.Collator('es', { numeric: true, sensitivity: 'base' });
@@ -171,14 +200,19 @@ const indicador = (key: string) => (sortKey.value === key ? sortDir.value : null
 const ariaSort = (key: string): 'ascending' | 'descending' | 'none' =>
     sortKey.value !== key ? 'none' : sortDir.value === 'asc' ? 'ascending' : 'descending';
 
-const hayFiltros = computed(() => busqueda.value.trim() !== '' || actividadFiltro.value !== 'todos');
+const hayFiltros = computed(
+    () => busqueda.value.trim() !== ''
+        || tipoFiltro.value !== 'todos'
+        || estadoFiltro.value !== estadoPorDefecto,
+);
 
 const limpiarFiltros = () => {
     busqueda.value = '';
-    actividadFiltro.value = 'todos';
+    tipoFiltro.value = 'todos';
+    estadoFiltro.value = estadoPorDefecto;
 };
 
-watch([busqueda, actividadFiltro, porPagina], () => {
+watch([busqueda, tipoFiltro, estadoFiltro, porPagina], () => {
     pagina.value = 1;
 });
 
@@ -194,13 +228,26 @@ const chipClass = (activo: boolean) => [
 ];
 
 const columnas = [
-    { key: 'nombre', label: 'Nombre', sortable: true, headerClass: 'min-w-[200px]', cellClass: 'min-w-[200px]' },
-    { key: 'actividad', label: 'Actividad', sortable: true, headerClass: 'min-w-[160px]', cellClass: 'min-w-[160px]' },
-    { key: 'direccion', label: 'Dirección', sortable: true, headerClass: 'hidden min-w-[180px] lg:table-cell', cellClass: 'hidden min-w-[180px] lg:table-cell' },
-    { key: 'numero_contacto', label: 'Contacto', sortable: true, headerClass: 'min-w-[130px]', cellClass: 'min-w-[130px]' },
+    { key: 'codigo_empresa_externa', label: 'Código', sortable: true, headerClass: 'min-w-[110px]', cellClass: 'min-w-[110px]' },
+    { key: 'nombre_comercial', label: 'Empresa / Razón social', sortable: true, headerClass: 'min-w-[220px]', cellClass: 'min-w-[220px]' },
+    { key: 'nit', label: 'NIT', sortable: true, headerClass: 'min-w-[130px]', cellClass: 'min-w-[130px]' },
+    { key: 'tipo_proveedor', label: 'Tipo', sortable: true, headerClass: 'min-w-[130px]', cellClass: 'min-w-[130px]' },
+    { key: 'que_suministra', label: 'Qué suministra', sortable: true, headerClass: 'hidden min-w-[180px] xl:table-cell', cellClass: 'hidden min-w-[180px] xl:table-cell' },
+    { key: 'persona_contacto', label: 'Contacto / Celular', sortable: true, headerClass: 'min-w-[170px]', cellClass: 'min-w-[170px]' },
+    { key: 'ciudad', label: 'Ciudad / Dirección', sortable: true, headerClass: 'hidden min-w-[190px] lg:table-cell', cellClass: 'hidden min-w-[190px] lg:table-cell' },
+    { key: 'forma_pago', label: 'Plazo de pago', sortable: true, headerClass: 'hidden min-w-[130px] xl:table-cell', cellClass: 'hidden min-w-[130px] xl:table-cell' },
+    { key: 'tiempo_entrega', label: 'Entrega', sortable: true, headerClass: 'hidden min-w-[110px] xl:table-cell', cellClass: 'hidden min-w-[110px] xl:table-cell' },
+    { key: 'estado', label: 'Estado', sortable: true, headerClass: 'min-w-[110px]', cellClass: 'min-w-[110px]' },
 ] as const;
 
 const selectClass = 'h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30';
+
+const segmentoClass = (activo: boolean) => [
+    'whitespace-nowrap border-l border-border px-2.5 text-xs font-medium transition first:border-l-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+    activo
+        ? 'bg-foreground text-background shadow-sm'
+        : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+];
 
 /* ------------------------------- Acciones --------------------------------- */
 
@@ -312,7 +359,7 @@ const recargar = () => {
                             v-model="busqueda"
                             type="search"
                             aria-label="Buscar empresas externas"
-                            placeholder="Buscar nombre, actividad, dirección, contacto…"
+                            placeholder="Buscar por código, NIT, nombre, razón social, ciudad, contacto…"
                             class="h-9 w-full rounded-md border border-input bg-background pl-9 pr-9 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30"
                         />
                         <button
@@ -326,12 +373,32 @@ const recargar = () => {
                         </button>
                     </div>
 
-                    <select v-model="actividadFiltro" aria-label="Filtrar por actividad" :class="[selectClass, 'max-w-[210px]']">
-                        <option value="todos">Todas las actividades</option>
-                        <option v-for="act in actividadesDisponibles" :key="act.value" :value="act.value">
-                            {{ act.value }} ({{ act.count }})
+                    <select v-model="tipoFiltro" aria-label="Filtrar por tipo de proveedor" :class="[selectClass, 'max-w-[210px]']">
+                        <option value="todos">Todos los tipos</option>
+                        <option v-for="opcion in (props.opcionesSelect?.tipo_proveedor || [])" :key="opcion" :value="opcion">
+                            {{ opcion }}
                         </option>
                     </select>
+
+                    <div class="flex items-center gap-1.5">
+                        <span
+                            class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Estado</span>
+                        <div
+                            class="inline-flex h-9 items-stretch overflow-hidden rounded-md border border-border bg-card shadow-sm"
+                            role="group" aria-label="Filtrar empresas externas por estado">
+                            <button
+                                v-for="opcion in opcionesEstado"
+                                :key="opcion.value || 'ambos'"
+                                type="button"
+                                :aria-pressed="estadoFiltro === opcion.value"
+                                :class="segmentoClass(estadoFiltro === opcion.value)"
+                                @click="estadoFiltro = opcion.value"
+                            >
+                                {{ opcion.label }}
+                                <span class="ml-1 tabular-nums opacity-70">{{ opcion.count }}</span>
+                            </button>
+                        </div>
+                    </div>
 
                     <select v-model.number="porPagina" aria-label="Filas por página" :class="selectClass">
                         <option v-for="n in [10, 25, 50, 100]" :key="n" :value="n">{{ n }} / página</option>
@@ -350,7 +417,7 @@ const recargar = () => {
 
                 <!-- Tabla -->
                 <div class="ee-scroll max-h-[68vh] overflow-auto overscroll-contain">
-                    <table class="w-full min-w-[720px] border-collapse text-sm">
+                    <table class="w-full min-w-[1000px] border-collapse text-sm">
                         <thead>
                             <tr>
                                 <th
@@ -406,32 +473,94 @@ const recargar = () => {
                                 :key="empresa.id"
                                 class="group border-b border-border/60 transition-colors last:border-0 hover:bg-muted/40"
                             >
+                                <td class="px-3 py-3 align-top font-mono text-xs font-semibold text-foreground">
+                                    {{ empresa.codigo_empresa_externa || `EMP-${empresa.id}` }}
+                                </td>
+
                                 <td class="px-3 py-3 align-top">
-                                    <div class="flex items-center gap-2">
+                                    <div class="flex items-start gap-2">
                                         <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-indigo-50 text-indigo-600 dark:bg-indigo-500/10 dark:text-indigo-300">
                                             <BuildingOffice2Icon class="h-4 w-4" />
                                         </span>
-                                        <span class="truncate font-medium text-foreground" :title="empresa.nombre">{{ empresa.nombre || '—' }}</span>
+                                        <div class="flex min-w-0 max-w-[220px] flex-col gap-0.5">
+                                            <span
+                                                class="truncate font-medium text-foreground"
+                                                :title="empresa.nombre_comercial || empresa.nombre"
+                                            >
+                                                {{ empresa.nombre_comercial || empresa.nombre || '—' }}
+                                            </span>
+                                            <span
+                                                v-if="empresa.razon_social"
+                                                class="truncate text-[11px] text-muted-foreground"
+                                                :title="empresa.razon_social"
+                                            >
+                                                {{ empresa.razon_social }}
+                                            </span>
+                                        </div>
                                     </div>
+                                </td>
+
+                                <td class="px-3 py-3 align-top text-xs tabular-nums text-muted-foreground">
+                                    {{ empresa.nit || '—' }}
                                 </td>
 
                                 <td class="px-3 py-3 align-top">
                                     <span
-                                        v-if="empresa.actividad"
+                                        v-if="empresa.tipo_proveedor"
                                         class="inline-flex items-center rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300"
                                     >
-                                        {{ empresa.actividad }}
+                                        {{ empresa.tipo_proveedor }}
                                     </span>
                                     <span v-else class="text-xs text-muted-foreground">—</span>
                                 </td>
 
-                                <td class="hidden px-3 py-3 align-top lg:table-cell">
-                                    <span class="text-sm text-foreground">{{ empresa.direccion || '—' }}</span>
+                                <td class="hidden px-3 py-3 align-top xl:table-cell">
+                                    <span class="block max-w-[180px] truncate text-xs text-muted-foreground" :title="empresa.que_suministra">
+                                        {{ empresa.que_suministra || '—' }}
+                                    </span>
                                 </td>
 
                                 <td class="px-3 py-3 align-top">
-                                    <span v-if="empresa.numero_contacto" class="tabular-nums text-sm text-foreground">{{ empresa.numero_contacto }}</span>
-                                    <span v-else class="text-xs text-muted-foreground">—</span>
+                                    <div class="flex max-w-[190px] flex-col gap-0.5 text-xs">
+                                        <span class="font-medium text-foreground" :title="empresa.persona_contacto">
+                                            {{ empresa.persona_contacto || '—' }}
+                                        </span>
+                                        <span class="text-muted-foreground">
+                                            {{ empresa.celular_contacto || empresa.telefono_principal || '—' }}
+                                        </span>
+                                    </div>
+                                </td>
+
+                                <td class="hidden px-3 py-3 align-top lg:table-cell">
+                                    <div class="flex max-w-[190px] flex-col gap-0.5 text-xs">
+                                        <span class="font-medium text-foreground">{{ empresa.ciudad || '—' }}</span>
+                                        <span class="truncate text-[11px] text-muted-foreground" :title="empresa.direccion">
+                                            {{ empresa.direccion || '—' }}
+                                        </span>
+                                    </div>
+                                </td>
+
+                                <td class="hidden px-3 py-3 align-top text-xs text-foreground xl:table-cell">
+                                    {{ empresa.forma_pago || '—' }}
+                                </td>
+
+                                <td class="hidden px-3 py-3 align-top text-xs text-muted-foreground xl:table-cell">
+                                    {{ empresa.tiempo_entrega || '—' }}
+                                </td>
+
+                                <td class="px-3 py-3 align-top">
+                                    <span
+                                        class="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium"
+                                        :class="empresa.estado === 'Inactivo'
+                                            ? 'border-slate-200 bg-slate-50 text-slate-700 dark:border-slate-500/30 dark:bg-slate-500/10 dark:text-slate-300'
+                                            : 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'"
+                                    >
+                                        <span
+                                            class="h-1.5 w-1.5 rounded-full"
+                                            :class="empresa.estado === 'Inactivo' ? 'bg-slate-400' : 'bg-emerald-500'"
+                                        />
+                                        {{ empresa.estado || 'Activo' }}
+                                    </span>
                                 </td>
 
                                 <td
@@ -587,21 +716,19 @@ const recargar = () => {
         <!-- Modales -->
         <Create
             v-if="can(['create EmpresaExterna'])"
-            :numberPermissions="props.numberPermissions"
             :show="data.createOpen"
             @close="data.createOpen = false"
             :title="props.title"
+            :opcionesSelect="props.opcionesSelect"
         />
 
         <Edit
             v-if="can(['update EmpresaExterna'])"
-            :titulos="props.titulos"
-            :numberPermissions="props.numberPermissions"
             :show="data.editOpen"
             @close="data.editOpen = false"
             :EmpresaExternaa="data.EmpresaExternao"
             :title="props.title"
-            :losSelect="props.losSelect"
+            :opcionesSelect="props.opcionesSelect"
         />
 
         <Delete

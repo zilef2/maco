@@ -606,6 +606,264 @@ export const explicaciones: Explicacion[] = [
             'tabla material_movimientos (tipo_movimiento salida, motivo «Salida de materiales a taller…»)',
         ],
     },
+    {
+        id: 'material-codigo-del-material',
+        categoria: 'Material',
+        categoriaLabel: 'Materiales',
+        subcategoria: 'Código del material',
+        titulo: 'Cómo se forma el código CAT-BASE-N y qué pasa al cambiar el par',
+        resumen:
+            'El código del material ya no es un consecutivo global (MAT-30): se arma con el código de la categoría, el código base y el número libre más alto de esa combinación, sin ceros a la izquierda.',
+        etiquetas: [
+            'codigo material',
+            'codigo categoria',
+            'codigo base',
+            'consecutivo',
+            'prefijo',
+            'TEX-LFI-4',
+            'MAT-30',
+            'ceros a la izquierda',
+            'abreviatura',
+            'formato del codigo',
+        ],
+        actualizada: '2026-11-03',
+        bloques: [
+            {
+                tipo: 'texto',
+                texto:
+                    'El par «código de categoría + código base» define el prefijo y el número es exclusivo de esa combinación. Si TEX-LFI llega hasta el 3, el siguiente material del par es TEX-LFI-4. El número lo asigna el servidor: en el formulario el campo de código sale bloqueado.',
+            },
+            {
+                tipo: 'lista',
+                items: [
+                    'Cada fragmento admite hasta 3 letras, siempre en mayúsculas y sin tildes; lo que sobre se corta.',
+                    'Si el par queda vacío, se abrevia el nombre: una palabra aporta sus tres primeras letras (Textil → TEX) y varias palabras aportan sus iniciales completadas con las letras siguientes (Lana fibrada → LFA).',
+                    'Los ceros a la izquierda se borran al guardar y al importar: TEX-LFL-005 queda TEX-LFL-5.',
+                    'Misma combinación de par → número consecutivo; par distinto → el material salta al siguiente número libre del prefijo nuevo y el número que deja vuelve a estar disponible.',
+                    'El código es único en la base de datos, así que dos materiales no pueden quedar con el mismo.',
+                ],
+            },
+            {
+                tipo: 'preguntas',
+                pares: [
+                    {
+                        pregunta: '¿Se puede escribir el código a mano?',
+                        respuesta:
+                            'No desde la app: el formulario lo genera. En el Excel sí se puede traer el número, y se respeta cuando está libre; si ya existe, la fila actualiza ese material en vez de crear otro.',
+                    },
+                    {
+                        pregunta: '¿Qué pasó con los MAT-30 antiguos?',
+                        respuesta:
+                            'La migración los reescribió al formato nuevo derivando el par de su categoría y su nombre base. Los que ya venían en formato CAT-BASE-N conservaron su número.',
+                    },
+                    {
+                        pregunta: '¿Por qué una fila nueva quedó con un número distinto al del archivo?',
+                        respuesta:
+                            'Porque ese número ya estaba usado por otro material del mismo par: se toma el siguiente libre. Para editar un material existente, el código de la fila debe coincidir con uno cargado (con o sin ceros).',
+                    },
+                ],
+            },
+            {
+                tipo: 'nota',
+                tono: 'info',
+                texto:
+                    'Volver a subir el mismo archivo no duplica materiales: las filas se emparejan por código normalizado, así que la segunda pasada actualiza en vez de crear.',
+            },
+        ],
+        fuentes: [
+            'app/Models/Material.php (aplicarReglaDelCodigo, normalizarCodigo, normalizarFragmento, abreviar, siguienteConsecutivo)',
+            'app/Http/Controllers/MaterialController.php (store y uploadExcel usan la regla; el código no se copia del cliente en store)',
+            'app/Services/PlantillasExcelService.php (columnas y ejemplos del formato de materiales)',
+            'database/migrations/2026_11_03_110000_add_codigo_categoria_base_a_materials_table.php (columnas nuevas y reescritura de códigos MAT-##)',
+            'resources/js/pages/Material/Create.vue y Edit.vue (código bloqueado, par editable en mayúsculas)',
+            'resources/js/pages/Material/ImportarMaterialModal.vue (ayuda del formato, leída de la misma plantilla)',
+        ],
+    },
+    {
+        id: 'material-proveedor-habitual-del-excel',
+        categoria: 'Material',
+        categoriaLabel: 'Materiales',
+        subcategoria: 'Proveedor habitual',
+        titulo: 'Cómo reconoce el Excel el proveedor: primero el NIT, después el nombre',
+        resumen:
+            'La columna «Proveedor habitual» se resuelve contra los proveedores ya registrados; el NIT (900347285-7) es la forma fiable porque el nombre puede estar escrito con un artículo de más o de menos.',
+        etiquetas: [
+            'proveedor habitual',
+            'nit',
+            'nit proveedor',
+            '900347285-7',
+            'proveedor desconocido',
+            'nombre comercial',
+            'razon social',
+            'codigo proveedor',
+            'importar excel',
+            'no se importó nada',
+        ],
+        actualizada: '2026-11-03',
+        bloques: [
+            {
+                tipo: 'texto',
+                texto:
+                    'El Excel nunca guarda el nombre del proveedor: la columna «Proveedor habitual» de materiales se convierte al id del proveedor registrado. Si ninguna fila coincide, la subida se cancela en bloque y el aviso lista los proveedores que no se encontraron (máximo 7, con «y N más» al final).',
+            },
+            {
+                tipo: 'pasos',
+                items: [
+                    'Si la celda trae NIT, se buscan sus dígitos: 900347285-7, 9003472857 y 900.347.285-7 son el mismo proveedor.',
+                    'Si no, se prueba el nombre comercial, la razón social o el código (PRV-8 / PROV-8 / el id), sin mayúsculas, tildes ni puntuación.',
+                    'El artículo inicial no cuenta: «Casa de los cordones» registra a «LA CASA DE LOS CORDONES».',
+                    'De último recurso, si el texto escrito está contenido en el nombre de un solo proveedor (o al revés), se usa ese; con dos candidatos posibles se prefiere avisar antes que asignar el equivocado.',
+                    'La columna es opcional: si la dejas vacía el material queda sin proveedor habitual, y en una fila que actualiza un material existente eso le borra el que tuviera.',
+                ],
+            },
+            {
+                tipo: 'preguntas',
+                pares: [
+                    {
+                        pregunta: '¿Por qué salió «No se encontró este proveedor…» si el proveedor sí existe?',
+                        respuesta:
+                            'Porque el nombre registrado tiene una palabra que la hoja no repitió (el artículo «LA», por ejemplo). Escribir el NIT resuelve la duda sin ambigüedad.',
+                    },
+                    {
+                        pregunta: '¿Puedo traer el NIT en su propia columna?',
+                        respuesta:
+                            'Sí. Si la hoja tiene una columna «NIT proveedor», se usa esa primero y «Proveedor habitual» queda como respaldo.',
+                    },
+                ],
+            },
+            {
+                tipo: 'nota',
+                tono: 'info',
+                texto:
+                    'En los terceros (talleres, empresas externas y proveedores) el NIT también es la clave con la que se empareja una subida: mismo NIT ⇒ se actualiza el registro existente.',
+            },
+        ],
+        fuentes: [
+            'app/Http/Controllers/MaterialController.php (uploadExcel: índices de proveedores y buscarProveedor)',
+            'app/Services/PlantillasExcelService.php (descripcion de la columna Proveedor habitual)',
+            'app/Http/Controllers/ImportarExcelController.php (tarjeta de materiales del Centro de Importación)',
+            'resources/js/pages/Material/ImportarMaterialModal.vue (ayuda visible al subir)',
+            'tabla proveedors (nit, nombre_comercial, razon_social, codigo_proveedor, nombre)',
+        ],
+    },
+    {
+        id: 'material-columna-procesado-del-excel',
+        categoria: 'Material',
+        categoriaLabel: 'Materiales',
+        subcategoria: 'Importar Excel',
+        titulo: 'La columna «Procesado» va obligatoriamente junto a «Costo»',
+        resumen:
+            'El Excel de materiales debe traer la columna «Procesado» (si o no) en la celda inmediatamente siguiente a «Costo»; sin ese orden la subida se cancela antes de leer una sola fila.',
+        etiquetas: [
+            'procesado',
+            'material procesado',
+            'columna costo',
+            'orden de columnas',
+            'si o no',
+            'importar excel',
+            'plantilla materiales',
+        ],
+        actualizada: '2026-11-03',
+        bloques: [
+            {
+                tipo: 'texto',
+                texto:
+                    '«Procesado» alimenta material_procesado (0 o 1), el dato que decide si el material entra con ficha técnica propia al recibirlo en una OP. Es columna obligatoria del formato y solo se acepta escrita al lado de «Costo», que es el orden de la plantilla descargable.',
+            },
+            {
+                tipo: 'pasos',
+                items: [
+                    'Se leen los títulos de la fila 1 ignorando mayúsculas, tildes y puntuación: «Costo», «Costo material» o «Procesado (si/no)» se reconocen igual.',
+                    'Falta «Procesado»: el aviso de columnas requeridas lista la que faltó y no se importa nada.',
+                    '«Procesado» existe pero en otra columna: el aviso dice en qué letra debía estar (la siguiente a «Costo»).',
+                    'Sin columna «Costo» no se puede ubicar la vecina, así que también se rechaza el archivo.',
+                    'Celda vacía ⇒ se guarda 0 (no procesado). Cualquier texto que no sea si o no cancela la subida y avisa la fila exacta (Fila 7: …).',
+                ],
+            },
+            {
+                tipo: 'preguntas',
+                pares: [
+                    {
+                        pregunta: '¿Por qué el orden de las columnas ahora importa?',
+                        respuesta:
+                            'Porque el archivo se lee por posición, no por rótulos sueltos: exigir «Procesado» pegada a «Costo» mantiene la subida alineada con la plantilla que descarga la app y evita costos sin su bandera de procesado.',
+                    },
+                    {
+                        pregunta: '¿Sirve «Es producido», como en archivos antiguos?',
+                        respuesta:
+                            'No. Ese rótulo ya no se reconoce; la columna se llama «Procesado», igual que en el listado y en la ficha del material.',
+                    },
+                ],
+            },
+        ],
+        fuentes: [
+            'app/Http/Controllers/MaterialController.php (uploadExcel: columnas requeridas, chequeo de posición y validación si/no)',
+            'app/Services/PlantillasExcelService.php (columnas Costo y Procesado del formato de materiales)',
+            'resources/js/pages/Material/ImportarMaterialModal.vue (ayuda visible al subir)',
+            'materials.material_procesado',
+        ],
+    },
+    {
+        id: 'material-colores-y-otras-variantes',
+        categoria: 'Material',
+        categoriaLabel: 'Materiales',
+        subcategoria: 'Variantes del material',
+        titulo: 'Un material sí puede tener colores y otras variantes al mismo tiempo',
+        resumen:
+            'Colores y «otras variantes» (tallas, presentaciones) son dos listas independientes del mismo material: se pueden llenar las dos, en el formulario y en el Excel.',
+        etiquetas: [
+            'colores',
+            'variantes',
+            'otras variantes',
+            'tallas',
+            'maneja_color',
+            'maneja_otra_variante',
+            'material_variants',
+            'las dos listas',
+            'a la vez',
+            'tipo color variante',
+        ],
+        actualizada: '2026-11-03',
+        bloques: [
+            {
+                tipo: 'texto',
+                texto:
+                    'Cada variante se guarda en material_variants con su tipo: «color» o «variante». Como el tipo distingue las listas, un mismo material puede registrar Rojo, Azul y también S, M, L. Antes se obligaba a elegir una de las dos; esa restricción ya no existe.',
+            },
+            {
+                tipo: 'lista',
+                items: [
+                    'En el formulario, escribir en una lista no borra la otra; al guardar, cada lista reemplaza por completo a las variantes de su tipo.',
+                    'Los indicadores «maneja_color» y «maneja_otra_variante» los recalcula el servidor a partir de las listas, así nunca quedan desincronizados.',
+                    'En el Excel, las columnas Color y Talla / tamaño se pueden llenar las dos en la misma fila.',
+                    'El orden dentro de cada tipo es el índice de la lista (0, 1, 2…), que es lo que usan los editores de tallas de la OP.',
+                    'Una lista vacía sí borra las variantes de ese tipo: si la fila no trae Color, el material se queda sin colores.',
+                ],
+            },
+            {
+                tipo: 'preguntas',
+                pares: [
+                    {
+                        pregunta: '¿Y la columna legacy «todas las variantes»?',
+                        respuesta:
+                            'Solo se usa cuando la fila no trae Color ni Talla / tamaño; si no, se ignora para no registrar dos veces la misma lista.',
+                    },
+                    {
+                        pregunta: '¿Qué error aparecía antes al subir las dos listas?',
+                        respuesta:
+                            '«Un material no puede tener colores y otras variantes al mismo tiempo». Ese tope se quitó; ahora cualquier fallo al guardar avisa además en qué fila del Excel ocurrió (Fila 7: …).',
+                    },
+                ],
+            },
+        ],
+        fuentes: [
+            'app/Models/Material.php (sincronizarVariantes: dos listas, dos tipos)',
+            'app/Models/MaterialVariant.php (TIPO_COLOR / TIPO_VARIANTE)',
+            'app/Http/Controllers/MaterialController.php (store, update y uploadExcel; el aviso por fila al insertar)',
+            'resources/js/pages/Material/Create.vue y Edit.vue (las listas ya no se limpian entre sí)',
+            'app/Services/PlantillasExcelService.php (columnas Color y Talla / tamaño del formato)',
+        ],
+    },
 ];
 
 /** Categorías en el orden en que aparecen, cada una con sus subcategorías. */

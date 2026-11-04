@@ -234,7 +234,7 @@ class DashboardController extends Controller
         $inicioMes = now()->startOfMonth();
 
         $recepciones = RecepcionCalidad::query()
-            ->with('productoReferencia')
+            ->with(['productoReferencia', 'ordenProduccion'])
             ->where('fecha_recepcion', '>=', $inicioMes)
             ->get();
 
@@ -263,33 +263,55 @@ class DashboardController extends Controller
                 ? ($r->productoReferencia->Titulo_Shopify ?: ($r->productoReferencia->Codigo_interno ?: 'Producto #' . $r->productoReferencia->id))
                 : ('Producto #' . ($r->producto_referencia_id ?? 'N/A'));
 
+            $opNumero = $r->ordenProduccion?->numero_op ?: ($r->orden_produccion_id ? 'OP #' . $r->orden_produccion_id : '-');
+            $talla = $r->talla ?: '-';
+            $fecha = $r->fecha_recepcion
+                ? Carbon::parse($r->fecha_recepcion)->format('d/m/Y')
+                : ($r->created_at ? Carbon::parse($r->created_at)->format('d/m/Y') : '-');
             $createdAt = $r->created_at ? (string) $r->created_at : null;
+            $observaciones = $r->observaciones ?: '';
 
             if ($recibida > 0) {
                 $detallesRecibidos[] = [
                     'producto' => $productoNombre,
+                    'op' => $opNumero,
+                    'talla' => $talla,
                     'cantidad' => $recibida,
+                    'fecha' => $fecha,
+                    'observaciones' => $observaciones,
                     'created_at' => $createdAt,
                 ];
             }
             if ($aprobada > 0) {
                 $detallesAprobados[] = [
                     'producto' => $productoNombre,
+                    'op' => $opNumero,
+                    'talla' => $talla,
                     'cantidad' => $aprobada,
+                    'fecha' => $fecha,
+                    'observaciones' => $observaciones,
                     'created_at' => $createdAt,
                 ];
             }
             if ($reparacion > 0) {
                 $detallesReparacion[] = [
                     'producto' => $productoNombre,
+                    'op' => $opNumero,
+                    'talla' => $talla,
                     'cantidad' => $reparacion,
+                    'fecha' => $fecha,
+                    'observaciones' => $observaciones,
                     'created_at' => $createdAt,
                 ];
             }
             if ($noRecuperable > 0) {
                 $detallesNoRecuperables[] = [
                     'producto' => $productoNombre,
+                    'op' => $opNumero,
+                    'talla' => $talla,
                     'cantidad' => $noRecuperable,
+                    'fecha' => $fecha,
+                    'observaciones' => $observaciones,
                     'created_at' => $createdAt,
                 ];
             }
@@ -299,6 +321,24 @@ class DashboardController extends Controller
             ->where('created_at', '>=', $inicioMes)
             ->selectRaw('ROUND(SUM(costo_total)) AS total')->value('total');
 
+        $detallesCostoMateriales = OrdenProduccionCostoMaterial::query()
+            ->with(['ordenProduccion', 'material'])
+            ->where('created_at', '>=', $inicioMes)
+            ->orderByDesc('created_at')
+            ->limit(100)
+            ->get()
+            ->map(function ($c) {
+                return [
+                    'op' => $c->ordenProduccion?->numero_op ?: ('OP #' . $c->orden_produccion_id),
+                    'material' => $c->material?->nombre_base ?: ($c->material?->codigo_material ?: ('Material #' . $c->material_id)),
+                    'cantidad' => (float) $c->cantidad,
+                    'precio_unitario' => (float) $c->precio_unitario,
+                    'costo_total' => (float) $c->costo_total,
+                    'fecha' => $c->created_at ? Carbon::parse($c->created_at)->format('d/m/Y') : '-',
+                ];
+            })
+            ->all();
+
         $desviacion = CierreOrdenProduccion::query()
             ->join('orden_produccions', 'orden_produccions.id', '=', 'cierre_orden_produccions.orden_produccion_id')
             ->where('cierre_orden_produccions.fecha_cierre', '>=', $inicioMes)
@@ -306,11 +346,49 @@ class DashboardController extends Controller
             ->selectRaw('ROUND(SUM(cierre_orden_produccions.costo_real_final - orden_produccions.costo_total)) AS delta')
             ->value('delta');
 
+        $detallesDesviacion = CierreOrdenProduccion::query()
+            ->with('ordenProduccion')
+            ->where('cierre_orden_produccions.fecha_cierre', '>=', $inicioMes)
+            ->whereNotNull('cierre_orden_produccions.costo_real_final')
+            ->orderByDesc('cierre_orden_produccions.fecha_cierre')
+            ->limit(100)
+            ->get()
+            ->map(function ($c) {
+                $planeado = (float) ($c->ordenProduccion?->costo_total ?? 0);
+                $real = (float) $c->costo_real_final;
+                return [
+                    'op' => $c->ordenProduccion?->numero_op ?: ('OP #' . $c->orden_produccion_id),
+                    'planeado' => $planeado,
+                    'real' => $real,
+                    'desviacion' => $real - $planeado,
+                    'fecha' => $c->fecha_cierre ? Carbon::parse($c->fecha_cierre)->format('d/m/Y') : '-',
+                ];
+            })
+            ->all();
+
         $movimientos = MaterialMovimiento::query()
             ->where('created_at', '>=', $inicioMes)
             ->selectRaw("SUM(CASE WHEN tipo_movimiento = 'entrada' THEN 1 ELSE 0 END) AS entradas,
                 SUM(CASE WHEN tipo_movimiento = 'salida' THEN 1 ELSE 0 END) AS salidas")
             ->first();
+
+        $detallesMovimientos = MaterialMovimiento::query()
+            ->with('material')
+            ->where('created_at', '>=', $inicioMes)
+            ->whereIn('tipo_movimiento', ['entrada', 'salida'])
+            ->orderByDesc('created_at')
+            ->limit(100)
+            ->get()
+            ->map(function ($m) {
+                return [
+                    'material' => $m->material?->nombre_base ?: ($m->material?->codigo_material ?: ('Material #' . $m->material_id)),
+                    'tipo' => $m->tipo_movimiento,
+                    'cantidad' => (float) $m->cantidad,
+                    'motivo' => $m->motivo ?: '-',
+                    'fecha' => $m->created_at ? Carbon::parse($m->created_at)->format('d/m/Y') : '-',
+                ];
+            })
+            ->all();
 
         $opsActivas = OrdenProduccion::query()
             ->whereHas('estadoOp', fn ($q) => $q->where('nombre', '!=', 'Cerrada'))
@@ -319,6 +397,23 @@ class DashboardController extends Controller
         $recibiendo = OrdenProduccion::query()
             ->whereHas('estadoOp', fn ($q) => $q->where('nombre', 'Recibiendo'))
             ->count();
+
+        $detallesOpsActivas = OrdenProduccion::query()
+            ->with(['estadoOp', 'productoReferencia'])
+            ->whereHas('estadoOp', fn ($q) => $q->where('nombre', '!=', 'Cerrada'))
+            ->orderByDesc('created_at')
+            ->limit(100)
+            ->get()
+            ->map(function ($o) {
+                return [
+                    'op' => $o->numero_op,
+                    'producto' => $o->productoReferencia?->Titulo_Shopify ?: ($o->productoReferencia?->Codigo_interno ?: 'Producto #' . $o->producto_referencia_id),
+                    'cantidad' => (int) $o->cantidad_planificada,
+                    'estado' => $o->estadoOp?->nombre ?: 'Sin estado',
+                    'fecha' => $o->created_at ? Carbon::parse($o->created_at)->format('d/m/Y') : '-',
+                ];
+            })
+            ->all();
 
         return [
             'pares_recibidos' => $recibidos,
@@ -330,11 +425,15 @@ class DashboardController extends Controller
             'detalles_en_reparacion' => $detallesReparacion,
             'detalles_no_recuperables' => $detallesNoRecuperables,
             'costo_materiales' => (int) ($compras ?? 0),
+            'detalles_costo_materiales' => $detallesCostoMateriales,
             'desviacion_costos' => (int) ($desviacion ?? 0),
+            'detalles_desviacion_costos' => $detallesDesviacion,
             'movimientos_entradas' => (int) ($movimientos->entradas ?? 0),
             'movimientos_salidas' => (int) ($movimientos->salidas ?? 0),
+            'detalles_movimientos' => $detallesMovimientos,
             'ops_activas' => $opsActivas,
             'ops_recibiendo' => $recibiendo,
+            'detalles_ops_activas' => $detallesOpsActivas,
         ];
     }
 

@@ -1,6 +1,8 @@
 import '../css/app.css';
 
 import { createInertiaApp } from '@inertiajs/vue3';
+import FloatingVue from 'floating-vue'; // Importa el plugin
+import 'floating-vue/dist/style.css';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import type { DefineComponent } from 'vue';
 import { createApp, h } from 'vue';
@@ -8,20 +10,14 @@ import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
 import { ZiggyVue } from 'ziggy-js';
 import { initializeTheme } from './composables/useAppearance';
-import FloatingVue from 'floating-vue'; // Importa el plugin
-import 'floating-vue/dist/style.css';
+import { vigilarSesionNavegador } from './lib/sesionNavegador';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Macondas';
 
 createInertiaApp({
     title: (title: string): string => `${title} - ${appName}`,
-    resolve: (name: string) => resolvePageComponent(
-        `./pages/${name}.vue`,
-        import.meta.glob<DefineComponent>([
-            './pages/**/*.vue',
-            '!./pages/generic/**',
-        ])
-    ),
+    resolve: (name: string) =>
+        resolvePageComponent(`./pages/${name}.vue`, import.meta.glob<DefineComponent>(['./pages/**/*.vue', '!./pages/generic/**'])),
     setup: function ({ el, App, props, plugin }): void {
         createApp({ render: () => h(App, props) })
             .use(plugin)
@@ -75,3 +71,4 @@ createInertiaApp({
 
 // This will set light / dark mode on page load...
 initializeTheme();
+vigilarSesionNavegador();

@@ -3,32 +3,21 @@ import Modal from '@/components/Modal.vue';
 import PrimaryButton from '@/components/PrimaryButton.vue';
 import DangerButton from '@/components/DangerButton.vue';
 import { useForm } from '@inertiajs/vue3';
-import { ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 
 const props = defineProps({
     show: Boolean,
+    /** Columnas del formato, tal como las define PlantillasExcelService. */
+    columnas: {
+        type: Array as () => Array<{ titulo: string; requerida: boolean; descripcion: string }>,
+        default: () => [],
+    },
 });
 
 const emit = defineEmits(['close']);
 
-const COLUMNAS_REQUERIDAS = [
-    'Codigo material (formato MAT-30)',
-    'Nombre base',
-    'Categoria',
-    'Unidad inventario (cantidad entera ≥ 0 → existencia actual)',
-    'Estado (Activo o Inactivo)',
-    'Todas_las_variantes (separadas por coma; puede venir vacía)',
-];
-
-const COLUMNAS_OPCIONALES = [
-    'Maneja color (SI/NO)',
-    'Maneja talla (SI/NO)',
-    'Maneja otra variante (SI/NO)',
-    'Variante atributo sugerido (puede ir vacío)',
-    'Proveedor habitual (debe existir en la app)',
-    'Observaciones (puede ir vacío)',
-    'Es producido (SI/NO)',
-];
+const requeridas = computed(() => props.columnas.filter((columna) => columna.requerida));
+const opcionales = computed(() => props.columnas.filter((columna) => !columna.requerida));
 
 const form = useForm({
     archivo: null as File | null,
@@ -168,39 +157,48 @@ watch(() => props.show, (visible) => {
                 <p class="mt-3 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                     Requeridas
                 </p>
-                <ul class="mt-1 list-decimal ml-5 space-y-0.5 text-gray-600 dark:text-gray-300">
-                    <li v-for="col in COLUMNAS_REQUERIDAS" :key="col">{{ col }}</li>
+                <ul class="mt-1 space-y-1 text-gray-600 dark:text-gray-300">
+                    <li v-for="columna in requeridas" :key="columna.titulo" class="text-xs">
+                        <span class="font-medium text-gray-800 dark:text-gray-200">{{ columna.titulo }}</span>
+                        <span v-if="columna.descripcion" class="text-gray-500 dark:text-gray-400"> — {{ columna.descripcion }}</span>
+                    </li>
                 </ul>
                 <p class="mt-3 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                     Opcionales
                 </p>
-                <ul class="mt-1 list-decimal ml-5 space-y-0.5 text-gray-600 dark:text-gray-300">
-                    <li v-for="col in COLUMNAS_OPCIONALES" :key="col">{{ col }}</li>
+                <ul class="mt-1 space-y-1 text-gray-600 dark:text-gray-300">
+                    <li v-for="columna in opcionales" :key="columna.titulo" class="text-xs">
+                        <span class="font-medium text-gray-800 dark:text-gray-200">{{ columna.titulo }}</span>
+                        <span v-if="columna.descripcion" class="text-gray-500 dark:text-gray-400"> — {{ columna.descripcion }}</span>
+                    </li>
                 </ul>
                 <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
-                    Si el código de material ya existe, se actualiza el registro; si no, se crea. Las columnas
-                    "Maneja …" y "Es producido" admiten SI / NO en mayúsculas o minúsculas.
+                    Si el código de material ya existe, se actualiza el registro; si no, se crea con el siguiente número
+                    libre del par. Las columnas "Maneja …" y "Procesado" admiten SI / NO en mayúsculas o minúsculas.
+                    <b>Procesado</b> es obligatoria y debe estar en la columna inmediatamente siguiente a
+                    <b>Costo</b>; si el archivo no trae ese orden no se importa nada.
                 </p>
                 <p class="mt-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-800 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-200">
-                    <b>Unidad inventario</b> trae la cantidad de stock y se guarda como existencia actual (no se generan
-                    movimientos ni precios). Los materiales nuevos quedan con unidad "Unidades"; los existentes conservan
-                    la unidad que ya tenían.
+                    <b>Código material</b> vale CAT-BASE-N (TEX-LFI-4) y se guarda sin ceros a la izquierda: un
+                    TEX-LFL-005 del archivo pasa a TEX-LFL-5. <b>Unidad inventario</b> es el nombre de la unidad (Metros,
+                    Unidades), no la cantidad en stock.
                 </p>
                 <p class="mt-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-200">
-                    <b>Todas_las_variantes</b> alimenta la tabla de variantes del material: sus valores van separados
-                    por coma y el orden es la posición en la lista (0, 1, 2…). El tipo se deduce con
-                    <b>Maneja color</b>: SI los guarda como colores, NO como otras variantes. La lista reemplaza por
-                    completo las variantes del material, así que si la dejas vacía se borran las que tuviera.
+                    <b>Color</b> y <b>Talla / tamaño</b> alimentan la tabla de variantes del material: sus valores van
+                    separados por coma y el orden es la posición en la lista (0, 1, 2…). La lista reemplaza por completo
+                    las variantes del material, así que si la dejas vacía se borran las que tuviera.
                 </p>
                 <p class="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
-                    Un mismo material no puede manejar colores y otras variantes a la vez: deja
-                    <b>Maneja color</b> en SI <i>o</i> <b>Maneja otra variante</b> en SI, nunca ambas.
+                    Un material sí puede tener <b>Color</b> e <i>otras variantes</i> (tallas) a la vez: las dos columnas
+                    se guardan como dos listas independientes de variantes.
                 </p>
                 <p class="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200">
-                    <b>Proveedor habitual</b> tiene que existir en la app: sirve su nombre comercial, su razón social o
-                    su código (PRV-1, PROV-1 o el id). La comparación ignora mayúsculas, tildes y espacios. Si algún
-                    proveedor no está registrado, no se importa nada y aparece el aviso
-                    "Hay proveedores desconocidos: …".
+                    <b>Proveedor habitual</b> tiene que existir en la app. La forma más segura de escribirlo es su
+                    <b>NIT</b> tal como está registrado (900347285-7); también valen su nombre comercial, su razón
+                    social o su código (PRV-8, PROV-8 o el id). La comparación ignora mayúsculas, tildes, espacios,
+                    puntos y guiones, y acepta el nombre sin el artículo inicial («Casa de los cordones» sirve para
+                    «LA CASA DE LOS CORDONES»). Si ningún proveedor coincide, no se importa nada y el aviso lista los
+                    que faltaron.
                 </p>
                 <a
                     :href="route('Material.plantilla-excel')"

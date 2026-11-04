@@ -5,148 +5,230 @@ import Modal from '@/components/Modal.vue';
 import PrimaryButton from '@/components/PrimaryButton.vue';
 import SecondaryButton from '@/components/SecondaryButton.vue';
 import TextInput from '@/components/TextInput.vue';
-import { BuildingOffice2Icon, ClipboardDocumentListIcon, PhoneIcon } from '@heroicons/vue/24/solid';
 import { useForm } from '@inertiajs/vue3';
-import { watchEffect } from 'vue';
+import { computed, reactive, watch } from 'vue';
 
-const props = withDefaults(
-    defineProps<{
-        show: boolean;
-        title?: string;
-        titulos?: any[];
-        losSelect?: any;
-        numberPermissions?: number;
-    }>(),
-    {
-        show: false,
-        title: '',
-        titulos: () => [],
-        losSelect: () => ({}),
-        numberPermissions: 0,
-    }
-);
-
-const emit = defineEmits<{
-    (e: 'close'): void;
-}>();
-
-const form = useForm({
-    nombre: '',
-    actividad: '',
-    direccion: '',
-    numero_contacto: '',
+const props = defineProps({
+    show: { type: Boolean, default: false },
+    title: { type: String, default: 'Empresa externa' },
+    opcionesSelect: {
+        type: Object,
+        default: () => ({
+            tipo_proveedor: ['Materia prima', 'Servicio', 'Mixto', 'Otro'],
+            estado: ['Activo', 'Inactivo'],
+            forma_pago: ['Contado', 'Crédito 8 días', 'Crédito 15 días', 'Crédito 30 días', 'Anticipo', 'Otro'],
+        }),
+    },
 });
 
-const create = () => {
+const emit = defineEmits(['close']);
+
+const form = useForm({
+    nit: '',
+    nombre_comercial: '',
+    razon_social: '',
+    direccion: '',
+    observaciones_direccion: '',
+    correo_electronico: '',
+    ciudad: '',
+    telefono_principal: '',
+    tipo_proveedor: '',
+    que_suministra: '',
+    persona_contacto: '',
+    celular_contacto: '',
+    forma_pago: '',
+    tiempo_entrega: '',
+    estado: 'Activo',
+    observaciones_generales: '',
+});
+
+const estado = reactive({ guardarYContinuar: false });
+
+const etiquetas: Record<string, string> = {
+    nit: 'NIT',
+    nombre_comercial: 'Nombre',
+    razon_social: 'Razón social',
+    direccion: 'Dirección',
+    observaciones_direccion: 'Observaciones dirección',
+    correo_electronico: 'Correo',
+    ciudad: 'Ciudad',
+    telefono_principal: 'Teléfono',
+    tipo_proveedor: 'Tipo proveedor',
+    que_suministra: 'Qué suministra',
+    persona_contacto: 'Persona de contacto',
+    celular_contacto: 'Celular',
+    forma_pago: 'Plazo de pago',
+    tiempo_entrega: 'Tiempo habitual de entrega',
+    estado: 'Estado',
+    observaciones_generales: 'Observaciones generales',
+};
+
+const camposObligatorios = ['nombre_comercial', 'tipo_proveedor', 'estado'];
+
+const camposOpcionales = [
+    'nit',
+    'razon_social',
+    'direccion',
+    'observaciones_direccion',
+    'correo_electronico',
+    'ciudad',
+    'telefono_principal',
+    'que_suministra',
+    'persona_contacto',
+    'celular_contacto',
+    'forma_pago',
+    'tiempo_entrega',
+    'observaciones_generales',
+];
+
+const opcionesDe = (campo: string): string[] =>
+    (props.opcionesSelect as any)?.[campo] ?? [];
+
+const opcionesEstado = computed(() => opcionesDe('estado'));
+
+const claseEstado = (opcion: string): string =>
+    opcion === 'Activo' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-rose-600 text-white shadow-sm';
+
+const inputClass =
+    'mt-1 block h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30';
+
+const closeModal = () => {
+    emit('close');
+    form.reset();
+    form.clearErrors();
+};
+
+const submit = (continuar = false) => {
+    estado.guardarYContinuar = continuar;
     form.post(route('EmpresaExterna.store'), {
         preserveScroll: true,
         onSuccess: () => {
-            emit('close');
             form.reset();
+            form.clearErrors();
+            if (!continuar) emit('close');
         },
-        onError: () => null,
-        onFinish: () => null,
     });
 };
 
-watchEffect(() => {
-    if (props.show) {
-        form.errors = {};
-        form.reset();
-        if ((props.numberPermissions ?? 0) > 99) {
-            const valueRAn = Math.floor(Math.random() * 9 + 1);
-            form.nombre = 'Empresa Genérica ' + valueRAn;
-            form.actividad = 'Confección';
-            form.direccion = 'Av. Siempreviva ' + valueRAn;
-            form.numero_contacto = '70' + String(valueRAn).repeat(6);
+watch(
+    () => props.show,
+    (abierto) => {
+        if (abierto) {
+            form.reset();
+            form.clearErrors();
+            // codigo_empresa_externa lo genera el modelo (EMP-001, EMP-002, ...)
+            form.estado = 'Activo';
         }
-    }
-});
+    },
+);
 </script>
 
 <template>
-    <section class="space-y-6">
-        <Modal :show="props.show" @close="emit('close')" :maxWidth="'xl4'">
-            <form class="p-0" @submit.prevent="create">
-                <!-- Encabezado -->
-                <div class="px-6 pt-6 pb-4 border-b border-gray-200 dark:border-gray-700 bg-gradient-to-r from-indigo-50 via-white to-violet-50 dark:from-gray-800 dark:via-gray-800 dark:to-gray-800 rounded-t-lg">
-                    <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                        <span class="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white">
-                            <BuildingOffice2Icon class="w-5 h-5" />
-                        </span>
-                        {{ lang().t('app.label.add') }} {{ props.title }}
-                    </h2>
-                    <p class="mt-1.5 text-sm text-gray-500 dark:text-gray-400 pl-10">
-                        Complete los datos de la nueva empresa externa.
-                    </p>
-                </div>
+    <Modal :show="props.show" @close="closeModal" maxWidth="xl6">
+        <form class="p-6" @submit.prevent="submit(false)">
+            <div class="border-b border-border pb-4">
+                <h2 class="text-lg font-semibold text-foreground">Nueva empresa externa</h2>
+                <p class="mt-1 text-sm text-muted-foreground">
+                    Datos generales, de contacto y comerciales de la empresa externa.
+                </p>
+            </div>
 
-                <div class="px-6 py-5 space-y-6 max-h-[70vh] overflow-y-auto scrollbar-table">
-                    <!-- Información principal -->
-                    <div>
-                        <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-1.5 mb-4">
-                            <ClipboardDocumentListIcon class="w-4 h-4 text-gray-400 dark:text-gray-500" />
-                            Información principal
-                        </h3>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
-                            <div class="md:col-span-2">
-                                <InputLabel for="nombre" :value="lang().t('app.label.nombre') || 'Nombre'" />
-                                <TextInput id="nombre" type="text" class="mt-1 block w-full"
-                                    v-model="form.nombre" required placeholder="Nombre de la empresa"
-                                    :error="form.errors.nombre" />
-                                <InputError class="mt-2" :message="form.errors.nombre" />
-                            </div>
+            <div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <div v-for="campo in camposObligatorios" :key="campo">
+                    <InputLabel :for="campo" :value="etiquetas[campo]" />
 
-                            <div>
-                                <InputLabel for="actividad" :value="lang().t('app.label.actividad') || 'Actividad'" />
-                                <TextInput id="actividad" type="text" class="mt-1 block w-full"
-                                    v-model="form.actividad" required placeholder="Ej. Confección, Bordado, Grabado"
-                                    :error="form.errors.actividad" />
-                                <InputError class="mt-2" :message="form.errors.actividad" />
-                            </div>
-
-                            <div>
-                                <InputLabel for="numero_contacto" :value="lang().t('app.label.numero_contacto') || 'Número de contacto'" />
-                                <TextInput id="numero_contacto" type="text" class="mt-1 block w-full"
-                                    v-model="form.numero_contacto" placeholder="Teléfono o celular"
-                                    :error="form.errors.numero_contacto" />
-                                <InputError class="mt-2" :message="form.errors.numero_contacto" />
-                            </div>
-                        </div>
+                    <div
+                        v-if="campo === 'estado'"
+                        class="mt-1 inline-flex items-center gap-1 rounded-md border border-input bg-muted p-1"
+                        role="group"
+                        :aria-label="etiquetas[campo]"
+                    >
+                        <button
+                            v-for="opcion in opcionesEstado"
+                            :key="opcion"
+                            type="button"
+                            :aria-pressed="form[campo as keyof typeof form] === opcion"
+                            :class="[
+                                'rounded px-3 py-1.5 text-sm font-medium transition-colors',
+                                form[campo as keyof typeof form] === opcion
+                                    ? claseEstado(opcion)
+                                    : 'text-muted-foreground hover:bg-background hover:text-foreground',
+                            ]"
+                            @click="form[campo as keyof typeof form] = opcion as any"
+                        >
+                            {{ opcion }}
+                        </button>
                     </div>
 
-                    <!-- Datos opcionales -->
-                    <div>
-                        <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-1.5 mb-1">
-                            <PhoneIcon class="w-4 h-4 text-gray-400 dark:text-gray-500" />
-                            Datos opcionales
-                        </h3>
-                        <p class="text-xs text-gray-400 dark:text-gray-500 mb-3 pl-6">
-                            Puede dejar estos campos vacíos y completarlos después.
-                        </p>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4 rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-4">
-                            <div class="md:col-span-2">
-                                <InputLabel for="direccion" :value="lang().t('app.label.direccion') || 'Dirección'" />
-                                <TextInput id="direccion" type="text" class="mt-1 block w-full"
-                                    v-model="form.direccion" placeholder="Dirección de la empresa (opcional)"
-                                    :error="form.errors.direccion" />
-                                <InputError class="mt-2" :message="form.errors.direccion" />
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                    <select
+                        v-else-if="campo === 'tipo_proveedor'"
+                        :id="campo"
+                        v-model="form[campo as keyof typeof form]"
+                        :class="inputClass"
+                    >
+                        <option value="">Seleccione un tipo</option>
+                        <option v-for="opcion in opcionesDe(campo)" :key="opcion" :value="opcion">{{ opcion }}</option>
+                    </select>
 
-                <!-- Pie -->
-                <div class="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3 bg-gray-50 dark:bg-gray-800/50 rounded-b-lg">
-                    <SecondaryButton :disabled="form.processing" @click="emit('close')">
-                        {{ lang().t('app.button.close') }}
-                    </SecondaryButton>
-                    <PrimaryButton class="ml-3" :class="{ 'opacity-25': form.processing }" :disabled="form.processing"
-                        @click="create">
-                        {{ lang().t('app.button.add') }} {{ form.processing ? '...' : '' }}
-                    </PrimaryButton>
+                    <TextInput
+                        v-else
+                        :id="campo"
+                        v-model="form[campo as keyof typeof form]"
+                        type="text"
+                        :class="inputClass"
+                        :error="form.errors[campo]"
+                    />
+                    <InputError class="mt-1" :message="form.errors[campo]" />
                 </div>
-            </form>
-        </Modal>
-    </section>
+            </div>
+
+            <div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <div v-for="campo in camposOpcionales" :key="campo">
+                    <InputLabel :for="campo" :value="etiquetas[campo]" />
+
+                    <select
+                        v-if="campo === 'forma_pago'"
+                        :id="campo"
+                        v-model="form[campo as keyof typeof form]"
+                        :class="inputClass"
+                    >
+                        <option value="">Seleccione un plazo</option>
+                        <option v-for="opcion in opcionesDe(campo)" :key="opcion" :value="opcion">{{ opcion }}</option>
+                    </select>
+
+                    <TextInput
+                        v-else
+                        :id="campo"
+                        v-model="form[campo as keyof typeof form]"
+                        :type="campo === 'correo_electronico' ? 'email' : 'text'"
+                        :class="inputClass"
+                        :placeholder="campo === 'nit' ? 'Ej. 900.123.456-7' : campo === 'tiempo_entrega' ? 'Ej. 15 días' : ''"
+                        :error="form.errors[campo]"
+                    />
+                    <InputError class="mt-1" :message="form.errors[campo]" />
+                </div>
+            </div>
+
+            <p class="mt-4 text-xs text-muted-foreground">
+                El código de la empresa se genera solo al guardar (EMP-001, EMP-002, ...).
+            </p>
+
+            <div class="mt-6 flex justify-end gap-3 border-t border-border pt-4">
+                <SecondaryButton :disabled="form.processing" type="button" @click="closeModal">
+                    Cancelar
+                </SecondaryButton>
+                <PrimaryButton
+                    type="button"
+                    :disabled="form.processing"
+                    class="bg-muted-foreground hover:bg-foreground"
+                    @click="submit(true)"
+                >
+                    {{ form.processing && estado.guardarYContinuar ? 'Guardando...' : 'Guardar y continuar' }}
+                </PrimaryButton>
+                <PrimaryButton :disabled="form.processing" type="submit">
+                    {{ form.processing && !estado.guardarYContinuar ? 'Guardando...' : 'Guardar empresa' }}
+                </PrimaryButton>
+            </div>
+        </form>
+    </Modal>
 </template>

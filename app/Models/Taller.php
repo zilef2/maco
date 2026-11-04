@@ -2,55 +2,47 @@
 
 namespace App\Models;
 
-use Illuminate\Support\Facades\DB;
+use App\Traits\HasFichaDeTercero;
+use App\Traits\HasFillableWithTypes;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 use Illuminate\Database\Eloquent\SoftDeletes;
 
-    class Taller extends Model
+class Taller extends Model
 {
     /** @use HasFactory<\Database\Factories\TallerFactory> */
     use HasFactory;
-    protected $fillable = ['nombre', 'direccion'];
+    use HasFillableWithTypes;
+    use HasFichaDeTercero;
+
+    protected $codigoColumna = 'codigo_taller';
+    protected $codigoPrefijo = 'TAL';
+
+    protected $fillable = [
+        'codigo_taller',
+        'nit',
+        'nombre_comercial',
+        'nombre',
+        'razon_social',
+        'direccion',
+        'observaciones_direccion',
+        'correo_electronico',
+        'ciudad',
+        'telefono_principal',
+        'tipo_proveedor',
+        'que_suministra',
+        'persona_contacto',
+        'celular_contacto',
+        'forma_pago',
+        'tiempo_entrega',
+        'estado',
+        'observaciones_generales',
+    ];
 
     public function ordenesProduccion()
     {
         return $this->hasMany(OrdenProduccion::class, 'taller_id');
-    }
-
-    public static function getFillableWithTypes(): array
-    {
-        $table = (new static)->getTable();
-        $columns = DB::select("SHOW COLUMNS FROM {$table}");
-
-        $fillable = (new static)->getFillable();
-        $result = [];
-
-        foreach ($columns as $column) {
-            if (! in_array($column->Field, $fillable) || $column->Field === 'id') {
-                continue;
-            }
-
-            $type = 'text';
-            if (str_contains($column->Type, 'foreign') || str_ends_with($column->Field, '_id')) {
-                $type = 'foreign';
-            } elseif (str_contains($column->Type, 'int')) {
-                $type = 'integer';
-            } elseif (str_contains($column->Type, 'decimal') || str_contains($column->Type, 'float')) {
-                $type = 'dinero';
-            } elseif (str_contains($column->Type, 'date') || str_contains($column->Type, 'datetime')) {
-                $type = 'date';
-            }
-
-            $result[] = [
-                'order' => $column->Field,
-                'label' => $column->Field,
-                'type' => $type,
-            ];
-        }
-
-        return $result;
     }
 }

@@ -6,139 +6,226 @@ import PrimaryButton from '@/components/PrimaryButton.vue';
 import SecondaryButton from '@/components/SecondaryButton.vue';
 import TextInput from '@/components/TextInput.vue';
 import { useForm } from '@inertiajs/vue3';
-import { onMounted, reactive, watchEffect } from 'vue';
-import "vue-select/dist/vue-select.css";
-
+import { computed, watch } from 'vue';
 
 const props = defineProps({
-    show: Boolean,
-    title: String,
-    Tallera: Object,
-    titulos: Object, //parametros de la clase principal
-    losSelect: Object,
-
-})
-
-const emit = defineEmits(["close"]);
-const data = reactive({
-    printForm: []
-})
-
-//very usefull
-const justNames = props.titulos.map(names => names['order'])
-const form = useForm({ ...Object.fromEntries(justNames.map(field => [field, ''])) });
-onMounted(() => {
-    if (props.numberPermissions > 9) {
-        const valueRAn = Math.floor(Math.random() * 9 + 1)
-        form.nombre = 'admin orden trabajo ' + (valueRAn);
-        form.codigo = (valueRAn);
-        // form.hora_inicial = '0'+valueRAn+':00'//temp
-        // form.fecha = '2023-06-01'
-    }
-    // data.printForm.length -= 1 //dependex
+    show: { type: Boolean, default: false },
+    title: { type: String, default: 'Taller' },
+    tallera: { type: Object, default: () => ({}) },
+    opcionesSelect: {
+        type: Object,
+        default: () => ({
+            tipo_proveedor: ['Materia prima', 'Servicio', 'Mixto', 'Otro'],
+            estado: ['Activo', 'Inactivo'],
+            forma_pago: ['Contado', 'Crédito 8 días', 'Crédito 15 días', 'Crédito 30 días', 'Anticipo', 'Otro'],
+        }),
+    },
 });
 
-props.titulos.forEach(names => {
-    data.printForm.push({
-        idd: names['order'], label: names['label'], type: names['type']
-        , value: form[names['order']]
-    })
+const emit = defineEmits(['close']);
+
+const form = useForm({
+    codigo_taller: '',
+    nit: '',
+    nombre_comercial: '',
+    razon_social: '',
+    direccion: '',
+    observaciones_direccion: '',
+    correo_electronico: '',
+    ciudad: '',
+    telefono_principal: '',
+    tipo_proveedor: '',
+    que_suministra: '',
+    persona_contacto: '',
+    celular_contacto: '',
+    forma_pago: '',
+    tiempo_entrega: '',
+    estado: 'Activo',
+    observaciones_generales: '',
 });
 
-watchEffect(() => {
-    if (props.show) {
-        // data.justNames.forEach(element => {
-        //     form[element] =  props.Tallera[element]
-        // });
-        form.errors = {}
-        props.titulos.forEach(names => {
-            form[names['order']] = props.Tallera[names['order']]
-        });
+const etiquetas: Record<string, string> = {
+    nit: 'NIT',
+    nombre_comercial: 'Nombre',
+    razon_social: 'Razón social',
+    direccion: 'Dirección',
+    observaciones_direccion: 'Observaciones dirección',
+    correo_electronico: 'Correo',
+    ciudad: 'Ciudad',
+    telefono_principal: 'Teléfono',
+    tipo_proveedor: 'Tipo proveedor',
+    que_suministra: 'Qué suministra',
+    persona_contacto: 'Persona de contacto',
+    celular_contacto: 'Celular',
+    forma_pago: 'Plazo de pago',
+    tiempo_entrega: 'Tiempo habitual de entrega',
+    estado: 'Estado',
+    observaciones_generales: 'Observaciones generales',
+};
 
-        // form.codigo = props.Tallera?.codigo
-    }
-})
+const camposObligatorios = ['nombre_comercial', 'tipo_proveedor', 'estado'];
 
-const update = () => {
-    form.put(route('Taller.update', props.Tallera?.id), {
+const camposOpcionales = [
+    'nit',
+    'razon_social',
+    'direccion',
+    'observaciones_direccion',
+    'correo_electronico',
+    'ciudad',
+    'telefono_principal',
+    'que_suministra',
+    'persona_contacto',
+    'celular_contacto',
+    'forma_pago',
+    'tiempo_entrega',
+    'observaciones_generales',
+];
+
+const opcionesDe = (campo: string): string[] => (props.opcionesSelect as any)?.[campo] ?? [];
+const opcionesEstado = computed(() => opcionesDe('estado'));
+
+const claseEstado = (opcion: string): string =>
+    opcion === 'Activo' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-rose-600 text-white shadow-sm';
+
+const inputClass =
+    'mt-1 block h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30';
+
+const closeModal = () => {
+    emit('close');
+    form.clearErrors();
+};
+
+const submit = () => {
+    if (!props.tallera?.id) return;
+    form.put(route('Taller.update', props.tallera.id), {
         preserveScroll: true,
-        onSuccess: () => {
-            emit("close")
-            form.reset()
-        },
-        onError: () => null,
-        onFinish: () => null,
-    })
-}
-// const sexos = [ { label: 'Masculino', value: 'Masculino' }, { label: 'Femenino', value: 'Femenino' } ];
+        onSuccess: () => emit('close'),
+    });
+};
 
+watch(
+    () => props.show,
+    (abierto) => {
+        if (!abierto || !props.tallera) return;
+        const taller = props.tallera as any;
+        form.clearErrors();
+        form.codigo_taller = taller.codigo_taller ?? '';
+        form.nit = taller.nit ?? '';
+        form.nombre_comercial = taller.nombre_comercial ?? taller.nombre ?? '';
+        form.razon_social = taller.razon_social ?? '';
+        form.direccion = taller.direccion ?? '';
+        form.observaciones_direccion = taller.observaciones_direccion ?? '';
+        form.correo_electronico = taller.correo_electronico ?? '';
+        form.ciudad = taller.ciudad ?? '';
+        form.telefono_principal = taller.telefono_principal ?? '';
+        form.tipo_proveedor = taller.tipo_proveedor ?? '';
+        form.que_suministra = taller.que_suministra ?? '';
+        form.persona_contacto = taller.persona_contacto ?? '';
+        form.celular_contacto = taller.celular_contacto ?? '';
+        form.forma_pago = taller.forma_pago ?? '';
+        form.tiempo_entrega = taller.tiempo_entrega ?? '';
+        form.estado = taller.estado ?? 'Activo';
+        form.observaciones_generales = taller.observaciones_generales ?? '';
+    },
+);
 </script>
 
 <template>
-    <section class="space-y-6">
-        <Modal :show="props.show" @close="emit('close')" :maxWidth="'xl4'">
-            <form class="p-6" @submit.prevent="create">
-                <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100">
-                    {{ lang().t('app.label.edit') }} {{ props.title }}
+    <Modal :show="props.show" @close="closeModal" maxWidth="xl6">
+        <form class="p-6" @submit.prevent="submit">
+            <div class="border-b border-border pb-4">
+                <h2 class="text-lg font-semibold text-foreground">
+                    Editar taller
+                    <span v-if="form.codigo_taller" class="font-mono text-sm text-muted-foreground">
+                        · {{ form.codigo_taller }}
+                    </span>
                 </h2>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <p class="mt-1 text-sm text-muted-foreground">Actualice los datos del taller.</p>
+            </div>
 
+            <div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <div v-for="campo in camposObligatorios" :key="campo">
+                    <InputLabel :for="campo" :value="etiquetas[campo]" />
 
-                    <!--                    <div id="SelectVue" class="">-->
-                    <!--                        <label name="labelSelectVue2"> Centro de costo </label>-->
-                    <!--                        <v-select :options="props.losSelect[0]"-->
-                    <!--                                  v-model="form.centro_costo_id"-->
-                    <!--                                  label="name"-->
-                    <!--                        ></v-select>-->
-                    <!--                    </div>-->
-
-
-
-                    <div v-for="(atributosform, indice) in data.printForm" :key="indice">
-                        <div v-if="atributosform.type === 'foreign'" id="SelectVue" class="">
-                            <label name="labelSelectVue"> {{ atributosform.label }} </label>
-                            <v-select :options="props.losSelect" v-model="form[atributosform.idd]"
-                                :reduce="element => element.value" label="label"></v-select>
-                            <InputError class="mt-2" :message="form.errors[atributosform.idd]" />
-                        </div>
-
-                        <div v-else-if="atributosform.type === 'time'" id="SelectVue">
-                            <InputLabel :for="atributosform.label"
-                                :value="lang().t('app.label')[atributosform.label]" />
-                            <TextInput :id="atributosform.idd" :type="atributosform.type" class="mt-1 block w-full"
-                                v-model="form[atributosform.idd]" required :placeholder="atributosform.label"
-                                :error="form.errors[atributosform.idd]" step="3600" />
-                            <InputError class="mt-2" :message="form.errors[atributosform.idd]" />
-                        </div>
-                        <div v-else class="">
-                            <InputLabel :for="atributosform.label"
-                                :value="lang().t('app.label')[atributosform.label]" />
-                            <TextInput :id="atributosform.idd" :type="atributosform.type" class="mt-1 block w-full"
-                                v-model="form[atributosform.idd]" required :placeholder="atributosform.label"
-                                :error="form.errors[atributosform.idd]" />
-                            <InputError class="mt-2" :message="form.errors[atributosform.idd]" />
-                        </div>
+                    <div
+                        v-if="campo === 'estado'"
+                        class="mt-1 inline-flex items-center gap-1 rounded-md border border-input bg-muted p-1"
+                        role="group"
+                        :aria-label="etiquetas[campo]"
+                    >
+                        <button
+                            v-for="opcion in opcionesEstado"
+                            :key="opcion"
+                            type="button"
+                            :aria-pressed="form[campo as keyof typeof form] === opcion"
+                            :class="[
+                                'rounded px-3 py-1.5 text-sm font-medium transition-colors',
+                                form[campo as keyof typeof form] === opcion
+                                    ? claseEstado(opcion)
+                                    : 'text-muted-foreground hover:bg-background hover:text-foreground',
+                            ]"
+                            @click="form[campo as keyof typeof form] = opcion as any"
+                        >
+                            {{ opcion }}
+                        </button>
                     </div>
 
-                </div>
-                <div class=" my-8 flex justify-end">
-                    <SecondaryButton :disabled="form.processing" @click="emit('close')"> {{ lang().t('app.button.close')
-                        }}
-                    </SecondaryButton>
-                    <PrimaryButton class="ml-3" :class="{ 'opacity-25': form.processing }" :disabled="form.processing"
-                        @click="update">
-                        {{ form.processing ? lang().t('app.button.save') + '...' : lang().t('app.button.save') }}
-                    </PrimaryButton>
-                </div>
-            </form>
-        </Modal>
-    </section>
-</template>
+                    <select
+                        v-else-if="campo === 'tipo_proveedor'"
+                        :id="campo"
+                        v-model="form[campo as keyof typeof form]"
+                        :class="inputClass"
+                    >
+                        <option value="">Seleccione un tipo</option>
+                        <option v-for="opcion in opcionesDe(campo)" :key="opcion" :value="opcion">{{ opcion }}</option>
+                    </select>
 
-<style>
-[name="labelSelectVue"],
-[name="labelSelectVue"] {
-    /* font-size: 22px; */
-    font-weight: 600;
-}
-</style>
+                    <TextInput
+                        v-else
+                        :id="campo"
+                        v-model="form[campo as keyof typeof form]"
+                        type="text"
+                        :class="inputClass"
+                        :error="form.errors[campo]"
+                    />
+                    <InputError class="mt-1" :message="form.errors[campo]" />
+                </div>
+            </div>
+
+            <div class="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <div v-for="campo in camposOpcionales" :key="campo">
+                    <InputLabel :for="campo" :value="etiquetas[campo]" />
+
+                    <select
+                        v-if="campo === 'forma_pago'"
+                        :id="campo"
+                        v-model="form[campo as keyof typeof form]"
+                        :class="inputClass"
+                    >
+                        <option value="">Seleccione un plazo</option>
+                        <option v-for="opcion in opcionesDe(campo)" :key="opcion" :value="opcion">{{ opcion }}</option>
+                    </select>
+
+                    <TextInput
+                        v-else
+                        :id="campo"
+                        v-model="form[campo as keyof typeof form]"
+                        :type="campo === 'correo_electronico' ? 'email' : 'text'"
+                        :class="inputClass"
+                        :error="form.errors[campo]"
+                    />
+                    <InputError class="mt-1" :message="form.errors[campo]" />
+                </div>
+            </div>
+
+            <div class="mt-6 flex justify-end gap-3 border-t border-border pt-4">
+                <SecondaryButton :disabled="form.processing" type="button" @click="closeModal">
+                    Cancelar
+                </SecondaryButton>
+                <PrimaryButton :disabled="form.processing" type="submit">
+                    {{ form.processing ? 'Guardando...' : 'Guardar cambios' }}
+                </PrimaryButton>
+            </div>
+        </form>
+    </Modal>
+</template>

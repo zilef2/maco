@@ -22,6 +22,13 @@ class ActividadRegistro extends Model
 
     public const ACCION_LOGIN_FALLIDO = 'login_fallido';
 
+    /** Avisos del navegador: el usuario se fue de la pestaña, no hizo una acción. */
+    public const ACCION_CIERRE_NAVEGADOR = 'cierre';
+
+    public const ACCION_PESTANA_OCULTA = 'oculta';
+
+    public const ACCION_PESTANA_VISIBLE = 'visible';
+
     public const TIPO_PETICION = 'peticion';
 
     public const TIPO_ACCION = 'accion';
