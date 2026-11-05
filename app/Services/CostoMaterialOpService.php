@@ -289,7 +289,7 @@ class CostoMaterialOpService
      * @param  list<int>  $ids
      * @return Collection<int, Material>
      */
-    private function materialesConPrecios(array $ids): Collection
+    public function materialesConPrecios(array $ids): Collection
     {
         return Material::query()
             ->with('lastPrice')
@@ -297,6 +297,100 @@ class CostoMaterialOpService
             ->whereIn('id', $ids)
             ->get()
             ->keyBy('id');
+    }
+
+    /**
+     * Coste de producción unitario del producto: los materiales de su ficha
+     * (precio del método vigente × consumo estándar) más la suma de sus procesos.
+     *
+     * @param  Collection<int, Material>|null  $materiales  Materiales con precios ya cargados, keyBy id.
+     */
+    public function costeProduccionUnitario(Producto $producto, ?Collection $materiales = null, ?int $metodo = null): float
+    {
+        $metodo ??= $this->metodo();
+
+        if ($materiales === null) {
+            $ids = $producto->fichaTecnica
+                ->flatMap(fn ($ficha) => $ficha->materiales->pluck('material_componente_id'))
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+            $materiales = $this->materialesConPrecios($ids);
+        }
+
+        $costeMateriales = 0.0;
+        foreach ($producto->fichaTecnica as $ficha) {
+            foreach ($ficha->materiales as $fila) {
+                $materialId = (int) $fila->material_componente_id;
+                if ($materialId <= 0) {
+                    continue;
+                }
+
+                $material = $materiales->get($materialId);
+                if (!$material) {
+                    continue;
+                }
+
+                $costeMateriales += $this->precioUnitario($material, $metodo) * (float) $fila->consumo_estandar;
+            }
+        }
+
+        return round($costeMateriales + (float) $producto->procesos->sum('coste_proceso'), 2);
+    }
+
+    /**
+     * Al cerrar la OP guarda en cada producto su coste de producción unitario
+     * (con el precio de material congelado de la OP) y su ganancia.
+     *
+     * @return int Cantidad de productos actualizados.
+     */
+    public function actualizarCosteProduccionEnCierre(OrdenProduccion $op): int
+    {
+        $metodo = $this->metodo();
+        $preciosCongelados = $op->costosMateriales()->get()->keyBy('material_id');
+
+        $productos = $this->productos($op);
+        $ids = $productos
+            ->flatMap(fn (Producto $producto) => $producto->fichaTecnica
+                ->flatMap(fn ($ficha) => $ficha->materiales->pluck('material_componente_id')))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+        $materiales = $this->materialesConPrecios($ids);
+
+        foreach ($productos as $producto) {
+            $costeMateriales = 0.0;
+            foreach ($producto->fichaTecnica as $ficha) {
+                foreach ($ficha->materiales as $fila) {
+                    $materialId = (int) $fila->material_componente_id;
+                    if ($materialId <= 0) {
+                        continue;
+                    }
+
+                    $congelado = $preciosCongelados->get($materialId);
+                    if ($congelado) {
+                        $precio = (float) $congelado->precio_unitario;
+                    } else {
+                        $material = $materiales->get($materialId);
+                        $precio = $material ? $this->precioUnitario($material, $metodo) : 0.0;
+                    }
+
+                    $costeMateriales += $precio * (float) $fila->consumo_estandar;
+                }
+            }
+
+            $costeProduccion = round($costeMateriales + (float) $producto->procesos->sum('coste_proceso'), 2);
+            $precioVenta = $producto->precio_venta_producto !== null ? (float) $producto->precio_venta_producto : null;
+
+            $producto->forceFill([
+                'coste_produccion' => $costeProduccion,
+                'ganancia_producto' => $precioVenta !== null ? round($precioVenta - $costeProduccion, 2) : null,
+            ])->saveQuietly();
+        }
+
+        return $productos->count();
     }
 
     private function nombreMaterial(?Material $material, int $materialId): string

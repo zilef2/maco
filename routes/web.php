@@ -28,6 +28,9 @@ Route::get('dashboard/datos', [DashboardController::class, 'datos'])
 Route::middleware(['auth', 'verified', 'role:superadmin'])->group(function () {
 	Route::get('/Actividad', [\App\Http\Controllers\ActividadController::class, 'index'])->name('Actividad.index');
 	Route::post('/superadmin/purgar-datos-prueba', [\App\Http\Controllers\SuperadminAccionesController::class, 'purgarDatosPrueba'])->name('superadmin.purgar-datos-prueba');
+	Route::post('/superadmin/purgar-materiales', [\App\Http\Controllers\SuperadminAccionesController::class, 'purgarMateriales'])->name('superadmin.purgar-materiales');
+	Route::post('/superadmin/existencias-cero', [\App\Http\Controllers\SuperadminAccionesController::class, 'ceroExistencias'])->name('superadmin.existencias-cero');
+	Route::post('/superadmin/materiales-al-azar', [\App\Http\Controllers\SuperadminAccionesController::class, 'rellenarMateriales'])->name('superadmin.materiales-al-azar');
 });
 
 Route::middleware('auth', 'verified')->group(function () {
@@ -94,6 +97,7 @@ Route::middleware('auth', 'verified')->group(function () {
 	Route::get('/Material/{id}/movimientos', [\App\Http\Controllers\MaterialController::class, 'historicoMovimientos'])->name('Material.movimientos');
 	Route::resource("/GrupoTalla", \App\Http\Controllers\GrupoTallaController::class);
 	Route::get("/ImportarExcel", [\App\Http\Controllers\ImportarExcelController::class, 'index'])->name('ImportarExcel.index');
+	Route::post("/ImportarExcel/mpp", [\App\Http\Controllers\ImportarExcelController::class, 'uploadMpp'])->name('ImportarExcel.mpp');
 	Route::post("/ImportarExcel/entidad", [\App\Http\Controllers\ImportarExcelController::class, 'toggleEntidad'])->name('ImportarExcel.toggleEntidad');
 	Route::get("/ImportarExcel/plantilla/{clave}", [\App\Http\Controllers\ImportarExcelController::class, 'descargarPlantilla'])->name('ImportarExcel.plantilla');
 	Route::resource("/EstadoOpMaterial", \App\Http\Controllers\EstadoOpMaterialController::class);

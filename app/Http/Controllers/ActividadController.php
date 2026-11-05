@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\ActividadRegistro;
+use App\Models\Material;
+use App\Services\ExistenciasMaterialesService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -89,6 +91,9 @@ class ActividadController extends Controller
         'cierreBloqueado' => 'Cierre bloqueado',
         'recepcionFueraDePlan' => 'Recepción fuera de plan',
         'numeroDuplicado' => 'Número de OP duplicado',
+        'purgarMateriales' => 'Borró todos los materiales',
+        'ceroExistencias' => 'Puso en cero las existencias',
+        'rellenarMateriales' => 'Rellenó existencias y precios al azar',
         'cierre' => 'Cerró la pestaña',
         'oculta' => 'Dejó la pestaña',
         'visible' => 'Volvió a la pestaña',
@@ -121,6 +126,15 @@ class ActividadController extends Controller
             'breadcrumbs' => [['title' => 'Actividad', 'href' => route('Actividad.index')]],
             'title' => 'Actividad y tiempos',
             'esAmbienteTest' => config('app.env') === 'test' || app()->environment('test'),
+            // Los botones de mantenimiento de materiales dicen sobre cuántos filas
+            // van a actuar y con qué rango de valores antes de que se presionen.
+            'materiales' => [
+                'total' => Material::count(),
+                'sin_existencia' => Material::where('existencia_actual', 0)->count(),
+                'sin_precio' => Material::doesntHave('prices')->count(),
+                'rango_existencia' => ExistenciasMaterialesService::rangoExistencia(),
+                'rango_precio' => ExistenciasMaterialesService::rangoPrecio(),
+            ],
             'filtro' => [
                 'dias' => $dias,
                 'factor' => $factor,

@@ -9,7 +9,7 @@ import TextInput from '@/components/TextInput.vue';
 import EditorMateriales from '@/pages/FichaTecnicaMateriales/EditorMateriales.vue';
 import EditorProcesos from '@/pages/Producto/EditorProcesos.vue';
 import { MAX_TALLAS_POR_RANGO, TALLAS_ALFABETICAS, useTallasVariante } from '@/composables/useTallasVariante';
-import { dineroANumero } from '@/global.ts';
+import { dineroANumero, formatdinero } from '@/global.ts';
 import { CheckCircleIcon, ClipboardDocumentListIcon, Cog6ToothIcon, CubeIcon, DocumentTextIcon, PencilSquareIcon } from '@heroicons/vue/24/solid';
 import { useForm } from '@inertiajs/vue3';
 import { computed, watch, watchEffect } from 'vue';
@@ -79,6 +79,33 @@ watch([modo, tallas], () => {
 // La ficha solo se puede editar si el producto no está en una OP activa.
 const fichaBloqueada = computed(() => Boolean(props.Productoa?.ficha_bloqueada));
 const fichaBloqueoDetalle = computed(() => String(props.Productoa?.ficha_bloqueo_detalle ?? ''));
+
+// Coste de producción unitario: el guardado al cerrar una OP (coste_produccion)
+// o, si el producto aún no tiene una OP cerrada, la estimación en vivo del
+// backend (materiales según el parámetro de costos + procesos).
+const costeProduccion = computed(() => {
+    const producto: any = props.Productoa ?? {};
+    const guardado = producto.coste_produccion;
+    if (guardado !== null && guardado !== undefined && guardado !== '') {
+        return { valor: Number(guardado), congelado: true };
+    }
+    return { valor: Number(producto.coste_produccion_vivo ?? 0), congelado: false };
+});
+
+// Ganancia: diferencia entre el precio venta (tal como está en el formulario)
+// y el coste de producción, en dinero y como porcentaje del coste.
+const ganancia = computed(() => {
+    const precioTexto = String(form.precio_venta_producto ?? '').trim();
+    if (precioTexto === '') return null;
+
+    const diferencia = dineroANumero(precioTexto) - costeProduccion.value.valor;
+    return {
+        valor: diferencia,
+        porcentaje: costeProduccion.value.valor > 0
+            ? (diferencia / costeProduccion.value.valor) * 100
+            : null,
+    };
+});
 
 const tallasProducto = computed<string[]>(() =>
     ((props.Productoa?.distribuciones_por_tallas ?? []) as any[])
@@ -455,6 +482,9 @@ watchEffect(() => {
                                     v-model="form.costo_anticipado" placeholder="$0"
                                     :error="form.errors.costo_anticipado" />
                                 <InputError class="mt-2" :message="form.errors.costo_anticipado" />
+                                <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                                    Este valor lo calcula manualmente el usuario; sirve para especular.
+                                </p>
                             </div>
 
                             <div>
@@ -464,6 +494,52 @@ watchEffect(() => {
                                     v-model="form.precio_venta_producto" placeholder="$0"
                                     :error="form.errors.precio_venta_producto" />
                                 <InputError class="mt-2" :message="form.errors.precio_venta_producto" />
+                                <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                                    Es el valor con el que se vende al público; también se escribe a mano.
+                                </p>
+                            </div>
+
+                            <div>
+                                <InputLabel for="coste_produccion" value="Coste producción" />
+                                <div id="coste_produccion"
+                                    class="mt-1 flex h-10 w-full items-center justify-between gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 text-sm font-semibold text-gray-700 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-200">
+                                    <span>{{ formatdinero(costeProduccion.valor) }}</span>
+                                    <span class="rounded-full px-2 py-0.5 text-[10px] font-medium"
+                                        :class="costeProduccion.congelado
+                                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200'
+                                            : 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200'">
+                                        {{ costeProduccion.congelado ? 'Última OP cerrada' : 'Estimado' }}
+                                    </span>
+                                </div>
+                                <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                                    Materiales (con el precio que decide el parámetro de costos: promedio o último) +
+                                    procesos, por unidad. No es editable: se guarda al cerrar la OP del producto.
+                                </p>
+                            </div>
+
+                            <div>
+                                <InputLabel for="ganancia_producto" value="Ganancia" />
+                                <div id="ganancia_producto"
+                                    class="mt-1 flex h-10 w-full items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 text-sm font-semibold dark:border-gray-700 dark:bg-gray-900/40">
+                                    <template v-if="ganancia">
+                                        <span
+                                            :class="ganancia.valor >= 0
+                                                ? 'text-emerald-600 dark:text-emerald-400'
+                                                : 'text-rose-600 dark:text-rose-400'">
+                                            {{ formatdinero(ganancia.valor) }}
+                                        </span>
+                                        <span v-if="ganancia.porcentaje !== null"
+                                            class="text-xs font-medium text-gray-500 dark:text-gray-400">
+                                            ({{ ganancia.porcentaje >= 0 ? '+' : '' }}{{ ganancia.porcentaje.toFixed(1)
+                                            }}% del coste)
+                                        </span>
+                                    </template>
+                                    <span v-else class="text-gray-400 dark:text-gray-500">—</span>
+                                </div>
+                                <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                                    Diferencia entre el precio venta y el coste de producción; se guarda en el producto
+                                    al cerrar la OP.
+                                </p>
                             </div>
 
                             <div class="md:col-span-3">

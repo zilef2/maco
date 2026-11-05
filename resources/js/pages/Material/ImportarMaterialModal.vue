@@ -175,8 +175,12 @@ watch(() => props.show, (visible) => {
                 <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
                     Si el código de material ya existe, se actualiza el registro; si no, se crea con el siguiente número
                     libre del par. Las columnas "Maneja …" y "Procesado" admiten SI / NO en mayúsculas o minúsculas.
-                    <b>Procesado</b> es obligatoria y debe estar en la columna inmediatamente siguiente a
-                    <b>Costo</b>; si el archivo no trae ese orden no se importa nada.
+                    <b>Procesado</b> es obligatoria y debe cerrar el bloque: inmediatamente después de <b>Costo</b>, o
+                    después de <b>Cantidad</b> si el archivo la trae; con otro orden no se importa nada.
+                </p>
+                <p class="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200">
+                    <b>Costo</b> se lee como el <b>Precio</b> de la app y se anota en el histórico de precios del material.
+                    <b>Cantidad</b> es la <b>Existencia actual</b>; en blanco deja la existencia que ya tiene el registro.
                 </p>
                 <p class="mt-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-800 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-200">
                     <b>Código material</b> vale CAT-BASE-N (TEX-LFI-4) y se guarda sin ceros a la izquierda: un

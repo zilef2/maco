@@ -33,7 +33,6 @@ class StoreProveedorRequest extends FormRequest
             'tiempo_entrega' => ['nullable', 'string', 'max:255'],
             'estado' => ['nullable', 'string', Rule::in(Proveedor::ESTADOS)],
             'observaciones_generales' => ['nullable', 'string', 'max:5000'],
-            'clasificacion' => ['nullable', 'string', Rule::in(Proveedor::CLASIFICACIONES)],
         ];
     }
 }

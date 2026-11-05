@@ -59,6 +59,7 @@ const props = defineProps({
     titulos: Array,
     columnasExcel: { type: Array as () => any[], default: () => [] },
     prevision: { type: Object as () => any, default: () => null },
+    faltantesOp: { type: Array as () => any[], default: () => [] },
 });
 
 /* --------------------------------------------------------------------------
@@ -345,6 +346,9 @@ const previsiónFaltantes = computed<any[]>(() =>
     ((props.prevision?.faltan ?? []) as any[]).filter((f) => f.dias_restantes <= diasPrevision.value)
 );
 
+// Carencias de las OP abiertas: las que pueden comprarse en un solo paso.
+const faltantesDeOp = computed<any[]>(() => (props.faltantesOp as any[]) ?? []);
+
 const limpiarFiltros = () => {
     busqueda.value = '';
     categoriaFiltro.value = 'todos';
@@ -443,6 +447,7 @@ const data = reactive({
     bulkMateriales: [] as any[],
     importOpen: false,
     compraOpen: false,
+    compraFaltantes: false,
     alterarExistenciaOpen: false,
     historialOpen: false,
     historialMultipleOpen: false,
@@ -466,6 +471,11 @@ const abrirHistorialMultiple = () => {
 const abrirEliminarBulk = () => {
     data.bulkMateriales = seleccionValidos.value;
     data.deleteBulkOpen = true;
+};
+
+const abrirCompra = (faltantes: boolean) => {
+    data.compraFaltantes = faltantes;
+    data.compraOpen = true;
 };
 
 const alEliminarBulk = (resultado: any) => {
@@ -517,7 +527,7 @@ router.on('finish', () => {
 });
 
 const recargar = () => {
-    router.reload({ only: ['materiales', 'total', 'losSelect', 'prevision'], preserveScroll: true });
+    router.reload({ only: ['materiales', 'total', 'losSelect', 'prevision', 'faltantesOp'], preserveScroll: true });
 };
 
 /* Títulos para los modales de crear/editar (mismo contrato de antes). */
@@ -626,10 +636,21 @@ const titulos = [
                             v-if="can(['update Material']) && filas.length"
                             type="button"
                             class="h-9 bg-sky-600 hover:bg-sky-700 focus:ring-sky-500"
-                            @click="data.compraOpen = true"
+                            @click="abrirCompra(false)"
                         >
                             <ShoppingCartIcon class="mr-1.5 h-4 w-4" />
                             Registrar compra
+                        </PrimaryButton>
+
+                        <PrimaryButton
+                            v-if="can(['update Material']) && filas.length && faltantesDeOp.length"
+                            type="button"
+                            class="h-9 bg-amber-600 hover:bg-amber-700 focus:ring-amber-500"
+                            v-tooltip="`Compra la cantidad justa para cubrir los ${faltantesDeOp.length} material(es) que faltan en las OP abiertas`"
+                            @click="abrirCompra(true)"
+                        >
+                            <ExclamationTriangleIcon class="mr-1.5 h-4 w-4" />
+                            Comprar faltantes ({{ faltantesDeOp.length }})
                         </PrimaryButton>
 
                         <PrimaryButton
@@ -1288,6 +1309,8 @@ const titulos = [
             v-if="can(['update Material'])"
             :show="data.compraOpen"
             :materiales="filas"
+            :faltantes="data.compraFaltantes"
+            :faltantesOp="faltantesDeOp"
             @close="data.compraOpen = false"
         />
 
@@ -1299,6 +1322,7 @@ const titulos = [
             @close="data.createOpen = false"
             :title="props.title"
             :losSelect="props.losSelect"
+            :materiales="props.materiales"
         />
 
         <Edit

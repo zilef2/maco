@@ -34,7 +34,6 @@ class ProveedorFactory extends Factory
             'tiempo_entrega' => '3 a 5 días',
             'estado' => 'Activo',
             'observaciones_generales' => null,
-            'clasificacion' => fake()->randomElement(Proveedor::CLASIFICACIONES),
             'nombre' => $nombre,
             'categoria' => 'General',
         ];

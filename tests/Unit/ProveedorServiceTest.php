@@ -23,7 +23,6 @@ class ProveedorServiceTest extends TestCase
             'tipo_proveedor' => 'Materia prima',
             'forma_pago' => 'Crédito 15 días',
             'estado' => 'Activo',
-            'clasificacion' => 'proveedor',
         ]);
 
         $this->assertInstanceOf(Proveedor::class, $proveedor);
@@ -65,11 +64,9 @@ class ProveedorServiceTest extends TestCase
         $this->assertArrayHasKey('tipo_proveedor', $opciones);
         $this->assertArrayHasKey('estado', $opciones);
         $this->assertArrayHasKey('forma_pago', $opciones);
-        $this->assertArrayHasKey('clasificacion', $opciones);
         $this->assertContains('Materia prima', $opciones['tipo_proveedor']);
         $this->assertContains('Activo', $opciones['estado']);
         $this->assertContains('Contado', $opciones['forma_pago']);
-        $this->assertContains('taller de proceso externo', $opciones['clasificacion']);
     }
 }
 

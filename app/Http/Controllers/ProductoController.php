@@ -7,6 +7,7 @@ use App\Models\Producto;
 use App\Models\Distribucion_por_tallas;
 use App\helpers\Myhelp;
 use App\helpers\MyModels;
+use App\Services\ExcelProductosService;
 use App\Services\FichaTecnicaService;
 use App\Services\ProductoService;
 use Illuminate\Database\Eloquent\Builder;
@@ -35,7 +36,8 @@ class ProductoController extends Controller {
         protected \App\Services\ListaDesplegableService $listaDesplegableService,
         protected FichaTecnicaService $fichaTecnicaService,
         protected ProductoService $productoService,
-        protected \App\Services\CostoMaterialOpService $costoMaterialOpService
+        protected \App\Services\CostoMaterialOpService $costoMaterialOpService,
+        protected ExcelProductosService $excelProductos
     ) {
         $this->thisAtributos = (new Producto())->getFillable(); //not using
     }
@@ -50,8 +52,22 @@ class ProductoController extends Controller {
         $Productos = Producto::query()
             ->with(['distribucionesPorTallas.ordenesProduccion', 'fichaTecnica.materiales', 'procesos'])
             ->orderByDesc('updated_at')
-            ->get()
-            ->map(function ($producto) use ($bloqueos) {
+            ->get();
+
+        // Precios de materiales en un solo bloque: el método (promedio o último
+        // precio) lo decide el parámetro costos_promedio de Parámetros.
+        $metodoCostos = $this->costoMaterialOpService->metodo();
+        $materialesCosteados = $this->costoMaterialOpService->materialesConPrecios(
+            $Productos
+                ->flatMap(fn ($producto) => $producto->fichaTecnica
+                    ->flatMap(fn ($ficha) => $ficha->materiales->pluck('material_componente_id')))
+                ->filter()
+                ->unique()
+                ->values()
+                ->all()
+        );
+
+        $Productos = $Productos->map(function ($producto) use ($bloqueos, $materialesCosteados, $metodoCostos) {
                 $ficha = $producto->fichaTecnica->first();
                 $bloqueo = $bloqueos[$producto->id] ?? [];
 
@@ -79,6 +95,12 @@ class ProductoController extends Controller {
                         'coste_proceso' => (float) $proceso->coste_proceso,
                     ])->values()->all();
                 $producto->costo_proceso_total = round((float) $producto->procesos->sum('coste_proceso'), 2);
+
+                // Coste de producción unitario en vivo (materiales según el
+                // parámetro + procesos): se muestra en Editar producto y, al
+                // cerrar una OP, se guarda como coste_produccion en la BD.
+                $producto->coste_produccion_vivo = $this->costoMaterialOpService
+                    ->costeProduccionUnitario($producto, $materialesCosteados, $metodoCostos);
 
                 // Cantidad total del producto: la suma de lo planificado por talla,
                 // el mismo total que muestra el modal «Distribución por Tallas».
@@ -668,6 +690,11 @@ class ProductoController extends Controller {
     // ─────────────────────────────────────────────────────────
     //  CARGA MASIVA DESDE EXCEL (general, sin FK)
     // ─────────────────────────────────────────────────────────
+    /**
+     * Carga masiva de productos desde la hoja activa del Excel. Qué columnas se
+     * leen y cómo se escriben en la BD lo decide ExcelProductosService, el mismo
+     * servicio que consume la hoja "producto" del archivo MPP.
+     */
     public function uploadExcel(Request $request): RedirectResponse
     {
         Myhelp::EscribirEnLog($this, 'uploadExcel: inicio');
@@ -697,194 +724,36 @@ class ProductoController extends Controller {
             return back()->with('error', 'El archivo no tiene un formato XLSX válido.');
         }
 
-        // 4. Leer el archivo con PhpSpreadsheet
+        // 4. Leer la hoja activa: quién interpreta las columnas y escribe en la
+        // BD es ExcelProductosService, el mismo servicio que usa la hoja
+        // "producto" del archivo MPP.
         try {
             $spreadsheet = IOFactory::load($archivo->getRealPath());
+            $filas = $spreadsheet->getActiveSheet()->toArray(null, true, true, false);
+            $spreadsheet->disconnectWorksheets();
         } catch (\Throwable $e) {
             Myhelp::EscribirEnLog($this, 'uploadExcel ERROR lectura', $e->getMessage());
             return back()->with('error', 'No se pudo leer el archivo: ' . $e->getMessage());
         }
 
-        $hoja  = $spreadsheet->getActiveSheet();
-        $filas = $hoja->toArray(null, true, true, true);
-
-        if (empty($filas)) {
-            return back()->with('error', 'El archivo está vacío.');
-        }
-
-        // 5. Normalizar encabezados (acepta snake_case y nombres legibles)
-        $columnasRequeridas = ['Codigo_interno', 'Titulo_Shopify'];
-
-        $aliasColumnas = [
-            'codigointerno'      => 'Codigo_interno',
-            'codigo'             => 'Codigo_interno',
-            'tituloshopify'      => 'Titulo_Shopify',
-            'titulo'             => 'Titulo_Shopify',
-            'idproductoshopify'  => 'ID_producto_Shopify',
-            'idshopify'          => 'ID_producto_Shopify',
-            'categoriaoriginal'  => 'Categoria_original',
-            'categoria'          => 'Categoria_original',
-            'familianormalizada' => 'Familia_normalizada',
-            'familia'            => 'Familia_normalizada',
-            'controldevariante'  => 'Control_de_variante',
-            'variante'           => 'Control_de_variante',
-            'opciones'           => 'Opciones',
-            'rango'              => 'Opciones',
-            'rangotallas'        => 'Opciones',
-            'estado'             => 'Estado',
-            'observaciones'      => 'Observaciones',
-            'descripcion'        => 'descripcion',
-            'preciopredicho'     => 'costo_anticipado',
-            'costoanticipado'    => 'costo_anticipado',
-            'preciopreventa'     => 'precio_venta_producto',
-        ];
-
-        $normalizarTexto = fn (string $texto): string => strtr(
-            mb_strtolower(trim($texto)),
-            ['á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u', 'ü' => 'u', 'ñ' => 'n']
-        );
-
-        $filaEncabezados = array_shift($filas);
-        $encabezado = [];
-        $encabezadosIgnorados = [];
-        $clavesAlias = array_keys($aliasColumnas);
-        usort($clavesAlias, fn ($a, $b) => strlen($b) - strlen($a));
-
-        foreach ($filaEncabezados as $col => $titulo) {
-            $clave = preg_replace('/[^a-z0-9]/', '', $normalizarTexto((string) $titulo));
-            if ($clave === '') {
-                continue;
-            }
-            if (isset($aliasColumnas[$clave])) {
-                $encabezado[$col] = $aliasColumnas[$clave];
-                continue;
-            }
-            // Encabezado no exacto (ej: "Opciones tallas"): aceptar el alias mas largo
-            // que sea prefijo, para no ignorar columnas por variantes del nombre.
-            $mapeada = null;
-            foreach ($clavesAlias as $alias) {
-                if (str_starts_with($clave, $alias)) {
-                    $mapeada = $aliasColumnas[$alias];
-                    break;
-                }
-            }
-            if ($mapeada !== null) {
-                $encabezado[$col] = $mapeada;
-            } else {
-                $encabezadosIgnorados[] = trim((string) $titulo);
-            }
-        }
-
-        $faltantes = array_diff($columnasRequeridas, array_values($encabezado));
-        if (!empty($faltantes)) {
-            return back()->with(
-                'error',
-                'El archivo no tiene las columnas requeridas. Faltan: ' . implode(', ', $faltantes)
-            );
-        }
-
-        // 6. Construir registros (sin tocar la BD aún: primero validar todo)
-        $texto = function ($valor, int $max = 255): string {
-            return mb_substr(strip_tags((string) ($valor ?? '')), 0, $max);
-        };
-        $entero = function ($valor) {
-            return is_numeric($valor) ? (int) $valor : null;
-        };
-
-        $errores    = [];
-        $existentes = Producto::pluck('Codigo_interno')->flip();
-        $registros  = [];
-
-        foreach ($filas as $numFila => $fila) {
-            $filaExcel = $numFila + 1; // fila real en el Excel (el encabezado es la 1)
-
-            $registro = [];
-            foreach ($encabezado as $col => $claveCanonica) {
-                $valorNuevo = $fila[$col] ?? null;
-                // Varias columnas pueden mapear a la misma clave (ej: "Rango" y "Opciones"):
-                // gana la primera con valor; una vacía no pisa a una ya cargada.
-                if (!array_key_exists($claveCanonica, $registro)
-                    || (($registro[$claveCanonica] === null || $registro[$claveCanonica] === '')
-                        && $valorNuevo !== null && $valorNuevo !== '')) {
-                    $registro[$claveCanonica] = $valorNuevo;
-                }
-            }
-
-            // Omitir filas completamente vacías
-            if (!array_filter($registro, fn ($v) => $v !== null && $v !== '')) {
-                continue;
-            }
-
-            $codigo  = trim((string) ($registro['Codigo_interno'] ?? ''));
-            $titulo  = trim((string) ($registro['Titulo_Shopify'] ?? ''));
-
-            if ($codigo === '' || $titulo === '') {
-                $errores[] = "Fila {$filaExcel}: faltan datos obligatorios (Codigo interno y Titulo Shopify)";
-                continue;
-            }
-
-            $registros[] = [
-                'Codigo_interno'        => $codigo,
-                'Titulo_Shopify'        => $titulo,
-                'ID_producto_Shopify'   => $texto($registro['ID_producto_Shopify'] ?? ''),
-                'Categoria_original'    => $texto($registro['Categoria_original'] ?? ''),
-                'Familia_normalizada'   => $texto($registro['Familia_normalizada'] ?? ''),
-                'Control_de_variante'   => $texto($registro['Control_de_variante'] ?? ''),
-                'Opciones'              => $texto($registro['Opciones'] ?? ''),
-                'Estado'                => $texto($registro['Estado'] ?? ''),
-                'Observaciones'         => $texto($registro['Observaciones'] ?? ''),
-                'descripcion'           => mb_substr(strip_tags((string) ($registro['descripcion'] ?? '')), 0, 5000),
-                'costo_anticipado'       => $entero($registro['costo_anticipado'] ?? null),
-                'precio_venta_producto'       => $entero($registro['precio_venta_producto'] ?? null),
-            ];
-        }
-
-        if (!empty($errores)) {
-            return back()->with('error', 'No se importó nada por los siguientes problemas: ' . implode(' | ', $errores));
-        }
-        if (empty($registros)) {
-            return back()->with('error', 'El archivo no contiene filas de datos.');
-        }
-
-        // 7. Insertar/actualizar registros (upsert por Codigo_interno)
-        $creados      = 0;
-        $actualizados = 0;
-        DB::beginTransaction();
         try {
-            foreach ($registros as $registro) {
-                if (isset($existentes[$registro['Codigo_interno']])) {
-                    Producto::where('Codigo_interno', $registro['Codigo_interno'])->update($registro);
-                    $actualizados++;
-                } else {
-                    // Columnas NOT NULL sin default que el archivo puede no traer
-                    $registro += [
-                        'ID_producto_Shopify' => '',
-                        'Categoria_original'  => '',
-                        'Familia_normalizada' => '',
-                        'Control_de_variante' => '',
-                        'Opciones'            => '',
-                        'Estado'              => '',
-                        'Observaciones'       => '',
-                        'descripcion'         => '',
-                        'costo_anticipado'     => 0,
-                        'precio_venta_producto'     => 0,
-                    ];
-                    Producto::create($registro);
-                    $creados++;
-                }
-            }
-            DB::commit();
+            $lectura = $this->excelProductos->registrosDesdeFilas($filas);
+            $resultado = $this->excelProductos->importar($lectura['registros']);
         } catch (\Throwable $e) {
-            DB::rollBack();
-            Myhelp::EscribirEnLog($this, 'uploadExcel ERROR inserción', $e->getMessage());
-            return back()->with('error', 'Error al guardar los registros: ' . $e->getMessage());
+            Myhelp::EscribirEnLog($this, 'uploadExcel ERROR', $e->getMessage());
+            return back()->with('error', $e->getMessage());
         }
 
-        Myhelp::EscribirEnLog($this, 'uploadExcel OK', "Creados: {$creados} | Actualizados: {$actualizados}");
-        $avisoIgnoradas = empty($encabezadosIgnorados)
+        Myhelp::EscribirEnLog($this, 'uploadExcel OK', "Creados: {$resultado['creados']} | Actualizados: {$resultado['actualizados']}");
+
+        $avisoIgnoradas = empty($lectura['ignoradas'])
             ? ''
-            : ' Columnas ignoradas (encabezado no reconocido): ' . implode(', ', $encabezadosIgnorados) . '.';
-        return back()->with('success', "Importación completada: {$creados} creado(s), {$actualizados} actualizado(s).{$avisoIgnoradas}");
+            : ' Columnas ignoradas (encabezado no reconocido): ' . implode(', ', $lectura['ignoradas']) . '.';
+
+        return back()->with(
+            'success',
+            "Importación completada: {$resultado['creados']} creado(s), {$resultado['actualizados']} actualizado(s).{$avisoIgnoradas}"
+        );
     }
 
 }

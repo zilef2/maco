@@ -22,7 +22,6 @@ class ProveedorRepositoryTest extends TestCase
             'tipo_proveedor' => 'Materia prima',
             'forma_pago' => 'Contado',
             'estado' => 'Activo',
-            'clasificacion' => 'proveedor',
         ]);
 
         $this->assertInstanceOf(Proveedor::class, $proveedor);

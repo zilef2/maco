@@ -9,7 +9,7 @@ import EditorMateriales from '@/pages/FichaTecnicaMateriales/EditorMateriales.vu
 import { ClipboardDocumentListIcon, ExclamationTriangleIcon, SwatchIcon } from '@heroicons/vue/24/solid';
 import { useForm} from '@inertiajs/vue3';
 import { normalizarFragmentoCodigo } from '@/lib/utils';
-import { onMounted, computed, ref, watchEffect } from 'vue';
+import { onMounted, computed, reactive, watch, watchEffect } from 'vue';
 import '@vuepic/vue-datepicker/dist/main.css'
 import vSelect from "vue-select";
 import "vue-select/dist/vue-select.css";
@@ -23,6 +23,7 @@ const props = defineProps({
     titulos: Object, //parametros de la clase principal
     losSelect: Object,
     numberPermissions: Number,
+    materiales: { type: Array as () => any[], default: () => [] },
 })
 const emit = defineEmits(["close"]);
 
@@ -137,14 +138,84 @@ const descripcionToggle = (campo: string, activo: boolean): string => {
     return activo ? 'Sí, este material lo maneja' : 'No aplica para este material';
 };
 
-const camposFaltantes = ref<string[]>([]);
+const state = reactive({
+    camposFaltantes: [] as string[],
+});
+
+const abreviar = (nombre: string | null | undefined): string => {
+    if (!nombre) return '';
+    const sinAcentos = String(nombre)
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+    const palabras = (sinAcentos.match(/[A-Za-z]+/g) || []).map((p) => p.toUpperCase());
+    if (palabras.length === 0) return '';
+    if (palabras.length === 1) return palabras[0].slice(0, 3);
+
+    let abreviatura = '';
+    for (let letra = 0; abreviatura.length < 3; letra++) {
+        let agrego = false;
+        for (const palabra of palabras) {
+            if (palabra[letra] && abreviatura.length < 3) {
+                abreviatura += palabra[letra];
+                agrego = true;
+            }
+        }
+        if (!agrego) break;
+    }
+    return abreviatura.slice(0, 3);
+};
+
+const generarCodigoMaterial = () => {
+    const cat = normalizarFragmentoCodigo(form.codigo_categoria) || abreviar(form.categoria);
+    const base = normalizarFragmentoCodigo(form.codigo_base) || abreviar(form.nombre_base);
+
+    if (!cat || !base) {
+        form.codigo_material = '';
+        return;
+    }
+
+    const prefijo = `${cat}-${base}`;
+    let max = 0;
+    const listaMateriales = [
+        ...(Array.isArray(props.materiales) ? props.materiales : []),
+        ...(Array.isArray(props.losSelect?.materiales) ? props.losSelect.materiales : []),
+    ];
+
+    listaMateriales.forEach((m: any) => {
+        const cod = m?.codigo_material || (typeof m?.name === 'string' && m.name.includes('—') ? m.name.split('—')[0].trim() : '');
+        if (cod && cod.startsWith(prefijo + '-')) {
+            const num = parseInt(cod.slice(prefijo.length + 1), 10);
+            if (!isNaN(num) && num > max) {
+                max = num;
+            }
+        }
+    });
+
+    form.codigo_material = `${prefijo}-${max + 1}`;
+};
+
+watch(
+    () => [form.categoria, form.codigo_categoria, form.nombre_base, form.codigo_base],
+    () => {
+        generarCodigoMaterial();
+    }
+);
+
+const camposIgnorados = [
+    'codigo_material',
+    'codigo_categoria',
+    'codigo_base',
+    'observaciones',
+    'variante_atributo_sugerido',
+];
 
 function ValidarVacios() {
     const faltantes: string[] = [];
     printForm.forEach(element => {
+        if (element.type === 'boolean') return;
+        if (camposIgnorados.includes(element.idd)) return;
+
         const valor = form[element.idd];
-        if (element.type === 'boolean') return; // los campos sí/no: false es válido
-        // 0 es un valor válido (material_procesado, existencia_actual, estado); solo cuenta vacío real.
         if (valor === '' || valor === null || valor === undefined) {
             faltantes.push(element.idd);
         }
@@ -153,7 +224,7 @@ function ValidarVacios() {
     if (!form.last_purchase_price || form.last_purchase_price === '' || Number(form.last_purchase_price) < 0) {
         faltantes.push('last_purchase_price');
     }
-    camposFaltantes.value = faltantes;
+    state.camposFaltantes = faltantes;
     return faltantes.length === 0;
 }
 
@@ -175,7 +246,7 @@ const create = () => {
 watchEffect(() => {
     if (props.show) {
         form.errors = {}
-        camposFaltantes.value = [];
+        state.camposFaltantes = [];
         printForm.forEach((campo) => {
             if (campo.type === 'boolean' && (form[campo.idd] === '' || form[campo.idd] == null)) {
                 form[campo.idd] = false;
@@ -187,6 +258,10 @@ watchEffect(() => {
         if (form.estado === '' || form.estado == null) {
             form.estado = 'Activo';
         }
+        if (form.existencia_actual === '' || form.existencia_actual == null) {
+            form.existencia_actual = 0;
+        }
+        generarCodigoMaterial();
     }
 });
 </script>
@@ -249,12 +324,13 @@ watchEffect(() => {
                                 <div v-else-if="atributosform.idd === 'codigo_material'">
                                     <InputLabel :for="atributosform.label"
                                         :value="lang().t('app.label')[atributosform.label] || atributosform.label" />
-                                    <TextInput :id="atributosform.idd" class="mt-1 block w-full bg-gray-50 dark:bg-gray-800/60"
-                                        model-value="" disabled placeholder="Se genera solo" />
+                                    <TextInput :id="atributosform.idd" class="mt-1 block w-full bg-gray-50 dark:bg-gray-800/60 font-mono font-medium"
+                                        :model-value="form.codigo_material" disabled placeholder="Se genera automáticamente" />
                                     <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                                         Se forma con el código de la categoría y el código base, más el siguiente número
                                         libre de esa combinación. Ejemplo: TEX-LFI-4.
                                     </p>
+                                    <InputError class="mt-2" :message="form.errors.codigo_material" />
                                 </div>
 
                                 <!-- par de códigos que forma el prefijo del material -->
@@ -492,9 +568,9 @@ watchEffect(() => {
 
                 <!-- Pie -->
                 <div class="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex items-center justify-between gap-3 bg-gray-50 dark:bg-gray-800/50 rounded-b-lg">
-                    <p v-if="camposFaltantes.length" class="flex items-center gap-1.5 text-sm text-red-600 dark:text-red-400">
+                    <p v-if="state.camposFaltantes.length" class="flex items-center gap-1.5 text-sm text-red-600 dark:text-red-400">
                         <ExclamationTriangleIcon class="w-4 h-4 shrink-0" />
-                        Campos faltantes: {{ camposFaltantes.join(', ') }}
+                        Campos faltantes: {{ state.camposFaltantes.join(', ') }}
                     </p>
                     <span v-else></span>
                     <div class="flex gap-3">

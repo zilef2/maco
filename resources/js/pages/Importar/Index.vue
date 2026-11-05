@@ -20,6 +20,12 @@ type MetricaExcel = {
     ultimo_archivo: string | null;
 };
 
+type HojaExcel = {
+    nombre: string;
+    columnas_requeridas: string[];
+    columnas_opcionales: string[];
+};
+
 const props = defineProps({
     breadcrumbs: Object,
     title: String,
@@ -28,11 +34,12 @@ const props = defineProps({
         nombre: string;
         grupo: string;
         descripcion: string;
-        ruta: string;
+        ruta: string | null;
         columnas_requeridas: string[];
         columnas_opcionales: string[];
         nota: string;
-        plantilla: string;
+        plantilla: string | null;
+        hojas?: HojaExcel[];
         metrica: MetricaExcel | null;
     }>,
     entidadesExcel: Array as () => EntidadExcel[],

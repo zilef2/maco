@@ -22,15 +22,16 @@ class ProveedorController extends Controller
 
     public function index(Request $request): Response
     {
-        $filtros = $request->only(['search', 'field', 'order', 'tipo_proveedor', 'estado', 'forma_pago', 'clasificacion']);
-        $proveedores = $this->proveedorService->listar($filtros, (int) $request->input('perPage', 10));
+        // Listado completo: la búsqueda, los filtros, el orden y la paginación
+        // viven en el frontend (igual que Productos), así que aquí no se lee
+        // ningún parámetro de filtro.
+        $proveedores = $this->proveedorService->listar();
 
         return Inertia::render('Proveedor/Index', [
-            'fromController' => $proveedores,
-            'total' => $proveedores->total(),
+            'proveedores' => $proveedores,
+            'total' => $proveedores->count(),
             'breadcrumbs' => [['label' => 'Proveedores', 'href' => route('Proveedor.index')]],
             'title' => 'Proveedores',
-            'filters' => $filtros,
             'perPage' => (int) $request->input('perPage', 10),
             'opcionesSelect' => $this->proveedorService->obtenerOpcionesSelect(),
         ]);

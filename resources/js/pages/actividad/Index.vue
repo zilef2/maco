@@ -53,6 +53,7 @@ const props = defineProps({
     breadcrumbs: Object as () => BreadcrumbItem[],
     title: String,
     esAmbienteTest: Boolean,
+    materiales: Object as () => { total: number; sin_existencia: number; sin_precio: number; rango_existencia: string; rango_precio: string },
     filtro: Object as () => { dias: number; factor: number; umbral: number; foco: string; usuario: number | null },
     opciones: Object as () => { dias: number[]; factor: number[]; umbral: number[]; focos: Record<string, string>; pausa_min: number },
     resumen: Object as () => {
@@ -691,7 +692,7 @@ onUnmounted(() => observadorTema?.disconnect());
                 </Card>
             </div>
 
-            <AccionesSuperadmin :es-ambiente-test="props.esAmbienteTest" />
+            <AccionesSuperadmin :es-ambiente-test="props.esAmbienteTest" :materiales="props.materiales" />
         </div>
     </AppLayout>
 </template>

@@ -39,10 +39,10 @@ class ExcelProveedoresImportTest extends TestCase
     public function test_importa_los_campos_nuevos_del_proveedor(): void
     {
         $ruta = $this->archivo(
-            ['NIT', 'Nombre comercial', 'Razón social', 'Correo electrónico', 'Ciudad', 'Tipo proveedor', 'Qué suministra', 'Celular contacto', 'Forma de pago', 'Tiempo entrega', 'Estado', 'Clasificación'],
+            ['NIT', 'Nombre comercial', 'Razón social', 'Correo electrónico', 'Ciudad', 'Tipo proveedor', 'Qué suministra', 'Celular contacto', 'Forma de pago', 'Tiempo entrega', 'Estado'],
             [
-                ['900.123.456-7', 'Proveedor ABC', 'ABC S.A.S.', 'contacto@abc.com', 'Medellín', 'Materia prima', 'Telas y botones', '3001234567', 'Crédito 30 días', '30', 'Activo', 'proveedor'],
-                ['901.234.567-8', 'Textiles del Norte', 'Textiles del Norte S.A.S.', 'ventas@norte.com', 'Bogotá', 'Servicio', 'Servicio de confección', '3109876543', 'Contado', '15', 'Inactivo', 'taller de proceso externo'],
+                ['900.123.456-7', 'Proveedor ABC', 'ABC S.A.S.', 'contacto@abc.com', 'Medellín', 'Materia prima', 'Telas y botones', '3001234567', 'Crédito 30 días', '30', 'Activo'],
+                ['901.234.567-8', 'Textiles del Norte', 'Textiles del Norte S.A.S.', 'ventas@norte.com', 'Bogotá', 'Servicio', 'Servicio de confección', '3109876543', 'Contado', '15', 'Inactivo'],
             ]
         );
 
@@ -64,7 +64,6 @@ class ExcelProveedoresImportTest extends TestCase
         $this->assertSame('Crédito 30 días', $proveedor->forma_pago);
         $this->assertSame('30', $proveedor->tiempo_entrega);
         $this->assertSame('Activo', $proveedor->estado);
-        $this->assertSame('proveedor', $proveedor->clasificacion);
         $this->assertNotNull($proveedor->codigo_proveedor);
     }
 

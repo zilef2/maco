@@ -3,14 +3,19 @@
 namespace App\Http\Controllers;
 
 use App\helpers\Myhelp;
+use App\Jobs\ImportarMPPJob;
 use App\Models\Parametro;
 use App\Services\ExcelImportacionTracker;
+use App\Services\ExcelMPPService;
+use App\Services\ImportacionExcelNotificador;
 use App\Services\PlantillasExcelService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
+use RuntimeException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ImportarExcelController extends Controller
@@ -31,11 +36,12 @@ class ImportarExcelController extends Controller
      * cargan con el archivo de talleres, cuya columna de clasificación decide
      * el destino de cada fila.
      */
-    private const ENTIDADES_CON_EXCEL_DEFAULT = ['producto', 'material', 'estado_operacion', 'taller', 'usuario'];
+    private const ENTIDADES_CON_EXCEL_DEFAULT = ['producto', 'material', 'estado_operacion', 'taller', 'usuario', 'mpp'];
 
     private const CATALOGO_ENTIDADES = [
         ['clave' => 'producto', 'nombre' => 'Producto', 'grupo' => 'Inventario'],
         ['clave' => 'material', 'nombre' => 'Material', 'grupo' => 'Inventario'],
+        ['clave' => 'mpp', 'nombre' => 'MPP: material, producto y proveedor', 'grupo' => 'Inventario'],
         ['clave' => 'orden_produccion', 'nombre' => 'Orden de producción', 'grupo' => 'Orden producción'],
         ['clave' => 'proceso_externo', 'nombre' => 'Proceso externo', 'grupo' => 'Orden producción'],
         ['clave' => 'recepcion_calidad', 'nombre' => 'Recepción calidad', 'grupo' => 'Orden producción'],
@@ -77,6 +83,14 @@ class ImportarExcelController extends Controller
                 'nota'                => 'Carga masiva por código de material: actualiza si existe, crea si no. "Proveedor habitual" debe existir en la app; se reconoce mejor por su NIT (900347285-7).',
             ],
             [
+                'id'                  => 'ficha_tecnica_materiales',
+                'nombre'              => 'Ficha técnica de materiales',
+                'grupo'               => 'Producción',
+                'descripcion'         => 'Plantilla para registrar la receta de materiales de cada producto',
+                'ruta'                => null,
+                'nota'                => 'Cada fila representa un material de la ficha de un producto. Repite el nombre de la ficha y el código del producto en todas sus filas. La carga masiva de esta plantilla todavía no está habilitada; por ahora, esta tarjeta solo permite descargar el formato .xlsx.',
+            ],
+            [
                 'id'                  => 'estado_operacion',
                 'nombre'              => 'Estados de Operación',
                 'grupo'               => 'Listas',
@@ -100,19 +114,29 @@ class ImportarExcelController extends Controller
                 'ruta'                => route('user.upload-excel'),
                 'nota'                => 'La fila 1 debe contener los títulos de las columnas. Nombre, email, identificación y rol son obligatorios. Si el usuario ya existe (mismo email o misma identificación) se actualiza; si no, se crea con la contraseña identificación + "*". El rol debe existir previamente en la aplicación. La importación se procesa en segundo plano y recibirás un correo y una notificación al finalizar.',
             ],
+            [
+                'id'                  => 'mpp',
+                'nombre'              => 'MPP: materiales, productos y proveedores',
+                'grupo'               => 'Inventario',
+                'descripcion'         => 'Un solo archivo con las hojas material, producto y proveedor',
+                'ruta'                => route('ImportarExcel.mpp'),
+                'nota'                => 'El archivo debe traer tres hojas llamadas exactamente "material", "producto" y "proveedor"; las demás se descartan. Cada hoja usa el mismo formato de su carga individual y la fila 1 son los títulos. En la hoja "proveedor" la columna de clasificación decide el destino de cada fila: "proveedor" guarda un Proveedor, "macondas" un Taller y "taller de proceso externo" una Empresa externa; una celda vacía o con otro valor cancela la subida. Se importa primero esa hoja, para que los materiales del mismo archivo ya puedan señalar a su proveedor habitual. Cualquier hoja con una fila mal escrita cancela todo el archivo: no queda nada importado. La importación se procesa en segundo plano y recibirás un correo con el resultado.',
+                'hojas'               => $this->resumenHojasMPP(),
+            ],
         ];
 
         $metricas = $this->tracker->promedios();
 
         // Las columnas y el archivo descargable salen de la misma definición,
-        // así la tarjeta y el formato .xlsx nunca se contradicen.
+        // así la tarjeta y el formato .xlsx nunca se contradicen. El MPP no
+        // tiene formato propio: muestra las columnas de cada una de sus hojas.
         $entidades = array_map(function (array $entidad) use ($metricas): array {
             $clave = $entidad['id'];
 
             return $entidad + [
-                'columnas_requeridas' => $this->plantillas->titulosRequeridos($clave),
-                'columnas_opcionales' => $this->plantillas->titulosOpcionales($clave),
-                'plantilla'           => route('ImportarExcel.plantilla', ['clave' => $clave]),
+                'columnas_requeridas' => $clave === 'mpp' ? [] : $this->plantillas->titulosRequeridos($clave),
+                'columnas_opcionales' => $clave === 'mpp' ? [] : $this->plantillas->titulosOpcionales($clave),
+                'plantilla'           => $clave === 'mpp' ? null : route('ImportarExcel.plantilla', ['clave' => $clave]),
                 'metrica'             => $metricas[$clave] ?? null,
             ];
         }, $entidades);
@@ -143,6 +167,83 @@ class ImportarExcelController extends Controller
         }, $this->plantillas->nombreArchivo($clave), [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         ]);
+    }
+
+    /**
+     * Carga masiva MPP: materiales, productos y proveedores en un solo archivo.
+     *
+     * Valida de forma síncrona (tamaño, escaneo de seguridad, las tres hojas y
+     * sus títulos) y solo si todo está correcto encola el job que inserta en la
+     * BD y envía los correos.
+     */
+    public function uploadMpp(
+        Request $request,
+        ExcelMPPService $excel,
+        ImportacionExcelNotificador $notificador,
+    ): RedirectResponse {
+        Myhelp::EscribirEnLog($this, ' uploadMpp ');
+
+        $request->validate([
+            'archivo' => ['required', 'file', 'max:10240', 'mimes:xlsx'],
+        ], [
+            'archivo.required' => 'Selecciona un archivo .xlsx.',
+            'archivo.file' => 'El archivo no es válido.',
+            'archivo.max' => 'El archivo supera el tamaño máximo de 10 MB.',
+            'archivo.mimes' => 'Solo se permiten archivos .xlsx.',
+        ]);
+
+        $archivo = $request->file('archivo');
+        $usuario = $request->user();
+        $nombreArchivo = $archivo->getClientOriginalName();
+        $rutaRelativa = null;
+
+        try {
+            if (strtolower($archivo->getClientOriginalExtension()) !== 'xlsx') {
+                throw new RuntimeException('Solo se permiten archivos con extensión .xlsx.');
+            }
+
+            // 1. Escaneo de seguridad del contenedor XLSX.
+            $problemas = $excel->escanearSeguridad($archivo->getRealPath());
+            if (!empty($problemas)) {
+                throw new RuntimeException(implode(' | ', $problemas));
+            }
+
+            // 2. Las tres hojas y sus títulos: el contenido de los datos lo
+            // valida el job antes de insertar.
+            $excel->validarLibro($archivo->getRealPath());
+
+            // 3. Todo válido: guardar y encolar la importación.
+            $rutaRelativa = $archivo->store('imports/mpp', 'local');
+            if (!$rutaRelativa) {
+                throw new RuntimeException('No se pudo guardar el archivo para su procesamiento.');
+            }
+
+            ImportarMPPJob::dispatch(
+                $rutaRelativa,
+                $nombreArchivo,
+                $usuario?->email,
+                $usuario?->name,
+                $usuario?->id,
+                $request->attributes->get('importacion_excel_id'),
+            );
+
+            Myhelp::EscribirEnLog($this, 'uploadMpp ENCOLADO', $nombreArchivo);
+
+            return back()->with(
+                'success',
+                'Archivo recibido correctamente. La importación de las hojas material, producto y '
+                . 'proveedor se está procesando; si alguna fila tiene errores recibirás el detalle por correo.'
+            );
+        } catch (\Throwable $e) {
+            if ($rutaRelativa) {
+                Storage::disk('local')->delete($rutaRelativa);
+            }
+
+            $notificador->fallo($usuario?->email, $usuario?->name, $nombreArchivo, 'MPP (materiales, productos y proveedores)', $e);
+            Myhelp::EscribirEnLog($this, 'uploadMpp ERROR', $e->getMessage());
+
+            return back()->with('error', 'No se importó nada: ' . $e->getMessage());
+        }
     }
 
     /**
@@ -183,6 +284,37 @@ class ImportarExcelController extends Controller
             fn (array $entidad) => $entidad + ['tiene_excel' => (bool) ($estado[$entidad['clave']] ?? false)],
             self::CATALOGO_ENTIDADES
         );
+    }
+
+    /**
+     * Columnas de cada hoja del archivo MPP. Salen de las mismas definiciones
+     * de PlantillasExcelService que usan las tarjetas de Materiales, Productos
+     * y Talleres, para que el MPP no tenga una ayuda propia que se desactualice.
+     * La hoja "proveedor" trae la ficha de terceros, así que repite el formato
+     * del archivo de talleres: su columna de clasificación decide si cada fila
+     * termina en Taller, Empresa externa o Proveedor.
+     *
+     * @return array<int, array{nombre: string, columnas_requeridas: string[], columnas_opcionales: string[]}>
+     */
+    private function resumenHojasMPP(): array
+    {
+        $formatoPorHoja = [
+            'material'  => 'material',
+            'producto'  => 'producto',
+            'proveedor' => 'taller',
+        ];
+
+        $hojas = [];
+
+        foreach ($formatoPorHoja as $hoja => $clave) {
+            $hojas[] = [
+                'nombre'              => $hoja,
+                'columnas_requeridas' => $this->plantillas->titulosRequeridos($clave),
+                'columnas_opcionales' => $this->plantillas->titulosOpcionales($clave),
+            ];
+        }
+
+        return $hojas;
     }
 
     /**

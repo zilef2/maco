@@ -39,8 +39,7 @@ class Material extends Model
         'variante_atributo_sugerido',
         'proveedor_habitual',
         'material_procesado',
-        'observaciones',
-        'costo_material'];
+        'observaciones'];
 
     protected static function booted(): void
     {

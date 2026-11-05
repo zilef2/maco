@@ -17,7 +17,8 @@ trait MaterialMovimientoTrait
         float|int $existenciaAnterior,
         float|int $existenciaNueva,
         ?string $tipo = null,
-        ?string $motivo = null
+        ?string $motivo = null,
+        ?int $usuarioId = null
     ): ?MaterialMovimiento {
         $anterior = (float) $existenciaAnterior;
         $nueva = (float) $existenciaNueva;
@@ -39,7 +40,9 @@ trait MaterialMovimientoTrait
             'existencia_anterior' => $anterior,
             'existencia_nueva' => $nueva,
             'motivo' => $motivo,
-            'user_id' => Auth::id(),
+            // En las importaciones en segundo plano no hay usuario autenticado:
+            // el job pasa el id de quien subió el archivo.
+            'user_id' => $usuarioId ?? Auth::id(),
         ]);
 
         // Las salidas a taller son las que alimentan el gasto diario: al
@@ -53,7 +56,8 @@ trait MaterialMovimientoTrait
 
     public function registrarMovimientoCreacion(
         Material $material,
-        ?string $motivo = null
+        ?string $motivo = null,
+        ?int $usuarioId = null
     ): ?MaterialMovimiento {
         $existencia = (float) ($material->existencia_actual ?? 0);
 
@@ -64,14 +68,15 @@ trait MaterialMovimientoTrait
             'existencia_anterior' => 0,
             'existencia_nueva' => $existencia,
             'motivo' => $motivo ?? 'Creación inicial',
-            'user_id' => Auth::id(),
+            'user_id' => $usuarioId ?? Auth::id(),
         ]);
     }
 
     public function registrarMovimientoActualizacion(
         Material $material,
         float|int $existenciaAnterior,
-        ?string $motivo = null
+        ?string $motivo = null,
+        ?int $usuarioId = null
     ): ?MaterialMovimiento {
         $nuevaExistencia = (float) ($material->existencia_actual ?? 0);
 
@@ -80,7 +85,8 @@ trait MaterialMovimientoTrait
             $existenciaAnterior,
             $nuevaExistencia,
             null,
-            $motivo ?? 'Ajuste de inventario'
+            $motivo ?? 'Ajuste de inventario',
+            $usuarioId
         );
     }
 

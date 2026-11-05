@@ -1556,6 +1556,10 @@ class OrdenProduccionController extends Controller {
                         'fecha_cierre'         => now(),
                     ]
                 );
+
+                // El coste de producción del producto queda congelado con los
+                // precios de material de esta OP cerrada.
+                $this->costosMateriales->actualizarCosteProduccionEnCierre($OrdenProduccion);
             }
 
             if (!empty($recepciones)) {

@@ -38,7 +38,6 @@ class Proveedor extends Model
         'tiempo_entrega',
         'estado',
         'observaciones_generales',
-        'clasificacion',
         'categoria',
         'celular1',
         'celular2',

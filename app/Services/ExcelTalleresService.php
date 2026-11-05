@@ -193,7 +193,20 @@ class ExcelTalleresService
      */
     public function validarEncabezados(string $ruta): void
     {
-        $this->columnasDesdeTitulos($this->leerFilaTitulos($ruta));
+        $this->validarTitulos($this->leerFilaTitulos($ruta));
+    }
+
+    /**
+     * Validez de una fila de títulos ya leída: la usan el archivo de Talleres y
+     * la tarjeta MPP, que lee el libro por el nombre de sus hojas.
+     *
+     * @param  array<int, mixed>  $filaTitulos
+     *
+     * @throws RuntimeException cuando el encabezado no cumple el formato
+     */
+    public function validarTitulos(array $filaTitulos): void
+    {
+        $this->columnasDesdeTitulos($filaTitulos);
     }
 
     /**
@@ -252,7 +265,26 @@ class ExcelTalleresService
      */
     public function leerRegistros(string $ruta): array
     {
-        $filas = $this->leerTodasLasFilas($ruta);
+        return $this->registrosDesdeFilas($this->leerTodasLasFilas($ruta));
+    }
+
+    /**
+     * Valida los títulos (posición 0) y el resto de las filas de una hoja ya
+     * leída. Es el mismo recorrido para el archivo de Talleres y para la hoja
+     * "proveedor" del MPP.
+     *
+     * @param  array<int, array<int, mixed>>  $filas
+     * @return array<int, array<string, string|null>>
+     *
+     * @throws RuntimeException cuando el archivo no cumple el formato
+     */
+    public function registrosDesdeFilas(array $filas): array
+    {
+        $filas = array_values(array_map(
+            fn (array $fila): array => array_values($fila),
+            $filas
+        ));
+
         if (empty($filas)) {
             throw new RuntimeException('El archivo está vacío.');
         }
@@ -428,7 +460,8 @@ class ExcelTalleresService
 
     /**
      * Datos a persistir: las columnas del archivo ya traducidas a la columna
-     * de código del destino. La clasificación solo es un campo de proveedor.
+     * de código del destino. La clasificación solo decide el destino de la
+     * fila, no se guarda en ninguna de las tres tablas.
      *
      * @param  array<string, string|null>  $registro
      * @param  array{modelo: class-string, codigo: string, prefijo: string}  $destino
@@ -455,10 +488,6 @@ class ExcelTalleresService
         // sus desplegables: es el espejo del nombre comercial.
         if (isset($datos['nombre_comercial'])) {
             $datos['nombre'] = $datos['nombre_comercial'];
-        }
-
-        if ($destino['modelo'] === Proveedor::class) {
-            $datos['clasificacion'] = Proveedor::CLASIFICACIONES[0];
         }
 
         return $datos;

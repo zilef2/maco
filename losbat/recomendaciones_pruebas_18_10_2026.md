@@ -80,3 +80,4 @@ Las dos de mayor valor y riesgo de regresión:
 > Estas dos pruebas cubrirían el mayor volumen de código nuevo y de negocio del
 > proyecto. Recomendadas en ese orden: (1) valida el workflow de estados,
 > (2) protege el inventario.
+

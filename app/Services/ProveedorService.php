@@ -4,7 +4,7 @@ namespace App\Services;
 
 use App\Models\Proveedor;
 use App\Repositories\ProveedorRepository;
-use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Collection;
 
 class ProveedorService
 {
@@ -12,18 +12,9 @@ class ProveedorService
         protected ProveedorRepository $proveedorRepository
     ) {}
 
-    public function listar(array $filtros, int $perPage = 10): LengthAwarePaginator
+    public function listar(): Collection
     {
-        return $this->proveedorRepository->paginate(
-            perPage: $perPage,
-            search: $filtros['search'] ?? null,
-            field: $filtros['field'] ?? null,
-            order: $filtros['order'] ?? null,
-            tipoProveedor: $filtros['tipo_proveedor'] ?? null,
-            estado: $filtros['estado'] ?? null,
-            formaPago: $filtros['forma_pago'] ?? null,
-            clasificacion: $filtros['clasificacion'] ?? null,
-        );
+        return $this->proveedorRepository->all();
     }
 
     public function obtener(int $id): ?Proveedor
@@ -69,7 +60,6 @@ class ProveedorService
             'tipo_proveedor' => Proveedor::TIPOS_PROVEEDOR,
             'estado' => Proveedor::ESTADOS,
             'forma_pago' => Proveedor::FORMAS_PAGO,
-            'clasificacion' => Proveedor::CLASIFICACIONES,
         ];
     }
 }

@@ -23,10 +23,11 @@ class ExcelImportacionTracker
         'taller',
         'proveedor',
         'usuario',
+        'mpp',
     ];
 
     /** Entidades cuyo procesamiento pesado corre en la cola. */
-    public const ASINCRONAS = ['taller', 'proveedor', 'usuario'];
+    public const ASINCRONAS = ['taller', 'proveedor', 'usuario', 'mpp'];
 
     private const ENTIDAD_POR_RUTA = [
         'Producto.upload-excel' => 'producto',
@@ -35,6 +36,7 @@ class ExcelImportacionTracker
         'Taller.upload-excel' => 'taller',
         'Proveedor.upload-excel' => 'proveedor',
         'user.upload-excel' => 'usuario',
+        'ImportarExcel.mpp' => 'mpp',
     ];
 
     /** Cuántas cargas recientes entran en el promedio de la vista. */

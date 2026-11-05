@@ -2,14 +2,15 @@
 import AppLayout from '@/layouts/AppLayout.vue';
 import DataPagination from '@/components/DataPagination.vue';
 import PrimaryButton from '@/components/PrimaryButton.vue';
-import { Head, Link, router } from '@inertiajs/vue3';
-import { computed, reactive, watch } from 'vue';
-import pkg from 'lodash';
+import { Head, Link } from '@inertiajs/vue3';
+import { computed, reactive, ref, watch } from 'vue';
 
 import {
     ArrowUpTrayIcon,
+    ChevronDownIcon,
     ChevronRightIcon,
     ChevronUpDownIcon,
+    ChevronUpIcon,
     FunnelIcon,
     MagnifyingGlassIcon,
     PencilIcon,
@@ -23,20 +24,11 @@ import Edit from '@/pages/Proveedor/Edit.vue';
 import Delete from '@/pages/Proveedor/Delete.vue';
 import ImportarProveedorModal from '@/pages/Proveedor/ImportarProveedorModal.vue';
 
-const { debounce, pickBy } = pkg;
-
 const props = defineProps({
-    fromController: {
-        type: Object,
-        default: () => ({ data: [] }),
-    },
+    proveedores: { type: Array as () => any[], default: () => [] },
     total: {
         type: Number,
         default: 0,
-    },
-    filters: {
-        type: Object,
-        default: () => ({}),
     },
     breadcrumbs: {
         type: Array as () => Array<{ label?: string; href?: string }>,
@@ -60,36 +52,163 @@ const props = defineProps({
             tipo_proveedor: ['Materia prima', 'Servicio', 'Mixto', 'Otro'],
             estado: ['Activo', 'Inactivo'],
             forma_pago: ['Contado', 'Crédito 8 días', 'Crédito 15 días', 'Crédito 30 días', 'Anticipo', 'Otro'],
-            clasificacion: ['proveedor', 'taller de proceso externo', 'macondas'],
         }),
     },
 });
 
+/* --------------------------------------------------------------------------
+ * Tabla 100% en cliente: los proveedores llegan una sola vez y aquí se
+ * buscan, filtran, ordenan y paginan sin volver al backend.
+ * ------------------------------------------------------------------------ */
+
+const filas = computed<any[]>(() => props.proveedores ?? []);
+
+const busqueda = ref('');
+const tipoFiltro = ref('');
+const formaPagoFiltro = ref('');
 // Con la lista sin filtrar en la URL se arranca viendo solo los activos.
 const estadoPorDefecto = 'Activo';
+const estadoFiltro = ref(estadoPorDefecto);
 
-const opcionesEstado = [
-    { value: '', label: 'Ambos' },
-    { value: 'Activo', label: 'Activos' },
-    { value: 'Inactivo', label: 'Inactivos' },
-];
+const sortKey = ref('updated_at');
+const sortDir = ref<'asc' | 'desc'>('desc');
+const porPagina = ref<number>(props.perPage ?? 10);
+const pagina = ref(1);
 
-const data = reactive({
-    params: {
-        search: props.filters?.search ?? '',
-        field: props.filters?.field ?? 'updated_at',
-        order: props.filters?.order ?? 'desc',
-        perPage: props.perPage ?? 10,
-        tipo_proveedor: props.filters?.tipo_proveedor ?? '',
-        estado: props.filters?.estado ?? estadoPorDefecto,
-        forma_pago: props.filters?.forma_pago ?? '',
-        clasificacion: props.filters?.clasificacion ?? '',
+const normalizar = (valor: any): string =>
+    String(valor ?? '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .trim();
+
+const preparadas = computed(() =>
+    filas.value.map((proveedor: any) => ({
+        ...proveedor,
+        _busqueda: normalizar(
+            [
+                proveedor.codigo_proveedor,
+                proveedor.nit,
+                proveedor.nombre_comercial,
+                proveedor.nombre,
+                proveedor.razon_social,
+                proveedor.correo_electronico,
+                proveedor.ciudad,
+                proveedor.direccion,
+                proveedor.persona_contacto,
+                proveedor.que_suministra,
+            ].join(' '),
+        ),
+    })),
+);
+
+// Base del segmento de estado: todo menos el estado, para que los conteos no
+// cambien al elegir una de sus opciones.
+const baseSinEstado = computed(() =>
+    preparadas.value.filter((proveedor: any) => {
+        if (busqueda.value.trim() && !proveedor._busqueda.includes(normalizar(busqueda.value))) {
+            return false;
+        }
+        if (tipoFiltro.value && normalizar(proveedor.tipo_proveedor) !== normalizar(tipoFiltro.value)) {
+            return false;
+        }
+        if (formaPagoFiltro.value && normalizar(proveedor.forma_pago) !== normalizar(formaPagoFiltro.value)) {
+            return false;
+        }
+        return true;
+    }),
+);
+
+const filtradas = computed(() =>
+    baseSinEstado.value.filter((proveedor: any) =>
+        estadoFiltro.value ? normalizar(proveedor.estado) === normalizar(estadoFiltro.value) : true,
+    ),
+);
+
+const collator = new Intl.Collator('es', { numeric: true, sensitivity: 'base' });
+
+const ordenadas = computed(() => {
+    const dir = sortDir.value === 'asc' ? 1 : -1;
+    const key = sortKey.value;
+
+    return [...filtradas.value].sort((a: any, b: any) => {
+        const va = a[key];
+        const vb = b[key];
+        const nuloA = va === null || va === undefined || va === '';
+        const nuloB = vb === null || vb === undefined || vb === '';
+
+        if (nuloA && nuloB) return 0;
+        if (nuloA) return 1;
+        if (nuloB) return -1;
+        if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
+        return collator.compare(String(va), String(vb)) * dir;
+    });
+});
+
+const totalFiltrado = computed(() => ordenadas.value.length);
+const paginas = computed(() => Math.max(1, Math.ceil(totalFiltrado.value / porPagina.value)));
+const paginaActual = computed(() => Math.min(pagina.value, paginas.value));
+const desde = computed(() => (totalFiltrado.value === 0 ? 0 : (paginaActual.value - 1) * porPagina.value + 1));
+const hasta = computed(() => Math.min(paginaActual.value * porPagina.value, totalFiltrado.value));
+
+const visibles = computed(() => {
+    const inicio = (paginaActual.value - 1) * porPagina.value;
+    return ordenadas.value.slice(inicio, inicio + porPagina.value);
+});
+
+const opcionesEstado = computed(() => [
+    { value: '', label: 'Ambos', count: baseSinEstado.value.length },
+    {
+        value: 'Activo',
+        label: 'Activos',
+        count: baseSinEstado.value.filter((p: any) => normalizar(p.estado) === 'activo').length,
     },
-    proveedorSeleccionado: null as any,
-    createOpen: false,
-    editOpen: false,
-    deleteOpen: false,
-    importOpen: false,
+    {
+        value: 'Inactivo',
+        label: 'Inactivos',
+        count: baseSinEstado.value.filter((p: any) => normalizar(p.estado) === 'inactivo').length,
+    },
+]);
+
+const cambiarPagina = (p: number) => {
+    pagina.value = Math.min(Math.max(1, p), paginas.value);
+};
+
+const ordenarPor = (campo: string) => {
+    if (sortKey.value === campo) {
+        sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc';
+    } else {
+        sortKey.value = campo;
+        sortDir.value = 'asc';
+    }
+    pagina.value = 1;
+};
+
+const indicador = (campo: string) => (sortKey.value === campo ? sortDir.value : null);
+const ariaSort = (campo: string): 'ascending' | 'descending' | 'none' =>
+    sortKey.value !== campo ? 'none' : sortDir.value === 'asc' ? 'ascending' : 'descending';
+
+const limpiarFiltros = () => {
+    busqueda.value = '';
+    tipoFiltro.value = '';
+    estadoFiltro.value = estadoPorDefecto;
+    formaPagoFiltro.value = '';
+};
+
+const hayFiltros = computed(
+    () => busqueda.value.trim() !== ''
+        || tipoFiltro.value !== ''
+        || estadoFiltro.value !== estadoPorDefecto
+        || formaPagoFiltro.value !== '',
+);
+
+watch([busqueda, tipoFiltro, formaPagoFiltro, estadoFiltro, porPagina], () => {
+    pagina.value = 1;
+});
+
+watch(paginas, (n) => {
+    if (pagina.value > n) pagina.value = n;
 });
 
 const selectClass = 'h-9 rounded-md border border-input bg-background px-2.5 text-xs text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30';
@@ -101,66 +220,13 @@ const segmentoClass = (activo: boolean) => [
         : 'text-muted-foreground hover:bg-muted hover:text-foreground',
 ];
 
-const aplicarFiltros = debounce(() => {
-    const query = pickBy(data.params, (v) => v !== '' && v !== null && v !== undefined);
-    router.get(route('Proveedor.index'), query, {
-        preserveState: true,
-        preserveScroll: true,
-        replace: true,
-    });
-}, 250);
-
-watch(
-    () => [
-        data.params.search,
-        data.params.perPage,
-        data.params.tipo_proveedor,
-        data.params.estado,
-        data.params.forma_pago,
-        data.params.clasificacion,
-    ],
-    () => {
-        aplicarFiltros();
-    },
-);
-
-const ordenarPor = (campo: string) => {
-    if (data.params.field === campo) {
-        data.params.order = data.params.order === 'asc' ? 'desc' : 'asc';
-    } else {
-        data.params.field = campo;
-        data.params.order = 'asc';
-    }
-    aplicarFiltros();
-};
-
-const cambiarPagina = (pagina: number) => {
-    const query = {
-        ...pickBy(data.params, (v) => v !== '' && v !== null && v !== undefined),
-        page: pagina,
-    };
-    router.get(route('Proveedor.index'), query, {
-        preserveState: true,
-        preserveScroll: true,
-    });
-};
-
-const limpiarFiltros = () => {
-    data.params.search = '';
-    data.params.tipo_proveedor = '';
-    data.params.estado = estadoPorDefecto;
-    data.params.forma_pago = '';
-    data.params.clasificacion = '';
-    aplicarFiltros();
-};
-
-const hayFiltros = computed(
-    () => !!data.params.search
-        || !!data.params.tipo_proveedor
-        || data.params.estado !== estadoPorDefecto
-        || !!data.params.forma_pago
-        || !!data.params.clasificacion,
-);
+const data = reactive({
+    proveedorSeleccionado: null as any,
+    createOpen: false,
+    editOpen: false,
+    deleteOpen: false,
+    importOpen: false,
+});
 
 const abrirEditar = (proveedor: any) => {
     data.proveedorSeleccionado = proveedor;
@@ -202,10 +268,17 @@ const abrirEliminar = (proveedor: any) => {
                 <div class="flex flex-wrap items-end justify-between gap-3">
                     <div class="min-w-0">
                         <h1 class="text-2xl font-semibold tracking-tight text-foreground">Proveedores</h1>
-                        <p class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+                        <p class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground" role="status" aria-live="polite">
                             <span class="tabular-nums">
-                                <span class="font-medium text-foreground">{{ props.total }}</span>
-                                {{ props.total === 1 ? 'proveedor' : 'proveedores' }}
+                                <span class="font-medium text-foreground">{{ totalFiltrado }}</span>
+                                de {{ filas.length }} {{ filas.length === 1 ? 'proveedor' : 'proveedores' }}
+                            </span>
+                            <span
+                                v-if="hayFiltros"
+                                class="inline-flex items-center gap-1 rounded-full border border-border bg-muted/60 px-2 py-0.5 text-[11px] font-medium text-foreground"
+                            >
+                                <FunnelIcon class="h-3 w-3" />
+                                Filtros activos
                             </span>
                         </p>
                     </div>
@@ -234,22 +307,22 @@ const abrirEliminar = (proveedor: any) => {
                         <div class="relative min-w-[200px] flex-1">
                             <MagnifyingGlassIcon class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                             <input
-                                v-model="data.params.search"
+                                v-model="busqueda"
                                 type="search"
                                 placeholder="Buscar por código, NIT, nombre, contacto, ciudad..."
                                 class="h-9 w-full rounded-md border border-input bg-background pl-9 pr-9 text-xs text-foreground shadow-sm placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30"
                             />
                             <button
-                                v-if="data.params.search"
+                                v-if="busqueda"
                                 type="button"
-                                @click="data.params.search = ''"
+                                @click="busqueda = ''"
                                 class="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
                             >
                                 <XMarkIcon class="h-3.5 w-3.5" />
                             </button>
                         </div>
 
-                        <select v-model="data.params.tipo_proveedor" :class="selectClass">
+                        <select v-model="tipoFiltro" :class="selectClass">
                             <option value="">Todos los tipos</option>
                             <option
                                 v-for="opcion in (props.opcionesSelect?.tipo_proveedor || [])"
@@ -260,18 +333,7 @@ const abrirEliminar = (proveedor: any) => {
                             </option>
                         </select>
 
-                        <select v-model="data.params.clasificacion" :class="selectClass">
-                            <option value="">Todas las clasificaciones</option>
-                            <option
-                                v-for="opcion in (props.opcionesSelect?.clasificacion || [])"
-                                :key="opcion"
-                                :value="opcion"
-                            >
-                                {{ opcion }}
-                            </option>
-                        </select>
-
-                        <select v-model="data.params.forma_pago" :class="selectClass">
+                        <select v-model="formaPagoFiltro" :class="selectClass">
                             <option value="">Todas las formas de pago</option>
                             <option
                                 v-for="opcion in (props.opcionesSelect?.forma_pago || [])"
@@ -292,16 +354,17 @@ const abrirEliminar = (proveedor: any) => {
                                     v-for="opcion in opcionesEstado"
                                     :key="opcion.value || 'ambos'"
                                     type="button"
-                                    :aria-pressed="data.params.estado === opcion.value"
-                                    :class="segmentoClass(data.params.estado === opcion.value)"
-                                    @click="data.params.estado = opcion.value"
+                                    :aria-pressed="estadoFiltro === opcion.value"
+                                    :class="segmentoClass(estadoFiltro === opcion.value)"
+                                    @click="estadoFiltro = opcion.value"
                                 >
                                     {{ opcion.label }}
+                                    <span class="ml-1 tabular-nums opacity-70">{{ opcion.count }}</span>
                                 </button>
                             </div>
                         </div>
 
-                        <select v-model.number="data.params.perPage" :class="selectClass">
+                        <select v-model.number="porPagina" :class="selectClass">
                             <option v-for="n in [10, 25, 50, 100]" :key="n" :value="n">{{ n }} / pág</option>
                         </select>
 
@@ -321,24 +384,28 @@ const abrirEliminar = (proveedor: any) => {
                     <table class="w-full min-w-[1200px] border-collapse text-sm">
                         <thead>
                             <tr class="bg-muted text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                                <th scope="col" class="px-3 py-2.5 text-left">
+                                <th scope="col" class="px-3 py-2.5 text-left" :aria-sort="ariaSort('codigo_proveedor')">
                                     <button
                                         type="button"
                                         @click="ordenarPor('codigo_proveedor')"
                                         class="inline-flex items-center gap-1 hover:text-foreground"
                                     >
                                         <span>Código</span>
-                                        <ChevronUpDownIcon class="h-3 w-3" />
+                                        <ChevronUpIcon v-if="indicador('codigo_proveedor') === 'asc'" class="h-3 w-3" />
+                                        <ChevronDownIcon v-else-if="indicador('codigo_proveedor') === 'desc'" class="h-3 w-3" />
+                                        <ChevronUpDownIcon v-else class="h-3 w-3" />
                                     </button>
                                 </th>
-                                <th scope="col" class="px-3 py-2.5 text-left">
+                                <th scope="col" class="px-3 py-2.5 text-left" :aria-sort="ariaSort('nombre_comercial')">
                                     <button
                                         type="button"
                                         @click="ordenarPor('nombre_comercial')"
                                         class="inline-flex items-center gap-1 hover:text-foreground"
                                     >
                                         <span>Proveedor / Razón Social</span>
-                                        <ChevronUpDownIcon class="h-3 w-3" />
+                                        <ChevronUpIcon v-if="indicador('nombre_comercial') === 'asc'" class="h-3 w-3" />
+                                        <ChevronDownIcon v-else-if="indicador('nombre_comercial') === 'desc'" class="h-3 w-3" />
+                                        <ChevronUpDownIcon v-else class="h-3 w-3" />
                                     </button>
                                 </th>
                                 <th scope="col" class="px-3 py-2.5 text-left">NIT</th>
@@ -347,7 +414,6 @@ const abrirEliminar = (proveedor: any) => {
                                 <th scope="col" class="px-3 py-2.5 text-left">Contacto / Celular</th>
                                 <th scope="col" class="px-3 py-2.5 text-left">Ciudad / Dirección</th>
                                 <th scope="col" class="px-3 py-2.5 text-left">Forma pago</th>
-                                <th scope="col" class="px-3 py-2.5 text-left">Clasificación</th>
                                 <th scope="col" class="px-3 py-2.5 text-left">Estado</th>
                                 <th scope="col" class="sticky right-0 z-30 w-[90px] border-l border-border bg-muted px-2 py-2.5 text-right">
                                     Acciones
@@ -355,9 +421,9 @@ const abrirEliminar = (proveedor: any) => {
                             </tr>
                         </thead>
 
-                        <tbody v-if="props.fromController?.data?.length">
+                        <tbody v-if="visibles.length">
                             <tr
-                                v-for="proveedor in props.fromController.data"
+                                v-for="proveedor in visibles"
                                 :key="proveedor.id"
                                 class="group border-b border-border/60 transition-colors last:border-0 hover:bg-muted/40"
                             >
@@ -427,14 +493,6 @@ const abrirEliminar = (proveedor: any) => {
 
                                 <td class="px-3 py-3 align-top">
                                     <span
-                                        class="inline-flex rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase text-muted-foreground"
-                                    >
-                                        {{ proveedor.clasificacion || 'proveedor' }}
-                                    </span>
-                                </td>
-
-                                <td class="px-3 py-3 align-top">
-                                    <span
                                         class="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium"
                                         :class="proveedor.estado === 'Activo'
                                             ? 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300'
@@ -473,14 +531,29 @@ const abrirEliminar = (proveedor: any) => {
 
                         <tbody v-else>
                             <tr>
-                                <td colspan="11" class="px-6 py-16 text-center text-muted-foreground">
+                                <td colspan="10" class="px-6 py-16 text-center text-muted-foreground">
                                     <div class="mx-auto flex max-w-sm flex-col items-center">
-                                        <FunnelIcon class="h-8 w-8 text-muted-foreground/60" />
-                                        <h3 class="mt-3 text-sm font-semibold text-foreground">No hay proveedores registrados</h3>
+                                        <FunnelIcon v-if="hayFiltros" class="h-8 w-8 text-muted-foreground/60" />
+                                        <h3 class="mt-3 text-sm font-semibold text-foreground">
+                                            {{ hayFiltros ? 'No hay proveedores que coincidan' : 'No hay proveedores registrados' }}
+                                        </h3>
                                         <p class="mt-1 text-xs text-muted-foreground">
-                                            Ajusta los filtros de búsqueda o crea un nuevo proveedor.
+                                            {{
+                                                hayFiltros
+                                                    ? 'Ajusta la búsqueda o limpia los filtros para ver más resultados.'
+                                                    : 'Crea un nuevo proveedor para poder asociarlo a materiales y kits.'
+                                            }}
                                         </p>
-                                        <PrimaryButton type="button" class="mt-4" @click="data.createOpen = true">
+                                        <button
+                                            v-if="hayFiltros"
+                                            type="button"
+                                            @click="limpiarFiltros"
+                                            class="mt-4 inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-card px-3 text-xs font-medium text-foreground shadow-sm transition hover:bg-muted"
+                                        >
+                                            <XMarkIcon class="h-3.5 w-3.5" />
+                                            Limpiar filtros
+                                        </button>
+                                        <PrimaryButton v-else type="button" class="mt-4" @click="data.createOpen = true">
                                             <PlusIcon class="mr-1.5 h-4 w-4" />
                                             Crear proveedor
                                         </PrimaryButton>
@@ -492,11 +565,11 @@ const abrirEliminar = (proveedor: any) => {
                 </div>
 
                 <DataPagination
-                    :current-page="props.fromController?.current_page || 1"
-                    :last-page="props.fromController?.last_page || 1"
-                    :from="props.fromController?.from || 0"
-                    :to="props.fromController?.to || 0"
-                    :total="props.fromController?.total || 0"
+                    :current-page="paginaActual"
+                    :last-page="paginas"
+                    :from="desde"
+                    :to="hasta"
+                    :total="totalFiltrado"
                     item-label="proveedores"
                     @page="cambiarPagina"
                 />

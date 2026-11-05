@@ -23,7 +23,6 @@ const props = defineProps({
             tipo_proveedor: ['Materia prima', 'Servicio', 'Mixto', 'Otro'],
             estado: ['Activo', 'Inactivo'],
             forma_pago: ['Contado', 'Crédito 8 días', 'Crédito 15 días', 'Crédito 30 días', 'Anticipo', 'Otro'],
-            clasificacion: ['proveedor', 'taller de proceso externo', 'macondas'],
         }),
     },
 });
@@ -51,7 +50,6 @@ const form = useForm({
     tiempo_entrega: '30',
     estado: 'Activo',
     observaciones_generales: '',
-    clasificacion: 'proveedor',
 });
 
 const opcionesEstado = computed(() => props.opcionesSelect?.estado ?? ['Activo', 'Inactivo']);
@@ -80,7 +78,6 @@ const camposOpcionales = [
     'tiempo_entrega',
     'estado',
     'observaciones_generales',
-    'clasificacion',
 ];
 
 const selectClass = 'mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30';
@@ -113,7 +110,6 @@ watch(
             form.clearErrors();
             // codigo_proveedor se genera automáticamente en el modelo
             form.estado = 'Activo';
-            form.clasificacion = 'proveedor';
         }
     },
 );
@@ -212,7 +208,7 @@ watch(
                         v-model="form[campo]"
                         type="text"
                         class="mt-1 block w-full"
-                        :placeholder="campo === 'razon_social' ? 'Razón social completa' : campo === 'clasificacion' ? 'proveedor, taller de proceso externo o macondas' : campo === 'forma_pago' ? 'Contado, Crédito 8 días, etc.' : ''"
+                        :placeholder="campo === 'razon_social' ? 'Razón social completa' : campo === 'forma_pago' ? 'Contado, Crédito 8 días, etc.' : ''"
                         :error="form.errors[campo]"
                     />
                     <InputError class="mt-1" :message="form.errors[campo]" />

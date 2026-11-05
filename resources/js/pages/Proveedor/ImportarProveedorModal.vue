@@ -31,7 +31,6 @@ const COLUMNAS_OPCIONALES = [
     'Tiempo entrega',
     'Estado',
     'Observaciones generales',
-    'Clasificación',
 ];
 
 const form = useForm({

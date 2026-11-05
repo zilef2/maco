@@ -13,8 +13,8 @@ use RuntimeException;
  * El formato es el mismo del formulario de proveedores: la fila 1 trae los
  * títulos de las columnas y las siguientes filas los datos. Las columnas
  * obligatorias son nit y nombre_comercial; el resto admite los campos
- * opcionales del proveedor (razón social, contacto, condiciones comerciales,
- * estado y clasificación).
+ * opcionales del proveedor (razón social, contacto, condiciones comerciales y
+ * estado).
  *
  * Un proveedor se actualiza cuando ya existe con el mismo NIT y, si el NIT
  * no coincide, con el mismo nombre comercial. Las celdas vacías no borran
@@ -45,7 +45,6 @@ class ExcelProveedoresService
         'tiempo_entrega',
         'estado',
         'observaciones_generales',
-        'clasificacion',
     ];
 
     /**
@@ -76,7 +75,6 @@ class ExcelProveedoresService
         'tiempodeentrega'      => 'tiempo_entrega',
         'estado'               => 'estado',
         'observacionesgenerales' => 'observaciones_generales',
-        'clasificacion'        => 'clasificacion',
     ];
 
     /**
@@ -101,7 +99,6 @@ class ExcelProveedoresService
         'tiempo_entrega'         => ['max' => 255],
         'estado'                 => ['in' => Proveedor::ESTADOS],
         'observaciones_generales' => ['max' => 5000],
-        'clasificacion'          => ['in' => Proveedor::CLASIFICACIONES],
     ];
 
     public function __construct(private ExcelSecurityScanner $scanner)
@@ -146,7 +143,20 @@ class ExcelProveedoresService
      */
     public function validarEncabezados(string $ruta): void
     {
-        $this->columnasDesdeTitulos($this->leerFilaTitulos($ruta));
+        $this->validarTitulos($this->leerFilaTitulos($ruta));
+    }
+
+    /**
+     * Validez de una fila de títulos ya leída: la usa la tarjeta MPP, que lee
+     * las hojas del libro por su nombre y las pasa todas al mismo formato.
+     *
+     * @param  array<int, mixed>  $filaTitulos
+     *
+     * @throws RuntimeException cuando el encabezado no cumple el formato
+     */
+    public function validarTitulos(array $filaTitulos): void
+    {
+        $this->columnasDesdeTitulos($filaTitulos);
     }
 
     /**
@@ -159,7 +169,19 @@ class ExcelProveedoresService
      */
     public function leerRegistros(string $ruta): array
     {
-        $filas = $this->leerTodasLasFilas($ruta);
+        return $this->registrosDesdeFilas($this->leerTodasLasFilas($ruta));
+    }
+
+    /**
+     * Valida los títulos (posición 0) y el resto de las filas de una hoja.
+     *
+     * @param  array<int, array<int, mixed>>  $filas
+     * @return array<int, array<string, string|null>>
+     *
+     * @throws RuntimeException cuando el archivo no cumple el formato
+     */
+    public function registrosDesdeFilas(array $filas): array
+    {
         if (empty($filas)) {
             throw new RuntimeException('El archivo está vacío.');
         }
@@ -290,7 +312,6 @@ class ExcelProveedoresService
                 }
 
                 $datos['estado'] = $datos['estado'] ?? Proveedor::ESTADOS[0];
-                $datos['clasificacion'] = $datos['clasificacion'] ?? Proveedor::CLASIFICACIONES[0];
 
                 $indice = count($nuevos);
                 $nuevos[] = $datos;

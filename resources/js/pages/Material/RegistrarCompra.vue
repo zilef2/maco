@@ -19,11 +19,20 @@ const props = defineProps({
         type: Array as () => any[],
         default: () => [],
     },
+    /** Modo falta de OP: precarga los materiales que piden las órdenes abiertas. */
+    faltantes: {
+        type: Boolean,
+        default: false,
+    },
+    faltantesOp: {
+        type: Array as () => any[],
+        default: () => [],
+    },
 });
 
 const emit = defineEmits(['close']);
 
-const filaVacia = () => ({ material_id: '', cantidad: '', precio: '', precio_texto: '' });
+const filaVacia = (): any => ({ material_id: '', cantidad: '', precio: '', precio_texto: '', faltante: null });
 
 const state = reactive({
     errorLocal: '',
@@ -276,6 +285,37 @@ const errores = computed(() => {
     return [...new Set(mensajes)];
 });
 
+const importeFila = (fila: any): number => {
+    const cantidad = Number(fila.cantidad) || 0;
+    const precio = Number(fila.precio) || 0;
+
+    return cantidad > 0 && precio > 0 ? cantidad * precio : 0;
+};
+
+const totalCompra = computed(() =>
+    form.materiales.reduce((total: number, fila: any) => total + importeFila(fila), 0),
+);
+
+/**
+ * En el modo faltantes la cantidad no se pregunta: es la carencia exacta que
+ * piden las órdenes de producción abiertas.
+ */
+const rellenarFaltantes = () => {
+    const filas = (props.faltantesOp ?? []).map((faltante: any) => {
+        const precio = ultimoPrecio(faltante.material_id);
+
+        return {
+            material_id: Number(faltante.material_id),
+            cantidad: String(faltante.faltante),
+            precio: precio ?? '',
+            precio_texto: precio !== null ? formatearPrecio(precio) : '',
+            faltante,
+        };
+    });
+
+    form.materiales = filas.length ? filas : [filaVacia()];
+};
+
 const reiniciar = () => {
     form.reset();
     form.clearErrors();
@@ -286,7 +326,14 @@ const reiniciar = () => {
 watch(
     () => props.show,
     (visible) => {
-        if (visible) reiniciar();
+        if (!visible) {
+            return;
+        }
+
+        reiniciar();
+        if (props.faltantes) {
+            rellenarFaltantes();
+        }
     }
 );
 
@@ -300,6 +347,9 @@ const quitarFila = (indice: number) => {
         form.materiales.push(filaVacia());
     }
 };
+
+const opQuePiden = (fila: any): string =>
+    (fila.faltante?.ordenes ?? []).map((op: any) => op.numero_op).join(', ');
 
 const guardar = () => {
     state.errorLocal = '';
@@ -338,10 +388,15 @@ const guardar = () => {
             <form class="p-6 space-y-4" @submit.prevent="guardar">
                 <div class="border-b border-gray-200 pb-3 dark:border-gray-700">
                     <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                        Registrar compra de materiales
+                        {{ props.faltantes ? 'Registrar compra de materiales que faltan en las OP' : 'Registrar compra de materiales' }}
                     </h2>
                     <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                        Registra uno o varios materiales comprados. Al seleccionar cada material, se sugerirá automáticamente la cantidad y el precio de la última compra.
+                        <template v-if="props.faltantes">
+                            Materiales que no alcanzan para las órdenes de producción abiertas, con la cantidad justa para cubrirlas.
+                        </template>
+                        <template v-else>
+                            Registra uno o varios materiales comprados. Al seleccionar cada material, se sugerirá automáticamente la cantidad y el precio de la última compra.
+                        </template>
                     </p>
                 </div>
 
@@ -356,12 +411,15 @@ const guardar = () => {
 
                 <div class="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
                     <div class="overflow-x-auto">
-                        <table class="w-full min-w-[920px] text-sm">
+                        <table class="w-full min-w-[1040px] text-sm">
                             <thead>
                                 <tr class="border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-400">
                                     <th scope="col" class="px-3 py-2 font-semibold">Material</th>
-                                    <th scope="col" class="w-52 px-3 py-2 font-semibold">Cantidad sugerida</th>
+                                    <th scope="col" class="w-52 px-3 py-2 font-semibold">
+                                        {{ props.faltantes ? 'Cantidad a comprar' : 'Cantidad sugerida' }}
+                                    </th>
                                     <th scope="col" class="w-40 px-3 py-2 text-right font-semibold">Precio</th>
+                                    <th scope="col" class="w-36 px-3 py-2 text-right font-semibold">Total</th>
                                     <th scope="col" class="w-44 px-3 py-2 text-right font-semibold">Existencia actual</th>
                                     <th scope="col" class="w-16 px-3 py-2 font-semibold"><span class="sr-only">Quitar</span></th>
                                 </tr>
@@ -396,6 +454,14 @@ const guardar = () => {
                                             </span>
                                         </div>
 
+                                        <div
+                                            v-if="fila.faltante"
+                                            class="mt-1 text-[11px] text-gray-500 dark:text-gray-400"
+                                        >
+                                            Faltan para {{ opQuePiden(fila) }}:
+                                            <b>{{ zilef_nuber_format(fila.faltante.faltante, 2) }} {{ fila.faltante.unidad }}</b>
+                                            · piden {{ zilef_nuber_format(fila.faltante.requerido, 2) }}, hay {{ zilef_nuber_format(fila.faltante.existencia, 2) }}
+                                        </div>
                                         <div
                                             v-if="obtenerUltimaCompra(fila.material_id)"
                                             class="mt-1 flex items-center justify-between text-[11px] text-blue-600 dark:text-blue-400"
@@ -439,6 +505,11 @@ const guardar = () => {
                                             Último precio: <b>{{ formatearPrecio(ultimoPrecio(fila.material_id)) }}</b>
                                         </div>
                                     </td>
+                                    <td class="px-3 py-2 text-right align-top">
+                                        <div class="tabular-nums text-gray-700 dark:text-gray-300">
+                                            {{ importeFila(fila) > 0 ? formatearPrecio(importeFila(fila)) : '—' }}
+                                        </div>
+                                    </td>
                                     <td class="px-3 py-2 text-right tabular-nums text-gray-700 dark:text-gray-300 align-top">
                                         <div>
                                             {{ zilef_nuber_format(existenciaActual(fila.material_id), 2) }}
@@ -466,6 +537,20 @@ const guardar = () => {
                                     </td>
                                 </tr>
                             </tbody>
+                            <tfoot>
+                                <tr class="border-t border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/40">
+                                    <td
+                                        colspan="3"
+                                        class="px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400"
+                                    >
+                                        Total de la compra
+                                    </td>
+                                    <td class="px-3 py-2 text-right text-sm font-bold tabular-nums text-gray-900 dark:text-gray-100">
+                                        {{ formatearPrecio(totalCompra) }}
+                                    </td>
+                                    <td colspan="2"></td>
+                                </tr>
+                            </tfoot>
                         </table>
                     </div>
                 </div>

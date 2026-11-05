@@ -37,7 +37,7 @@ trait HasFichaDeTercero
 
     /**
      * Valores de la columna "proveedor o externa o macondas" del Excel: deciden
-     * en qué entidad termina cada fila y alimentan la clasificación del proveedor.
+     * en qué entidad termina cada fila, pero no se guardan en ninguna tabla.
      */
     public const CLASIFICACIONES = [
         'proveedor',

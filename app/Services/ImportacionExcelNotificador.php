@@ -3,24 +3,20 @@
 namespace App\Services;
 
 use App\Mail\ImportacionExcelMailable;
+use App\Mail\ImportacionFalloMailable;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Throwable;
 
-/**
- * Correos de las importaciones desde Excel.
- *
- * - Éxito: solo el usuario autenticado.
- * - Fallo: el administrador recibe el detalle técnico completo y el usuario
- *   recibe un aviso genérico.
- */
 class ImportacionExcelNotificador
 {
     private const CORREO_ADMIN = 'ajelof2@gmail.com';
 
-    /**
-     * @param  array{creados: int, actualizados: int}  $resultado
-     */
+    public function __construct(
+        private readonly ?GeminiErrorAnalyzerService $geminiService = null,
+    ) {
+    }
+
     public function exito(?string $emailUsuario, string $entidadPlural, array $resultado): void
     {
         if (empty($emailUsuario)) {
@@ -46,20 +42,29 @@ class ImportacionExcelNotificador
         string $entidadPlural,
         Throwable $error,
     ): void {
+        $resumenIa = null;
         try {
-            Mail::to(self::CORREO_ADMIN)->send(new ImportacionExcelMailable(
-                "Falló la importación de {$entidadPlural}",
-                'La importación del archivo no se pudo completar. Este es el detalle técnico:',
-                [
+            $servicioIa = $this->geminiService ?? app(GeminiErrorAnalyzerService::class);
+            $resumenIa = $servicioIa->analizarExcepcion($error->getMessage(), $error->getTraceAsString());
+        } catch (Throwable $e) {
+            Log::warning('No se pudo generar el diagnóstico con Gemini para el correo de error: ' . $e->getMessage());
+        }
+
+        try {
+            Mail::to(self::CORREO_ADMIN)->send(new ImportacionFalloMailable(
+                titulo: "Falló la importación de {$entidadPlural}",
+                mensaje: 'La importación del archivo no se pudo completar. Este es el detalle técnico estructurado:',
+                detalles: [
                     'Entidad' => $entidadPlural,
                     'Archivo' => $nombreArchivo,
                     'Usuario' => $nombreUsuario ?? 'No identificado',
                     'Correo del usuario' => $emailUsuario ?? 'No identificado',
                     'Fecha' => now()->format('Y-m-d H:i:s'),
-                    'Error' => $error->getMessage(),
                     'Origen' => $error->getFile() . ':' . $error->getLine(),
                 ],
-                $error->getTraceAsString(),
+                errorMensaje: $error->getMessage(),
+                resumenIa: $resumenIa,
+                traza: $error->getTraceAsString(),
             ));
         } catch (Throwable $e) {
             Log::error("No se pudo enviar el correo de error al administrador ({$entidadPlural}): " . $e->getMessage());
