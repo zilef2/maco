@@ -6,171 +6,75 @@ use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
-use ZipArchive;
 use Throwable;
-
+use ZipArchive;
 
 class SendZipFile extends Command
 {
-    protected $signature = 'send:zip';
+    protected $signature = 'send:zip
+        {--backup : Generar un nuevo backup antes de enviar}
+        {--no-backup : Omitir la generación de backup y usar los existentes}
+        {--to= : Correo destino (por defecto ajelof2@gmail.com)}';
 
-    protected $description = 'Generar backup, comprimir los últimos respaldos y enviarlos por correo';
+    protected $description = 'Comprimir los últimos respaldos y enviarlos por correo';
 
     public function handle(): int
     {
-        $zipPath = public_path('backup_' . now()->format('Ymd_His') . '.zip');
-        $backupDirectory = storage_path('app/' . env('APP_NAME', 'Modnom') . '_zilef2025');
+        $zipPath = public_path('backup_send_' . now()->format('Ymd_His') . '.zip');
+        $appName = (string) config('app.name', env('APP_NAME', 'Modnom'));
+        $backupDirectory = storage_path('app/' . preg_replace('/[^A-Za-z0-9_-]/', '_', $appName) . '_zilef2025');
+        $recipient = (string) ($this->option('to') ?: 'ajelof2@gmail.com');
 
         try {
-            // 1. Ejecutar backup de Laravel
-            $this->info('Ejecutando backup:run...');
+            $shouldBackup = $this->shouldRunBackup();
 
-            $exitCode = $this->call('backup:run');
-
-            if ($exitCode !== self::SUCCESS) {
-                throw new \RuntimeException(
-                    "El comando backup:run terminó con código {$exitCode}"
-                );
-            }
-
-            $this->info('Backup generado correctamente.');
-
-            // 2. Validar directorio
-            if (!is_dir($backupDirectory)) {
-                throw new \RuntimeException(
-                    "No existe el directorio de backups: {$backupDirectory}"
-                );
-            }
-
-            // 3. Obtener archivos ZIP
-            $files = glob($backupDirectory . DIRECTORY_SEPARATOR . '*.zip');
-
-            if (empty($files)) {
-                throw new \RuntimeException(
-                    "No se encontraron archivos ZIP en {$backupDirectory}"
-                );
-            }
-
-            // 4. Identificar archivos con fecha válida
-            $backups = [];
-
-            foreach ($files as $file) {
-                $filename = basename($file);
-
-                if (!preg_match('/^(\d{4}-\d{2}-\d{2})/', $filename, $matches)) {
-                    $this->warn("Archivo ignorado por formato de fecha inválido: {$filename}");
-                    continue;
-                }
+            if ($shouldBackup) {
+                $this->info('Ejecutando backup:run...');
 
                 try {
-                    $date = Carbon::createFromFormat('!Y-m-d', $matches[1]);
-
-                    if (!$date || $date->format('Y-m-d') !== $matches[1]) {
-                        continue;
-                    }
-
-                    if (!is_file($file) || filesize($file) === 0) {
-                        $this->warn("Backup vacío o inexistente: {$filename}");
-                        continue;
-                    }
-
-                    $backups[] = [
-                        'path' => $file,
-                        'date' => $date,
-                    ];
+                    $exitCode = $this->call('backup:run');
                 } catch (Throwable $exception) {
-                    $this->warn("No se pudo interpretar {$filename}: {$exception->getMessage()}");
-                }
-            }
+                    $this->error('No se pudo ejecutar backup:run: ' . $exception->getMessage());
+                    Log::warning('send:zip: backup:run lanzó excepción', ['error' => $exception->getMessage()]);
 
-            if (empty($backups)) {
-                throw new \RuntimeException(
-                    'No se encontraron backups con fechas válidas.'
-                );
-            }
-
-            // 5. Ordenar por fecha descendente
-            usort($backups, fn ($a, $b) => $b['date']->timestamp <=> $a['date']->timestamp);
-
-            $latestDate = $backups[0]['date']->copy();
-
-            // Incluir backups del día más reciente y del día anterior
-            $selectedBackups = array_filter(
-                $backups,
-                fn ($backup) => $backup['date']->isSameDay($latestDate)
-                    || $backup['date']->isSameDay($latestDate->copy()->subDay())
-            );
-
-            if (empty($selectedBackups)) {
-                throw new \RuntimeException('No hay backups para comprimir.');
-            }
-
-            $this->info('Última fecha encontrada: ' . $latestDate->format('Y-m-d'));
-            $this->info('Backups seleccionados: ' . count($selectedBackups));
-
-            // 6. Crear ZIP nuevo
-            $zip = new ZipArchive();
-
-            $result = $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
-
-            if ($result !== true) {
-                throw new \RuntimeException(
-                    "No se pudo crear el ZIP. Código ZipArchive: {$result}"
-                );
-            }
-
-            foreach ($selectedBackups as $backup) {
-                $filename = basename($backup['path']);
-
-                if (!$zip->addFile($backup['path'], $filename)) {
-                    throw new \RuntimeException(
-                        "No se pudo agregar el archivo: {$filename}"
-                    );
+                    return self::FAILURE;
                 }
 
-                $this->line("Agregado: {$filename}");
+                if ($exitCode !== self::SUCCESS) {
+                    $this->error("backup:run terminó con código {$exitCode}. No se enviará correo.");
+
+                    return self::FAILURE;
+                }
+
+                $this->info('Backup generado correctamente.');
+            } else {
+                $this->info('Se omitió la generación de backup; se usarán respaldos existentes.');
             }
 
-            if (!$zip->close()) {
-                throw new \RuntimeException('No se pudo finalizar el archivo ZIP.');
+            $selectedBackups = $this->collectBackups($backupDirectory);
+
+            if ($selectedBackups === []) {
+                $this->warn("No hay archivos ZIP de respaldo válidos para enviar en: {$backupDirectory}");
+                $this->line('Verifique que existan backups con nombre que inicie con YYYY-MM-DD.');
+
+                return self::FAILURE;
             }
 
-            // 7. Validar ZIP generado
-            if (!is_file($zipPath) || filesize($zipPath) === 0) {
-                throw new \RuntimeException('El ZIP generado está vacío o no existe.');
-            }
-
-            $validationZip = new ZipArchive();
-
-            if ($validationZip->open($zipPath) !== true) {
-                throw new \RuntimeException('El ZIP generado no es válido.');
-            }
-
-            $validationZip->close();
-
-            // 8. Enviar correo
-            $this->info('Enviando correo...');
-
-            Mail::raw('Adjunto el respaldo más reciente de ' . config('app.name') . '.', function ($message) use ($zipPath) {
-                $message->to('ajelof2@gmail.com')
-                    ->subject('Backup ' . config('app.name') . ' - ' . now()->format('Y-m-d'))
-                    ->attach($zipPath);
-            });
+            $this->createZip($zipPath, $selectedBackups);
+            $this->sendMail($zipPath, $recipient, $appName);
 
             $this->info('Backup comprimido y enviado correctamente.');
 
             Log::info('Backup enviado por correo', [
                 'zip' => $zipPath,
                 'directorio' => $backupDirectory,
+                'destinatario' => $recipient,
                 'backups_incluidos' => array_column($selectedBackups, 'path'),
             ]);
 
             return self::SUCCESS;
-
         } catch (Throwable $exception) {
-            $this->error('ERROR: ' . $exception->getMessage());
-            $this->error('Archivo: ' . $exception->getFile());
-            $this->error('Línea: ' . $exception->getLine());
+            $this->error('Error: ' . $exception->getMessage());
 
             Log::error('Error enviando backup por correo', [
                 'message' => $exception->getMessage(),
@@ -180,14 +84,153 @@ class SendZipFile extends Command
             ]);
 
             return self::FAILURE;
-
         } finally {
-            // 9. Eliminar ZIP temporal
-            if (isset($zipPath) && is_file($zipPath)) {
-                if (!@unlink($zipPath)) {
-                    Log::warning('No se pudo eliminar el ZIP temporal: ' . $zipPath);
-                }
+            if (is_file($zipPath) && !@unlink($zipPath)) {
+                Log::warning('No se pudo eliminar el ZIP temporal: ' . $zipPath);
             }
         }
+    }
+
+    private function shouldRunBackup(): bool
+    {
+        if ($this->option('backup')) {
+            return true;
+        }
+
+        if ($this->option('no-backup')) {
+            return false;
+        }
+
+        if (!$this->input->isInteractive()) {
+            return true;
+        }
+
+        return $this->confirm('¿Desea generar un nuevo backup antes de enviar el correo?', true);
+    }
+
+    /**
+     * @return list<array{path: string, date: Carbon}>
+     */
+    private function collectBackups(string $backupDirectory): array
+    {
+        if (!is_dir($backupDirectory)) {
+            $this->warn("No existe el directorio de backups: {$backupDirectory}");
+
+            return [];
+        }
+
+        $files = glob($backupDirectory . DIRECTORY_SEPARATOR . '*.zip') ?: [];
+
+        if ($files === []) {
+            return [];
+        }
+
+        $backups = [];
+
+        foreach ($files as $file) {
+            $filename = basename($file);
+
+            if (!preg_match('/^(\d{4}-\d{2}-\d{2})/', $filename, $matches)) {
+                $this->line("Ignorado (fecha no reconocida): {$filename}");
+                continue;
+            }
+
+            try {
+                $date = Carbon::createFromFormat('!Y-m-d', $matches[1]);
+            } catch (Throwable) {
+                continue;
+            }
+
+            if (!$date || $date->format('Y-m-d') !== $matches[1]) {
+                continue;
+            }
+
+            clearstatcache(true, $file);
+            if (!is_file($file) || (int) filesize($file) <= 0) {
+                $this->line("Ignorado (vacío o inaccesible): {$filename}");
+                continue;
+            }
+
+            $backups[] = [
+                'path' => $file,
+                'date' => $date->startOfDay(),
+            ];
+        }
+
+        if ($backups === []) {
+            return [];
+        }
+
+        usort($backups, static fn (array $a, array $b): int => $b['date']->timestamp <=> $a['date']->timestamp);
+
+        $latestDate = $backups[0]['date']->copy();
+        $previousDate = $latestDate->copy()->subDay();
+
+        $selected = array_values(array_filter(
+            $backups,
+            static fn (array $backup): bool => $backup['date']->isSameDay($latestDate)
+                || $backup['date']->isSameDay($previousDate)
+        ));
+
+        $this->info('Última fecha encontrada: ' . $latestDate->format('Y-m-d'));
+        $this->info('Backups seleccionados: ' . count($selected));
+
+        return $selected;
+    }
+
+    /**
+     * @param list<array{path: string, date: Carbon}> $backups
+     */
+    private function createZip(string $zipPath, array $backups): void
+    {
+        $zip = new ZipArchive();
+        $result = $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+
+        if ($result !== true) {
+            throw new \RuntimeException("No se pudo crear el ZIP temporal. Código ZipArchive: {$result}");
+        }
+
+        foreach ($backups as $backup) {
+            $filename = basename($backup['path']);
+
+            if (!$zip->addFile($backup['path'], $filename)) {
+                $zip->close();
+                @unlink($zipPath);
+                throw new \RuntimeException("No se pudo agregar al ZIP: {$filename}");
+            }
+
+            $this->line("Agregado: {$filename}");
+        }
+
+        if (!$zip->close()) {
+            @unlink($zipPath);
+            throw new \RuntimeException('No se pudo finalizar el archivo ZIP.');
+        }
+
+        clearstatcache(true, $zipPath);
+        if (!is_file($zipPath) || (int) filesize($zipPath) <= 0) {
+            throw new \RuntimeException('El ZIP generado está vacío o no existe.');
+        }
+
+        $validation = new ZipArchive();
+        if ($validation->open($zipPath) !== true) {
+            throw new \RuntimeException('El ZIP generado no pasó la validación.');
+        }
+
+        $validation->close();
+    }
+
+    private function sendMail(string $zipPath, string $recipient, string $appName): void
+    {
+        $this->info("Enviando correo a {$recipient}...");
+
+        Mail::raw('Adjunto el respaldo más reciente de ' . $appName . '.', function ($message) use ($zipPath, $recipient, $appName) {
+            $message->to($recipient)
+                ->subject('Backup ' . $appName . ' - ' . now()->format('Y-m-d'))
+                ->attach($zipPath, [
+                    'as' => basename($zipPath),
+                    'mime' => 'application/zip',
+                ]);
+        });
     }
 }

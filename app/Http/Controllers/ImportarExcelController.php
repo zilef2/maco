@@ -88,7 +88,7 @@ class ImportarExcelController extends Controller
                 'grupo'               => 'Producción',
                 'descripcion'         => 'Plantilla para registrar la receta de materiales de cada producto',
                 'ruta'                => null,
-                'nota'                => 'Cada fila representa un material de la ficha de un producto. Repite el nombre de la ficha y el código del producto en todas sus filas. La carga masiva de esta plantilla todavía no está habilitada; por ahora, esta tarjeta solo permite descargar el formato .xlsx.',
+                'nota'                => 'Cada fila representa un material de la ficha. La primera columna acepta el código de un producto o de un material con proceso; la segunda, el código del material; y la tercera, la cantidad consumida. La carga masiva todavía no está habilitada; por ahora, esta tarjeta solo permite descargar el formato .xlsx.',
             ],
             [
                 'id'                  => 'estado_operacion',
