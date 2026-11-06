@@ -84,6 +84,13 @@ const cantidad = (valor: any): string =>
 
 const dinero = (valor: any): string => zilef_nuber_format(numero(valor), 0, true);
 
+const porcentaje = (numerador: any, denominador: any): string => {
+    const num = numero(numerador);
+    const den = numero(denominador);
+    if (den <= 0) return '0.0%';
+    return (num / den * 100).toFixed(1) + '%';
+};
+
 const texto = (valor: any, fallback = '—'): string => {
     const resultado = String(valor ?? '').trim();
     return resultado !== '' ? resultado : fallback;
@@ -499,7 +506,7 @@ const recargar = () => {
                             <ArrowPathIcon class="h-4 w-4" :class="{ 'animate-spin': cargando }" />
                         </button>
 
-                        <PrimaryButton
+                        <!-- <PrimaryButton
                             v-if="can(['create RecepcionCalidad'])"
                             type="button"
                             class="h-9"
@@ -507,7 +514,7 @@ const recargar = () => {
                         >
                             <PlusIcon class="mr-1.5 h-4 w-4" />
                             Nuevo registro
-                        </PrimaryButton>
+                        </PrimaryButton> -->
                     </div>
                 </div>
             </div>
@@ -657,10 +664,48 @@ const recargar = () => {
                                                 {{ grupo.objetivo }}
                                             </span>
 
-                                            <span class="ml-auto text-[11px] tabular-nums text-muted-foreground">
-                                                {{ grupo.filas.length }}
-                                                {{ grupo.filas.length === 1 ? 'recepción' : 'recepciones' }}
-                                            </span>
+                                            <div class="ml-auto flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+                                                <div class="flex items-center gap-1.5">
+                                                    <span>Valor proceso:</span>
+                                                    <span class="tabular-nums font-medium text-foreground">
+                                                        {{ dinero(grupo.filas[0]?.op_costo_proceso ?? 0) }}
+                                                    </span>
+                                                </div>
+                                                <div class="flex items-center gap-1.5">
+                                                    <span>Costo total OP (mat. + proceso):</span>
+                                                    <span class="tabular-nums font-medium text-foreground">
+                                                        {{ dinero(grupo.filas[0]?.op_costo_total ?? 0) }}
+                                                    </span>
+                                                </div>
+                                                <div class="flex items-center gap-1.5">
+                                                    <span>Valor materiales recibido:</span>
+                                                    <span class="tabular-nums font-medium text-foreground">
+                                                        {{ dinero(numero(grupo.filas[0]?.costo_unitario ?? 0) * numero(grupo.totales?.recibida?.cantidad ?? 0)) }}
+                                                    </span>
+                                                </div>
+                                                <div class="flex items-center gap-1.5">
+                                                    <span>Valor no recuperable:</span>
+                                                    <span class="tabular-nums font-medium text-rose-700 dark:text-rose-300">
+                                                        {{ dinero(numero(grupo.filas[0]?.costo_unitario ?? 0) * numero(grupo.totales?.noRecuperable?.cantidad ?? 0)) }}
+                                                    </span>
+                                                </div>
+                                                <div class="flex items-center gap-1.5">
+                                                    <span>% recibido:</span>
+                                                    <span class="tabular-nums font-medium text-foreground">
+                                                        {{ porcentaje(grupo.totales?.recibida?.cantidad ?? 0, grupo.totales?.esperada?.cantidad ?? 0) }}
+                                                    </span>
+                                                </div>
+                                                <div class="flex items-center gap-1.5">
+                                                    <span>% perdido:</span>
+                                                    <span class="tabular-nums font-medium text-rose-700 dark:text-rose-300">
+                                                        {{ porcentaje(grupo.totales?.noRecuperable?.cantidad ?? 0, grupo.totales?.esperada?.cantidad ?? 0) }}
+                                                    </span>
+                                                </div>
+                                                <div class="flex items-center gap-1.5">
+                                                    <span>{{ grupo.filas.length }}</span>
+                                                    <span>{{ grupo.filas.length === 1 ? 'recepción' : 'recepciones' }}</span>
+                                                </div>
+                                            </div>
                                         </div>
                                     </td>
                                 </tr>

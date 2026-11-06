@@ -25,16 +25,15 @@ use Illuminate\Database\Eloquent\SoftDeletes;
          'tipo',
          'empresa_externa_id',
          'estado_op_id',
-         'estado_op_secundario_id',
          'estado_op_material_id', 'externa', 'user_id', 'id_shopify_producto', 'observaciones'];
 
     protected $casts = [
         'externa' => 'boolean',
         'empresa_externa_id' => 'integer',
-        'estado_op_secundario_id' => 'integer',
         'costo_proceso' => 'float',
         'costo_total' => 'float',
         'recepcion_desde' => 'datetime',
+        'esperando_materiales_desde' => 'datetime',
     ];
 
     /**
@@ -85,11 +84,6 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     public function estadoOp()
     {
         return $this->belongsTo(EstadoOperacion::class, 'estado_op_id');
-    }
-
-    public function estadoOpSecundario()
-    {
-        return $this->belongsTo(EstadoOperacion::class, 'estado_op_secundario_id');
     }
 
     public function responsable()

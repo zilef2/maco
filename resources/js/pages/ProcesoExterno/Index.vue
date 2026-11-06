@@ -131,12 +131,12 @@ const grupos = computed(() => {
                             </span>
                             <div>
                                 <h2 class="text-sm font-semibold text-blue-900 dark:text-blue-200">
-                                    El proceso externo se registra desde la OP
+                                    Salidas de material a un proveedor
                                 </h2>
                                 <p class="mt-1 max-w-3xl text-sm text-blue-800 dark:text-blue-300">
-                                    Este listado se llena automáticamente cuando una OP pasa al estado
-                                    <span class="font-semibold">«Procesos externos»</span> y se registran el proveedor
-                                    y los materiales que salen. No es necesario crear registros manualmente.
+                                    Aquí se registra qué material sale, a qué proveedor y cuándo
+                                    regresa. Es un control independiente del estado de la OP: la OP
+                                    ya no pasa por un estado de proceso externo.
                                 </p>
                             </div>
                         </div>

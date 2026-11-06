@@ -10,7 +10,6 @@ export const ORDEN_FLUJO = [
     'Borrador',
     'Preparación',
     'Esperando materiales',
-    'Procesos externos',
     'Lista para taller',
     'En taller',
     'Recibiendo',

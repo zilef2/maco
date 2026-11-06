@@ -25,14 +25,6 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     }
 
     /**
-     * OPs que tienen este estado como estado secundario (coexistencia).
-     */
-    public function ordenesProduccionSecundarias()
-    {
-        return $this->hasMany(OrdenProduccion::class, 'estado_op_secundario_id');
-    }
-
-    /**
      * Ids de estados a los que se puede transicionar desde el estado actual,
      * según la lista "nombre / nombre / ..." de la columna puede_pasar_a.
      */

@@ -36,6 +36,7 @@ const filaVacia = (): any => ({ material_id: '', cantidad: '', precio: '', preci
 
 const state = reactive({
     errorLocal: '',
+    intentoEnvio: false,
 });
 
 const form = useForm({
@@ -285,6 +286,32 @@ const errores = computed(() => {
     return [...new Set(mensajes)];
 });
 
+const filaConMaterialYCantidad = (fila: any): boolean => {
+    const tieneMaterial = fila.material_id !== '' && fila.material_id !== null && fila.material_id !== undefined;
+    const tieneCantidad = fila.cantidad !== '' && fila.cantidad !== null && fila.cantidad !== undefined;
+
+    return tieneMaterial && tieneCantidad;
+};
+
+/**
+ * Error visible junto al precio de una fila. Solo se muestra después de
+ * intentar guardar para no señalar campos que el usuario aún no ha tocado.
+ */
+const errorPrecio = (fila: any): string | null => {
+    if (!state.intentoEnvio) return null;
+    if (!filaConMaterialYCantidad(fila)) return null;
+
+    const tienePrecio = fila.precio !== '' && fila.precio !== null && fila.precio !== undefined;
+    if (!tienePrecio) return 'El precio es obligatorio.';
+
+    const precio = Number(fila.precio);
+    if (!Number.isFinite(precio) || precio <= 0) {
+        return 'El precio debe ser mayor que cero.';
+    }
+
+    return null;
+};
+
 const importeFila = (fila: any): number => {
     const cantidad = Number(fila.cantidad) || 0;
     const precio = Number(fila.precio) || 0;
@@ -321,6 +348,7 @@ const reiniciar = () => {
     form.clearErrors();
     form.materiales = [filaVacia()];
     state.errorLocal = '';
+    state.intentoEnvio = false;
 };
 
 watch(
@@ -353,9 +381,10 @@ const opQuePiden = (fila: any): string =>
 
 const guardar = () => {
     state.errorLocal = '';
+    state.intentoEnvio = true;
 
     if (compraIncompleta.value) {
-        state.errorLocal = 'Completa el material, la cantidad y el precio, ambos mayores que cero.';
+        state.errorLocal = 'Completa el material, la cantidad y el precio. El precio es obligatorio y debe ser mayor que cero.';
         return;
     }
 
@@ -456,11 +485,14 @@ const guardar = () => {
 
                                         <div
                                             v-if="fila.faltante"
-                                            class="mt-1 text-[11px] text-gray-500 dark:text-gray-400"
+                                            class="mt-1 space-y-0.5 text-[11px] text-gray-500 dark:text-gray-400"
                                         >
-                                            Faltan para {{ opQuePiden(fila) }}:
-                                            <b>{{ zilef_nuber_format(fila.faltante.faltante, 2) }} {{ fila.faltante.unidad }}</b>
-                                            · piden {{ zilef_nuber_format(fila.faltante.requerido, 2) }}, hay {{ zilef_nuber_format(fila.faltante.existencia, 2) }}
+                                            <div>
+                                                Faltan para {{ opQuePiden(fila) }}:
+                                                <b>{{ zilef_nuber_format(fila.faltante.faltante, 2) }} {{ fila.faltante.unidad }}</b>
+                                            </div>
+                                            <div>Piden {{ zilef_nuber_format(fila.faltante.requerido, 2) }}</div>
+                                            <div>Hay {{ zilef_nuber_format(fila.faltante.existencia, 2) }}</div>
                                         </div>
                                         <div
                                             v-if="obtenerUltimaCompra(fila.material_id)"
@@ -490,13 +522,20 @@ const guardar = () => {
                                             type="text"
                                             inputmode="numeric"
                                             autocomplete="off"
+                                            :required="filaConMaterialYCantidad(fila)"
                                             class="block h-9 w-full px-2 text-right tabular-nums"
                                             :model-value="fila.precio_texto"
+                                            :error="errorPrecio(fila) ?? undefined"
                                             @update:model-value="alEscribirPrecio(fila, $event)"
                                             @blur="alPerderFocoPrecio(fila)"
                                             placeholder="$0"
                                             :aria-label="`Precio de compra ${indice + 1}`"
+                                            :aria-required="filaConMaterialYCantidad(fila)"
                                         />
+
+                                        <p v-if="errorPrecio(fila)" class="mt-1 text-[11px] text-red-600 dark:text-red-400">
+                                            {{ errorPrecio(fila) }}
+                                        </p>
 
                                         <div
                                             v-if="ultimoPrecio(fila.material_id) !== null"

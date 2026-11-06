@@ -764,10 +764,21 @@ watch(
                 <!-- Productos de la orden -->
                 <div v-if="modoObjetivo === 'producto'" class="mt-6 rounded-lg border border-gray-200 bg-gray-50/50 p-4 dark:border-gray-700 dark:bg-gray-800/40">
                     <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-                        <h3 class="text-sm font-semibold text-gray-800 dark:text-gray-200">
-                            Productos de la orden
-                            <span v-if="productosSel.length" class="font-normal text-gray-500 dark:text-gray-400"> ({{ productosSel.length }}) </span>
-                        </h3>
+                        <div>
+                            <h3 class="flex flex-wrap items-center gap-2 text-sm font-semibold text-gray-800 dark:text-gray-200">
+                                Productos de la orden
+                                <span v-if="productosSel.length" class="font-normal text-gray-500 dark:text-gray-400"> ({{ productosSel.length }}) </span>
+                                <span
+                                    class="rounded-full bg-indigo-50 px-2 py-0.5 text-[11px] font-medium text-indigo-700 ring-1 ring-indigo-200 ring-inset dark:bg-indigo-950/40 dark:text-indigo-300 dark:ring-indigo-800/60"
+                                    title="Solo aparecen los productos que tienen ficha de producto."
+                                >
+                                    Solo con ficha de producto
+                                </span>
+                            </h3>
+                            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                Solo aparecen los productos que tienen ficha de producto.
+                            </p>
+                        </div>
                         <div class="text-right">
                             <span class="block text-xs text-gray-500 dark:text-gray-400">Cantidad planificada (suma de tallas):</span>
                             <span class="text-lg font-bold text-gray-900 dark:text-gray-100">{{ totalTallas }}</span>
@@ -785,7 +796,14 @@ watch(
                     />
 
                     <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                        Solo se muestran los productos que tienen ficha técnica (los demás no generan requerimiento de materiales).
+                        Solo se muestran los productos que tienen ficha de producto (ficha técnica); los demás no generan requerimiento de materiales.
+                    </p>
+                    <p
+                        v-if="!opcionesProducto.length"
+                        class="mt-2 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-xs font-medium text-red-700 dark:border-red-700 dark:bg-red-900/30 dark:text-red-400"
+                    >
+                        No hay productos con ficha de producto, por eso no aparece ninguno en la lista. Crea la ficha de producto
+                        desde el producto antes de registrar una OP.
                     </p>
 
                     <div v-if="productosSel.length" class="mt-3 overflow-x-auto">

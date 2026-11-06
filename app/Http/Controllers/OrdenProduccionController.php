@@ -16,12 +16,11 @@ use App\Models\EstadoOpMaterial;
 use App\Models\Producto;
 use App\Models\ProductoMovimiento;
 use App\Models\EmpresaExterna;
-use App\Models\ProcesoExterno;
-use App\Models\Proveedor;
 use App\Models\RecepcionCalidad;
 use App\Models\Taller;
 use App\Http\Requests\StoreOrdenProduccionRequest;
 use App\Services\Bitacora;
+use App\Services\ColaMaterialesOpService;
 use App\Services\CostoMaterialOpService;
 use App\Services\CostoRecepcionOpService;
 use App\Services\MermaRecepcionService;
@@ -49,7 +48,8 @@ class OrdenProduccionController extends Controller {
     public function __construct(
         protected CostoMaterialOpService $costosMateriales,
         protected CostoRecepcionOpService $costosRecepcion,
-        protected MermaRecepcionService $mermasRecepcion
+        protected MermaRecepcionService $mermasRecepcion,
+        protected ColaMaterialesOpService $colaMateriales
     ) {
         $this->thisAtributos = (new OrdenProduccion())->getFillable();
     }
@@ -59,13 +59,17 @@ class OrdenProduccionController extends Controller {
 
         // Listado completo: la tabla filtra, ordena y pagina en el frontend.
         // La clave solo depende de la versión, que se incrementa al escribir.
-        $claveListado = 'op_index_v11_' . $this->versionCache();
+        $claveListado = 'op_index_v12_' . $this->versionCache();
         $OrdenProduccions = Cache::remember($claveListado, now()->addMinutes(10), function () {
+            // Turno en la cola de «Esperando materiales», una sola consulta para
+            // todo el listado en lugar de una por fila.
+            $posiciones = $this->colaMateriales->posiciones();
+
             return OrdenProduccion::query()
-                ->with(['productoReferencia.fichaTecnica.materiales', 'taller', 'empresaExterna', 'estadoOp', 'responsable', 'distribucionesPorTallas.producto', 'distribucionesPorTallas.material', 'productos.fichaTecnica.materiales', 'productos.procesos', 'materiales.fichaTecnica.materiales', 'recepcionesCalidad.materialReferencia', 'compromisosReparacion.materialReferencia', 'kitProcesos.material', 'procesosExternos.materialOrigen', 'procesosExternos.proveedorDestino', 'cierres', 'costosMateriales.material', 'costosCambios.material', 'costosCambios.usuario'])
+                ->with(['productoReferencia.fichaTecnica.materiales', 'taller', 'empresaExterna', 'estadoOp', 'responsable', 'distribucionesPorTallas.producto', 'distribucionesPorTallas.material', 'productos.fichaTecnica.materiales', 'productos.procesos', 'materiales.fichaTecnica.materiales', 'recepcionesCalidad.materialReferencia', 'compromisosReparacion.materialReferencia', 'kitProcesos.material', 'cierres', 'costosMateriales.material', 'costosCambios.material', 'costosCambios.usuario'])
                 ->orderByDesc('updated_at')
                 ->get()
-                ->map(function ($op) {
+                ->map(function ($op) use ($posiciones) {
                     $producto = $op->productoReferencia;
                     $nombreProducto = fn ($p) => $p
                         ? ($p->Titulo_Shopify ?: ($p->Codigo_interno ?: 'Producto #' . $p->id))
@@ -276,21 +280,6 @@ class OrdenProduccionController extends Controller {
                             'fecha_compromiso'       => $c->fecha_compromiso?->toDateString(),
                         ])->values()->all();
 
-                    // Procesos externos que todavía no han regresado: se usan
-                    // al pasar la OP a "Lista para taller".
-                    $op->procesos_externos_pendientes = $op->procesosExternos
-                        ->filter(fn ($pe) => $pe->fecha_regreso_real === null)
-                        ->map(fn ($pe) => [
-                            'id'                      => $pe->id,
-                            'material_nombre'         => $pe->materialOrigen?->nombre_base
-                                ?: ('Material #' . $pe->material_origen_id),
-                            'cantidad_salida'         => (float) ($pe->cantidad_salida ?? 0),
-                            'unidad_medida'           => $pe->unidad_medida,
-                            'proveedor_nombre'        => $pe->proveedorDestino?->nombre,
-                            'fecha_salida'            => $pe->fecha_salida?->toDateTimeString(),
-                            'fecha_prevista_regreso'  => $pe->fecha_prevista_regreso?->toDateString(),
-                        ])->values()->all();
-
                     // Último cierre registrado, para mostrarlo en el detalle de
                     // la OP y en el resumen de cierre.
                     $cierre = $op->cierres->sortByDesc('id')->first();
@@ -304,7 +293,7 @@ class OrdenProduccionController extends Controller {
                     $op->taller_nombre = $op->taller?->nombre ?? ($op->taller_id ? '#' . $op->taller_id : '');
                     $op->empresa_externa_nombre = $op->empresaExterna?->nombre ?? ($op->empresa_externa_id ? '#' . $op->empresa_externa_id : '');
                     $op->estado_nombre = $op->estadoOp?->nombre ?? ($op->estado_op_id ? '#' . $op->estado_op_id : '');
-                    $op->estado_secundario_nombre = $op->estadoOpSecundario?->nombre ?? null;
+                    $op->cola_posicion = $posiciones[(int) $op->id] ?? null;
                     $op->responsable_nombre = $op->responsable?->name ?? ($op->user_id ? '#' . $op->user_id : '');
                     return $op;
                 })
@@ -533,18 +522,6 @@ class OrdenProduccionController extends Controller {
                 ];
             });
 
-        $proveedores = Proveedor::orderBy('nombre')
-            ->get(['id', 'nombre'])
-            ->map(function ($proveedor) {
-                return [
-                    'id'    => $proveedor->id,
-                    'value' => $proveedor->id,
-                    'name'  => $proveedor->nombre,
-                    'label' => $proveedor->nombre,
-                    'title' => $proveedor->nombre,
-                ];
-            });
-
         $gruposTallas = GrupoTalla::whereNotNull('valor')
             ->orderBy('valor')
             ->orderBy('id')
@@ -589,7 +566,6 @@ class OrdenProduccionController extends Controller {
                 ['id' => 'externa', 'value' => 'externa', 'name' => 'Externa', 'label' => 'Externa', 'title' => 'Externa'],
             ],
             'empresa_externa_id'     => $empresasExternas,
-            'proveedor_destino_id'   => $proveedores,
             'grupos_tallas'          => $gruposTallas,
             'estado_op_material_id'  => $estadosMateriales,
             'siguiente_numero_op'    => $siguienteNumeroOp,
@@ -613,7 +589,7 @@ class OrdenProduccionController extends Controller {
 	}
 
     public function Filtros($request): Builder {
-        $OrdenProduccions = OrdenProduccion::query()->with(['productoReferencia', 'taller', 'empresaExterna', 'estadoOp', 'estadoOpSecundario', 'responsable', 'distribucionesPorTallas', 'productos']);
+        $OrdenProduccions = OrdenProduccion::query()->with(['productoReferencia', 'taller', 'empresaExterna', 'estadoOp', 'responsable', 'distribucionesPorTallas', 'productos']);
         if ($request->has('search')) {
             $OrdenProduccions = $OrdenProduccions->where(function ($query) use ($request) {
                 $query->where('numero_op', 'LIKE', "%" . $request->search . "%");
@@ -939,7 +915,15 @@ class OrdenProduccionController extends Controller {
             'materiales_cantidad.*' => ['integer', 'min:1'],
         ]);
 
-        $OrdenProduccion = OrdenProduccion::findOrFail($id);
+        $OrdenProduccion = OrdenProduccion::findOrFail($id)->load('estadoOp');
+
+        // No permitir editar una OP en estado Cerrada
+        if ($OrdenProduccion->estadoOp && strtolower(trim($OrdenProduccion->estadoOp->nombre)) === 'cerrada') {
+            DB::rollBack();
+            return back()->withErrors([
+                'general' => 'No se permite editar una Orden de Producción en estado Cerrada.',
+            ]);
+        }
 
         $materialesPivot = $this->materialesPivotDesdeRequest($request);
         $tieneMaterialesEnviados = $request->has('materiales');
@@ -1248,6 +1232,10 @@ class OrdenProduccionController extends Controller {
      * Cambia exclusivamente el estado de una OP, validando la transición
      * contra la columna puede_pasar_a del estado actual.
      *
+     * «Esperando materiales» es una cola FIFO: al entrar se registra la fecha y
+     * al salir se limpia. «Lista para taller» exige el kit completo: una OP con
+     * faltantes espera en la cola a que una compra complete su kit.
+     *
      * Al pasar a "Recibiendo" (o al actualizar una OP que ya está en ese estado)
      * se genera/actualiza un registro de recepción por cada talla: la talla, su
      * producto y lo esperado salen de la OP, y la suma de aprobada + en
@@ -1260,13 +1248,9 @@ class OrdenProduccionController extends Controller {
      * compromiso pendiente y generan los avisos programados (dos días antes y
      * el día del compromiso).
      */
-    /** Único par de estados que puede coexistir en una OP al mismo tiempo. */
-    private const PAR_COEXISTENCIA = ['Esperando materiales', 'Procesos externos'];
-
     public function cambiarEstado(Request $request, $id): RedirectResponse {
         $datos = $request->validate([
             'estado_op_id' => ['required', 'integer', 'exists:estado_operacions,id'],
-            'estado_op_secundario_id' => ['nullable', 'integer', 'exists:estado_operacions,id', 'different:estado_op_id'],
             'fecha_recepcion' => ['nullable', 'date'],
             'fecha_compromiso' => ['nullable', 'date'],
             'recepciones' => ['nullable', 'array'],
@@ -1275,18 +1259,6 @@ class OrdenProduccionController extends Controller {
             'recepciones.*.cantidad_en_reparacion' => ['nullable', 'integer', 'min:0'],
             'recepciones.*.cantidad_no_recuperable' => ['nullable', 'integer', 'min:0'],
             'recepciones.*.fecha_compromiso' => ['nullable', 'date'],
-            'proceso_externo' => ['nullable', 'array'],
-            'proceso_externo.proveedor_destino_id' => ['nullable', 'integer', 'exists:proveedors,id'],
-            'proceso_externo.etapa_componente' => ['nullable', 'string', 'max:255'],
-            'proceso_externo.bodega_origen' => ['nullable', 'string', 'max:255'],
-            'proceso_externo.servicio_proceso' => ['nullable', 'string', 'max:255'],
-            'proceso_externo.fecha_prevista_regreso' => ['nullable', 'date'],
-            'proceso_externo.resultado_observaciones' => ['nullable', 'string'],
-            'proceso_externo.items' => ['nullable', 'array'],
-            'proceso_externo.items.*.material_origen_id' => ['required', 'integer', 'exists:materials,id'],
-            'proceso_externo.items.*.cantidad_salida' => ['nullable', 'numeric', 'gt:0'],
-            'proceso_externo.items.*.unidad_medida' => ['nullable', 'string', 'max:255'],
-            'fecha_regreso_real' => ['nullable', 'date'],
         ]);
 
         // Si la petición no envía fecha, se registra la fecha del guardado.
@@ -1294,11 +1266,18 @@ class OrdenProduccionController extends Controller {
 
         $OrdenProduccion = OrdenProduccion::findOrFail($id);
         $estadoActual = $OrdenProduccion->estadoOp;
+
+        // No permitir cambios de estado si ya está Cerrada
+        if ($estadoActual && strtolower(trim($estadoActual->nombre)) === 'cerrada') {
+            return back()->withErrors([
+                'estado_op_id' => 'No se permite cambiar el estado de una Orden de Producción en estado Cerrada.',
+            ]);
+        }
         $permitidos = $estadoActual?->idsPuedePasarA() ?? [];
         $estadoSolicitadoId = (int) $datos['estado_op_id'];
         $nuevoEstado = EstadoOperacion::find($estadoSolicitadoId);
 
-        // Reenviar el estado actual es válido: permite ajustar solo el estado secundario.
+        // Reenviar el estado actual es válido en «Recibiendo»: actualiza la recepción.
         $esMismoEstado = $estadoSolicitadoId === (int) $OrdenProduccion->estado_op_id;
 
         if (! $esMismoEstado && ! in_array($estadoSolicitadoId, $permitidos, true)) {
@@ -1315,71 +1294,28 @@ class OrdenProduccionController extends Controller {
             ]);
         }
 
-        $secundarioId = $datos['estado_op_secundario_id'] ?? null;
-        $secundarioNombre = $secundarioId
-            ? EstadoOperacion::whereKey($secundarioId)->value('nombre')
-            : null;
+        // Nadie pasa a «Lista para taller» con faltantes: la OP espera en la cola
+        // a que una compra complete el kit y la promueva automáticamente.
+        if ($nuevoEstado?->nombre === ColaMaterialesOpService::ESTADO_LISTA) {
+            $faltantesKit = $this->colaMateriales->faltantes($OrdenProduccion);
 
-        // Coexistencia: solo "Esperando materiales" + "Procesos externos".
-        if ($secundarioId) {
-            if (! in_array($nuevoEstado?->nombre, self::PAR_COEXISTENCIA, true)
-                || ! in_array($secundarioNombre, self::PAR_COEXISTENCIA, true)
-                || $secundarioNombre === $nuevoEstado?->nombre) {
+            if (!empty($faltantesKit)) {
+                $detalle = implode(' | ', array_map(
+                    fn ($fila) => $fila['nombre'] . ': faltan ' . $fila['faltante'] . ' ' . $fila['unidad'],
+                    $faltantesKit
+                ));
+
                 Bitacora::rechazo(
                     'OrdenProduccion',
-                    'estadosIncompatibles',
-                    "'{$nuevoEstado?->nombre}' + '{$secundarioNombre}' no pueden coexistir.",
+                    'kitIncompleto',
+                    'No se puede pasar a «Lista para taller» — ' . $detalle,
                     'OrdenProduccion',
                     $OrdenProduccion->id,
                 );
 
                 return back()->withErrors([
-                    'estado_op_secundario_id' => 'Solo «Esperando materiales» y «Procesos externos» pueden coexistir como estados simultáneos.',
-                ]);
-            }
-        }
-
-        // Se registra el proceso externo solo al entrar a ese estado, no en
-        // cada edición posterior de una OP que ya está en procesos externos.
-        $estadoSecundarioActualNombre = $OrdenProduccion->estadoOpSecundario?->nombre;
-        $estabaEnProcesoExterno = $estadoActual?->nombre === 'Procesos externos'
-            || $estadoSecundarioActualNombre === 'Procesos externos';
-        $estaraEnProcesoExterno = $nuevoEstado?->nombre === 'Procesos externos'
-            || $secundarioNombre === 'Procesos externos';
-        $entraProcesoExterno = $estaraEnProcesoExterno && ! $estabaEnProcesoExterno;
-
-        $procesoExternoDatos = $datos['proceso_externo'] ?? [];
-        $itemsProceso = collect($procesoExternoDatos['items'] ?? [])
-            ->filter(fn ($item) => !empty($item['material_origen_id']))
-            ->unique(fn ($item) => (int) $item['material_origen_id'])
-            ->values();
-
-        if ($entraProcesoExterno) {
-            if (empty($procesoExternoDatos['proveedor_destino_id']) || $itemsProceso->isEmpty()) {
-                Bitacora::rechazo(
-                    'OrdenProduccion',
-                    'procesoExternoIncompleto',
-                    'Falta el proveedor destino o los materiales de la salida.',
-                    'OrdenProduccion',
-                    $OrdenProduccion->id,
-                );
-
-                return back()->withErrors([
-                    'proceso_externo' => 'Registre el proveedor destino y al menos un material para el proceso externo.',
-                ]);
-            }
-
-            if (empty(trim((string) ($procesoExternoDatos['etapa_componente'] ?? '')))) {
-                Bitacora::rechazo(
-                    'OrdenProduccion',
-                    'procesoExternoIncompleto',
-                    'Falta la etapa o componente del proceso externo.',
-                    'OrdenProduccion',
-                    $OrdenProduccion->id,
-                );
-
-                return back()->withErrors([
-                    'proceso_externo.etapa_componente' => 'Indique la etapa o componente del proceso externo.',
+                    'estado_op_id' => 'No se puede pasar a «Lista para taller»: el kit está incompleto — '
+                        . $detalle . '. Registra la compra desde la vista de Materiales.',
                 ]);
             }
         }
@@ -1440,7 +1376,6 @@ class OrdenProduccionController extends Controller {
         $estadoFinalNombre = $estadoFinal?->nombre ?? $nuevoEstado?->nombre;
         $recepcionesGeneradas = 0;
         $mermasRegistradas = 0;
-        $procesosCreados = 0;
         $materialesDescontados = 0;
         $productosIncrementados = 0;
         $compromisosAvisados = 0;
@@ -1474,31 +1409,11 @@ class OrdenProduccionController extends Controller {
             $cierreDatos = $this->costosRecepcion->resumenCierre($OrdenProduccion, $filasCierre);
         }
 
-        // Materiales del kit que se registrarán como salida al proceso externo.
-        $kitsProceso = $entraProcesoExterno
-            ? $OrdenProduccion->kitProcesos()->with('material')->get()
-                ->keyBy(fn ($kit) => (int) $kit->material_id)
-            : collect();
-
-        // "Lista para taller" cierra los procesos externos pendientes: es
-        // obligatorio indicar cuándo regresó el material.
-        if ($estadoFinalNombre === 'Lista para taller'
-            && empty($datos['fecha_regreso_real'])
-            && ProcesoExterno::where('orden_produccion_id', $OrdenProduccion->id)
-                ->whereNull('fecha_regreso_real')
-                ->exists()) {
-            Bitacora::rechazo(
-                'OrdenProduccion',
-                'faltaFechaRegreso',
-                'Hay procesos externos sin fecha real de regreso.',
-                'OrdenProduccion',
-                $OrdenProduccion->id,
-            );
-
-            return back()->withErrors([
-                'fecha_regreso_real' => 'Indique la fecha real de regreso de los procesos externos.',
-            ]);
-        }
+        // Lugar en la cola FIFO: se fija al entrar a «Esperando materiales», se
+        // conserva mientras siga esperando y se limpia al salir.
+        $esperandoDesde = $estadoFinalNombre === ColaMaterialesOpService::ESTADO_ESPERA
+            ? ($OrdenProduccion->esperando_materiales_desde ?: now())
+            : null;
 
         // "Desde cuándo está en recepción": se fija al entrar y se conserva
         // mientras la OP siga en ese estado; se limpia al salir.
@@ -1509,22 +1424,15 @@ class OrdenProduccionController extends Controller {
         DB::transaction(function () use (
             $OrdenProduccion,
             $estadoFinalId,
-            $secundarioId,
             $recepciones,
             $fechaRecepcion,
             $recepcionDesde,
-            $entraProcesoExterno,
-            $procesoExternoDatos,
-            $itemsProceso,
-            $kitsProceso,
-            $estadoFinalNombre,
-            $datos,
+            $esperandoDesde,
             $entraEnTaller,
             $esCierre,
             $cierreDatos,
             &$recepcionesGeneradas,
             &$mermasRegistradas,
-            &$procesosCreados,
             &$materialesDescontados,
             &$productosIncrementados,
             &$compromisosAvisados
@@ -1535,7 +1443,7 @@ class OrdenProduccionController extends Controller {
 
             $OrdenProduccion->forceFill([
                 'estado_op_id' => $estadoFinalId,
-                'estado_op_secundario_id' => $secundarioId,
+                'esperando_materiales_desde' => $esperandoDesde,
                 'recepcion_desde' => $recepcionDesde,
             ])->save();
 
@@ -1568,57 +1476,6 @@ class OrdenProduccionController extends Controller {
                 $productosIncrementados = $this->incrementarProductos($OrdenProduccion, $recepciones);
                 $compromisosAvisados = $this->registrarCompromisosReparacion($OrdenProduccion, $recepciones);
             }
-
-            if ($entraProcesoExterno) {
-                $fechaSalida = now();
-
-                foreach ($itemsProceso as $item) {
-                    $materialId = (int) $item['material_origen_id'];
-                    $kit = $kitsProceso->get($materialId);
-
-                    if (!$kit) {
-                        throw ValidationException::withMessages([
-                            'proceso_externo' => 'Uno de los materiales seleccionados no pertenece al kit de la OP.',
-                        ]);
-                    }
-
-                    // La cantidad sale de la OP (kit), no de lo que digite el usuario.
-                    $cantidad = round((float) ($kit->cantidad_requerida ?? 0), 4);
-                    if ($cantidad <= 0) {
-                        continue;
-                    }
-
-                    ProcesoExterno::create([
-                        'orden_produccion_id'     => $OrdenProduccion->id,
-                        'etapa_componente'        => $procesoExternoDatos['etapa_componente'] ?? null,
-                        'material_origen_id'      => $materialId,
-                        'cantidad_salida'         => $cantidad,
-                        'unidad_medida'           => $item['unidad_medida']
-                            ?? $kit->unidad
-                            ?? $kit->material?->unidad_inventario,
-                        'proveedor_destino_id'    => (int) $procesoExternoDatos['proveedor_destino_id'],
-                        'bodega_origen'           => $procesoExternoDatos['bodega_origen'] ?? null,
-                        'servicio_proceso'        => $procesoExternoDatos['servicio_proceso'] ?? null,
-                        'fecha_salida'            => $fechaSalida,
-                        'fecha_prevista_regreso'  => $procesoExternoDatos['fecha_prevista_regreso'] ?? null,
-                        'resultado_observaciones' => $procesoExternoDatos['resultado_observaciones'] ?? null,
-                    ]);
-
-                    $procesosCreados++;
-                }
-
-                if ($procesosCreados === 0) {
-                    throw ValidationException::withMessages([
-                        'proceso_externo' => 'Los materiales seleccionados no tienen cantidad pendiente para salir.',
-                    ]);
-                }
-            }
-
-            if ($estadoFinalNombre === 'Lista para taller' && !empty($datos['fecha_regreso_real'])) {
-                ProcesoExterno::where('orden_produccion_id', $OrdenProduccion->id)
-                    ->whereNull('fecha_regreso_real')
-                    ->update(['fecha_regreso_real' => $datos['fecha_regreso_real']]);
-            }
         });
 
         $this->invalidarCache();
@@ -1632,9 +1489,6 @@ class OrdenProduccionController extends Controller {
         }
         if ($mermasRegistradas > 0) {
             $mensaje .= ' ' . $mermasRegistradas . ' par(es) no recuperable(s) quedaron registrados como merma.';
-        }
-        if ($procesosCreados > 0) {
-            $mensaje .= ' Se registraron ' . $procesosCreados . ' materiales en proceso externo.';
         }
         if ($materialesDescontados > 0) {
             $mensaje .= ' Se descontaron ' . $materialesDescontados . ' materiales del inventario para el taller.';
@@ -1674,7 +1528,14 @@ class OrdenProduccionController extends Controller {
             'recepciones.*.cantidad_no_recuperable'  => ['nullable', 'integer', 'min:0'],
         ]);
 
-        $orden = OrdenProduccion::findOrFail($id);
+        $orden = OrdenProduccion::findOrFail($id)->load('estadoOp');
+
+        if ($orden->estadoOp && strtolower(trim($orden->estadoOp->nombre)) === 'cerrada') {
+            return back()->withErrors([
+                'recepciones' => 'No se permite modificar la recepción de una Orden de Producción en estado Cerrada.',
+            ]);
+        }
+
         $fechaRecepcion = $datos['fecha_recepcion'] ?? now()->toDateString();
         $fechaCompromiso = $datos['fecha_compromiso'] ?? null;
 
@@ -2200,7 +2061,15 @@ class OrdenProduccionController extends Controller {
         $permissions = Myhelp::EscribirEnLog($this, ' Begin SYNC-DISTRIBUCION:OrdenProduccions');
         DB::beginTransaction();
 
-        $OrdenProduccion = OrdenProduccion::findOrFail($id);
+        $OrdenProduccion = OrdenProduccion::findOrFail($id)->load('estadoOp');
+
+        if ($OrdenProduccion->estadoOp && strtolower(trim($OrdenProduccion->estadoOp->nombre)) === 'cerrada') {
+            DB::rollBack();
+            return back()->withErrors([
+                'distribucion_tallas' => 'No se permite editar la distribución de tallas de una Orden de Producción en estado Cerrada.',
+            ]);
+        }
+
         $this->sincronizarTallas($OrdenProduccion, $request->input('distribucion_tallas', []), false);
 
         DB::commit();

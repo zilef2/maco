@@ -162,6 +162,9 @@ class RecepcionCalidadController extends Controller {
                 : null,
             // Costo de materiales de una unidad (producto o material procesado).
             'costo_unitario'          => round($unitario, 2),
+            'op_costo_proceso'        => $op ? round((float) ($op->costo_proceso ?? 0), 2) : 0,
+            'op_costo_materiales'     => $op ? round((float) ($op->costo_total ?? 0) - (float) ($op->costo_proceso ?? 0), 2) : 0,
+            'op_costo_total'          => $op ? round((float) ($op->costo_total ?? 0), 2) : 0,
         ];
     }
 

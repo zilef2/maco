@@ -43,9 +43,7 @@ type MaterialSeleccionado = {
 
 const op = computed<any>(() => (props.OrdenProducciona ?? {}) as any);
 
-const estadoActualTexto = computed(() =>
-    [op.value.estado_nombre, op.value.estado_secundario_nombre].filter(Boolean).join(' + ') || 'Sin estado'
-);
+const estadoActualTexto = computed(() => op.value.estado_nombre || 'Sin estado');
 
 const fechaCreacionFormateada = computed(() => {
     const fecha: any = op.value.created_at;
@@ -57,7 +55,7 @@ const fechaCreacionFormateada = computed(() => {
  * numero_op, tipo y responsable nunca se cambian desde aquí; la fecha prevista
  * de envío, el destino, los productos y las tallas se congelan desde «En taller».
  */
-const planBloqueado = computed(() => !sePuedeEditarPlan(op.value.estado_nombre, op.value.estado_secundario_nombre));
+const planBloqueado = computed(() => !sePuedeEditarPlan(op.value.estado_nombre));
 
 const distribucion = reactive({
     items: [] as Array<ItemDistribucion>,

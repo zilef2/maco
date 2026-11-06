@@ -13,11 +13,10 @@ import KitProcesoOPModal from '@/pages/OrdenProduccion/KitProcesoOPModal.vue';
 import CambiarEstadoModal from '@/pages/OrdenProduccion/CambiarEstadoModal.vue';
 import DetalleEstadoModal from '@/pages/OrdenProduccion/DetalleEstadoModal.vue';
 import MaterialesOPModal from '@/pages/OrdenProduccion/MaterialesOPModal.vue';
-import SacarMaterialesModal from '@/pages/ProcesoExterno/SacarMaterialesModal.vue';
 
 import {
-    ArrowDownTrayIcon,
     ArrowPathIcon,
+    ArrowRightIcon,
     ArrowUturnLeftIcon,
     CalendarDaysIcon,
     ChartBarIcon,
@@ -84,9 +83,7 @@ const normalizar = (valor: any): string =>
         .replace(/\s+/g, ' ')
         .trim();
 
-const esCerrada = (op: any): boolean =>
-    normalizar(op?.estado_nombre) === 'cerrada'
-    || normalizar(op?.estado_secundario_nombre) === 'cerrada';
+const esCerrada = (op: any): boolean => normalizar(op?.estado_nombre) === 'cerrada';
 
 const preparadas = computed(() =>
     filas.value.map((op: any) => ({
@@ -128,27 +125,21 @@ const estadosDisponibles = computed(() => {
     // Conteos dentro del alcance actual (búsqueda, responsable y taller).
     const conteos = new Map<number, number>();
     baseFiltrada.value.forEach((op: any) => {
-        // Un OP en coexistencia ("Esperando materiales" + "Procesos externos")
-        // cuenta bajo ambos estados.
-        [op.estado_op_id, op.estado_op_secundario_id].forEach((rawId: any) => {
-            const id = Number(rawId);
-            if (!id) return;
-            conteos.set(id, (conteos.get(id) ?? 0) + 1);
-        });
+        const id = Number(op.estado_op_id);
+        if (!id) return;
+        conteos.set(id, (conteos.get(id) ?? 0) + 1);
     });
 
     // Las opciones se arman con todas las órdenes para que la lista no cambie
     // de tamaño al mover los demás filtros.
     const grupos = new Map<number, { id: number; nombre: string; count: number }>();
     filas.value.forEach((op: any) => {
-        [op.estado_op_id, op.estado_op_secundario_id].forEach((rawId: any) => {
-            const id = Number(rawId);
-            if (!id || grupos.has(id)) return;
-            grupos.set(id, {
-                id,
-                nombre: (String(rawId) === String(op.estado_op_id) ? op.estado_nombre : op.estado_secundario_nombre) || `Estado #${id}`,
-                count: 0,
-            });
+        const id = Number(op.estado_op_id);
+        if (!id || grupos.has(id)) return;
+        grupos.set(id, {
+            id,
+            nombre: op.estado_nombre || `Estado #${id}`,
+            count: 0,
         });
     });
     grupos.forEach((grupo) => {
@@ -188,9 +179,7 @@ const filtradas = computed(() =>
     baseFiltrada.value.filter((op: any) => {
         if (esCerrada(op) && !filtrandoCerradas.value) return false;
         if (estadoFiltro.value === 'todos') return true;
-        // Coincide con el estado principal o con el secundario (coexistencia).
-        return Number(op.estado_op_id) === Number(estadoFiltro.value)
-            || Number(op.estado_op_secundario_id) === Number(estadoFiltro.value);
+        return Number(op.estado_op_id) === Number(estadoFiltro.value);
     }),
 );
 
@@ -256,8 +245,7 @@ const ordenadas = computed(() => {
 });
 
 const estadoCoincide = (op: any, nombre: string): boolean =>
-    normalizar(op?.estado_nombre) === normalizar(nombre)
-    || normalizar(op?.estado_secundario_nombre) === normalizar(nombre);
+    normalizar(op?.estado_nombre) === normalizar(nombre);
 
 const tieneFaltantes = (op: any): boolean =>
     Array.isArray(op?.materiales_faltantes) && op.materiales_faltantes.length > 0;
@@ -417,13 +405,9 @@ const totalCostoOp = computed(() => totalCostoFichas.value + totalCostoProceso.v
 const resumenEstados = computed(() => {
     const conteos = new Map<number, number>();
     ordenadas.value.forEach((op: any) => {
-        // Una OP en coexistencia ("Esperando materiales" + "Procesos externos")
-        // cuenta bajo ambos estados.
-        [op.estado_op_id, op.estado_op_secundario_id].forEach((rawId: any) => {
-            const id = Number(rawId);
-            if (!id) return;
-            conteos.set(id, (conteos.get(id) ?? 0) + 1);
-        });
+        const id = Number(op.estado_op_id);
+        if (!id) return;
+        conteos.set(id, (conteos.get(id) ?? 0) + 1);
     });
 
     return estadosDisponibles.value
@@ -523,10 +507,6 @@ const ESTADO_ESTILOS: Record<string, { dot: string; badge: string }> = {
         dot: 'bg-orange-500',
         badge: 'border-orange-200 bg-orange-50 text-orange-800 dark:border-orange-500/30 dark:bg-orange-500/10 dark:text-orange-300',
     },
-    procesos_externos: {
-        dot: 'bg-violet-500',
-        badge: 'border-violet-200 bg-violet-50 text-violet-800 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-300',
-    },
     lista_para_taller: {
         dot: 'bg-emerald-500',
         badge: 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300',
@@ -568,11 +548,7 @@ const GUIA_ESTADOS: Record<string, { area: string; texto: string }> = {
     },
     esperando_materiales: {
         area: 'Compras y bodega',
-        texto: 'consiguen el material que falta; la OP no puede pasar al taller hasta completar el kit.',
-    },
-    procesos_externos: {
-        area: 'Proveedor externo',
-        texto: 'transforma el material (sublimación, corte, pedrería…); el material sigue siendo de Macondas.',
+        texto: 'consiguen el material que falta; la OP espera su turno en la cola y pasa sola a «Lista para taller» cuando una compra completa el kit.',
     },
     lista_para_taller: {
         area: 'Bodega',
@@ -641,8 +617,8 @@ const guiaEstados = computed(() =>
 );
 
 // Estados que muestran información adicional al hacer clic. El resto
-// (Borrador, Procesos externos, Lista para taller, En taller, Cerrada)
-// no tiene detalle y su vínculo queda deshabilitado.
+// (Borrador, Lista para taller, En taller, Cerrada) no tiene detalle y su
+// vínculo queda deshabilitado.
 const ESTADOS_CON_DETALLE = ['Preparación', 'Esperando materiales', 'Recibiendo'];
 const estadoConDetalle = (nombre: string | null | undefined) =>
     ESTADOS_CON_DETALLE.includes(String(nombre ?? ''));
@@ -678,8 +654,6 @@ const data = reactive({
     cambioEstadoOp: null as any,
     detalleEstadoOpen: false,
     detalleEstadoOp: null as any,
-    salidaOpen: false,
-    salidaOp: null as any,
     materialesOpen: false,
     materialesOp: null as any,
 });
@@ -727,14 +701,6 @@ const accionesFila = computed(() => {
     if (puede(['update OrdenProduccion'])) {
         arr.push({ id: 'edit', label: 'Editar', icon: PencilIcon });
     }
-    if (puede(['create ProcesoExterno'])) {
-        arr.push({
-            id: 'salida',
-            label: 'Sacar materiales al taller',
-            icon: ArrowDownTrayIcon,
-            visible: (op: any) => op?.estado_nombre === 'Lista para taller',
-        });
-    }
     if (puede(['delete OrdenProduccion'])) {
         arr.push({ id: 'delete', label: 'Eliminar', icon: TrashIcon });
     }
@@ -750,16 +716,11 @@ const onAccionFila = (id: string, op: any) => {
         data.distribucionOpen = false;
         data.kitProcesoOpen = false;
         data.cambioEstadoOpen = false;
-        data.salidaOpen = false;
         data.materialesOpen = false;
         data.ordenEditando = op;
     }
     if (id === 'kit') abrirKitProceso(op);
     if (id === 'tallas') abrirDistribucion(op);
-    if (id === 'salida') {
-        data.salidaOp = op;
-        data.salidaOpen = true;
-    }
     if (id === 'delete') {
         data.ordenEditando = op;
         data.deleteOpen = true;
@@ -1166,18 +1127,18 @@ const titulos = [
                                         <span class="h-1.5 w-1.5 rounded-full" :class="estiloEstado(op.estado_nombre).dot"></span>
                                         {{ op.estado_nombre || 'Sin estado' }}
                                     </span>
-                                    <span
-                                        v-if="op.estado_secundario_nombre"
-                                        class="mt-1 block w-fit rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[11px] font-medium text-violet-700 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-300"
-                                        title="Estado simultáneo (única coexistencia permitida)"
-                                    >
-                                        + {{ op.estado_secundario_nombre }}
-                                    </span>
                                 </td>
 
                                 <!-- Información según el estado -->
                                 <td class="px-3 py-3 align-top">
                                     <div v-if="estadoCoincide(op, 'Esperando materiales')" class="flex flex-col items-start gap-1">
+                                        <span
+                                            v-if="op.cola_posicion"
+                                            class="text-[11px] font-medium tabular-nums text-muted-foreground"
+                                            title="Orden de salida de la cola: la primera pasa a «Lista para taller» en cuanto una compra complete su kit"
+                                        >
+                                            Turno {{ op.cola_posicion }} en la cola
+                                        </span>
                                         <span
                                             v-if="tieneFaltantes(op)"
                                             v-tooltip="tooltipFaltantes(op)"
@@ -1250,9 +1211,9 @@ const titulos = [
                                             @click="abrirCambioEstado(op)"
                                             title="Cambiar estado"
                                             aria-label="Cambiar estado"
-                                            class="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                                            class="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-card text-emerald-600 shadow-sm transition hover:border-emerald-300 hover:bg-emerald-50 hover:text-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:ring-offset-background dark:text-emerald-400 dark:hover:bg-emerald-950/40 dark:hover:text-emerald-300"
                                         >
-                                            <ArrowPathIcon class="h-3.5 w-3.5" />
+                                            <ArrowRightIcon class="h-3.5 w-3.5" />
                                         </button>
 
                                         <DropdownMenu>
@@ -1844,7 +1805,6 @@ const titulos = [
             :title="props.title"
             :op="data.cambioEstadoOp"
             :estados="(props.losSelect as any)?.estado_op_id || []"
-            :proveedores="(props.losSelect as any)?.proveedor_destino_id || []"
             :mostrarRestaMateriales="props.mostrarRestaMateriales"
         />
 
@@ -1854,8 +1814,6 @@ const titulos = [
             :op="data.detalleEstadoOp"
             :metodo-costos-label="props.metodoCostosLabel"
         />
-
-        <SacarMaterialesModal :show="data.salidaOpen" @close="data.salidaOpen = false" :op="data.salidaOp" />
 
         <MaterialesOPModal :show="data.materialesOpen" @close="data.materialesOpen = false" :op="data.materialesOp" />
     </AppLayout>

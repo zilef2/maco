@@ -56,7 +56,7 @@ export const explicaciones: Explicacion[] = [
         subcategoria: 'Estado de la OP',
         titulo: 'Flujo de estados y edición de una OP',
         resumen:
-            'Una OP recorre 8 estados; el número, tipo y responsable nunca cambian, y el plan (productos, tallas) se congela al entrar a «En taller» porque el kit ya descontó inventario.',
+            'Una OP recorre 7 estados; el número, tipo y responsable nunca cambian, y el plan (productos, tallas) se congela al entrar a «En taller» porque el kit ya descontó inventario.',
         etiquetas: [
             'estado op',
             'flujo de producción',
@@ -66,14 +66,14 @@ export const explicaciones: Explicacion[] = [
             'cerrada',
             'máquina de estados',
         ],
-        actualizada: '2026-10-23',
+        actualizada: '2026-11-06',
         bloques: [
             {
                 tipo: 'pasos',
                 items: [
-                    'Borrador → Preparación → Esperando materiales → Procesos externos → Lista para taller → En taller → Recibiendo → Cerrada.',
+                    'Borrador → Preparación → Esperando materiales → Lista para taller → En taller → Recibiendo → Cerrada.',
                     'Antes de «En taller» el plan está abierto (productos, tallas, taller, fecha de envío). Después se congela.',
-                    '«Esperando materiales» y «Procesos externos» pueden coexistir.',
+                    'Cada OP tiene un solo estado: ya no hay estados simultáneos ni estado de «Procesos externos».',
                     'La OP se cierra sola cuando la recepción queda completa y no hay pares en reparación.',
                 ],
             },
@@ -98,6 +98,74 @@ export const explicaciones: Explicacion[] = [
             'resources/js/pages/OrdenProduccion/Edit.vue',
             'resources/js/pages/OrdenProduccion/CambiarEstadoModal.vue',
             'app/Http/Controllers/OrdenProduccionController.php (update, cambiarEstado)',
+        ],
+    },
+    {
+        id: 'op-cola-esperando-materiales',
+        categoria: 'OP',
+        categoriaLabel: 'Órdenes de producción',
+        subcategoria: 'Estado de la OP',
+        titulo: 'Cola de «Esperando materiales» y salto a «Lista para taller»',
+        resumen:
+            'Las OP con faltantes esperan en una cola por orden de llegada y pasan solas a «Lista para taller» cuando una compra completa su kit; nadie puede saltar a ese estado con materiales incompletos.',
+        etiquetas: [
+            'esperando materiales',
+            'lista para taller',
+            'cola',
+            'fifo',
+            'turno',
+            'faltan materiales',
+            'kit completo',
+            'registrar compra',
+            'promoción automática',
+        ],
+        actualizada: '2026-11-06',
+        bloques: [
+            {
+                tipo: 'texto',
+                texto:
+                    '«Esperando materiales» es una lista de espera: la primera OP que entró es la primera que sale. El turno se ordena por la fecha y hora en que la OP entró al estado (esperando_materiales_desde) y, si dos coinciden, por el id. Al salir del estado esa fecha se borra; si la OP vuelve a entrar, empieza un turno nuevo.',
+            },
+            {
+                tipo: 'subtitulo',
+                texto: 'Cómo se llega a «Lista para taller»',
+            },
+            {
+                tipo: 'lista',
+                items: [
+                    'Sugerencia al elegir «Esperando materiales»: si el kit ya está completo, el modal ofrece pasar directamente a «Lista para taller» en lugar de entrar a la cola.',
+                    'Promoción automática al registrar una compra en Materiales: se recorre la cola de la más antigua a la más nueva y cada OP cuyo kit quede completo pasa sola a «Lista para taller».',
+                    'Manualmente, solo con el kit completo: si falta algún material, el cambio se rechaza y el detalle dice cuánto falta de cada uno.',
+                ],
+            },
+            {
+                tipo: 'nota',
+                tono: 'info',
+                texto:
+                    'Si la compra no alcanza para todas las OP en cola, el stock se reserva en orden: se descuenta mentalmente lo que consume la OP promovida antes de evaluar la siguiente. Así dos OP nunca quedan «listas» peleando por el mismo material.',
+            },
+            {
+                tipo: 'subtitulo',
+                texto: 'Cuándo se descuenta el inventario',
+            },
+            {
+                tipo: 'texto',
+                texto:
+                    'Estar en «Lista para taller» no descuenta nada: el material sigue en bodega. El único descuento ocurre al entrar a «En taller», y aplica a todas las OP, incluidas las externas. En ese momento se resta la cantidad requerida de cada material del kit y queda un movimiento de salida en el histórico.',
+            },
+            {
+                tipo: 'nota',
+                tono: 'alerta',
+                texto:
+                    'Antes existía la acción «Sacar materiales al taller», que descontaba el kit y luego «En taller» lo volvía a descontar. Esa acción se retiró: el descuento es uno solo.',
+            },
+        ],
+        fuentes: [
+            'app/Services/ColaMaterialesOpService.php',
+            'app/Http/Controllers/MaterialController.php (registrarCompra)',
+            'app/Http/Controllers/OrdenProduccionController.php (cambiarEstado, descontarMaterialesTaller)',
+            'resources/js/pages/OrdenProduccion/CambiarEstadoModal.vue',
+            'database/migrations/2026_11_06_000000_reestructura_estados_op.php',
         ],
     },
     {

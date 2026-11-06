@@ -69,8 +69,6 @@ Route::middleware('auth', 'verified')->group(function () {
 	Route::put("/OrdenProduccion/{id}/estado", [\App\Http\Controllers\OrdenProduccionController::class, 'cambiarEstado'])->name('OrdenProduccion.cambiarEstado');
 	Route::put("/OrdenProduccion/{id}/recepcion-borrador", [\App\Http\Controllers\OrdenProduccionController::class, 'guardarRecepcionBorrador'])->name('OrdenProduccion.recepcionBorrador');
 	Route::post("/OrdenProduccion/borrador", [\App\Http\Controllers\OrdenProduccionController::class, 'guardarBorrador'])->name('OrdenProduccion.borrador');
-	Route::get("/ProcesoExterno/materiales-op/{orden}", [\App\Http\Controllers\ProcesoExternoController::class, 'materialesOp'])->name('ProcesoExterno.materialesOp');
-	Route::post("/ProcesoExterno/salida-op", [\App\Http\Controllers\ProcesoExternoController::class, 'salidaOp'])->name('ProcesoExterno.salidaOp');
 	Route::resource("/ProcesoExterno", \App\Http\Controllers\ProcesoExternoController::class);
 	Route::resource("/KitProceso", \App\Http\Controllers\KitProcesoController::class);
 	Route::post("/KitProceso/upload-excel", [\App\Http\Controllers\KitProcesoController::class, 'uploadExcel'])->name('KitProceso.upload-excel');

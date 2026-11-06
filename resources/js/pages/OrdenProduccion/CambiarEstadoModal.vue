@@ -7,8 +7,6 @@ import SecondaryButton from '@/components/SecondaryButton.vue';
 import TextInput from '@/components/TextInput.vue';
 import { useForm } from '@inertiajs/vue3';
 import { computed, nextTick, ref, watch } from 'vue';
-import vSelect from "vue-select";
-import "vue-select/dist/vue-select.css";
 import { zilef_nuber_format } from '@/global.ts';
 import { rangoFlujo } from '@/composables/flujoEstadosOp';
 import { resumenRecepcionCosto } from '@/composables/costoRecepcionOp';
@@ -18,7 +16,6 @@ const props = defineProps({
     title: String,
     op: Object,
     estados: Array,
-    proveedores: { type: Array, default: () => [] },
     // Parámetro mostrar_resta_materiales_taller: si es falso, no se muestra
     // cuánto se resta del inventario al pasar a «En taller».
     mostrarRestaMateriales: { type: Boolean, default: false },
@@ -28,31 +25,16 @@ const emit = defineEmits(["close"]);
 
 const form = useForm({
     estado_op_id: '' as string | number,
-    estado_op_secundario_id: '' as string | number,
     fecha_recepcion: '' as string,
     fecha_compromiso: '' as string,
     recepciones: [] as any[],
-    proceso_externo: {
-        proveedor_destino_id: '' as string | number,
-        etapa_componente: '',
-        bodega_origen: '',
-        servicio_proceso: '',
-        fecha_prevista_regreso: '',
-        resultado_observaciones: '',
-        items: [] as any[],
-    },
-    fecha_regreso_real: '',
 });
 
-const normalizar = (valor: any) => String(valor ?? '').trim().toLowerCase();
 const hoy = () => {
     const fecha = new Date();
     fecha.setMinutes(fecha.getMinutes() - fecha.getTimezoneOffset());
     return fecha.toISOString().split('T')[0];
 };
-
-// Único par de estados que puede coexistir en una OP (regla de negocio).
-const PAR_COEXISTENCIA = ['Esperando materiales', 'Procesos externos'] as const;
 
 const estadoActual = computed(() =>
     (props.estados || []).find((e: any) => Number(e.id) === Number(props.op?.estado_op_id))
@@ -90,81 +72,28 @@ const elegirEstado = (id: any) => {
     form.estado_op_id = estaElegido(id) ? '' : id;
 };
 
-// El estado "objetivo" es el seleccionado, o el actual si aún no se elige otro.
-const estadoObjetivo = computed(() => estadoSeleccionado.value ?? estadoActual.value);
+// ── Kit de materiales ────────────────────────────────────────────────────
+// «Lista para taller» exige el kit completo. El detalle llega del listado con la
+// existencia actual de cada material; el backend lo vuelve a validar en vivo.
+const faltantesKit = computed<any[]>(() => (props.op as any)?.materiales_faltantes || []);
+const kitCompleto = computed(() => faltantesKit.value.length === 0);
 
-const estadoSecundarioSeleccionado = computed(() =>
-    (props.estados || []).find((e: any) => Number(e.id) === Number(form.estado_op_secundario_id))
+const estadoListaParaTaller = computed(() =>
+    (props.estados || []).find((e: any) => e.name === 'Lista para taller')
 );
 
-const estadoSecundarioActual = computed(() =>
-    (props.estados || []).find(
-        (e: any) => Number(e.id) === Number((props.op as any)?.estado_op_secundario_id)
-    )
+const destinoEsListaParaTaller = computed(() => estadoSeleccionado.value?.name === 'Lista para taller');
+const destinoEsEsperandoMateriales = computed(() => estadoSeleccionado.value?.name === 'Esperando materiales');
+
+// Entrar a la cola con el kit ya completo no tiene sentido: se sugiere el salto
+// directo, siempre que esa transición esté permitida desde el estado actual.
+const sugerirListaParaTaller = computed(() =>
+    destinoEsEsperandoMateriales.value
+    && kitCompleto.value
+    && opcionesPermitidas.value.some((e: any) => e.id === estadoListaParaTaller.value?.id)
 );
 
-// El proceso externo se registra al entrar al estado, ya sea como principal
-// o como estado simultáneo ("Esperando materiales" + "Procesos externos").
-const destinoEsProcesoExterno = computed(() =>
-    estadoObjetivo.value?.name === 'Procesos externos'
-    || estadoSecundarioSeleccionado.value?.name === 'Procesos externos'
-);
-
-const estabaEnProcesoExterno = computed(() =>
-    estadoActual.value?.name === 'Procesos externos'
-    || estadoSecundarioActual.value?.name === 'Procesos externos'
-);
-
-const mostrarProcesoExterno = computed(() =>
-    destinoEsProcesoExterno.value && !estabaEnProcesoExterno.value
-);
-
-const destinoEsListaParaTaller = computed(() =>
-    form.estado_op_id !== ''
-        ? estadoSeleccionado.value?.name === 'Lista para taller'
-        : estadoActual.value?.name === 'Lista para taller'
-);
-
-const procesosPendientes = computed<any[]>(() =>
-    (props.op as any)?.procesos_externos_pendientes || []
-);
-
-const mostrarRegresoReal = computed(() =>
-    destinoEsListaParaTaller.value && procesosPendientes.value.length > 0
-);
-
-// Proveedor destino sugerido: el taller o la empresa externa de la OP,
-// buscando su nombre en el catálogo de proveedores.
-const proveedorSugerido = computed(() => {
-    const op: any = props.op || {};
-    const nombreDestino = op.tipo === 'externa'
-        ? op.empresa_externa_nombre
-        : op.taller_nombre;
-
-    if (!nombreDestino) return null;
-
-    return (props.proveedores || []).find(
-        (proveedor: any) => normalizar(proveedor.name ?? proveedor.label) === normalizar(nombreDestino)
-    ) ?? null;
-});
-
-// Materiales que salen: se toman del kit de la OP y su cantidad requerida.
-const materialesProceso = computed<any[]>(() =>
-    ((props.op as any)?.materiales_detalle || [])
-        .filter((material: any) => Number(material.requerida) > 0)
-        .map((material: any) => ({
-            material_origen_id: material.material_id,
-            nombre: material.nombre,
-            cantidad_salida: Number(material.requerida),
-            unidad_medida: material.unidad || '',
-            disponible: Number(material.disponible) || 0,
-            incluir: true,
-        }))
-);
-
-const itemsProcesoSeleccionados = computed(() =>
-    form.proceso_externo.items.filter((item: any) => item.incluir)
-);
+const bloqueoPorFaltantes = computed(() => destinoEsListaParaTaller.value && !kitCompleto.value);
 
 // Una OP no puede cerrarse mientras queden pares en reparación.
 const destinoEsCerrada = computed(() =>
@@ -276,26 +205,6 @@ const guardarAvanceRecepcion = () => {
         });
 };
 
-// Coexistencia permitida solo para el par {Esperando materiales, Procesos externos}.
-const puedeCoexistir = computed(() =>
-    PAR_COEXISTENCIA.includes(estadoObjetivo.value?.name as any)
-);
-
-// El compañero del par: el otro estado de los dos que pueden simultaneidad.
-const estadosCompaneros = computed(() => {
-    const objetivo = estadoObjetivo.value?.name;
-    if (!puedeCoexistir.value) return [];
-    const companero = PAR_COEXISTENCIA.find((n) => n !== objetivo);
-    return (props.estados || []).filter((e: any) => e.name === companero);
-});
-
-// Si el objetivo sale del par, no hay secundario.
-watch(estadoObjetivo, (nuevo) => {
-    if (!PAR_COEXISTENCIA.includes(nuevo?.name as any)) {
-        form.estado_op_secundario_id = '';
-    }
-});
-
 // La recepción de calidad se muestra cuando la OP ya está en "Recibiendo",
 // cuando se selecciona "Recibiendo" como nuevo estado, o cuando ya tiene al
 // menos un producto recibido (la OP cuenta como Recibiendo aunque el estado
@@ -319,15 +228,8 @@ const destinoEsEnTaller = computed(
     () => form.estado_op_id !== '' && estadoSeleccionado.value?.name === 'En taller'
 );
 
-// Las OPs externas no descuentan el kit: el material lo maneja la empresa
-// externa. Solo las OPs de taller sacan materiales de bodega.
-const opEsExterna = computed(() => {
-    const op: any = props.op || {};
-    return op.tipo === 'externa' || Boolean(op.externa);
-});
-
 const mostrarRestaMateriales = computed(
-    () => destinoEsEnTaller.value && props.mostrarRestaMateriales && !opEsExterna.value
+    () => destinoEsEnTaller.value && props.mostrarRestaMateriales
 );
 
 const kitsResta = ref<any[]>([]);
@@ -493,22 +395,11 @@ const abrirModal = () => {
     form.errors = {} as any;
     form.reset();
     form.estado_op_id = '';
-    form.estado_op_secundario_id = (props.op as any)?.estado_op_secundario_id ?? '';
     form.fecha_recepcion = fechaRecepcionInicial();
     form.fecha_compromiso = fechaCompromisoInicial();
     form.recepciones = mostrarTablaRecepcion.value
         ? filasRecepcion.value.map((fila: any) => ({ ...fila }))
         : [];
-    form.proceso_externo = {
-        proveedor_destino_id: proveedorSugerido.value?.id ?? '',
-        etapa_componente: '',
-        bodega_origen: '',
-        servicio_proceso: '',
-        fecha_prevista_regreso: '',
-        resultado_observaciones: '',
-        items: materialesProceso.value.map((material: any) => ({ ...material })),
-    };
-    form.fecha_regreso_real = procesosPendientes.value.length ? hoy() : '';
 };
 
 const alCambiarEstado = () => {
@@ -564,21 +455,13 @@ const filasListas = computed(() => form.recepciones.every(filaCuadra));
 const puedeGuardar = computed(() => {
     if (destinoEsCerrada.value && totalEnReparacionEfectivo.value > 0) return false;
 
-    // Para pasar a «En taller» el kit debe cuadrar y tener existencia. Las OPs
-    // externas no pasan por esta validación porque no descuentan inventario.
+    // «Lista para taller» solo con el kit completo.
+    if (bloqueoPorFaltantes.value) return false;
+
+    // Para pasar a «En taller» el kit debe cuadrar y tener existencia.
     if (mostrarRestaMateriales.value && (cargandoResta.value || problemasResta.value.length)) {
         return false;
     }
-
-    if (mostrarProcesoExterno.value) {
-        if (!form.proceso_externo.proveedor_destino_id
-            || !String(form.proceso_externo.etapa_componente || '').trim()
-            || !itemsProcesoSeleccionados.value.length) {
-            return false;
-        }
-    }
-
-    if (mostrarRegresoReal.value && !form.fecha_regreso_real) return false;
 
     if (mostrarTablaRecepcion.value && !form.fecha_recepcion) return false;
 
@@ -590,11 +473,9 @@ const puedeGuardar = computed(() => {
     return filasListas.value && !clavesDuplicadas.value.length;
 });
 
-// Con un estado del par se puede guardar aunque no se cambie el principal (solo la coexistencia).
 // Una OP que ya está en "Recibiendo" también puede guardar para actualizar la recepción.
 const puedeEnviar = computed(() =>
     form.estado_op_id !== ''
-    || puedeCoexistir.value
     || estadoActual.value?.name === 'Recibiendo'
 );
 
@@ -722,22 +603,6 @@ const guardar = () => {
                     ? (datos.fecha_compromiso || null)
                     : null,
             })),
-            proceso_externo: mostrarProcesoExterno.value ? {
-                proveedor_destino_id: datos.proceso_externo.proveedor_destino_id,
-                etapa_componente: datos.proceso_externo.etapa_componente,
-                bodega_origen: datos.proceso_externo.bodega_origen,
-                servicio_proceso: datos.proceso_externo.servicio_proceso,
-                fecha_prevista_regreso: datos.proceso_externo.fecha_prevista_regreso,
-                resultado_observaciones: datos.proceso_externo.resultado_observaciones,
-                items: datos.proceso_externo.items
-                    .filter((item: any) => item.incluir)
-                    .map((item: any) => ({
-                        material_origen_id: item.material_origen_id,
-                        cantidad_salida: item.cantidad_salida,
-                        unidad_medida: item.unidad_medida,
-                    })),
-            } : undefined,
-            fecha_regreso_real: mostrarRegresoReal.value ? datos.fecha_regreso_real : undefined,
         }))
         .put(route('OrdenProduccion.cambiarEstado', props.op?.id), {
             preserveScroll: true,
@@ -835,7 +700,7 @@ const posicionarScrollRecepcion = async () => {
 
 <template>
     <section class="space-y-6">
-        <Modal :show="props.show" @close="emit('close')" :maxWidth="(mostrarTablaRecepcion || mostrarProcesoExterno || mostrarRegresoReal || mostrarRestaMateriales || mostrarCierre) ? 'xl6' : 'md'">
+        <Modal :show="props.show" @close="emit('close')" :maxWidth="(mostrarTablaRecepcion || mostrarRestaMateriales || mostrarCierre) ? 'xl6' : 'md'">
             <form class="p-6" @submit.prevent="guardar">
                 <h2 class="text-lg font-medium text-gray-900 dark:text-gray-100">
                     Cambiar estado
@@ -848,9 +713,6 @@ const posicionarScrollRecepcion = async () => {
                     <p class="text-sm text-gray-500 dark:text-gray-400">Estado actual</p>
                     <p class="text-base font-semibold text-gray-900 dark:text-gray-100">
                         {{ estadoActual?.name || 'Sin estado' }}
-                        <span v-if="(props.op as any)?.estado_secundario_nombre" class="text-violet-600 dark:text-violet-400">
-                            + {{ (props.op as any).estado_secundario_nombre }}
-                        </span>
                     </p>
                     <p v-if="estadoActual?.regla_clave" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                         {{ estadoActual.regla_clave }}
@@ -970,37 +832,50 @@ const posicionarScrollRecepcion = async () => {
                     </p>
                 </div>
 
-                <!-- Coexistencia de estados (única excepción: Esperando materiales + Procesos externos) -->
-                <div v-if="puedeCoexistir && estadosCompaneros.length" class="mt-4">
-                    <label class="flex cursor-pointer items-start gap-2.5 rounded-md border border-gray-200 p-3 transition hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800/60"
-                        :class="{ 'border-violet-300 bg-violet-50/60 dark:border-violet-500/40 dark:bg-violet-500/10': form.estado_op_secundario_id !== '' }">
-                        <input type="checkbox" class="mt-0.5 rounded border-gray-300 text-violet-600 focus:ring-violet-500 dark:border-gray-700 dark:bg-gray-900"
-                            :checked="form.estado_op_secundario_id !== ''"
-                            @change="form.estado_op_secundario_id = ($event.target as HTMLInputElement).checked ? estadosCompaneros[0].id : ''" />
-                        <span>
-                            <span class="block text-sm font-medium text-gray-800 dark:text-gray-200">
-                                Además en «{{ estadosCompaneros[0].name }}»
-                            </span>
-                            <span class="block text-xs text-gray-500 dark:text-gray-400">
-                                Es la única combinación permitida; al salir de estos dos estados se limpia automáticamente.
-                            </span>
-                        </span>
-                    </label>
-                    <InputError class="mt-2" :message="form.errors.estado_op_secundario_id" />
-                </div>
-
-                <!-- Las OPs externas no descuentan materiales -->
+                <!-- Cola de materiales: el kit ya está completo, no hace falta esperar -->
                 <div
-                    v-if="destinoEsEnTaller && opEsExterna"
-                    class="mt-5 rounded-lg border border-violet-200 bg-violet-50/70 px-4 py-3 dark:border-violet-800 dark:bg-violet-900/20"
+                    v-if="sugerirListaParaTaller"
+                    class="mt-5 rounded-lg border border-emerald-200 bg-emerald-50/70 px-4 py-3 dark:border-emerald-800 dark:bg-emerald-900/20"
                     role="status"
                     aria-live="polite"
                 >
-                    <p class="text-sm font-medium text-violet-900 dark:text-violet-100">
-                        Esta OP es externa.
+                    <p class="text-sm font-medium text-emerald-900 dark:text-emerald-100">
+                        Los materiales de esta OP están completos.
                     </p>
-                    <p class="mt-1 text-xs text-violet-800/80 dark:text-violet-200/80">
-                        Al pasar a «En taller» no se descuenta inventario: el material lo maneja la empresa externa.
+                    <p class="mt-1 text-xs text-emerald-800/80 dark:text-emerald-200/80">
+                        No hace falta entrar a la cola de «Esperando materiales»: puedes pasar
+                        directamente a «Lista para taller».
+                    </p>
+                    <button
+                        v-if="estadoListaParaTaller"
+                        type="button"
+                        class="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-emerald-600 bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-emerald-700"
+                        @click="form.estado_op_id = estadoListaParaTaller.id"
+                    >
+                        Pasar a «Lista para taller»
+                        <span aria-hidden="true">&rarr;</span>
+                    </button>
+                </div>
+
+                <!-- «Lista para taller» exige el kit completo -->
+                <div
+                    v-if="bloqueoPorFaltantes"
+                    class="mt-5 rounded-lg border border-rose-200 bg-rose-50/70 px-4 py-3 dark:border-rose-800 dark:bg-rose-900/20"
+                    role="alert"
+                >
+                    <p class="text-sm font-medium text-rose-900 dark:text-rose-100">
+                        No se puede pasar a «Lista para taller»: faltan materiales.
+                    </p>
+                    <ul class="mt-2 space-y-0.5 text-xs text-rose-800/90 dark:text-rose-200/90">
+                        <li v-for="(fila, indice) in faltantesKit" :key="fila.material_id ?? indice">
+                            {{ fila.nombre }}: faltan
+                            <span class="font-semibold tabular-nums">{{ fila.faltante }}</span>
+                            {{ fila.unidad }}
+                        </li>
+                    </ul>
+                    <p class="mt-2 text-xs text-rose-800/80 dark:text-rose-200/80">
+                        Deja la OP en «Esperando materiales»: al registrar la compra desde la vista de
+                        Materiales, la cola la promoverá sola cuando su kit quede completo.
                     </p>
                 </div>
 
@@ -1303,208 +1178,6 @@ const posicionarScrollRecepcion = async () => {
                     <InputError class="mt-2" :message="form.errors.recepciones" />
                 </div>
 
-                <!-- Registro de salida a proceso externo -->
-                <div v-if="mostrarProcesoExterno" class="mt-5 space-y-3">
-                    <div class="rounded-lg border border-cyan-200 bg-cyan-50/70 px-4 py-3 dark:border-cyan-800 dark:bg-cyan-900/20" role="status">
-                        <p class="text-sm font-medium text-cyan-900 dark:text-cyan-100">
-                            Salida a proceso externo
-                        </p>
-                        <p class="mt-1 text-xs text-cyan-800/80 dark:text-cyan-200/80">
-                            Los materiales y las cantidades se toman del kit de la OP.
-                            La fecha de salida se registrará con la fecha y hora actual.
-                        </p>
-                    </div>
-
-                    <div class="grid gap-3 sm:grid-cols-2">
-                        <div>
-                            <InputLabel for="proveedor_destino_id" value="Proveedor destino *" />
-                            <v-select
-                                id="proveedor_destino_id"
-                                class="mt-1 block w-full"
-                                :options="props.proveedores || []"
-                                label="name"
-                                :reduce="(item: any) => item.id"
-                                v-model="form.proceso_externo.proveedor_destino_id"
-                                placeholder="Seleccione el proveedor..."
-                            />
-                            <InputError class="mt-1" :message="form.errors['proceso_externo.proveedor_destino_id']" />
-                        </div>
-
-                        <div>
-                            <InputLabel for="etapa_componente" value="Etapa o componente *" />
-                            <TextInput
-                                id="etapa_componente"
-                                type="text"
-                                class="mt-1 block w-full"
-                                v-model="form.proceso_externo.etapa_componente"
-                                placeholder="Ej. Bordado, estampado, lavandería..."
-                            />
-                            <InputError class="mt-1" :message="form.errors['proceso_externo.etapa_componente']" />
-                        </div>
-
-                        <div>
-                            <InputLabel for="fecha_prevista_regreso" value="Fecha prevista de regreso" />
-                            <TextInput
-                                id="fecha_prevista_regreso"
-                                type="date"
-                                class="mt-1 block w-full"
-                                v-model="form.proceso_externo.fecha_prevista_regreso"
-                            />
-                            <InputError class="mt-1" :message="form.errors['proceso_externo.fecha_prevista_regreso']" />
-                        </div>
-
-                        <div>
-                            <InputLabel for="bodega_origen" value="Bodega de origen" />
-                            <TextInput
-                                id="bodega_origen"
-                                type="text"
-                                class="mt-1 block w-full"
-                                v-model="form.proceso_externo.bodega_origen"
-                                placeholder="Opcional"
-                            />
-                        </div>
-
-                        <div>
-                            <InputLabel for="servicio_proceso" value="Servicio o proceso" />
-                            <TextInput
-                                id="servicio_proceso"
-                                type="text"
-                                class="mt-1 block w-full"
-                                v-model="form.proceso_externo.servicio_proceso"
-                                placeholder="Opcional"
-                            />
-                        </div>
-
-                        <div>
-                            <InputLabel for="resultado_observaciones" value="Observaciones" />
-                            <TextInput
-                                id="resultado_observaciones"
-                                type="text"
-                                class="mt-1 block w-full"
-                                v-model="form.proceso_externo.resultado_observaciones"
-                                placeholder="Opcional"
-                            />
-                        </div>
-                    </div>
-
-                    <div class="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
-                        <div class="overflow-x-auto">
-                            <table class="w-full min-w-[560px] text-sm">
-                                <thead>
-                                    <tr class="border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-400">
-                                        <th scope="col" class="w-16 px-3 py-2 font-semibold">Incluir</th>
-                                        <th scope="col" class="px-3 py-2 font-semibold">Material</th>
-                                        <th scope="col" class="w-28 px-3 py-2 text-right font-semibold">Cantidad</th>
-                                        <th scope="col" class="w-24 px-3 py-2 font-semibold">Unidad</th>
-                                        <th scope="col" class="w-28 px-3 py-2 text-right font-semibold">Stock</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y divide-gray-100 dark:divide-gray-700/60">
-                                    <tr v-for="(item, indice) in form.proceso_externo.items" :key="item.material_origen_id ?? indice">
-                                        <td class="px-3 py-2">
-                                            <input
-                                                type="checkbox"
-                                                class="rounded border-gray-300 text-cyan-600 focus:ring-cyan-500 dark:border-gray-700 dark:bg-gray-900"
-                                                v-model="item.incluir"
-                                                :aria-label="`Incluir ${item.nombre}`"
-                                            />
-                                        </td>
-                                        <td class="px-3 py-2 text-gray-700 dark:text-gray-300">
-                                            {{ item.nombre || '—' }}
-                                        </td>
-                                        <td class="px-3 py-2 text-right font-medium tabular-nums text-gray-900 dark:text-gray-100">
-                                            {{ item.cantidad_salida }}
-                                        </td>
-                                        <td class="px-3 py-2 text-gray-600 dark:text-gray-300">
-                                            {{ item.unidad_medida || '—' }}
-                                        </td>
-                                        <td class="px-3 py-2 text-right tabular-nums"
-                                            :class="item.disponible < item.cantidad_salida
-                                                ? 'text-amber-600 dark:text-amber-400'
-                                                : 'text-gray-500 dark:text-gray-400'">
-                                            {{ item.disponible }}
-                                        </td>
-                                    </tr>
-                                    <tr v-if="!form.proceso_externo.items.length">
-                                        <td colspan="5" class="px-3 py-6 text-center text-sm text-gray-500 dark:text-gray-400">
-                                            Esta OP no tiene materiales en el kit; no es posible registrar el proceso externo.
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    <p v-if="itemsProcesoSeleccionados.length"
-                        class="text-xs text-gray-500 dark:text-gray-400">
-                        Se registrarán {{ itemsProcesoSeleccionados.length }}
-                        {{ itemsProcesoSeleccionados.length === 1 ? 'material' : 'materiales' }}.
-                    </p>
-
-                    <InputError :message="form.errors.proceso_externo" />
-                    <InputError :message="form.errors['proceso_externo.items']" />
-                </div>
-
-                <!-- Regreso de procesos externos al pasar a Lista para taller -->
-                <div v-else-if="mostrarRegresoReal" class="mt-5 space-y-3">
-                    <div class="rounded-lg border border-emerald-200 bg-emerald-50/70 px-4 py-3 dark:border-emerald-800 dark:bg-emerald-900/20" role="status">
-                        <p class="text-sm font-medium text-emerald-900 dark:text-emerald-100">
-                            Regreso de procesos externos
-                        </p>
-                        <p class="mt-1 text-xs text-emerald-800/80 dark:text-emerald-200/80">
-                            Al pasar a «Lista para taller» debe indicar la fecha real de regreso
-                            de los materiales que están fuera.
-                        </p>
-                    </div>
-
-                    <div class="overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
-                        <div class="overflow-x-auto">
-                            <table class="w-full min-w-[520px] text-sm">
-                                <thead>
-                                    <tr class="border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-400">
-                                        <th scope="col" class="px-3 py-2 font-semibold">Material</th>
-                                        <th scope="col" class="w-28 px-3 py-2 text-right font-semibold">Cantidad</th>
-                                        <th scope="col" class="px-3 py-2 font-semibold">Proveedor</th>
-                                        <th scope="col" class="w-36 px-3 py-2 font-semibold">Salida</th>
-                                        <th scope="col" class="w-36 px-3 py-2 font-semibold">Previsto</th>
-                                    </tr>
-                                </thead>
-                                <tbody class="divide-y divide-gray-100 dark:divide-gray-700/60">
-                                    <tr v-for="proceso in procesosPendientes" :key="proceso.id">
-                                        <td class="px-3 py-2 text-gray-700 dark:text-gray-300">
-                                            {{ proceso.material_nombre || '—' }}
-                                        </td>
-                                        <td class="px-3 py-2 text-right tabular-nums text-gray-900 dark:text-gray-100">
-                                            {{ proceso.cantidad_salida }}
-                                            <span class="text-xs text-gray-500 dark:text-gray-400">{{ proceso.unidad_medida }}</span>
-                                        </td>
-                                        <td class="px-3 py-2 text-gray-600 dark:text-gray-300">
-                                            {{ proceso.proveedor_nombre || '—' }}
-                                        </td>
-                                        <td class="px-3 py-2 text-gray-500 dark:text-gray-400">
-                                            {{ proceso.fecha_salida ? proceso.fecha_salida.slice(0, 10) : '—' }}
-                                        </td>
-                                        <td class="px-3 py-2 text-gray-500 dark:text-gray-400">
-                                            {{ proceso.fecha_prevista_regreso || '—' }}
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-
-                    <div class="sm:w-64">
-                        <InputLabel for="fecha_regreso_real" value="Fecha real de regreso *" />
-                        <TextInput
-                            id="fecha_regreso_real"
-                            type="date"
-                            class="mt-1 block w-full"
-                            v-model="form.fecha_regreso_real"
-                        />
-                        <InputError class="mt-1" :message="form.errors.fecha_regreso_real" />
-                    </div>
-                </div>
-
                 <!-- Cierre de la OP: valores calculados, sin digitación -->
                 <div v-if="mostrarCierre" class="mt-5">
                     <div class="rounded-lg border border-emerald-200 bg-emerald-50/70 px-4 py-3 dark:border-emerald-800 dark:bg-emerald-900/20" role="status">
@@ -1563,7 +1236,7 @@ const posicionarScrollRecepcion = async () => {
                         {{ lang().t('app.button.close') }}
                     </SecondaryButton>
                     <PrimaryButton
-                        v-if="opcionesPermitidas.length || puedeCoexistir || estadoActual?.name === 'Recibiendo'"
+                        v-if="opcionesPermitidas.length || estadoActual?.name === 'Recibiendo'"
                         class="ml-3"
                         :class="{ 'opacity-25': form.processing || !puedeEnviar || !puedeGuardar }"
                         :disabled="form.processing || !puedeEnviar || !puedeGuardar"

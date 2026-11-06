@@ -13,6 +13,7 @@ use App\Http\Requests\DestroyBulkMaterialRequest;
 use App\Services\FichaTecnicaService;
 use App\Services\ListaDesplegableService;
 use App\Services\CostoMaterialOpService;
+use App\Services\ColaMaterialesOpService;
 use App\Services\ExcelMaterialesService;
 use App\Services\MaterialBulkDeleteService;
 use App\Services\MaterialCompraPredictorService;
@@ -46,7 +47,8 @@ class MaterialController extends Controller {
         protected MaterialBulkDeleteService $bulkDelete,
         protected MaterialCompraPredictorService $compraPredictor,
         protected PlantillasExcelService $plantillas,
-        protected ExcelMaterialesService $excelMateriales
+        protected ExcelMaterialesService $excelMateriales,
+        protected ColaMaterialesOpService $colaMateriales
     ) {
 //        $this->middleware('permission:create Material', ['only' => ['create', 'store']]);
 //        $this->middleware('permission:read Material', ['only' => ['index', 'show']]);
@@ -235,14 +237,9 @@ class MaterialController extends Controller {
     private function faltantesPorOp(): array {
         $estadosSurtidos = ['En taller', 'Recibiendo', 'Terminada', 'Cerrada'];
 
-        $ordenes = OrdenProduccion::with(['estadoOp:id,nombre', 'estadoOpSecundario:id,nombre'])
+        $ordenes = OrdenProduccion::with(['estadoOp:id,nombre'])
             ->get()
-            ->reject(function (OrdenProduccion $op) use ($estadosSurtidos) {
-                return (bool) array_intersect(
-                    [$op->estadoOp?->nombre, $op->estadoOpSecundario?->nombre],
-                    $estadosSurtidos
-                );
-            })
+            ->reject(fn (OrdenProduccion $op) => in_array($op->estadoOp?->nombre, $estadosSurtidos, true))
             ->mapWithKeys(fn (OrdenProduccion $op) => [$op->id => $op->numero_op ?: ('OP #' . $op->id)])
             ->all();
 
@@ -394,14 +391,21 @@ class MaterialController extends Controller {
                 $registradas++;
             }
 
+            // La compra puede completar el kit de las OP que esperan materiales:
+            // salen de la cola en orden de llegada, reservando el stock entre ellas.
+            $promovidas = $this->colaMateriales->promoverCola();
+
             DB::commit();
             $this->invalidarCache();
-            Myhelp::EscribirEnLog($this, 'STORE:MaterialCompra EXITOSO', $registradas . ' material(es) actualizados', false);
+            Myhelp::EscribirEnLog($this, 'STORE:MaterialCompra EXITOSO', $registradas . ' material(es) actualizados | ' . count($promovidas) . ' OP promovidas a Lista para taller', false);
 
-            return back()->with(
-                'success',
-                'Se registraron ' . $registradas . ' compra(s) de material. Las entradas y los precios quedaron en el histórico.'
-            );
+            $mensaje = 'Se registraron ' . $registradas . ' compra(s) de material. Las entradas y los precios quedaron en el histórico.';
+            if (!empty($promovidas)) {
+                $mensaje .= ' ' . count($promovidas) . ' orden(es) de producción pasaron a «Lista para taller»: '
+                    . implode(', ', array_column($promovidas, 'numero_op')) . '.';
+            }
+
+            return back()->with('success', $mensaje);
         } catch (\Throwable $e) {
             DB::rollBack();
             throw $e;

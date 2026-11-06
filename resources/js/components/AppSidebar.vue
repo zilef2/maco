@@ -185,11 +185,11 @@ const navDropdown: NavGroup[] = [
                 href: '/RecepcionCalidad',
                 icon: ShieldCheck,
             },
-            {
-                title: 'CierreOrdenProduccion',
-                href: '/CierreOrdenProduccion',
-                icon: CheckCircle2,
-            },
+            // {
+            //     title: 'CierreOrdenProduccion',
+            //     href: '/CierreOrdenProduccion',
+            //     icon: CheckCircle2,
+            // },
             {
                 title: 'Merma',
                 href: '/Merma',
