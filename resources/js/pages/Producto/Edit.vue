@@ -80,16 +80,28 @@ watch([modo, tallas], () => {
 const fichaBloqueada = computed(() => Boolean(props.Productoa?.ficha_bloqueada));
 const fichaBloqueoDetalle = computed(() => String(props.Productoa?.ficha_bloqueo_detalle ?? ''));
 
-// Coste de producción unitario: el guardado al cerrar una OP (coste_produccion)
-// o, si el producto aún no tiene una OP cerrada, la estimación en vivo del
-// backend (materiales según el parámetro de costos + procesos).
+// Coste de producción sugerido: materiales de la ficha (precio vigente) + procesos.
+// Se recalcula en vivo con lo que hay en el formulario y se guarda al guardar
+// el producto; luego cada OP que use el producto vuelve a actualizarlo.
+const materialesOpciones = computed<any[]>(() => props.losSelect?.materiales ?? []);
+
+const costoUnitarioMaterial = (fila: any): number => {
+    const material = materialesOpciones.value.find(
+        (opcion: any) => String(opcion.id) === String(fila.material_componente_id),
+    );
+    return material ? Number(material.costo_unitario) || 0 : dineroANumero(fila.costo_asociado_teorico);
+};
+
 const costeProduccion = computed(() => {
-    const producto: any = props.Productoa ?? {};
-    const guardado = producto.coste_produccion;
-    if (guardado !== null && guardado !== undefined && guardado !== '') {
-        return { valor: Number(guardado), congelado: true };
-    }
-    return { valor: Number(producto.coste_produccion_vivo ?? 0), congelado: false };
+    const materiales = (form.materiales ?? []).reduce(
+        (suma, fila: any) => suma + dineroANumero(fila.consumo_estandar) * costoUnitarioMaterial(fila),
+        0,
+    );
+    const procesos = (form.procesos ?? []).reduce(
+        (suma, fila: any) => suma + dineroANumero(fila.coste_proceso),
+        0,
+    );
+    return Math.round((materiales + procesos) * 100) / 100;
 });
 
 // Ganancia: diferencia entre el precio venta (tal como está en el formulario)
@@ -98,11 +110,11 @@ const ganancia = computed(() => {
     const precioTexto = String(form.precio_venta_producto ?? '').trim();
     if (precioTexto === '') return null;
 
-    const diferencia = dineroANumero(precioTexto) - costeProduccion.value.valor;
+    const diferencia = dineroANumero(precioTexto) - costeProduccion.value;
     return {
         valor: diferencia,
-        porcentaje: costeProduccion.value.valor > 0
-            ? (diferencia / costeProduccion.value.valor) * 100
+        porcentaje: costeProduccion.value > 0
+            ? (diferencia / costeProduccion.value) * 100
             : null,
     };
 });
@@ -188,7 +200,14 @@ watchEffect(() => {
     form.descripcion = producto.descripcion ?? '';
     form.instrucciones = producto.instrucciones ?? '';
     form.costo_anticipado = producto.costo_anticipado ?? '';
-    form.precio_venta_producto = producto.precio_venta_producto ?? '';
+    // La columna es decimal (15000.00); MoneyInput solo admite dígitos y sin
+    // normalizar mostraría 1.500.000. Se guarda como entero para la caja.
+    form.precio_venta_producto =
+        producto.precio_venta_producto === null ||
+        producto.precio_venta_producto === undefined ||
+        producto.precio_venta_producto === ''
+            ? ''
+            : Math.round(Number(producto.precio_venta_producto));
     form.materiales = (producto.ficha_materiales ?? []).map((material: any) => ({
         material_componente_id: material.material_componente_id,
         consumo_estandar: material.consumo_estandar ?? 1,
@@ -204,7 +223,7 @@ watchEffect(() => {
 
 <template>
     <section class="space-y-6">
-        <Modal :show="props.show" @close="emit('close')" :maxWidth="'xl5'">
+        <Modal :show="props.show" @close="emit('close')" :maxWidth="'xl7'">
             <form class="p-0" @submit.prevent="update">
                 <!-- Encabezado -->
                 <div
@@ -503,17 +522,13 @@ watchEffect(() => {
                                 <InputLabel for="coste_produccion" value="Coste producción" />
                                 <div id="coste_produccion"
                                     class="mt-1 flex h-10 w-full items-center justify-between gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 text-sm font-semibold text-gray-700 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-200">
-                                    <span>{{ formatdinero(costeProduccion.valor) }}</span>
-                                    <span class="rounded-full px-2 py-0.5 text-[10px] font-medium"
-                                        :class="costeProduccion.congelado
-                                            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200'
-                                            : 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200'">
-                                        {{ costeProduccion.congelado ? 'Última OP cerrada' : 'Estimado' }}
+                                    <span>{{ formatdinero(costeProduccion) }}</span>
+                                    <span class="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-medium text-sky-800 dark:bg-sky-900/40 dark:text-sky-200">
+                                        Sugerido
                                     </span>
                                 </div>
                                 <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                                    Materiales (con el precio que decide el parámetro de costos: promedio o último) +
-                                    procesos, por unidad. No es editable: se guarda al cerrar la OP del producto.
+                                    Materiales de la ficha + procesos, por unidad. Se recalcula con cada OP que use el producto.
                                 </p>
                             </div>
 
@@ -537,8 +552,8 @@ watchEffect(() => {
                                     <span v-else class="text-gray-400 dark:text-gray-500">—</span>
                                 </div>
                                 <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                                    Diferencia entre el precio venta y el coste de producción; se guarda en el producto
-                                    al cerrar la OP.
+                                    Diferencia entre el precio venta y el coste de producción; se recalcula al guardar
+                                    el producto y con cada OP que lo use.
                                 </p>
                             </div>
 

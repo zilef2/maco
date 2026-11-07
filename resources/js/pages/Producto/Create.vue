@@ -9,7 +9,7 @@ import TextInput from '@/components/TextInput.vue';
 import EditorMateriales from '@/pages/FichaTecnicaMateriales/EditorMateriales.vue';
 import EditorProcesos from '@/pages/Producto/EditorProcesos.vue';
 import { MAX_TALLAS_POR_RANGO, TALLAS_ALFABETICAS, useTallasVariante } from '@/composables/useTallasVariante';
-import { dineroANumero } from '@/global.ts';
+import { dineroANumero, formatdinero } from '@/global.ts';
 import { CheckCircleIcon, ClipboardDocumentListIcon, Cog6ToothIcon, CubeIcon, DocumentTextIcon, ShoppingBagIcon } from '@heroicons/vue/24/solid';
 import { useForm } from '@inertiajs/vue3';
 import { computed, watch, watchEffect } from 'vue';
@@ -47,6 +47,28 @@ const camposSelect = [
 
 const optionsPara = (campo: string) => props.losSelect?.[campo] ?? [];
 const faltanOpciones = computed(() => camposSelect.filter(({ campo }) => !optionsPara(campo).length));
+
+// Coste de producción sugerido: materiales de la ficha (precio vigente) + procesos.
+const materialesOpciones = computed<any[]>(() => props.losSelect?.materiales ?? []);
+
+const costoUnitarioMaterial = (fila: any): number => {
+    const material = materialesOpciones.value.find(
+        (opcion: any) => String(opcion.id) === String(fila.material_componente_id),
+    );
+    return material ? Number(material.costo_unitario) || 0 : dineroANumero(fila.costo_asociado_teorico);
+};
+
+const costeProduccion = computed(() => {
+    const materiales = (form.materiales ?? []).reduce(
+        (suma, fila: any) => suma + dineroANumero(fila.consumo_estandar) * costoUnitarioMaterial(fila),
+        0,
+    );
+    const procesos = (form.procesos ?? []).reduce(
+        (suma, fila: any) => suma + dineroANumero(fila.coste_proceso),
+        0,
+    );
+    return Math.round((materiales + procesos) * 100) / 100;
+});
 
 const form = useForm({
     Codigo_interno: '',
@@ -415,6 +437,20 @@ watchEffect(() => {
                                     v-model="form.precio_venta_producto" placeholder="$0"
                                     :error="form.errors.precio_venta_producto" />
                                 <InputError class="mt-2" :message="form.errors.precio_venta_producto" />
+                            </div>
+
+                            <div>
+                                <InputLabel for="coste_produccion" value="Coste producción" />
+                                <div id="coste_produccion"
+                                    class="mt-1 flex h-10 w-full items-center justify-between gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 text-sm font-semibold text-gray-700 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-200">
+                                    <span>{{ formatdinero(costeProduccion) }}</span>
+                                    <span class="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-medium text-sky-800 dark:bg-sky-900/40 dark:text-sky-200">
+                                        Sugerido
+                                    </span>
+                                </div>
+                                <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                                    Materiales de la ficha + procesos, por unidad. Se recalcula con cada OP que use el producto.
+                                </p>
                             </div>
 
                             <div class="md:col-span-3">

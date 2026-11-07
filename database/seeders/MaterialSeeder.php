@@ -62,9 +62,11 @@ class MaterialSeeder extends Seeder
                 'maneja_talla'               => $manejaOtra || (bool) random_int(0, 1),
                 'maneja_otra_variante'       => $manejaOtra,
                 'estado'                     => $estados[array_rand($estados)],
-                'variante_atributo_sugerido' => $manejaColor
+                'modelo_diseno_acabado'      => $manejaColor
                     ? 'Color'
                     : ($manejaOtra ? 'Talla' : $variante[array_rand($variante)]),
+                'color'                      => $manejaColor ? 'Rojo, Azul, Negro, Beige' : null,
+                'talla_tamano'               => $manejaOtra ? 'S, M, L, XL' : null,
                 'proveedor_habitual'         => $proveedores ? $proveedores[array_rand($proveedores)] : null,
                 'material_procesado'         => random_int(0, 1),
                 'observaciones'              => $observaciones[array_rand($observaciones)],

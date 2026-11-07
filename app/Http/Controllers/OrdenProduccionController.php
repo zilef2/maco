@@ -1059,6 +1059,9 @@ class OrdenProduccionController extends Controller {
 
         if ($recargada) {
             $this->costosMateriales->recalcular($recargada);
+            // Cada OP que involucra el producto renueva su coste de producción
+            // y su ganancia con los precios de material de esa OP.
+            $this->costosMateriales->actualizarCosteProduccion($recargada);
         }
     }
 
@@ -1467,7 +1470,7 @@ class OrdenProduccionController extends Controller {
 
                 // El coste de producción del producto queda congelado con los
                 // precios de material de esta OP cerrada.
-                $this->costosMateriales->actualizarCosteProduccionEnCierre($OrdenProduccion);
+                $this->costosMateriales->actualizarCosteProduccion($OrdenProduccion);
             }
 
             if (!empty($recepciones)) {

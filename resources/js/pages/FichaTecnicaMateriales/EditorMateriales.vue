@@ -46,6 +46,17 @@ const quitar = (index: number) => {
 const materialDe = (fila: any) =>
     (props.opciones?.materiales || []).find((material: any) => String(material.id) === String(fila.material_componente_id));
 
+// El label del select busca y muestra "codigo — nombre" más las variantes del
+// material, para poder encontrar el material también por el nombre de su variante.
+const opcionesVisibles = computed<any[]>(() =>
+    (props.opciones?.materiales || []).map((material: any) => ({
+        ...material,
+        nombre_con_variants: material.variants?.length
+            ? `${material.name} · ${material.variants.join(', ')}`
+            : material.name,
+    })),
+);
+
 const alElegirMaterial = (fila: any, material: any) => {
     fila.unidad_medida = material?.unidad_inventario ?? '';
     fila.costo_asociado_teorico = Number(material?.costo_unitario) || 0;
@@ -107,10 +118,10 @@ const errorDe = (index: number, campo: string) => props.errors?.[`materiales.${i
                 </thead>
                 <tbody class="divide-y divide-gray-100 dark:divide-gray-700/60">
                     <tr v-for="(fila, index) in filas" :key="index" class="align-top">
-                        <td class="px-3 py-2">
+                        <td class="px-3 py-2 col-span-2">
                             <v-select
-                                :options="props.opciones?.materiales || []"
-                                label="name"
+                                :options="opcionesVisibles"
+                                label="nombre_con_variants"
                                 :reduce="(item: any) => item.id"
                                 v-model="fila.material_componente_id"
                                 :placeholder="lang().t('app.label.material')"
@@ -118,7 +129,16 @@ const errorDe = (index: number, campo: string) => props.errors?.[`materiales.${i
                                 append-to-body
                                 :disabled="props.disabled"
                                 @option:selected="(opt: any) => alElegirMaterial(fila, opt)"
-                            />
+                            >
+                                <template v-slot:option="opt">
+                                    <div class="flex flex-col">
+                                        <span class="font-medium text-gray-900 dark:text-gray-100">{{ opt.name }}</span>
+                                        <span v-if="opt.variants?.length" class="text-[11px] text-gray-500 dark:text-gray-400">
+                                            {{ opt.variants.join(', ') }}
+                                        </span>
+                                    </div>
+                                </template>
+                            </v-select>
                             <InputError class="mt-1" :message="errorDe(index, 'material_componente_id')" />
                         </td>
 

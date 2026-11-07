@@ -41,9 +41,6 @@ const form = useForm({
     last_purchase_price: '',
     last_purchase_date: new Date().toISOString().split('T')[0],
     materiales: [] as any[],
-    // Variantes: colores y otras variantes conviven en el mismo material.
-    colores: [] as string[],
-    variantes: [] as string[],
 });
 onMounted(() => {
     if (props.numberPermissions === 100) {
@@ -56,7 +53,10 @@ onMounted(() => {
         form.maneja_talla = false;
         form.maneja_otra_variante = false;
         form.estado = 'Activo';
-        form.variante_atributo_sugerido = props.losSelect?.variante_atributo_sugerido?.[0]?.nombre ?? ('variante genenerica ' + (valueRAn));
+        form.modelo_diseno_acabado = props.losSelect?.modelo_diseno_acabado?.[0]?.nombre ?? props.losSelect?.variante_atributo_sugerido?.[0]?.nombre ?? ('variante genenerica ' + (valueRAn));
+        form.variante_atributo_sugerido = form.modelo_diseno_acabado;
+        form.color = 'Rojo, Azul';
+        form.talla_tamano = 'S, M';
         form.proveedor_habitual = props.losSelect?.proveedor_habitual?.[0]?.id ?? null;
         form.observaciones = 'observaciones genenericas ' + (valueRAn);
 
@@ -77,35 +77,12 @@ props.titulos.forEach((names: any) => {
 });
 
 const camposNormales = printForm.filter((campo) => campo.type !== 'boolean');
-// Color y otra variante se derivan de las listas de la sección "Variantes".
 const camposBooleanos = printForm.filter(
     (campo) => campo.type === 'boolean' && !['maneja_color', 'maneja_otra_variante'].includes(campo.idd),
 );
 
 const hayProveedores = computed(() => (props.losSelect?.proveedor_habitual?.length || 0) > 0);
 const esMaterialProcesado = computed(() => Number(form.material_procesado) === 1);
-
-/**
- * Las listas de variantes se capturan como texto separado por coma o punto y
- * coma. Un material puede tener colores y otras variantes a la vez, así que
- * escribir en una lista no toca la otra.
- */
-const parsearListaVariantes = (texto: string): string[] =>
-    Array.from(new Set(texto.split(/[,;]+/).map((valor) => valor.trim()).filter(Boolean)));
-
-const coloresTexto = computed({
-    get: () => (form.colores ?? []).join(', '),
-    set: (valor: string) => {
-        form.colores = parsearListaVariantes(valor);
-    },
-});
-
-const variantesTexto = computed({
-    get: () => (form.variantes ?? []).join(', '),
-    set: (valor: string) => {
-        form.variantes = parsearListaVariantes(valor);
-    },
-});
 
 const estadoActivo = (valor: any): boolean => {
     const texto = String(valor ?? '').trim().toLowerCase();
@@ -206,6 +183,9 @@ const camposIgnorados = [
     'codigo_categoria',
     'codigo_base',
     'observaciones',
+    'modelo_diseno_acabado',
+    'color',
+    'talla_tamano',
     'variante_atributo_sugerido',
 ];
 
@@ -374,7 +354,7 @@ watchEffect(() => {
                                 </div>
 
                                 <!-- selects desde parámetros (categoría: material) -->
-                                <div v-else-if="['unidad_inventario', 'categoria', 'variante_atributo_sugerido'].includes(atributosform.idd)">
+                                <div v-else-if="['unidad_inventario', 'categoria', 'variante_atributo_sugerido', 'modelo_diseno_acabado'].includes(atributosform.idd)">
                                     <InputLabel :for="atributosform.label"
                                         :value="lang().t('app.label')[atributosform.label] || atributosform.label" />
                                     <v-select v-if="props.losSelect?.[atributosform.idd]?.length"
@@ -457,53 +437,6 @@ watchEffect(() => {
                                         :class="toggleActivo(atributosform.idd, form[atributosform.idd]) ? 'translate-x-6' : 'translate-x-1'" />
                                 </span>
                             </div>
-                        </div>
-                    </div>
-
-                    <!-- Variantes del material -->
-                    <div>
-                        <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-1.5 mb-1">
-                            <SwatchIcon class="w-4 h-4 text-gray-400 dark:text-gray-500" />
-                            Variantes del material
-                        </h3>
-                        <p class="text-xs text-gray-400 dark:text-gray-500 mb-3 pl-6">
-                            Registra los colores y las otras variantes (por ejemplo tallas). Separa los valores con
-                            coma: un material sí puede tener las dos listas a la vez.
-                        </p>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
-                            <div>
-                                <InputLabel for="colores" value="Colores" />
-                                <TextInput id="colores" class="mt-1 block w-full"
-                                    v-model="coloresTexto"
-                                    placeholder="Rojo, Azul, Negro"
-                                    :error="form.errors.colores" />
-                                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                                    Al guardar, esta lista reemplaza los colores del material.
-                                </p>
-                                <InputError class="mt-2" :message="form.errors.colores" />
-                            </div>
-                            <div>
-                                <InputLabel for="variantes" value="Otras variantes" />
-                                <TextInput id="variantes" class="mt-1 block w-full"
-                                    v-model="variantesTexto"
-                                    placeholder="S, M, L, XL"
-                                    :error="form.errors.variantes" />
-                                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                                    Al guardar, esta lista reemplaza las otras variantes del material.
-                                </p>
-                                <InputError class="mt-2" :message="form.errors.variantes" />
-                            </div>
-                        </div>
-                        <div v-if="(form.colores?.length || 0) + (form.variantes?.length || 0) > 0"
-                            class="mt-3 flex flex-wrap items-center gap-1.5">
-                            <span v-for="(color, i) in form.colores" :key="'color-' + i"
-                                class="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[11px] font-medium text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300">
-                                {{ color }}
-                            </span>
-                            <span v-for="(variante, i) in form.variantes" :key="'variante-' + i"
-                                class="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-2.5 py-1 text-[11px] font-medium text-violet-700 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-300">
-                                {{ variante }}
-                            </span>
                         </div>
                     </div>
 

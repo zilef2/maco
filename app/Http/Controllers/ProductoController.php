@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\DestroyBulkProductoRequest;
+use App\Models\Parametro;
 use App\Models\Producto;
 use App\Models\Distribucion_por_tallas;
 use App\helpers\Myhelp;
@@ -339,6 +340,10 @@ class ProductoController extends Controller {
                 ]);
             }
 
+            // El coste de producción parte del formulario (materiales de la ficha
+            // a último precio + procesos) y luego lo recalculan las OPs.
+            $this->sincronizarCosteProduccionSugerido($Producto);
+
             return $Producto;
         });
 
@@ -425,11 +430,39 @@ class ProductoController extends Controller {
                     'materiales' => $materiales,
                 ], $ficha);
             }
+
+            // Lo que muestra el formulario al editar queda guardado como coste base;
+            // las OPs posteriores lo vuelven a recalcular.
+            $this->sincronizarCosteProduccionSugerido($Producto);
         });
 
         Cache::forget('op_selects');
         Myhelp::EscribirEnLog($this, 'UPDATE:Productos EXITOSO', 'Producto id:' . $Producto->id . ' | ' . $Producto->Codigo_interno, false);
         return back()->with('success', __('app.label.updated_successfully2', ['nombre' => $Producto->Codigo_interno]));
+    }
+
+    /**
+     * Guarda el coste de producción sugerido desde el formulario: materiales de
+     * la ficha a último precio + procesos del producto. No es editable, pero la
+     * primera vez queda con lo que se ve al crear o editar el producto.
+     */
+    private function sincronizarCosteProduccionSugerido(Producto $Producto): void
+    {
+        $Producto->load(['fichaTecnica.materiales', 'procesos']);
+
+        $coste = $this->costoMaterialOpService->costeProduccionUnitario(
+            $Producto,
+            null,
+            Parametro::COSTOS_PROMEDIO_ULTIMO
+        );
+        $precioVenta = $Producto->precio_venta_producto !== null
+            ? (float) $Producto->precio_venta_producto
+            : null;
+
+        $Producto->forceFill([
+            'coste_produccion'  => $coste,
+            'ganancia_producto' => $precioVenta !== null ? round($precioVenta - $coste, 2) : null,
+        ])->saveQuietly();
     }
 
     /**

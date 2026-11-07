@@ -151,7 +151,8 @@ class FichaTecnicaMaterialesController extends Controller {
         return [
             'unidad_inventario' => $listas['unidad_inventario'] ?? [],
             'categoria' => $listas['categoria'] ?? [],
-            'variante_atributo_sugerido' => $listas['variante_atributo_sugerido'] ?? $listas['variante'] ?? [],
+            'modelo_diseno_acabado' => $listas['modelo_diseno_acabado'] ?? $listas['variante_atributo_sugerido'] ?? $listas['variante'] ?? [],
+            'variante_atributo_sugerido' => $listas['modelo_diseno_acabado'] ?? $listas['variante_atributo_sugerido'] ?? $listas['variante'] ?? [],
             'proveedor_habitual' => $proveedores,
             'materiales' => $opciones['materiales'],
             'unidad_medida' => $opciones['unidad_medida'],

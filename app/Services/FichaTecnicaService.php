@@ -30,7 +30,7 @@ class FichaTecnicaService
      */
     public function opcionesMateriales(): array
     {
-        $materiales = Material::with('lastPrice')
+        $materiales = Material::with(['lastPrice', 'variants'])
             ->orderBy('nombre_base')
             ->get(['id', 'codigo_material', 'nombre_base', 'unidad_inventario'])
             ->map(fn ($m) => [
@@ -41,6 +41,7 @@ class FichaTecnicaService
                 'unidad_medida' => $m->unidad_inventario,
                 'costo_unitario' => $m->costoUnitarioActual(),
                 'precio_registrado' => $m->lastPrice !== null,
+                'variants' => $m->variants->map(fn ($v) => $v->nombre)->all(),
             ])->values()->all();
 
         $opcionesMaterial = $this->listaDesplegableService->getOptionsByCategoriaGrouped('material');

@@ -12,14 +12,20 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('productos', function (Blueprint $table) {
-            $table->decimal('precio_venta_producto', 15, 2)->nullable()->after('costo_anticipado');
+            if (!Schema::hasColumn('productos', 'precio_venta_producto')) {
+                $table->decimal('precio_venta_producto', 15, 2)->nullable()->after('costo_anticipado');
+            } else {
+                $table->decimal('precio_venta_producto', 15, 2)->nullable()->change();
+            }
         });
     }
 
     public function down(): void
     {
-        Schema::table('productos', function (Blueprint $table) {
-            $table->dropColumn('precio_venta_producto');
-        });
+        if (Schema::hasColumn('productos', 'precio_venta_producto')) {
+            Schema::table('productos', function (Blueprint $table) {
+                $table->dropColumn('precio_venta_producto');
+            });
+        }
     }
 };

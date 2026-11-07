@@ -50,19 +50,21 @@ class ExcelMaterialesService
         'codigocategoria'         => 'codigo_categoria',
         'unidadinventario'        => 'unidad_inventario',
         'unidad'                  => 'unidad_inventario',
-        'modelodisenoabacado'     => 'variante_atributo_sugerido',
-        'modelodisenoacabado'     => 'variante_atributo_sugerido',
-        'modelodiseno'            => 'variante_atributo_sugerido',
-        'modelo'                  => 'variante_atributo_sugerido',
-        'color'                   => 'colores_lista',
-        'tallatamano'             => 'tallas_lista',
-        'talla'                   => 'tallas_lista',
+        'modelodisenoabacado'     => 'modelo_diseno_acabado',
+        'modelodisenoacabado'     => 'modelo_diseno_acabado',
+        'modelodiseoacabado'      => 'modelo_diseno_acabado',
+        'modelodiseno'            => 'modelo_diseno_acabado',
+        'modelo'                  => 'modelo_diseno_acabado',
+        'color'                   => 'color',
+        'tallatamano'             => 'talla_tamano',
+        'tallatamao'              => 'talla_tamano',
+        'talla'                   => 'talla_tamano',
         'manejacolor'             => 'maneja_color',
         'manejatalla'             => 'maneja_talla',
         'manejaotravariante'      => 'maneja_otra_variante',
         'manejaotrovariante'      => 'maneja_otra_variante',
         'estado'                  => 'estado',
-        'varianteatributosugerido'=> 'variante_atributo_sugerido',
+        'varianteatributosugerido'=> 'modelo_diseno_acabado',
         'proveedorhabitual'       => 'proveedor_habitual',
         'proveedor'               => 'proveedor_habitual',
         'nitproveedor'            => 'nit_proveedor',
@@ -275,8 +277,13 @@ class ExcelMaterialesService
             // variantes a la vez. La columna legacy "todas_las_variantes" solo se
             // usa cuando la fila no trajo ninguna de las dos, para no registrar
             // lo mismo repetido.
-            $colores      = Material::normalizarListaVariantes($registro['colores_lista'] ?? null);
-            $tallasLista  = Material::normalizarListaVariantes($registro['tallas_lista'] ?? null);
+            $rawColor     = $registro['color'] ?? $registro['colores_lista'] ?? null;
+            $rawTalla     = $registro['talla_tamano'] ?? $registro['tallas_lista'] ?? null;
+            $colorTexto   = is_scalar($rawColor) ? trim(strip_tags((string) $rawColor)) : null;
+            $tallaTexto   = is_scalar($rawTalla) ? trim(strip_tags((string) $rawTalla)) : null;
+
+            $colores      = Material::normalizarListaVariantes($rawColor);
+            $tallasLista  = Material::normalizarListaVariantes($rawTalla);
             $variantes    = !empty($tallasLista)
                 ? $tallasLista
                 : (empty($colores) ? Material::normalizarListaVariantes($registro['todas_las_variantes'] ?? null) : []);
@@ -291,8 +298,6 @@ class ExcelMaterialesService
                 $manejaOtraVariante = true;
             }
 
-            // Primero el NIT, si el archivo lo trae; si no, el nombre o código
-            // del proveedor habitual.
             $nitTexto = trim(strip_tags((string) ($registro['nit_proveedor'] ?? '')));
             $proveedorTexto = trim(strip_tags((string) ($registro['proveedor_habitual'] ?? '')));
             $proveedorId = null;
@@ -312,11 +317,10 @@ class ExcelMaterialesService
             }
 
             if ($proveedorId === null && $claveProveedor !== '') {
-                // Se lista una sola vez aunque se repita escrito de otra forma.
                 $proveedoresDesconocidos[$claveProveedor] ??= ($nitTexto !== '' ? $nitTexto : $proveedorTexto);
             }
 
-            $atributoSugerido = trim(strip_tags((string) ($registro['variante_atributo_sugerido'] ?? '')));
+            $atributoSugerido = trim(strip_tags((string) ($registro['modelo_diseno_acabado'] ?? $registro['variante_atributo_sugerido'] ?? '')));
             $observaciones = trim(strip_tags((string) ($registro['observaciones'] ?? '')));
 
             $precioRaw = $registro['precio'] ?? null;
@@ -328,8 +332,6 @@ class ExcelMaterialesService
                 continue;
             }
 
-            // "Cantidad" es la existencia actual del material. La celda vacía
-            // deja la que ya tiene el registro; el número la reemplaza.
             $cantidadRaw = $registro['existencia_actual'] ?? null;
             $cantidad = ($cantidadRaw !== null && $cantidadRaw !== '')
                 ? (float) str_replace(',', '.', (string) $cantidadRaw)
@@ -348,16 +350,18 @@ class ExcelMaterialesService
             }
 
             $datos = [
-                'nombre_base'                => $nombre,
-                'unidad_inventario'          => $unidadInventario !== '' ? mb_substr($unidadInventario, 0, 255) : 'Unidades',
-                'maneja_color'               => $manejaColor,
-                'maneja_talla'               => $manejaTalla,
-                'maneja_otra_variante'       => $manejaOtraVariante,
-                'estado'                     => ucfirst($estadoTexto),
-                'variante_atributo_sugerido' => $atributoSugerido !== '' ? mb_substr($atributoSugerido, 0, 255) : null,
-                'proveedor_habitual'         => $proveedorId,
-                'observaciones'              => $observaciones !== '' ? mb_substr($observaciones, 0, 255) : null,
-                'material_procesado'         => $procesado,
+                'nombre_base'           => $nombre,
+                'unidad_inventario'     => $unidadInventario !== '' ? mb_substr($unidadInventario, 0, 255) : 'Unidades',
+                'maneja_color'          => $manejaColor,
+                'maneja_talla'          => $manejaTalla,
+                'maneja_otra_variante'  => $manejaOtraVariante,
+                'estado'                => ucfirst($estadoTexto),
+                'modelo_diseno_acabado' => $atributoSugerido !== '' ? mb_substr($atributoSugerido, 0, 255) : null,
+                'color'                 => ($colorTexto !== null && $colorTexto !== '') ? mb_substr($colorTexto, 0, 255) : null,
+                'talla_tamano'          => ($tallaTexto !== null && $tallaTexto !== '') ? mb_substr($tallaTexto, 0, 255) : null,
+                'proveedor_habitual'    => $proveedorId,
+                'observaciones'         => $observaciones !== '' ? mb_substr($observaciones, 0, 255) : null,
+                'material_procesado'    => $procesado,
             ];
 
             if ($cantidad !== null) {

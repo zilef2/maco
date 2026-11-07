@@ -27,9 +27,9 @@ class ListaDesplegableSeeder extends Seeder
             ['nombre' => 'unidad',              'categoria' => 'material', 'subcategoria' => 'unidad_inventario'],
             ['nombre' => 'pie',                 'categoria' => 'material', 'subcategoria' => 'unidad_inventario'],
             ['nombre' => 'metro',               'categoria' => 'material', 'subcategoria' => 'unidad_inventario'],
-            ['nombre' => 'Diseño / acabado',    'categoria' => 'material', 'subcategoria' => 'variante_atributo_sugerido'],
-            ['nombre' => 'Tipo / espesor',      'categoria' => 'material', 'subcategoria' => 'variante_atributo_sugerido'],
-            ['nombre' => 'Diseño / referencia', 'categoria' => 'material', 'subcategoria' => 'variante_atributo_sugerido'],
+            ['nombre' => 'Diseño / acabado',    'categoria' => 'material', 'subcategoria' => 'modelo_diseno_acabado'],
+            ['nombre' => 'Tipo / espesor',      'categoria' => 'material', 'subcategoria' => 'modelo_diseno_acabado'],
+            ['nombre' => 'Diseño / referencia', 'categoria' => 'material', 'subcategoria' => 'modelo_diseno_acabado'],
             // producto
             ['nombre' => 'Bolso manos libres',    'categoria' => 'Producto', 'subcategoria' => 'Categoria_original'],
             ['nombre' => 'Calzador',              'categoria' => 'Producto', 'subcategoria' => 'Categoria_original'],

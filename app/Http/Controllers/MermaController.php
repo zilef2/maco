@@ -3,8 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\Merma;
+use App\Models\RecepcionCalidad;
 use App\helpers\Myhelp;
 use App\helpers\MyModels;
+use Illuminate\Support\Carbon;
 use Inertia\Inertia;
 
 /**
@@ -28,6 +30,7 @@ class MermaController extends Controller
 
         return Inertia::render($this->FromController . '/Index', [
             'mermas' => $this->mermas(),
+            'produccion' => $this->produccion(),
             'breadcrumbs' => [['label' => __('app.label.' . $this->FromController), 'href' => route($this->FromController . '.index')]],
             'title' => __('app.label.' . $this->FromController),
             'numberPermissions' => $numberPermissions,
@@ -66,6 +69,31 @@ class MermaController extends Controller
                     'esperada' => $recepcion ? (int) $recepcion->cantidad_esperada : null,
                     'aprobada' => $recepcion ? (int) $recepcion->cantidad_aprobada : null,
                     'en_reparacion' => $recepcion ? (int) $recepcion->cantidad_en_reparacion : null,
+                ];
+            })
+            ->all();
+    }
+
+    /**
+     * Lo recibido en calidad, talla por talla: aprobado y no recuperable.
+     *
+     * Sale de las recepciones y no de las mermas porque las tallas sin pérdida
+     * nunca generan merma, y sin ellas no habría contra qué comparar lo perdido.
+     */
+    private function produccion(): array
+    {
+        return RecepcionCalidad::query()
+            ->get(['cantidad_aprobada', 'cantidad_no_recuperable', 'fecha_recepcion', 'created_at'])
+            ->map(function (RecepcionCalidad $recepcion) {
+                $fecha = $recepcion->fecha_recepcion
+                    ? Carbon::parse($recepcion->fecha_recepcion)
+                    : $recepcion->created_at;
+
+                return [
+                    'aprobada' => (int) $recepcion->cantidad_aprobada,
+                    'no_recuperable' => (int) $recepcion->cantidad_no_recuperable,
+                    'fecha' => $fecha?->toIso8601String(),
+                    'mes' => $fecha?->format('Y-m'),
                 ];
             })
             ->all();

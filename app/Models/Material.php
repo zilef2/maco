@@ -36,6 +36,9 @@ class Material extends Model
         'maneja_talla',
         'maneja_otra_variante',
         'estado',
+        'modelo_diseno_acabado',
+        'color',
+        'talla_tamano',
         'variante_atributo_sugerido',
         'proveedor_habitual',
         'material_procesado',
@@ -276,7 +279,19 @@ class Material extends Model
         $this->forceFill([
             'maneja_color' => !empty($colores),
             'maneja_otra_variante' => !empty($variantes),
+            'color' => !empty($colores) ? implode(', ', $colores) : null,
+            'talla_tamano' => !empty($variantes) ? implode(', ', $variantes) : null,
         ])->save();
+    }
+
+    public function getVarianteAtributoSugeridoAttribute(): ?string
+    {
+        return $this->attributes['modelo_diseno_acabado'] ?? null;
+    }
+
+    public function setVarianteAtributoSugeridoAttribute(?string $value): void
+    {
+        $this->attributes['modelo_diseno_acabado'] = $value;
     }
 
     public function proveedorHabitual()

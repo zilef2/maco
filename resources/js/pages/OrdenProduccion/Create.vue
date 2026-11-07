@@ -881,8 +881,7 @@ watch(
                         </table>
                     </div>
                     <p v-else class="mt-3 text-sm text-amber-600 dark:text-amber-400">
-                        No hay productos seleccionados. Puede dejar la tabla en blanco, pero
-                        <b>no puede guardar la orden sin al menos un producto</b>.
+                        No hay productos seleccionados.
                     </p>
 
                     <InputError class="mt-2" :message="form.errors.productos" />

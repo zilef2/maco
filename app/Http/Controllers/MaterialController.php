@@ -141,7 +141,8 @@ class MaterialController extends Controller {
             'losSelect'         => [
                 'unidad_inventario'         => $listasDesplegables['unidad_inventario'] ?? [],
                 'categoria'                 => $listasDesplegables['categoria'] ?? [],
-                'variante_atributo_sugerido' => $listasDesplegables['variante_atributo_sugerido'] ?? $listasDesplegables['variante'] ?? [],
+                'modelo_diseno_acabado'     => $listasDesplegables['modelo_diseno_acabado'] ?? $listasDesplegables['variante_atributo_sugerido'] ?? $listasDesplegables['variante'] ?? [],
+                'variante_atributo_sugerido' => $listasDesplegables['modelo_diseno_acabado'] ?? $listasDesplegables['variante_atributo_sugerido'] ?? $listasDesplegables['variante'] ?? [],
                 'proveedor_habitual'        => $proveedores,
                 'materiales'                => $this->fichaTecnicaService->opcionesMateriales()['materiales'],
                 'unidad_medida'             => $this->fichaTecnicaService->opcionesMateriales()['unidad_medida'],
@@ -220,11 +221,60 @@ class MaterialController extends Controller {
             ->values()
             ->all();
 
+        $ordenesPorMaterial = $this->ordenesQueProducenMateriales(array_column($faltan, 'material_id'));
+        $faltan = array_map(function (array $material) use ($ordenesPorMaterial): array {
+            $material['ordenes_resultado'] = $ordenesPorMaterial[$material['material_id']] ?? [];
+
+            return $material;
+        }, $faltan);
+
         return [
             'dias_prevision' => $diasMinimos,
             'ventana_dias' => $ventana,
             'faltan' => $faltan,
         ];
+    }
+
+    /**
+     * OPs activas que tienen un material procesado como resultado. Se excluyen
+     * los borradores y las OPs ya cerradas: en estos últimos casos el material
+     * ya fue recibido o la orden todavía no está encargada.
+     *
+     * @param  list<int>  $materialIds
+     * @return array<int, list<array<string, mixed>>>
+     */
+    private function ordenesQueProducenMateriales(array $materialIds): array {
+        if (empty($materialIds)) {
+            return [];
+        }
+
+        $estadosExcluidos = ['Borrador', 'Cerrada', 'Terminada'];
+
+        return OrdenProduccion::query()
+            ->with([
+                'estadoOp:id,nombre',
+                'materiales' => fn ($query) => $query
+                    ->whereIn('materials.id', $materialIds)
+                    ->where('materials.material_procesado', true),
+            ])
+            ->whereHas('materiales', fn ($query) => $query
+                ->whereIn('materials.id', $materialIds)
+                ->where('materials.material_procesado', true))
+            ->whereHas('estadoOp', fn ($query) => $query->whereNotIn('nombre', $estadosExcluidos))
+            ->get(['id', 'numero_op'])
+            ->flatMap(function (OrdenProduccion $op) use ($materialIds) {
+                return $op->materiales
+                    ->whereIn('id', $materialIds)
+                    ->map(fn (Material $material): array => [
+                        'material_id' => $material->id,
+                        'numero_op' => $op->numero_op ?: ('OP #' . $op->id),
+                        'estado' => $op->estadoOp?->nombre,
+                        'cantidad' => round((float) ($material->pivot->cantidad ?? 0), 4),
+                    ]);
+            })
+            ->groupBy('material_id')
+            ->map(fn ($ordenes): array => $ordenes->values()->all())
+            ->all();
     }
 
     /**

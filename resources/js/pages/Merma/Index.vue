@@ -2,11 +2,21 @@
 import AppLayout from '@/layouts/AppLayout.vue';
 import DataPagination from '@/components/DataPagination.vue';
 import { Head, Link, router } from '@inertiajs/vue3';
-import { computed, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
+
+import { use } from 'echarts/core';
+import { BarChart, LineChart } from 'echarts/charts';
+import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components';
+import { LegacyGridContainLabel } from 'echarts/features';
+import { CanvasRenderer } from 'echarts/renderers';
+import VChart from 'vue-echarts';
 
 import {
     ArrowPathIcon,
+    ArrowTrendingDownIcon,
+    ArrowTrendingUpIcon,
     BanknotesIcon,
+    ChartBarIcon,
     ChevronDownIcon,
     ChevronRightIcon,
     ChevronUpDownIcon,
@@ -25,8 +35,11 @@ import DetalleMermaModal from '@/pages/Merma/DetalleMermaModal.vue';
 import { useTablaClient, type ColumnaTabla } from '@/composables/useTablaClient';
 import { formatDate, zilef_nuber_format } from '@/global.ts';
 
+use([BarChart, LineChart, GridComponent, LegendComponent, TooltipComponent, LegacyGridContainLabel, CanvasRenderer]);
+
 const props = defineProps({
     mermas: { type: Array as () => any[], default: () => [] },
+    produccion: { type: Array as () => any[], default: () => [] },
     breadcrumbs: { type: Array as () => Array<{ label?: string; href?: string }>, default: () => [] },
     title: String,
     numberPermissions: Number,
@@ -46,6 +59,9 @@ const mesElegido = ref<string | null>(null);
 const cargando = ref(false);
 const detalleOpen = ref(false);
 const mermaVisible = ref<any>(null);
+const metrica = ref<'piezas' | 'valor'>('piezas');
+const esOscuro = ref(false);
+let observadorTema: MutationObserver | null = null;
 
 const columnas: ColumnaTabla[] = [
     { key: 'numero_op', label: 'OP', sortable: true, align: 'left', headerClass: 'min-w-[120px]' },
@@ -152,6 +168,240 @@ const historico = computed(() => {
     };
 });
 
+// ── Gráfica de pérdidas mensuales ────────────────────────────────────────────
+
+const MESES_CORTOS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+
+const claveMes = (fecha: Date): string =>
+    `${fecha.getFullYear()}-${String(fecha.getMonth() + 1).padStart(2, '0')}`;
+
+/** Últimos 12 meses; los meses sin merma cuentan como 0 para que la tendencia sea real. */
+const serieMensual = computed(() => {
+    const acumulado = new Map<string, { piezas: number; valor: number }>();
+
+    for (const merma of props.mermas ?? []) {
+        const mes = String(merma.mes ?? '');
+        if (!/^\d{4}-\d{2}$/.test(mes)) continue;
+        const actual = acumulado.get(mes) ?? { piezas: 0, valor: 0 };
+        actual.piezas += Number(merma.cantidad) || 0;
+        actual.valor += Number(merma.costo_total_perdida) || 0;
+        acumulado.set(mes, actual);
+    }
+
+    const hoy = new Date();
+
+    return Array.from({ length: 12 }, (_, indice) => {
+        const fecha = new Date(hoy.getFullYear(), hoy.getMonth() - (11 - indice), 1);
+        const mes = claveMes(fecha);
+        const datos = acumulado.get(mes) ?? { piezas: 0, valor: 0 };
+
+        return {
+            mes,
+            etiqueta: `${MESES_CORTOS[fecha.getMonth()]} ${String(fecha.getFullYear()).slice(2)}`,
+            nombre: fecha.toLocaleDateString('es-CO', { month: 'long', year: 'numeric' }),
+            piezas: datos.piezas,
+            valor: datos.valor,
+            actual: indice === 11,
+        };
+    });
+});
+
+const haySerieMensual = computed(() => serieMensual.value.some((punto) => punto.piezas > 0 || punto.valor > 0));
+
+const valoresSerie = computed(() =>
+    serieMensual.value.map((punto) => (metrica.value === 'valor' ? punto.valor : punto.piezas)),
+);
+
+const formatearMetrica = (valor: number): string =>
+    metrica.value === 'valor' ? dinero(valor) : piezas(valor);
+
+const formatearConSigno = (valor: number): string => {
+    const signo = valor > 0 ? '+' : valor < 0 ? '−' : '';
+    return `${signo}${formatearMetrica(Math.abs(valor))}`;
+};
+
+const estadisticas = computed(() => {
+    const valores = valoresSerie.value;
+    const total = valores.length;
+    const suma = valores.reduce((acumulado, valor) => acumulado + valor, 0);
+    const media = total > 0 ? suma / total : 0;
+
+    let sumaX = 0;
+    let sumaY = 0;
+    let sumaXY = 0;
+    let sumaXX = 0;
+
+    valores.forEach((valor, indice) => {
+        sumaX += indice;
+        sumaY += valor;
+        sumaXY += indice * valor;
+        sumaXX += indice * indice;
+    });
+
+    // Regresión lineal y = intercepto + pendiente · x (x = índice del mes).
+    const denominador = total * sumaXX - sumaX * sumaX;
+    const pendiente = denominador !== 0 ? (total * sumaXY - sumaX * sumaY) / denominador : 0;
+    const intercepto = total > 0 ? (sumaY - pendiente * sumaX) / total : 0;
+    const prediccion = valores.map((_, indice) => intercepto + pendiente * indice);
+    const sumaResidual = valores.reduce(
+        (acumulado, valor, indice) => acumulado + (valor - prediccion[indice]) ** 2,
+        0,
+    );
+    const sumaTotal = valores.reduce((acumulado, valor) => acumulado + (valor - media) ** 2, 0);
+    const r2 = sumaTotal > 0 ? 1 - sumaResidual / sumaTotal : null;
+    const maximo = total > 0 ? Math.max(...valores) : 0;
+    const indiceMaximo = valores.indexOf(maximo);
+    const actual = valores[valores.length - 1] ?? 0;
+    const desviacion = media > 0 ? ((actual - media) / media) * 100 : 0;
+    const proyeccion = Math.max(0, intercepto + pendiente * total);
+
+    return {
+        media,
+        pendiente,
+        intercepto,
+        r2,
+        maximo,
+        maxMes: serieMensual.value[indiceMaximo]?.nombre ?? '—',
+        actual,
+        desviacion,
+        proyeccion,
+        total,
+    };
+});
+
+const textoAjuste = computed(() => {
+    const r2 = estadisticas.value.r2;
+    if (r2 === null) return 'Sin variación entre meses';
+    if (r2 >= 0.7) return 'La tendencia explica bien los datos';
+    if (r2 >= 0.4) return 'Ajuste moderado';
+    return 'Tendencia poco marcada';
+});
+
+const textoTendencia = computed(() => {
+    const pendiente = estadisticas.value.pendiente;
+    if (Math.abs(pendiente) < 0.005) return 'Sin cambios apreciables por mes';
+    return pendiente > 0 ? 'Las pérdidas crecen por mes' : 'Las pérdidas bajan por mes';
+});
+
+const textoActual = computed(() => {
+    const est = estadisticas.value;
+    if (est.media <= 0) return 'sin base para comparar';
+    const signo = est.desviacion > 0 ? '+' : '';
+    return `${signo}${est.desviacion.toFixed(0)}% vs. media`;
+});
+
+const colorTexto = computed(() => (esOscuro.value ? '#cbd5e1' : '#475569'));
+const colorLinea = computed(() => (esOscuro.value ? 'rgba(148,163,184,.14)' : 'rgba(100,116,139,.14)'));
+const fondoTooltip = computed(() => (esOscuro.value ? '#1e293b' : '#ffffff'));
+const bordeTooltip = computed(() => (esOscuro.value ? 'rgba(148,163,184,.25)' : '#e2e8f0'));
+
+const baseEje = computed(() => ({
+    axisLine: { lineStyle: { color: colorLinea.value } },
+    axisTick: { show: false },
+    axisLabel: { color: colorTexto.value, fontSize: 11 },
+    splitLine: { lineStyle: { color: colorLinea.value } },
+}));
+
+const abreviatura = (valor: number): string => {
+    const absoluto = Math.abs(valor);
+    if (absoluto >= 1_000_000) return `${(valor / 1_000_000).toFixed(1).replace('.', ',')} M`;
+    if (absoluto >= 1_000) return `${Math.round(valor / 1_000)} k`;
+    return String(Math.round(valor));
+};
+
+const opcionesGrafica = computed(() => {
+    const puntos = serieMensual.value;
+    const valores = valoresSerie.value;
+    const est = estadisticas.value;
+    const esValor = metrica.value === 'valor';
+    const regresion = valores.map((_, indice) => est.intercepto + est.pendiente * indice);
+    const formatear = (valor: number) => (esValor ? dinero(valor) : piezas(valor));
+
+    return {
+        tooltip: {
+            trigger: 'axis',
+            backgroundColor: fondoTooltip.value,
+            borderColor: bordeTooltip.value,
+            textStyle: { color: esOscuro.value ? '#f1f5f9' : '#0f172a', fontSize: 12 },
+            axisPointer: { type: 'shadow' },
+            formatter: (params: any) => {
+                const fila = Array.isArray(params) ? params[0] : params;
+                const indice = fila?.dataIndex ?? 0;
+                const punto = puntos[indice];
+                if (!punto) return '';
+
+                const valor = valores[indice] ?? 0;
+                const diferencia = valor - est.media;
+                const signo = diferencia > 0 ? '+' : diferencia < 0 ? '−' : '';
+                const comparacion =
+                    diferencia === 0
+                        ? 'Igual a la media'
+                        : `${signo}${formatear(Math.abs(diferencia))} vs. media`;
+
+                return [
+                    `<div style="font-weight:600;margin-bottom:4px;text-transform:capitalize">${punto.nombre}</div>`,
+                    `<div>${esValor ? 'Valor perdido' : 'Pares perdidos'}: <b>${formatear(valor)}</b></div>`,
+                    `<div>Media: ${formatear(est.media)}</div>`,
+                    `<div>Tendencia: ${formatearConSigno(regresion[indice] ?? 0)}</div>`,
+                    `<div style="opacity:.8">${comparacion}</div>`,
+                ].join('');
+            },
+        },
+        legend: {
+            top: 0,
+            textStyle: { color: colorTexto.value, fontSize: 12 },
+            icon: 'roundRect',
+            itemWidth: 14,
+            itemHeight: 8,
+        },
+        grid: { left: 8, right: 12, bottom: 0, top: 34, containLabel: true },
+        xAxis: {
+            type: 'category',
+            data: puntos.map((punto) => punto.etiqueta),
+            ...baseEje.value,
+            splitLine: { show: false },
+        },
+        yAxis: {
+            type: 'value',
+            ...baseEje.value,
+            axisLabel: {
+                ...baseEje.value.axisLabel,
+                formatter: (valor: number) => (esValor ? `$${abreviatura(valor)}` : abreviatura(valor)),
+            },
+        },
+        series: [
+            {
+                name: esValor ? 'Valor perdido' : 'Pares perdidos',
+                type: 'bar',
+                barMaxWidth: 28,
+                data: valores.map((valor, indice) => ({
+                    value: valor,
+                    itemStyle: {
+                        color: indice === valores.length - 1 ? '#dc2626' : 'rgba(239,68,68,.45)',
+                        borderRadius: [6, 6, 0, 0],
+                    },
+                })),
+            },
+            {
+                name: 'Media',
+                type: 'line',
+                data: valores.map(() => Number(est.media.toFixed(2))),
+                symbol: 'none',
+                lineStyle: { color: '#f59e0b', width: 1.5, type: 'dashed' },
+                itemStyle: { color: '#f59e0b' },
+            },
+            {
+                name: 'Tendencia',
+                type: 'line',
+                data: regresion.map((valor) => Number(valor.toFixed(2))),
+                symbol: 'none',
+                lineStyle: { color: '#6366f1', width: 2.5 },
+                itemStyle: { color: '#6366f1' },
+            },
+        ],
+    };
+});
+
 const nombreMes = (mes: string): string => {
     if (!mes || mes === '—') return 'Sin fecha';
     const fecha = new Date(`${mes}-01T12:00:00`);
@@ -170,6 +420,133 @@ const dinero = (valor: any): string =>
         : zilef_nuber_format(valor, Math.round(Number(valor) * 100) % 100 === 0 ? 0 : 2, true);
 
 const piezas = (valor: any): string => (valor === null || valor === undefined ? '—' : `${zilef_nuber_format(valor, 0, false)}`);
+
+// ── Producido vs perdido ─────────────────────────────────────────────────────
+
+/** Las recepciones se filtran con el mismo periodo que la tabla y los KPI. */
+const recibidoEnPeriodo = (registro: any): boolean => {
+    if (mesElegido.value) return String(registro.mes) === mesElegido.value;
+
+    const fecha = new Date(String(registro.fecha));
+    if (Number.isNaN(fecha.getTime())) return true;
+    if (periodo.value === 'mes') {
+        const ahora = new Date();
+        return fecha.getFullYear() === ahora.getFullYear() && fecha.getMonth() === ahora.getMonth();
+    }
+    if (periodo.value === 'todo') return true;
+
+    return fecha >= desde(Number(periodo.value));
+};
+
+const recibidoDelPeriodo = computed(() => (props.produccion ?? []).filter(recibidoEnPeriodo));
+
+const recibidoPorMes = computed(() => {
+    const grupos = new Map<string, { mes: string; aprobadas: number; perdidas: number }>();
+
+    for (const registro of recibidoDelPeriodo.value) {
+        const mes = String(registro.mes ?? '—');
+        const grupo = grupos.get(mes) ?? { mes, aprobadas: 0, perdidas: 0 };
+        grupo.aprobadas += Number(registro.aprobada) || 0;
+        grupo.perdidas += Number(registro.no_recuperable) || 0;
+        grupos.set(mes, grupo);
+    }
+
+    return Array.from(grupos.values()).sort((a, b) => a.mes.localeCompare(b.mes));
+});
+
+const totalRecibido = computed(() => {
+    const aprobadas = recibidoPorMes.value.reduce((suma, punto) => suma + punto.aprobadas, 0);
+    const perdidas = recibidoPorMes.value.reduce((suma, punto) => suma + punto.perdidas, 0);
+    const recibidas = aprobadas + perdidas;
+
+    return { aprobadas, perdidas, recibidas, porcentaje: recibidas > 0 ? (perdidas / recibidas) * 100 : 0 };
+});
+
+const etiquetaMesCorto = (mes: string): string => {
+    if (!mes || mes === '—') return 'Sin fecha';
+    const [anio, numero] = mes.split('-');
+    const nombre = MESES_CORTOS[Number(numero) - 1];
+    return nombre ? `${nombre} ${anio.slice(2)}` : mes;
+};
+
+const opcionesProducido = computed(() => {
+    const puntos = recibidoPorMes.value;
+    const etiqueta = (valor: number): string => (Number(valor) > 0 ? piezas(valor) : '');
+
+    return {
+        tooltip: {
+            trigger: 'axis',
+            axisPointer: { type: 'shadow' },
+            backgroundColor: fondoTooltip.value,
+            borderColor: bordeTooltip.value,
+            textStyle: { color: esOscuro.value ? '#f1f5f9' : '#0f172a', fontSize: 12 },
+            formatter: (params: any) => {
+                const fila = Array.isArray(params) ? params[0] : params;
+                const punto = puntos[fila?.dataIndex ?? 0];
+                if (!punto) return '';
+
+                const recibidas = punto.aprobadas + punto.perdidas;
+                const perdida = recibidas > 0 ? ((punto.perdidas / recibidas) * 100).toFixed(1).replace('.', ',') : '0,0';
+
+                return [
+                    `<div style="font-weight:600;margin-bottom:4px">${etiquetaMesCorto(punto.mes)}</div>`,
+                    `<div>Aprobados: <b>${piezas(punto.aprobadas)}</b></div>`,
+                    `<div>No recuperables: <b>${piezas(punto.perdidas)}</b></div>`,
+                    `<div style="opacity:.8">Pérdida: ${perdida}% de lo recibido</div>`,
+                ].join('');
+            },
+        },
+        legend: {
+            top: 0,
+            textStyle: { color: colorTexto.value, fontSize: 12 },
+            icon: 'roundRect',
+            itemWidth: 14,
+            itemHeight: 8,
+        },
+        grid: { left: 8, right: 12, bottom: 0, top: 34, containLabel: true },
+        xAxis: {
+            type: 'category',
+            data: puntos.map((punto) => etiquetaMesCorto(punto.mes)),
+            ...baseEje.value,
+            splitLine: { show: false },
+        },
+        yAxis: {
+            type: 'value',
+            ...baseEje.value,
+            axisLabel: { ...baseEje.value.axisLabel, formatter: (valor: number) => abreviatura(valor) },
+        },
+        series: [
+            {
+                name: 'Aprobados',
+                type: 'bar',
+                barMaxWidth: 26,
+                data: puntos.map((punto) => punto.aprobadas),
+                itemStyle: { color: '#10b981', borderRadius: [6, 6, 0, 0] },
+                label: {
+                    show: true,
+                    position: 'top',
+                    color: colorTexto.value,
+                    fontSize: 10,
+                    formatter: (params: any) => etiqueta(params.value),
+                },
+            },
+            {
+                name: 'No recuperables',
+                type: 'bar',
+                barMaxWidth: 26,
+                data: puntos.map((punto) => punto.perdidas),
+                itemStyle: { color: '#ef4444', borderRadius: [6, 6, 0, 0] },
+                label: {
+                    show: true,
+                    position: 'top',
+                    color: esOscuro.value ? '#fca5a5' : '#b91c1c',
+                    fontSize: 10,
+                    formatter: (params: any) => etiqueta(params.value),
+                },
+            },
+        ],
+    };
+});
 
 const porcentaje = (merma: any): string => {
     const esperada = Number(merma?.esperada) || 0;
@@ -218,7 +595,19 @@ router.on('finish', () => {
     cargando.value = false;
 });
 
-const recargar = () => router.reload({ only: ['mermas'], preserveScroll: true });
+const recargar = () => router.reload({ only: ['mermas', 'produccion'], preserveScroll: true });
+
+onMounted(() => {
+    esOscuro.value = document.documentElement.classList.contains('dark');
+    observadorTema = new MutationObserver(() => {
+        esOscuro.value = document.documentElement.classList.contains('dark');
+    });
+    observadorTema.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+});
+
+onUnmounted(() => {
+    observadorTema?.disconnect();
+});
 </script>
 
 <template>
@@ -363,6 +752,154 @@ const recargar = () => router.reload({ only: ['mermas'], preserveScroll: true })
                     </p>
                     <p class="mt-1 text-xs text-muted-foreground">de las tallas que reportaron merma</p>
                 </div>
+            </div>
+
+            <div class="grid gap-4 xl:grid-cols-2">
+            <div
+                v-if="recibidoPorMes.length"
+                :class="['overflow-hidden rounded-xl border border-border bg-card shadow-sm', !haySerieMensual ? 'xl:col-span-2' : '']"
+            >
+                <div class="border-b border-border px-4 py-3">
+                    <h2 class="flex items-center gap-2 text-sm font-semibold text-foreground">
+                        <ChartBarIcon class="h-4 w-4 text-emerald-500" />
+                        Producido vs perdido
+                    </h2>
+                    <p class="mt-0.5 text-xs text-muted-foreground">
+                        Pares aprobados y no recuperables de las recepciones de calidad en el periodo. Los pares en
+                        reparación no cuentan en ninguna barra.
+                    </p>
+                </div>
+
+                <div class="px-2 pt-3 sm:px-4">
+                    <div class="h-72 w-full">
+                        <VChart :option="opcionesProducido" autoresize class="h-full w-full" />
+                    </div>
+                </div>
+
+                <div
+                    class="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border bg-muted/30 px-4 py-2.5 text-[11px] text-muted-foreground"
+                >
+                    <span>
+                        <span class="font-medium text-foreground">Aprobados:</span>
+                        {{ piezas(totalRecibido.aprobadas) }}
+                    </span>
+                    <span class="text-border">·</span>
+                    <span>
+                        <span class="font-medium text-foreground">No recuperables:</span>
+                        {{ piezas(totalRecibido.perdidas) }}
+                    </span>
+                    <span class="text-border">·</span>
+                    <span>
+                        <span class="font-medium text-foreground">Pérdida:</span>
+                        {{ totalRecibido.porcentaje > 0 ? `${totalRecibido.porcentaje.toFixed(1).replace('.', ',')}%` : '—' }}
+                        de lo recibido ({{ piezas(totalRecibido.recibidas) }} pares)
+                    </span>
+                </div>
+            </div>
+
+            <div
+                v-if="haySerieMensual"
+                :class="['overflow-hidden rounded-xl border border-border bg-card shadow-sm', !recibidoPorMes.length ? 'xl:col-span-2' : '']"
+            >
+                <div class="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3">
+                    <div class="min-w-0">
+                        <h2 class="flex items-center gap-2 text-sm font-semibold text-foreground">
+                            <ChartBarIcon class="h-4 w-4 text-red-500" />
+                            Tendencia de pérdidas mensuales
+                        </h2>
+                        <p class="mt-0.5 text-xs text-muted-foreground">
+                            Últimos 12 meses · el mes actual se resalta en rojo; la línea punteada es la media y la continua, la regresión lineal.
+                        </p>
+                    </div>
+
+                    <div
+                        class="inline-flex items-stretch divide-x divide-border overflow-hidden rounded-md border border-border bg-card"
+                        role="tablist"
+                        aria-label="Métrica de la gráfica de pérdidas"
+                    >
+                        <button
+                            type="button"
+                            role="tab"
+                            :aria-selected="metrica === 'piezas'"
+                            :class="segmentoClass(metrica === 'piezas')"
+                            @click="metrica = 'piezas'"
+                        >
+                            Pares
+                        </button>
+                        <button
+                            type="button"
+                            role="tab"
+                            :aria-selected="metrica === 'valor'"
+                            :class="segmentoClass(metrica === 'valor')"
+                            @click="metrica = 'valor'"
+                        >
+                            Valor
+                        </button>
+                    </div>
+                </div>
+
+                <div class="px-2 pt-3 sm:px-4">
+                    <div class="h-72 w-full">
+                        <VChart :option="opcionesGrafica" autoresize class="h-full w-full" />
+                    </div>
+                </div>
+
+                <div class="grid gap-4 border-t border-border p-4 sm:grid-cols-2">
+                    <div>
+                        <p class="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Media mensual</p>
+                        <p class="mt-1 text-lg font-semibold tabular-nums text-foreground">
+                            {{ formatearMetrica(estadisticas.media) }}
+                        </p>
+                        <p class="mt-0.5 text-[11px] text-muted-foreground">
+                            {{ metrica === 'valor' ? 'valor perdido por mes' : 'pares perdidos por mes' }}
+                        </p>
+                    </div>
+
+                    <div>
+                        <p class="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Tendencia</p>
+                        <p
+                            class="mt-1 flex items-center gap-1 text-lg font-semibold tabular-nums"
+                            :class="
+                                estadisticas.pendiente > 0.005
+                                    ? 'text-red-600 dark:text-red-400'
+                                    : estadisticas.pendiente < -0.005
+                                      ? 'text-emerald-600 dark:text-emerald-400'
+                                      : 'text-foreground'
+                            "
+                        >
+                            <ArrowTrendingUpIcon v-if="estadisticas.pendiente > 0.005" class="h-4 w-4" />
+                            <ArrowTrendingDownIcon v-else-if="estadisticas.pendiente < -0.005" class="h-4 w-4" />
+                            {{ formatearConSigno(estadisticas.pendiente) }}
+                            <span class="text-xs font-normal text-muted-foreground">/mes</span>
+                        </p>
+                        <p class="mt-0.5 text-[11px] text-muted-foreground">{{ textoTendencia }}</p>
+                    </div>
+
+                    <div>
+                        <p class="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Calidad del ajuste (R²)</p>
+                        <p class="mt-1 text-lg font-semibold tabular-nums text-foreground">
+                            {{ estadisticas.r2 === null ? '—' : `${Math.round(estadisticas.r2 * 100)}%` }}
+                        </p>
+                        <p class="mt-0.5 text-[11px] text-muted-foreground">{{ textoAjuste }}</p>
+                    </div>
+
+                    <div>
+                        <p class="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Proyección próximo mes</p>
+                        <p class="mt-1 text-lg font-semibold tabular-nums text-foreground">
+                            {{ formatearMetrica(estadisticas.proyeccion) }}
+                        </p>
+                        <p class="mt-0.5 text-[11px] text-muted-foreground">según la regresión lineal</p>
+                    </div>
+                </div>
+
+                <div class="border-t border-border bg-muted/30 px-4 py-2.5 text-[11px] text-muted-foreground">
+                    <span class="font-medium text-foreground">Pico:</span>
+                    {{ formatearMetrica(estadisticas.maximo) }} en {{ estadisticas.maxMes }}
+                    <span class="mx-1.5 text-border">·</span>
+                    <span class="font-medium text-foreground">Mes actual:</span>
+                    {{ formatearMetrica(estadisticas.actual) }} ({{ textoActual }})
+                </div>
+            </div>
             </div>
 
             <div v-if="porMes.length" class="overflow-hidden rounded-xl border border-border bg-card shadow-sm">

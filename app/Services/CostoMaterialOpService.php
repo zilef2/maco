@@ -340,12 +340,13 @@ class CostoMaterialOpService
     }
 
     /**
-     * Al cerrar la OP guarda en cada producto su coste de producción unitario
-     * (con el precio de material congelado de la OP) y su ganancia.
+     * Guarda en cada producto de la OP su coste de producción unitario y su
+     * ganancia. Se usa al crear/editar la OP y también al cerrarla (con los
+     * precios de material congelados de esa OP).
      *
      * @return int Cantidad de productos actualizados.
      */
-    public function actualizarCosteProduccionEnCierre(OrdenProduccion $op): int
+    public function actualizarCosteProduccion(OrdenProduccion $op): int
     {
         $metodo = $this->metodo();
         $preciosCongelados = $op->costosMateriales()->get()->keyBy('material_id');

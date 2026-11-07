@@ -381,9 +381,46 @@ const hayFiltros = computed(() => filtrosActivos.value > 0);
 const opSeleccionada = computed(() =>
     props.ordenes.find((op) => String(op.value) === String(ordenFiltro.value)),
 );
-const opSinRecepciones = computed(
-    () => ordenFiltro.value !== '' && (opSeleccionada.value?.recepciones ?? 0) === 0,
-);
+const totalesGenerales = computed(() => {
+    let valorProceso = 0;
+    let costoTotalOp = 0;
+    let esperada = 0;
+    let recibida = 0;
+    let noRecuperable = 0;
+    let valorRecibidoMat = 0;
+    let valorNoRecuperableMat = 0;
+    let recepcionesCount = 0;
+
+    for (const grupo of grupos.value) {
+        const filaBase = grupo.filas?.[0] || {};
+        valorProceso += numero(filaBase.op_costo_proceso);
+        costoTotalOp += numero(filaBase.op_costo_total);
+
+        const unitario = numero(filaBase.costo_unitario);
+        const cantEsperada = numero(grupo.totales?.esperada?.cantidad);
+        const cantRecibida = numero(grupo.totales?.recibida?.cantidad);
+        const cantNoRecuperable = numero(grupo.totales?.noRecuperable?.cantidad);
+
+        esperada += cantEsperada;
+        recibida += cantRecibida;
+        noRecuperable += cantNoRecuperable;
+        valorRecibidoMat += unitario * cantRecibida;
+        valorNoRecuperableMat += unitario * cantNoRecuperable;
+        recepcionesCount += grupo.filas?.length || 0;
+    }
+
+    return {
+        valorProceso,
+        costoTotalOp,
+        esperada,
+        recibida,
+        noRecuperable,
+        valorRecibidoMat,
+        valorNoRecuperableMat,
+        ops: grupos.value.length,
+        recepciones: recepcionesCount,
+    };
+});
 
 const cambiarPagina = (p: number) => {
     pagina.value = Math.min(Math.max(1, p), paginas.value);
@@ -873,6 +910,97 @@ const recargar = () => {
                     :summary="`${totalFiltrado} ${totalFiltrado === 1 ? 'recepción' : 'recepciones'}`"
                     @page="cambiarPagina"
                 />
+            </div>
+        </div>
+
+        <div
+            v-if="!cargando && grupos.length"
+            class="mx-auto mt-4 max-w-7xl px-4 sm:px-6 lg:px-8"
+        >
+            <div class="overflow-x-auto rounded-lg border border-border bg-card shadow-sm">
+                <table class="min-w-full divide-y divide-border text-sm">
+                    <thead>
+                        <tr class="bg-muted/60">
+                            <th
+                                scope="col"
+                                colspan="2"
+                                class="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground"
+                            >
+                                Total general (todas las OP)
+                            </th>
+                            <th
+                                scope="col"
+                                class="px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground"
+                            >
+                                Valor proceso
+                            </th>
+                            <th
+                                scope="col"
+                                class="px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground"
+                            >
+                                Costo total OP (mat. + proceso)
+                            </th>
+                            <th
+                                scope="col"
+                                class="px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground"
+                            >
+                                Valor materiales recibido
+                            </th>
+                            <th
+                                scope="col"
+                                class="px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground"
+                            >
+                                Valor no recuperable
+                            </th>
+                            <th
+                                scope="col"
+                                class="px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground"
+                            >
+                                % recibido
+                            </th>
+                            <th
+                                scope="col"
+                                class="px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground"
+                            >
+                                % perdido
+                            </th>
+                            <th
+                                scope="col"
+                                class="px-3 py-2 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground"
+                            >
+                                OPs / Recepciones
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td colspan="2" class="px-3 py-2.5 text-sm font-medium text-foreground">
+                                Consolidado
+                            </td>
+                            <td class="px-3 py-2.5 text-right tabular-nums text-foreground">
+                                {{ dinero(totalesGenerales.valorProceso) }}
+                            </td>
+                            <td class="px-3 py-2.5 text-right tabular-nums text-foreground">
+                                {{ dinero(totalesGenerales.costoTotalOp) }}
+                            </td>
+                            <td class="px-3 py-2.5 text-right tabular-nums text-foreground">
+                                {{ dinero(totalesGenerales.valorRecibidoMat) }}
+                            </td>
+                            <td class="px-3 py-2.5 text-right tabular-nums text-rose-700 dark:text-rose-300">
+                                {{ dinero(totalesGenerales.valorNoRecuperableMat) }}
+                            </td>
+                            <td class="px-3 py-2.5 text-right tabular-nums text-foreground">
+                                {{ porcentaje(totalesGenerales.recibida, totalesGenerales.esperada) }}
+                            </td>
+                            <td class="px-3 py-2.5 text-right tabular-nums text-rose-700 dark:text-rose-300">
+                                {{ porcentaje(totalesGenerales.noRecuperable, totalesGenerales.esperada) }}
+                            </td>
+                            <td class="px-3 py-2.5 text-right tabular-nums text-muted-foreground">
+                                {{ totalesGenerales.ops }} / {{ totalesGenerales.recepciones }}
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
             </div>
         </div>
 

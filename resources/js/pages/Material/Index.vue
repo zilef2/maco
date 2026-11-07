@@ -107,7 +107,20 @@ const estadoNormalizado = (valor: any): EstadoMaterial => {
         : 'Inactivo';
 };
 
-const estaProcesado = (valor: any): boolean => Number(valor) === 1;
+const estaProcesado = (valor: any): boolean =>
+    valor === true || valor === 1 || valor === '1' || String(valor).toLowerCase() === 'true';
+
+const tieneFichaTecnica = (m: any): boolean => {
+    if (Number(m?.ficha_id ?? 0) > 0) return true;
+    if (Array.isArray(m?.ficha_tecnica) && m.ficha_tecnica.length > 0) return true;
+    if (Array.isArray(m?.fichaTecnica) && m.fichaTecnica.length > 0) return true;
+    if (Array.isArray(m?.ficha_materiales) && m.ficha_materiales.length > 0) return true;
+    return false;
+};
+
+const procesadoSinFicha = (m: any): boolean => {
+    return estaProcesado(m?.material_procesado) && !tieneFichaTecnica(m);
+};
 
 const preparadas = computed(() =>
     filas.value.map((m: any) => ({
@@ -120,6 +133,9 @@ const preparadas = computed(() =>
                 m.categoria,
                 m.unidad_inventario,
                 estadoNormalizado(m.estado),
+                m.modelo_diseno_acabado,
+                m.color,
+                m.talla_tamano,
                 m.variante_atributo_sugerido,
                 (m.variants ?? []).map((v: any) => v.nombre).join(' '),
                 m.proveedor_nombre,
@@ -162,7 +178,7 @@ const opcionesDe = (campo: string): Array<{ value: string; count: number }> => {
 
 const categoriasDisponibles = computed(() => opcionesDe('categoria'));
 const unidadesDisponibles = computed(() => opcionesDe('unidad_inventario'));
-const variantesDisponibles = computed(() => opcionesDe('variante_atributo_sugerido'));
+const variantesDisponibles = computed(() => opcionesDe('modelo_diseno_acabado'));
 
 const estadosDisponibles = computed(() => {
     const conteos: Record<EstadoMaterial, number> = { Activo: 0, Inactivo: 0 };
@@ -206,7 +222,7 @@ const filtradas = computed(() =>
         if (unidadFiltro.value !== 'todos' && normalizar(m.unidad_inventario) !== normalizar(unidadFiltro.value)) {
             return false;
         }
-        if (varianteFiltro.value !== 'todos' && normalizar(m.variante_atributo_sugerido) !== normalizar(varianteFiltro.value)) {
+        if (varianteFiltro.value !== 'todos' && normalizar(m.modelo_diseno_acabado || m.variante_atributo_sugerido) !== normalizar(varianteFiltro.value)) {
             return false;
         }
         // Filtro por precio
@@ -421,8 +437,9 @@ const columnas = [
     { key: 'estado', label: 'Estado', sortable: true, align: 'left', headerClass: 'min-w-[130px]', cellClass: 'min-w-[130px]' },
     { key: 'material_procesado', label: 'Procesado', sortable: true, align: 'left', headerClass: 'min-w-[110px]', cellClass: 'min-w-[110px]' },
     { key: 'proveedor', label: 'Proveedor', sortable: true, align: 'left', headerClass: 'hidden min-w-[140px] md:table-cell', cellClass: 'hidden min-w-[140px] md:table-cell' },
-    { key: 'variante_atributo_sugerido', label: 'Variantes', sortable: true, align: 'left', headerClass: 'hidden min-w-[160px] xl:table-cell', cellClass: 'hidden min-w-[160px] xl:table-cell' },
-    { key: 'variantes', label: 'Maneja', sortable: false, align: 'left', headerClass: 'hidden min-w-[120px] lg:table-cell', cellClass: 'hidden min-w-[120px] lg:table-cell' },
+    { key: 'modelo_diseno_acabado', label: 'Modelo - diseño - acabado', sortable: true, align: 'left', headerClass: 'hidden min-w-[160px] xl:table-cell', cellClass: 'hidden min-w-[160px] xl:table-cell' },
+    { key: 'color', label: 'Color', sortable: true, align: 'left', headerClass: 'hidden min-w-[130px] xl:table-cell', cellClass: 'hidden min-w-[130px] xl:table-cell' },
+    { key: 'talla_tamano', label: 'Talla / tamaño', sortable: true, align: 'left', headerClass: 'hidden min-w-[130px] xl:table-cell', cellClass: 'hidden min-w-[130px] xl:table-cell' },
     { key: 'observaciones', label: 'Observaciones', sortable: false, align: 'left', headerClass: 'hidden min-w-[200px] 2xl:table-cell', cellClass: 'hidden min-w-[200px] 2xl:table-cell' },
 ] as const;
 
@@ -543,7 +560,9 @@ const titulos = [
     { order: 'maneja_talla', label: 'maneja_talla', type: 'boolean' },
     { order: 'maneja_otra_variante', label: 'maneja_otra_variante', type: 'boolean' },
     { order: 'estado', label: 'estado', type: 'string' },
-    { order: 'variante_atributo_sugerido', label: 'variante_atributo_sugerido', type: 'string' },
+    { order: 'modelo_diseno_acabado', label: 'modelo_diseno_acabado', type: 'string' },
+    { order: 'color', label: 'color', type: 'string' },
+    { order: 'talla_tamano', label: 'talla_tamano', type: 'string' },
     { order: 'proveedor_habitual', label: 'proveedor_habitual', type: 'foreign', nameid: 'proveedor_nombre' },
     { order: 'material_procesado', label: 'material_procesado', type: 'boolean' },
     { order: 'observaciones', label: 'observaciones', type: 'string' },
@@ -674,12 +693,12 @@ const titulos = [
             <!-- Banner de previsión: materiales que no alcanzan los días configurados -->
             <div
                 v-if="previsiónFaltantes.length > 0"
-                class="rounded-xl border border-red-500/30 bg-red-50/80 p-4 dark:bg-red-500/10"
+                class="rounded-xl border border-red-400/50 bg-red-50/80 p-4 dark:bg-red-500/10"
                 role="alert"
             >
                 <div class="flex items-center gap-2">
-                    <ExclamationTriangleIcon class="h-5 w-5 text-red-600 dark:text-red-400" />
-                    <h2 class="text-sm font-bold text-red-700 dark:text-red-300">
+                    <ExclamationTriangleIcon class="h-5 w-5 text-red-500 dark:text-red-400" />
+                    <h2 class="text-sm font-bold text-black dark:text-red-300">
                         Previsión: {{ previsiónFaltantes.length }} material{{ previsiónFaltantes.length === 1 ? '' : 'es' }} no
                         alcanza para {{ diasPrevision }} día{{ diasPrevision === 1 ? '' : 's' }}
                     </h2>
@@ -704,14 +723,28 @@ const titulos = [
                                 hay {{ zilef_nuber_format(f.existencia, f.existencia % 1 ? 2 : 0) }}{{ f.unidad ? ` ${f.unidad}` : '' }}:
                                 <b>solo queda para {{ f.dias_restantes }} día{{ f.dias_restantes === 1 ? '' : 's' }}</b>
                             </template>
+                            <template v-if="f.ordenes_resultado?.length">
+                                <br />
+                                Este material llegará con
+                                {{
+                                    f.ordenes_resultado.length === 1
+                                        ? f.ordenes_resultado[0].numero_op
+                                        : `las OPs ${f.ordenes_resultado.map((op: any) => op.numero_op).join(', ')}`
+                                }}.
+                            </template>
                         </span>
                     </li>
                 </ul>
-                <p class="mt-3 border-t border-red-500/20 pt-2 text-[11px] text-red-600/80 dark:text-red-300/70">
-                    Cómo se calcula: gasto por día = total de salidas a taller de las OPs en los últimos
-                    {{ prevision?.ventana_dias ?? 30 }} días ÷ {{ prevision?.ventana_dias ?? 30 }};
-                    días que alcanzan = existencia ÷ gasto por día. Se avisa cuando quedan
-                    {{ diasPrevision }} día{{ diasPrevision === 1 ? '' : 's' }} o menos (se cambia en Parámetros → Días de previsión de existencias).
+                <p class="mt-3 border-t border-red-600/20 pt-2 text-[14px] text-red-800/80 dark:text-red-300/70">
+                    Gasto por día = Salidas a taller de las OPs en los últimos
+                    {{ prevision?.ventana_dias ?? 30 }} días / {{ prevision?.ventana_dias ?? 30 }};
+                </p>
+                <p class="mt-3 border-t border-red-600/20 pt-2 text-[14px] text-red-800/80 dark:text-red-300/70">
+                    Días que alcanzan = existencia / gasto por día. 
+                </p>
+                <p class="mt-3 border-t border-red-600/20 pt-2 text-[14px] text-red-800/80 dark:text-red-300/70">
+                     Se avisa cuando quedan {{ diasPrevision }} día{{ diasPrevision === 1 ? '' : 's' }} 
+                     o menos (Puedes cambiar esto en Parámetros)
                 </p>
             </div>
 
@@ -955,8 +988,16 @@ const titulos = [
                             <tr
                                 v-for="material in visibles"
                                 :key="material.id"
-                                class="group border-b border-border/60 transition-colors last:border-0 hover:bg-muted/40"
-                                :class="{ 'bg-primary/5': data.selectedId.includes(material.id) }"
+                                class="group border-b border-border/60 transition-colors last:border-0"
+                                :class="[
+                                    procesadoSinFicha(material)
+                                        ? (data.selectedId.includes(material.id)
+                                            ? 'bg-orange-200 dark:bg-orange-900/70'
+                                            : 'bg-orange-100 hover:bg-orange-200/70 dark:bg-orange-950/50 dark:hover:bg-orange-900/50')
+                                        : (data.selectedId.includes(material.id)
+                                            ? 'bg-primary/5'
+                                            : 'hover:bg-muted/40'),
+                                ]"
                             >
                                 <td class="px-2 py-3 text-center align-top">
                                     <input
@@ -1077,39 +1118,51 @@ const titulos = [
                                     <span class="text-sm text-foreground">{{ material.proveedor_nombre || '—' }}</span>
                                 </td>
 
-                                <!-- Variantes -->
+                                <!-- Modelo - diseño - acabado -->
                                 <td class="hidden px-3 py-3 align-top xl:table-cell">
-                                    <div v-if="material.variants?.length" class="flex max-w-[220px] flex-wrap items-center gap-1">
+                                    <span class="text-sm text-foreground">{{ material.modelo_diseno_acabado || material.variante_atributo_sugerido || '—' }}</span>
+                                </td>
+
+                                <!-- Color -->
+                                <td class="hidden px-3 py-3 align-top xl:table-cell">
+                                    <div v-if="material.variants?.filter((v: any) => v.tipo === 'color')?.length" class="flex max-w-[200px] flex-wrap items-center gap-1">
                                         <span
-                                            v-for="variante in material.variants.slice(0, 3)"
+                                            v-for="variante in material.variants.filter((v: any) => v.tipo === 'color').slice(0, 3)"
                                             :key="variante.id"
-                                            class="inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-medium"
-                                            :class="variante.tipo === 'color'
-                                                ? 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300'
-                                                : 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-300'"
-                                            :title="variante.tipo === 'color' ? 'Color' : 'Otra variante'"
+                                            class="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-medium text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300"
                                         >
                                             {{ variante.nombre }}
                                         </span>
                                         <span
-                                            v-if="material.variants.length > 3"
+                                            v-if="material.variants.filter((v: any) => v.tipo === 'color').length > 3"
                                             class="text-[10px] font-medium text-muted-foreground"
-                                            :title="material.variants.slice(3).map((v: any) => v.nombre).join(', ')"
+                                            :title="material.variants.filter((v: any) => v.tipo === 'color').slice(3).map((v: any) => v.nombre).join(', ')"
                                         >
-                                            +{{ material.variants.length - 3 }}
+                                            +{{ material.variants.filter((v: any) => v.tipo === 'color').length - 3 }}
                                         </span>
                                     </div>
-                                    <span v-else class="text-sm text-foreground">{{ material.variante_atributo_sugerido || '—' }}</span>
+                                    <span v-else class="text-sm text-foreground">{{ material.color || '—' }}</span>
                                 </td>
 
-                                <!-- Maneja -->
-                                <td class="hidden px-3 py-3 align-top lg:table-cell">
-                                    <div class="flex items-center gap-1">
-                                        <span v-if="material.maneja_color" class="inline-flex min-w-5 items-center justify-center rounded border border-border bg-muted/60 px-1 py-0.5 text-[10px] font-semibold text-muted-foreground" title="Maneja color">C</span>
-                                        <span v-if="material.maneja_talla" class="inline-flex min-w-5 items-center justify-center rounded border border-border bg-muted/60 px-1 py-0.5 text-[10px] font-semibold text-muted-foreground" title="Maneja talla">T</span>
-                                        <span v-if="material.maneja_otra_variante" class="inline-flex min-w-5 items-center justify-center rounded border border-border bg-muted/60 px-1 py-0.5 text-[10px] font-semibold text-muted-foreground" title="Maneja otra variante">V</span>
-                                        <span v-if="!(material.maneja_color || material.maneja_talla || material.maneja_otra_variante)" class="text-xs text-muted-foreground">—</span>
+                                <!-- Talla / tamaño -->
+                                <td class="hidden px-3 py-3 align-top xl:table-cell">
+                                    <div v-if="material.variants?.filter((v: any) => v.tipo === 'variante')?.length" class="flex max-w-[200px] flex-wrap items-center gap-1">
+                                        <span
+                                            v-for="variante in material.variants.filter((v: any) => v.tipo === 'variante').slice(0, 3)"
+                                            :key="variante.id"
+                                            class="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-medium text-violet-700 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-300"
+                                        >
+                                            {{ variante.nombre }}
+                                        </span>
+                                        <span
+                                            v-if="material.variants.filter((v: any) => v.tipo === 'variante').length > 3"
+                                            class="text-[10px] font-medium text-muted-foreground"
+                                            :title="material.variants.filter((v: any) => v.tipo === 'variante').slice(3).map((v: any) => v.nombre).join(', ')"
+                                        >
+                                            +{{ material.variants.filter((v: any) => v.tipo === 'variante').length - 3 }}
+                                        </span>
                                     </div>
+                                    <span v-else class="text-sm text-foreground">{{ material.talla_tamano || '—' }}</span>
                                 </td>
 
                                 <!-- Observaciones -->
@@ -1126,7 +1179,16 @@ const titulos = [
 
                                 <!-- Acciones -->
                                 <td
-                                    class="sticky right-0 z-10 w-[136px] border-l border-border/60 bg-card px-2 py-2 align-middle shadow-[-8px_0_16px_-16px_rgba(0,0,0,0.35)] transition-colors group-hover:bg-muted/40"
+                                    class="sticky right-0 z-10 w-[136px] border-l border-border/60 px-2 py-2 align-middle shadow-[-8px_0_16px_-16px_rgba(0,0,0,0.35)] transition-colors"
+                                    :class="[
+                                        procesadoSinFicha(material)
+                                            ? (data.selectedId.includes(material.id)
+                                                ? 'bg-orange-200 dark:bg-orange-900/70'
+                                                : 'bg-orange-100 group-hover:bg-orange-200/70 dark:bg-orange-950/50 dark:group-hover:bg-orange-900/50')
+                                            : (data.selectedId.includes(material.id)
+                                                ? 'bg-primary/5'
+                                                : 'bg-card group-hover:bg-muted/40'),
+                                    ]"
                                 >
                                     <div class="flex items-center justify-end gap-1">
                                         <button
