@@ -6,9 +6,16 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Bell, CheckCheck } from 'lucide-vue-next';
-import { onMounted, onUnmounted, reactive } from 'vue';
+import { Bell, CheckCheck, PackageX } from 'lucide-vue-next';
+import { computed, onMounted, onUnmounted, reactive } from 'vue';
 import { router } from '@inertiajs/vue3';
+
+const props = defineProps<{
+    /** Filtra la campana a un tipo de notificación (ej. material_insuficiente). */
+    tipo?: string;
+    /** Deja el botón visible aunque no haya notificaciones del tipo. */
+    siempreVisible?: boolean;
+}>();
 
 interface NotificacionItem {
     id: number;
@@ -16,6 +23,16 @@ interface NotificacionItem {
     prioridad: 'alta' | 'media' | 'baja' | string;
     created_at: string;
 }
+
+const esMaterial = computed(() => props.tipo === 'material_insuficiente');
+const query = computed(() => (props.tipo ? `?tipo=${encodeURIComponent(props.tipo)}` : ''));
+const tituloBoton = computed(() =>
+    esMaterial.value ? 'Faltantes de material' : 'Notificaciones pendientes',
+);
+const tituloPanel = computed(() => (esMaterial.value ? 'Faltantes de material' : 'Notificaciones'));
+const mensajeVacio = computed(() =>
+    esMaterial.value ? 'No hay faltantes de material pendientes' : 'No tienes notificaciones pendientes',
+);
 
 const state = reactive({
     notificaciones: [] as NotificacionItem[],
@@ -37,7 +54,7 @@ const formatFecha = (fecha: string) => {
 const cargarNotificaciones = async () => {
     state.cargando = true;
     try {
-        const response = await fetch('/notificaciones', {
+        const response = await fetch('/notificaciones' + query.value, {
             headers: {
                 Accept: 'application/json',
                 'X-Requested-With': 'XMLHttpRequest',
@@ -78,7 +95,7 @@ const marcarLeida = async (id: number) => {
 
 const marcarTodasLeidas = async () => {
     try {
-        await fetch('/notificaciones/marcar-todas', {
+        await fetch('/notificaciones/marcar-todas' + query.value, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -110,16 +127,18 @@ onUnmounted(() => {
 </script>
 
 <template>
-    <DropdownMenu v-if="state.notificaciones.length > 0">
+    <DropdownMenu v-if="siempreVisible || state.notificaciones.length > 0">
         <DropdownMenuTrigger :as-child="true">
             <Button
                 variant="ghost"
                 size="sm"
                 class="relative h-9 w-9 p-0 text-muted-foreground hover:text-foreground cursor-pointer rounded-full border border-sidebar-border/60 hover:bg-accent transition-colors"
-                title="Notificaciones pendientes"
+                :title="tituloBoton"
             >
-                <Bell class="h-4 w-4" />
+                <PackageX v-if="esMaterial" class="h-4 w-4" />
+                <Bell v-else class="h-4 w-4" />
                 <span
+                    v-if="state.notificaciones.length > 0"
                     class="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white shadow-xs"
                 >
                     {{ state.notificaciones.length > 9 ? '9+' : state.notificaciones.length }}
@@ -129,7 +148,7 @@ onUnmounted(() => {
         <DropdownMenuContent align="end" class="w-80 p-0 shadow-lg">
             <div class="flex items-center justify-between border-b border-sidebar-border/60 px-4 py-2.5">
                 <div class="flex items-center gap-2">
-                    <span class="text-sm font-semibold text-foreground">Notificaciones</span>
+                    <span class="text-sm font-semibold text-foreground">{{ tituloPanel }}</span>
                     <span
                         v-if="state.notificaciones.length > 0"
                         class="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
@@ -149,7 +168,7 @@ onUnmounted(() => {
 
             <div class="max-h-80 overflow-y-auto divide-y divide-sidebar-border/40">
                 <div v-if="state.notificaciones.length === 0" class="p-6 text-center text-sm text-muted-foreground">
-                    No tienes notificaciones pendientes
+                    {{ mensajeVacio }}
                 </div>
 
                 <DropdownMenuItem

@@ -71,7 +71,7 @@ class NotificacionesManager
         });
     }
 
-    public function noLeidas(?int $userId = null): \Illuminate\Support\Collection
+    public function noLeidas(?int $userId = null, ?string $mensajeContiene = null): \Illuminate\Support\Collection
     {
         return $this->vigentes(DB::table($this->table)
             ->where('leida', false)
@@ -80,6 +80,9 @@ class NotificacionesManager
                     $q->where('user_id', $userId)
                       ->orWhereNull('user_id');
                 });
+            })
+            ->when($mensajeContiene, function ($query, $mensajeContiene) {
+                return $query->where('mensaje', 'like', '%' . $mensajeContiene . '%');
             }))
             ->orderByRaw("CASE WHEN prioridad = 'alta' THEN 1 WHEN prioridad = 'media' THEN 2 ELSE 3 END")
             ->orderByDesc('created_at')
@@ -93,7 +96,7 @@ class NotificacionesManager
             ->update(['leida' => true]);
     }
 
-    public function marcarTodas(?int $userId = null): bool
+    public function marcarTodas(?int $userId = null, ?string $mensajeContiene = null): bool
     {
         return (bool) $this->vigentes(DB::table($this->table)
             ->where('leida', false)
@@ -102,6 +105,9 @@ class NotificacionesManager
                     $q->where('user_id', $userId)
                       ->orWhereNull('user_id');
                 });
+            })
+            ->when($mensajeContiene, function ($query, $mensajeContiene) {
+                return $query->where('mensaje', 'like', '%' . $mensajeContiene . '%');
             }))
             ->update(['leida' => true]);
     }

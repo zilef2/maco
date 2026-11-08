@@ -23,11 +23,8 @@ import {
     Database,
     Tag,
     Truck,
-    SlidersHorizontal,
     Clock,
-    Grid3x3,
     FileUp,
-    BookmarkCheck,
     BookOpen,
     ShieldCheck,
     Layers,
@@ -150,27 +147,6 @@ const navDropdown: NavGroup[] = [
 
     //     ],
     // },
-    {
-        label: 'Solo Lectura', //que no se pueden editar
-        icon: BookmarkCheck,
-        items: [
-            {
-                title: 'EstadoOperacion',
-                href: '/EstadoOperacion',
-                icon: SlidersHorizontal,
-            },
-            // {
-            //     title: 'PendientesProduccion',
-            //     href: '/PendientesProduccion',
-            //     icon: Clock,
-            // },
-            {
-                title: 'Distribucion por tallas',
-                href: '/Distribucion_por_tallas',
-                icon: Grid3x3,
-            },
-        ],
-    },
     {
         label: 'PosProducción',
         icon: Factory,

@@ -60,6 +60,8 @@ const props = defineProps({
     columnasExcel: { type: Array as () => any[], default: () => [] },
     prevision: { type: Object as () => any, default: () => null },
     faltantesOp: { type: Array as () => any[], default: () => [] },
+    /** ids de los materiales que participan en alguna OP. */
+    materialesEnOp: { type: Array as () => number[], default: () => [] },
 });
 
 /* --------------------------------------------------------------------------
@@ -77,11 +79,12 @@ const estadoFiltro = ref<string | 'todos'>('Activo');
 const unidadFiltro = ref<string | 'todos'>('todos');
 const varianteFiltro = ref<string | 'todos'>('todos');
 const precioFiltro = ref<string | 'sin_precio' | 'con_precio'>('todos');
+const procesadoFiltro = ref<'todos' | 'si' | 'no'>('todos');
+const enOpFiltro = ref<'todos' | 'si' | 'no'>('todos');
 const boolFiltros = reactive<Record<string, '' | '1' | '0'>>({
     maneja_color: '',
     maneja_talla: '',
     maneja_otra_variante: '',
-    material_procesado: '',
 });
 const sortKey = ref('updated_at');
 const sortDir = ref<'asc' | 'desc'>('desc');
@@ -109,6 +112,9 @@ const estadoNormalizado = (valor: any): EstadoMaterial => {
 
 const estaProcesado = (valor: any): boolean =>
     valor === true || valor === 1 || valor === '1' || String(valor).toLowerCase() === 'true';
+
+const idsEnOp = computed(() => new Set(((props.materialesEnOp as any[]) ?? []).map(Number)));
+const estaEnOp = (m: any): boolean => idsEnOp.value.has(Number(m?.id));
 
 const tieneFichaTecnica = (m: any): boolean => {
     if (Number(m?.ficha_id ?? 0) > 0) return true;
@@ -202,6 +208,47 @@ const opcionesEstado = computed(() => [
     })),
 ]);
 
+/** Opciones de un filtro de dos valores, con el conteo sobre lo ya filtrado. */
+const opcionesSiNo = (
+    etiquetaSi: string,
+    etiquetaNo: string,
+    cumple: (m: any) => boolean,
+) => {
+    const total = baseFiltrada.value.length;
+    const si = baseFiltrada.value.filter(cumple).length;
+
+    return [
+        { value: 'todos', label: 'Ambos', count: total },
+        { value: 'si', label: etiquetaSi, count: si },
+        { value: 'no', label: etiquetaNo, count: total - si },
+    ];
+};
+
+/** Grupos de botones tipo segmento: siempre a la vista, con su conteo. */
+const segmentosFiltros = computed(() => [
+    {
+        etiqueta: 'Estado',
+        ariaLabel: 'Filtrar materiales por estado',
+        activo: estadoFiltro.value,
+        opciones: opcionesEstado.value,
+        aplicar: (valor: string) => { estadoFiltro.value = valor; },
+    },
+    {
+        etiqueta: 'Procesado',
+        ariaLabel: 'Filtrar materiales por si son procesados',
+        activo: procesadoFiltro.value,
+        opciones: opcionesSiNo('Procesados', 'No procesados', (m: any) => estaProcesado(m.material_procesado)),
+        aplicar: (valor: string) => { procesadoFiltro.value = valor as any; },
+    },
+    {
+        etiqueta: 'En una OP',
+        ariaLabel: 'Filtrar materiales por si participan en una orden de producción',
+        activo: enOpFiltro.value,
+        opciones: opcionesSiNo('En una OP', 'Sin OP', estaEnOp),
+        aplicar: (valor: string) => { enOpFiltro.value = valor as any; },
+    },
+]);
+
 const proveedoresDisponibles = computed(() => {
     const mapa = new Map<number, string>();
     filas.value.forEach((m: any) => {
@@ -230,6 +277,12 @@ const filtradas = computed(() =>
             return false;
         }
         if (precioFiltro.value === 'con_precio' && (m.last_purchase_price === null || m.last_purchase_price === undefined)) {
+            return false;
+        }
+        if (procesadoFiltro.value !== 'todos' && estaProcesado(m.material_procesado) !== (procesadoFiltro.value === 'si')) {
+            return false;
+        }
+        if (enOpFiltro.value !== 'todos' && estaEnOp(m) !== (enOpFiltro.value === 'si')) {
             return false;
         }
         for (const campo of Object.keys(boolFiltros)) {
@@ -336,7 +389,9 @@ const filtrosBarra = computed(
         (categoriaFiltro.value !== 'todos' ? 1 : 0) +
         (proveedorFiltro.value !== 'todos' ? 1 : 0) +
         (precioFiltro.value !== 'todos' ? 1 : 0) +
-        (estadoFiltro.value !== 'Activo' ? 1 : 0),
+        (estadoFiltro.value !== 'Activo' ? 1 : 0) +
+        (procesadoFiltro.value !== 'todos' ? 1 : 0) +
+        (enOpFiltro.value !== 'todos' ? 1 : 0),
 );
 
 const filtrosDropdown = computed(
@@ -373,12 +428,17 @@ const limpiarFiltros = () => {
     unidadFiltro.value = 'todos';
     varianteFiltro.value = 'todos';
     precioFiltro.value = 'todos';
+    procesadoFiltro.value = 'todos';
+    enOpFiltro.value = 'todos';
     Object.keys(boolFiltros).forEach((campo) => (boolFiltros[campo] = ''));
 };
 
-watch([busqueda, categoriaFiltro, proveedorFiltro, estadoFiltro, unidadFiltro, varianteFiltro, precioFiltro, porPagina], () => {
-    pagina.value = 1;
-});
+watch(
+    [busqueda, categoriaFiltro, proveedorFiltro, estadoFiltro, unidadFiltro, varianteFiltro, precioFiltro, procesadoFiltro, enOpFiltro, porPagina],
+    () => {
+        pagina.value = 1;
+    },
+);
 watch(boolFiltros, () => {
     pagina.value = 1;
 });
@@ -431,13 +491,14 @@ const segmentoClass = (activo: boolean) => [
 const columnas = [
     { key: 'codigo_material', label: 'Código', sortable: true, align: 'left', headerClass: 'min-w-[120px]', cellClass: 'min-w-[120px]' },
     { key: 'material', label: 'Material', sortable: true, align: 'left', headerClass: 'min-w-[200px]', cellClass: 'min-w-[200px]' },
+    { key: 'modelo_diseno_acabado', label: 'Modelo - diseño - acabado', sortable: true, align: 'left', headerClass: 'hidden min-w-[160px] xl:table-cell', cellClass: 'hidden min-w-[160px] xl:table-cell' },
     { key: 'last_purchase_price', label: 'Último precio', sortable: true, align: 'right', headerClass: 'min-w-[140px]', cellClass: 'min-w-[140px]' },
     { key: 'existencia_actual', label: 'Existencia', sortable: true, align: 'right', headerClass: 'w-[120px]', cellClass: 'w-[120px]' },
     { key: 'gasto_diario', label: 'Gasto diario', sortable: true, align: 'right', headerClass: 'w-[130px]', cellClass: 'w-[130px]' },
     { key: 'estado', label: 'Estado', sortable: true, align: 'left', headerClass: 'min-w-[130px]', cellClass: 'min-w-[130px]' },
     { key: 'material_procesado', label: 'Procesado', sortable: true, align: 'left', headerClass: 'min-w-[110px]', cellClass: 'min-w-[110px]' },
     { key: 'proveedor', label: 'Proveedor', sortable: true, align: 'left', headerClass: 'hidden min-w-[140px] md:table-cell', cellClass: 'hidden min-w-[140px] md:table-cell' },
-    { key: 'modelo_diseno_acabado', label: 'Modelo - diseño - acabado', sortable: true, align: 'left', headerClass: 'hidden min-w-[160px] xl:table-cell', cellClass: 'hidden min-w-[160px] xl:table-cell' },
+    
     { key: 'color', label: 'Color', sortable: true, align: 'left', headerClass: 'hidden min-w-[130px] xl:table-cell', cellClass: 'hidden min-w-[130px] xl:table-cell' },
     { key: 'talla_tamano', label: 'Talla / tamaño', sortable: true, align: 'left', headerClass: 'hidden min-w-[130px] xl:table-cell', cellClass: 'hidden min-w-[130px] xl:table-cell' },
     { key: 'observaciones', label: 'Observaciones', sortable: false, align: 'left', headerClass: 'hidden min-w-[200px] 2xl:table-cell', cellClass: 'hidden min-w-[200px] 2xl:table-cell' },
@@ -544,7 +605,7 @@ router.on('finish', () => {
 });
 
 const recargar = () => {
-    router.reload({ only: ['materiales', 'total', 'losSelect', 'prevision', 'faltantesOp'], preserveScroll: true });
+    router.reload({ only: ['materiales', 'total', 'losSelect', 'prevision', 'faltantesOp', 'materialesEnOp'], preserveScroll: true });
 };
 
 /* Títulos para los modales de crear/editar (mismo contrato de antes). */
@@ -750,7 +811,7 @@ const titulos = [
 
             <!-- Superficie principal: barra de filtros + tabla + paginación -->
             <div class="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-                <!-- Barra de filtros -->
+                <!-- Barra de filtros: fila 1 los criterios a la vista, fila 2 las listas -->
                 <div class="flex flex-col gap-2.5 border-b border-border p-3">
                     <div class="flex flex-wrap items-center gap-2">
                         <div class="relative min-w-[220px] flex-1">
@@ -773,6 +834,31 @@ const titulos = [
                             </button>
                         </div>
 
+                        <div v-for="segmento in segmentosFiltros" :key="segmento.etiqueta" class="flex items-center gap-1.5">
+                            <span class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                {{ segmento.etiqueta }}
+                            </span>
+                            <div
+                                class="inline-flex h-9 items-stretch overflow-hidden rounded-md border border-border bg-card shadow-sm"
+                                role="group"
+                                :aria-label="segmento.ariaLabel"
+                            >
+                                <button
+                                    v-for="opcion in segmento.opciones"
+                                    :key="opcion.value"
+                                    type="button"
+                                    @click="segmento.aplicar(opcion.value)"
+                                    :aria-pressed="segmento.activo === opcion.value"
+                                    :class="segmentoClass(segmento.activo === opcion.value)"
+                                >
+                                    {{ opcion.label }}
+                                    <span class="tabular-nums opacity-70">{{ opcion.count }}</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-wrap items-center gap-2">
                         <select
                             v-model="categoriaFiltro"
                             aria-label="Filtrar por categoría"
@@ -804,27 +890,6 @@ const titulos = [
                             <option value="con_precio">Con precio</option>
                             <option value="sin_precio">Sin precio</option>
                         </select>
-
-                        <div class="flex items-center gap-1.5">
-                            <span class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Estado</span>
-                            <div
-                                class="inline-flex h-9 items-stretch overflow-hidden rounded-md border border-border bg-card shadow-sm"
-                                role="group"
-                                aria-label="Filtrar materiales por estado"
-                            >
-                                <button
-                                    v-for="opcion in opcionesEstado"
-                                    :key="opcion.value"
-                                    type="button"
-                                    @click="estadoFiltro = opcion.value"
-                                    :aria-pressed="estadoFiltro === opcion.value"
-                                    :class="segmentoClass(estadoFiltro === opcion.value)"
-                                >
-                                    {{ opcion.label }}
-                                    <span class="tabular-nums opacity-70">{{ opcion.count }}</span>
-                                </button>
-                            </div>
-                        </div>
 
                         <!-- Banner rojo para materiales sin precio -->
                         <div v-if="materialesSinPrecio > 0" class="inline-flex items-center gap-2 rounded-full border border-red-500/30 bg-red-50/80 px-3 py-1.5 text-xs font-medium text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
@@ -881,12 +946,6 @@ const titulos = [
                                     <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
                                         Otra variante
                                         <select v-model="boolFiltros.maneja_otra_variante" :class="selectClass">
-                                            <option v-for="o in opcionesBooleano" :key="o.value" :value="o.value">{{ o.label }}</option>
-                                        </select>
-                                    </label>
-                                    <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
-                                        Procesado
-                                        <select v-model="boolFiltros.material_procesado" :class="selectClass">
                                             <option v-for="o in opcionesBooleano" :key="o.value" :value="o.value">{{ o.label }}</option>
                                         </select>
                                     </label>
@@ -1027,6 +1086,10 @@ const titulos = [
                                         </span>
                                     </div>
                                 </td>
+                                  <!-- Modelo - diseño - acabado -->
+                                <td class="hidden px-3 py-3 align-top xl:table-cell">
+                                    <span class="text-sm text-foreground">{{ material.modelo_diseno_acabado || material.variante_atributo_sugerido || '—' }}</span>
+                                </td>
 
                                 <!-- Último precio -->
                                 <td class="px-3 py-3 text-right align-top">
@@ -1118,10 +1181,7 @@ const titulos = [
                                     <span class="text-sm text-foreground">{{ material.proveedor_nombre || '—' }}</span>
                                 </td>
 
-                                <!-- Modelo - diseño - acabado -->
-                                <td class="hidden px-3 py-3 align-top xl:table-cell">
-                                    <span class="text-sm text-foreground">{{ material.modelo_diseno_acabado || material.variante_atributo_sugerido || '—' }}</span>
-                                </td>
+                              
 
                                 <!-- Color -->
                                 <td class="hidden px-3 py-3 align-top xl:table-cell">

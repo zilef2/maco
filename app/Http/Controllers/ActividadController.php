@@ -106,18 +106,35 @@ class ActividadController extends Controller
         $umbralMin = $this->enteroFiltro((int) $request->query('umbral', 10), self::UMBRALES_PERMITIDOS, 10);
         $foco = $this->textoFiltro((string) $request->query('foco', 'todo'), self::FOCOS, 'todo');
 
-        $usuarioId = $request->query('usuario') !== null && $request->query('usuario') !== ''
-            ? (int) $request->query('usuario')
-            : null;
-
         $desde = now()->startOfDay()->subDays($dias - 1);
         $series = $this->enfocar($this->seriesPorUsuario($desde), $foco);
+        $usuariosConHistorial = $this->usuariosConHistorial();
 
-        if ($usuarioId === null) {
+        $caminoUsuarioId = $this->usuarioFiltro($request->query('camino_usuario'));
+        if ($caminoUsuarioId === null) {
             // Usuario con más acciones: max() devolvería el conteo, no la clave.
-            $usuarioId = $series->keys()
+            $caminoUsuarioId = $series->keys()
                 ->sortByDesc(fn (int $id) => $series[$id]->count())
                 ->first();
+        }
+
+        $bitacoraDesde = $this->fechaHoraFiltro($request->query('bitacora_desde')) ?? $desde->copy();
+        $bitacoraHasta = $this->fechaHoraFiltro($request->query('bitacora_hasta')) ?? now();
+        if ($bitacoraDesde->gt($bitacoraHasta)) {
+            [$bitacoraDesde, $bitacoraHasta] = [$bitacoraHasta, $bitacoraDesde];
+        }
+        $bitacoraDesde->startOfMinute();
+        $bitacoraHasta->endOfMinute();
+
+        $bitacoraUsuarioId = $this->usuarioFiltro($request->query('bitacora_usuario'));
+        $bitacoraTipo = $this->textoFiltro(
+            (string) $request->query('bitacora_tipo', 'todos'),
+            ['todos', 'acciones', 'navegacion'],
+            'todos',
+        );
+        $bitacoraMetodo = strtoupper((string) $request->query('bitacora_metodo', ''));
+        if (! in_array($bitacoraMetodo, array_merge(['GET', 'HEAD'], self::METODOS_ESCRITURA), true)) {
+            $bitacoraMetodo = '';
         }
 
         $resumenBase = $this->resumenBase($series);
@@ -140,7 +157,14 @@ class ActividadController extends Controller
                 'factor' => $factor,
                 'umbral' => $umbralMin,
                 'foco' => $foco,
-                'usuario' => $usuarioId,
+                'camino_usuario' => $caminoUsuarioId,
+            ],
+            'bitacoraFiltro' => [
+                'desde' => $bitacoraDesde->format('Y-m-d\TH:i'),
+                'hasta' => $bitacoraHasta->format('Y-m-d\TH:i'),
+                'usuario' => $bitacoraUsuarioId,
+                'tipo' => $bitacoraTipo,
+                'metodo' => $bitacoraMetodo,
             ],
             'opciones' => [
                 'dias' => self::DIAS_PERMITIDOS,
@@ -148,27 +172,41 @@ class ActividadController extends Controller
                 'umbral' => self::UMBRALES_PERMITIDOS,
                 'focos' => ['todo' => 'Todo', 'acciones' => 'Solo acciones', 'navegacion' => 'Solo navegación'],
                 'pausa_min' => intdiv(self::PAUSA_SEGUNDOS, 60),
+                'metodos' => array_merge(['GET', 'HEAD'], self::METODOS_ESCRITURA),
             ],
             'resumen' => $this->resumen($resumenBase, $desde),
             'porHora' => $this->porHora($resumenBase),
             'usuarios' => $this->usuarios($series, $factor, $umbralMin),
-            'camino' => $this->camino($series, $usuarioId, $factor, $umbralMin),
-            'transiciones' => $this->transiciones($series, $usuarioId, $factor, $umbralMin),
-            'bitacora' => $this->bitacoraPaginada($desde, $usuarioId, $foco),
+            'usuarios_historial' => $usuariosConHistorial,
+            'camino' => $this->camino($series, $caminoUsuarioId, $factor, $umbralMin),
+            'transiciones' => $this->transiciones($series, $caminoUsuarioId, $factor, $umbralMin),
+            'bitacora' => $this->bitacoraPaginada(
+                $bitacoraDesde,
+                $bitacoraHasta,
+                $bitacoraUsuarioId,
+                $bitacoraTipo,
+                $bitacoraMetodo,
+            ),
         ]);
     }
 
-    private function bitacoraPaginada(Carbon $desde, ?int $usuarioId, string $foco): array
-    {
+    private function bitacoraPaginada(
+        Carbon $desde,
+        Carbon $hasta,
+        ?int $usuarioId,
+        string $tipo,
+        string $metodo,
+    ): array {
         $registros = ActividadRegistro::query()
-            ->desde($desde)
+            ->whereBetween('created_at', [$desde, $hasta])
             ->when($usuarioId, fn ($consulta) => $consulta->where('user_id', $usuarioId))
-            ->when($foco === 'acciones', fn ($consulta) => $consulta->where(function ($consulta) {
+            ->when($tipo === 'acciones', fn ($consulta) => $consulta->where(function ($consulta) {
                 $consulta->where('tipo', ActividadRegistro::TIPO_ACCION)
                     ->orWhereIn('metodo', self::METODOS_ESCRITURA);
             }))
-            ->when($foco === 'navegacion', fn ($consulta) => $consulta->where('tipo', ActividadRegistro::TIPO_PETICION)
+            ->when($tipo === 'navegacion', fn ($consulta) => $consulta->where('tipo', ActividadRegistro::TIPO_PETICION)
                 ->whereNotIn('metodo', self::METODOS_ESCRITURA))
+            ->when($metodo !== '', fn ($consulta) => $consulta->where('metodo', $metodo))
             ->orderByDesc('id')
             ->paginate(25)
             ->withQueryString();
@@ -192,6 +230,7 @@ class ActividadController extends Controller
             'status' => $registro->status,
             'error' => $registro->error,
             'duracion_ms' => $registro->duracion_ms,
+            'ip' => $registro->ip,
             'esEscritura' => in_array($registro->metodo, self::METODOS_ESCRITURA, true),
         ])->toArray();
     }
@@ -199,6 +238,60 @@ class ActividadController extends Controller
     private function enteroFiltro(int $valor, array $permitidos, int $porDefecto): int
     {
         return in_array($valor, $permitidos, true) ? $valor : $porDefecto;
+    }
+
+    private function usuarioFiltro(mixed $valor): ?int
+    {
+        if ($valor === null || $valor === '' || ! is_numeric($valor)) {
+            return null;
+        }
+
+        $id = (int) $valor;
+
+        return $id > 0 ? $id : null;
+    }
+
+    private function fechaHoraFiltro(mixed $valor): ?Carbon
+    {
+        if (! is_string($valor) || trim($valor) === '') {
+            return null;
+        }
+
+        try {
+            $fecha = Carbon::createFromFormat('!Y-m-d\TH:i', $valor);
+
+            return $fecha->format('Y-m-d\TH:i') === $valor ? $fecha : null;
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * Usuarios que alguna vez dejaron historial. Se consulta sin el corte de
+     * días para que el selector del camino no esconda a quien solo tiene
+     * actividad fuera del período analizado.
+     *
+     * @return array<int, array{id: int, nombre: string}>
+     */
+    private function usuariosConHistorial(): array
+    {
+        $ultimasPorUsuario = DB::table('actividad_registros')
+            ->select('user_id', DB::raw('MAX(id) as registro_id'))
+            ->whereNotNull('user_id')
+            ->groupBy('user_id');
+
+        return DB::table('actividad_registros as actividad')
+            ->joinSub($ultimasPorUsuario, 'ultima', function ($consulta) {
+                $consulta->on('actividad.id', '=', 'ultima.registro_id');
+            })
+            ->orderBy('actividad.nombre_usuario')
+            ->get(['actividad.user_id', 'actividad.nombre_usuario'])
+            ->map(fn (object $fila) => [
+                'id' => (int) $fila->user_id,
+                'nombre' => $fila->nombre_usuario ?: 'Sin nombre',
+            ])
+            ->values()
+            ->all();
     }
 
     private function textoFiltro(string $valor, array $permitidos, string $porDefecto): string
@@ -247,7 +340,7 @@ class ActividadController extends Controller
             ->get([
                 'id', 'user_id', 'nombre_usuario', 'ruta_nombre', 'ruta_uri',
                 'metodo', 'tipo', 'peticion', 'modulo', 'accion', 'entidad',
-                'entidad_id', 'detalle', 'status', 'error', 'duracion_ms', 'created_at',
+                'entidad_id', 'detalle', 'status', 'error', 'duracion_ms', 'ip', 'created_at',
                 DB::raw('UNIX_TIMESTAMP(created_at) as fecha_ts'),
             ]);
 
@@ -316,6 +409,7 @@ class ActividadController extends Controller
                 'status' => $http?->status ?? $referencia->status,
                 'error' => $error,
                 'duracion_ms' => $http?->duracion_ms ?? $referencia->duracion_ms,
+                'ip' => $http?->ip ?? $referencia->ip,
                 'created_at' => $grupo[0]->created_at,
                 'fecha_ts' => $grupo[0]->fecha_ts,
                 'tipo' => $esMarcador
@@ -629,6 +723,7 @@ class ActividadController extends Controller
                 'status' => $fila->status,
                 'error' => $fila->error,
                 'duracion_ms' => $fila->duracion_ms,
+                'ip' => $fila->ip,
                 'intervalo_seg' => $paso['intervalo'],
                 'pausa' => $paso['pausa'],
                 'anormal' => $anormal,

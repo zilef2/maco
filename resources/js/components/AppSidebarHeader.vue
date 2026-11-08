@@ -65,6 +65,7 @@ const { top, visitar, limpiar } = useMostVisited();
                 <Breadcrumbs :breadcrumbs="breadcrumbs" />
             </template>
             <NotificationBell />
+            <NotificationBell tipo="material_insuficiente" siempre-visible />
         </div>
     </header>
 </template>

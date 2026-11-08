@@ -1,15 +1,27 @@
 <script setup lang="ts">
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import AppLayout from '@/layouts/AppLayout.vue';
 import AccionesSuperadmin from '@/pages/actividad/AccionesSuperadmin.vue';
 import type { BreadcrumbItem } from '@/types';
-import { Head, router } from '@inertiajs/vue3';
+import { Head, Link, router } from '@inertiajs/vue3';
 import { BarChart } from 'echarts/charts';
 import { GridComponent, LegendComponent, TooltipComponent } from 'echarts/components';
 import { use } from 'echarts/core';
 import { CanvasRenderer } from 'echarts/renderers';
-import { AlertTriangle, Ban, ChevronLeft, ChevronRight, LogIn, LogOut, MousePointerClick, TriangleAlert } from 'lucide-vue-next';
+import {
+    AlertTriangle,
+    Ban,
+    BookmarkCheck,
+    ChevronLeft,
+    ChevronRight,
+    Grid3x3,
+    LogIn,
+    LogOut,
+    MousePointerClick,
+    SlidersHorizontal,
+    TriangleAlert,
+} from 'lucide-vue-next';
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import VChart from 'vue-echarts';
 
@@ -27,6 +39,7 @@ interface Paso {
     status: number | null;
     error: string | null;
     duracion_ms: number | null;
+    ip: string | null;
     intervalo_seg: number | null;
     pausa: boolean;
     anormal: boolean;
@@ -54,8 +67,16 @@ const props = defineProps({
     title: String,
     esAmbienteTest: Boolean,
     materiales: Object as () => { total: number; sin_existencia: number; sin_precio: number; rango_existencia: string; rango_precio: string },
-    filtro: Object as () => { dias: number; factor: number; umbral: number; foco: string; usuario: number | null },
-    opciones: Object as () => { dias: number[]; factor: number[]; umbral: number[]; focos: Record<string, string>; pausa_min: number },
+    filtro: Object as () => { dias: number; factor: number; umbral: number; foco: string; camino_usuario: number | null },
+    bitacoraFiltro: Object as () => { desde: string; hasta: string; usuario: number | null; tipo: string; metodo: string },
+    opciones: Object as () => {
+        dias: number[];
+        factor: number[];
+        umbral: number[];
+        focos: Record<string, string>;
+        pausa_min: number;
+        metodos: string[];
+    },
     resumen: Object as () => {
         acciones: number;
         usuarios: number;
@@ -70,6 +91,7 @@ const props = defineProps({
     },
     porHora: Object as () => { horas: string[]; acciones: number[]; conexiones: number[] },
     usuarios: Array as () => UsuarioRitmo[],
+    usuarios_historial: Array as () => { id: number; nombre: string }[],
     camino: Object as () => { usuario: string | null; umbral_min: number; pasos: Paso[]; ocultos: number },
     transiciones: Array as () => { de: string; a: string; veces: number; promedio_min: number; anormales: number }[],
     bitacora: Object as () => any,
@@ -106,8 +128,17 @@ const colorPunto = (paso: Paso): string => {
 
 const pasoFalla = (paso: Paso): boolean => !!paso.error || (paso.status ?? 0) >= 400;
 
+const parametrosActuales = () => ({
+    ...props.filtro,
+    bitacora_desde: props.bitacoraFiltro.desde,
+    bitacora_hasta: props.bitacoraFiltro.hasta,
+    bitacora_usuario: props.bitacoraFiltro.usuario,
+    bitacora_tipo: props.bitacoraFiltro.tipo,
+    bitacora_metodo: props.bitacoraFiltro.metodo,
+});
+
 const filtrar = (cambios: Record<string, any>) => {
-    const nuevos = { ...props.filtro, ...cambios } as Record<string, any>;
+    const nuevos = { ...parametrosActuales(), ...cambios } as Record<string, any>;
     Object.keys(nuevos).forEach((clave) => {
         if (nuevos[clave] === null || nuevos[clave] === '') delete nuevos[clave];
     });
@@ -115,11 +146,32 @@ const filtrar = (cambios: Record<string, any>) => {
     router.get(route('Actividad.index'), nuevos, { preserveScroll: true, preserveState: true });
 };
 
-const seleccionUsuario = computed(() => (props.filtro.usuario ? String(props.filtro.usuario) : ''));
+const seleccionUsuario = computed(() => (props.filtro.camino_usuario ? String(props.filtro.camino_usuario) : ''));
 
 const cambiarUsuario = (evento: Event) => {
     const valor = (evento.target as HTMLSelectElement).value;
-    filtrar({ usuario: valor === '' ? null : Number(valor) });
+    filtrar({ camino_usuario: valor === '' ? null : Number(valor) });
+};
+
+const cambiarBitacoraUsuario = (evento: Event) => {
+    const valor = (evento.target as HTMLSelectElement).value;
+    filtrar({ bitacora_usuario: valor === '' ? null : Number(valor) });
+};
+
+const cambiarBitacoraTipo = (evento: Event) => {
+    filtrar({ bitacora_tipo: (evento.target as HTMLSelectElement).value });
+};
+
+const cambiarBitacoraMetodo = (evento: Event) => {
+    filtrar({ bitacora_metodo: (evento.target as HTMLSelectElement).value });
+};
+
+const cambiarBitacoraDesde = (evento: Event) => {
+    filtrar({ bitacora_desde: (evento.target as HTMLInputElement).value });
+};
+
+const cambiarBitacoraHasta = (evento: Event) => {
+    filtrar({ bitacora_hasta: (evento.target as HTMLInputElement).value });
 };
 
 const irPagina = (url: string | null) => {
@@ -254,7 +306,10 @@ onUnmounted(() => observadorTema?.disconnect());
                             {{ dia }} días
                         </button>
                     </div>
-                    <label class="text-muted-foreground flex items-center gap-1.5 text-[11px]">
+                    <label
+                        class="text-muted-foreground flex items-center gap-1.5 text-[11px]"
+                        title="Multiplicador aplicado a la mediana de los saltos del usuario. Un salto es anormal cuando supera la mediana por este factor."
+                    >
                         Ritmo
                         <select
                             :value="props.filtro.factor"
@@ -264,7 +319,10 @@ onUnmounted(() => observadorTema?.disconnect());
                             <option v-for="factor in props.opciones.factor" :key="factor" :value="factor">{{ factor }}×</option>
                         </select>
                     </label>
-                    <label class="text-muted-foreground flex items-center gap-1.5 text-[11px]">
+                    <label
+                        class="text-muted-foreground flex items-center gap-1.5 text-[11px]"
+                        title="Tiempo mínimo absoluto, en minutos, para considerar anormal un salto. El umbral real es el mayor valor entre este piso y el Ritmo aplicado a la mediana."
+                    >
                         Piso
                         <select
                             :value="props.filtro.umbral"
@@ -275,6 +333,13 @@ onUnmounted(() => observadorTema?.disconnect());
                         </select>
                     </label>
                 </div>
+            </div>
+
+            <div class="text-muted-foreground bg-muted/40 rounded-lg border px-3 py-2 text-[11px] leading-relaxed">
+                <strong class="text-foreground">Cómo se interpreta el umbral:</strong>
+                <strong class="text-foreground">Ritmo</strong> multiplica la mediana de los saltos del usuario;
+                <strong class="text-foreground">Piso</strong> es el mínimo absoluto en minutos. El umbral efectivo es el mayor de ambos valores. Por
+                ejemplo, con Ritmo 3× y Piso 10 min, un salto se marca anormal cuando supera 10 minutos y la mediana multiplicada por 3.
             </div>
 
             <!-- KPIs -->
@@ -387,10 +452,11 @@ onUnmounted(() => observadorTema?.disconnect());
                         <select
                             :value="seleccionUsuario"
                             @change="cambiarUsuario"
+                            aria-label="Filtrar Camino de Superadmin por usuario con historial"
                             class="border-sidebar-border/60 bg-background text-foreground h-8 rounded-md border px-2 text-xs"
                         >
                             <option value="">El más activo</option>
-                            <option v-for="usuario in props.usuarios" :key="usuario.id" :value="usuario.id">
+                            <option v-for="usuario in props.usuarios_historial" :key="usuario.id" :value="usuario.id">
                                 {{ usuario.nombre }}
                             </option>
                         </select>
@@ -413,6 +479,7 @@ onUnmounted(() => observadorTema?.disconnect());
                                         >
                                             <LogOut class="h-3 w-3" />
                                             {{ paso.etiqueta }} · {{ paso.hora.slice(6) }}
+                                            <span v-if="paso.ip" class="font-mono opacity-70">· IP {{ paso.ip }}</span>
                                         </span>
                                         <span class="border-sidebar-border flex-1 border-t border-dashed" />
                                     </div>
@@ -482,6 +549,12 @@ onUnmounted(() => observadorTema?.disconnect());
                                                         {{ paso.metodo }}
                                                     </span>
                                                     <span
+                                                        class="text-muted-foreground shrink-0 font-mono text-[9px]"
+                                                        :title="paso.ip ? `Dirección IP de origen: ${paso.ip}` : 'La IP no está disponible'"
+                                                    >
+                                                        IP: {{ paso.ip ?? 'no disponible' }}
+                                                    </span>
+                                                    <span
                                                         v-if="pasoFalla(paso)"
                                                         class="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 font-mono text-[9px] text-amber-700 dark:text-amber-400"
                                                     >
@@ -544,9 +617,9 @@ onUnmounted(() => observadorTema?.disconnect());
                             <tr
                                 v-for="usuario in props.usuarios"
                                 :key="usuario.id"
-                                @click="filtrar({ usuario: usuario.id })"
+                                @click="filtrar({ camino_usuario: usuario.id })"
                                 class="border-sidebar-border/30 hover:bg-muted/50 cursor-pointer border-b transition-colors"
-                                :class="props.filtro.usuario === usuario.id ? 'bg-muted/70' : ''"
+                                :class="props.filtro.camino_usuario === usuario.id ? 'bg-muted/70' : ''"
                             >
                                 <td class="text-foreground py-2 pr-3 font-medium">{{ usuario.nombre }}</td>
                                 <td class="text-foreground py-2 pr-3 text-right font-mono">{{ numero(usuario.acciones) }}</td>
@@ -640,54 +713,163 @@ onUnmounted(() => observadorTema?.disconnect());
                             </Button>
                         </div>
                     </CardHeader>
-                    <CardContent class="max-h-[420px] overflow-auto">
-                        <table class="w-full text-[11px]">
-                            <thead class="bg-card sticky top-0">
-                                <tr class="border-sidebar-border/60 text-muted-foreground border-b text-left text-[10px] tracking-wider uppercase">
-                                    <th class="py-2 pr-3 font-semibold">Cuándo</th>
-                                    <th class="py-2 pr-3 font-semibold">Usuario</th>
-                                    <th class="py-2 pr-3 font-semibold">Acción</th>
-                                    <th class="py-2 pr-3 font-semibold">Ruta</th>
-                                    <th class="py-2 pr-3 font-semibold">Método</th>
-                                    <th class="py-2 pr-3 text-right font-semibold">ms</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr v-for="fila in props.bitacora.data" :key="fila.id" class="border-sidebar-border/30 border-b">
-                                    <td class="text-muted-foreground py-1.5 pr-3 font-mono">{{ fila.cuando }}</td>
-                                    <td class="text-foreground truncate py-1.5 pr-3">{{ fila.usuario }}</td>
-                                    <td class="py-1.5 pr-3">
-                                        <span
-                                            class="mr-1.5 rounded px-1.5 py-0.5 font-mono text-[9px] uppercase"
-                                            :class="
-                                                fila.tipo === 'accion'
-                                                    ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400'
-                                                    : 'bg-muted text-muted-foreground'
-                                            "
-                                        >
-                                            {{ fila.tipo === 'accion' ? 'acción' : 'petición' }}
-                                        </span>
-                                        <span :class="fila.esEscritura ? 'font-semibold text-blue-600 dark:text-blue-400' : 'text-foreground'">
-                                            {{ fila.etiqueta }}
-                                        </span>
-                                        <span v-if="fila.entidad" class="text-muted-foreground ml-1 font-mono text-[10px]">{{ fila.entidad }}</span>
-                                        <p
-                                            v-if="fila.error || fila.detalle"
-                                            class="truncate text-[10px]"
-                                            :class="fila.error ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'"
-                                        >
-                                            {{ fila.error ?? fila.detalle }}
-                                        </p>
-                                    </td>
-                                    <td class="text-muted-foreground py-1.5 pr-3 font-mono">/{{ fila.ruta }}</td>
-                                    <td class="text-muted-foreground py-1.5 pr-3 font-mono">{{ fila.metodo }}</td>
-                                    <td class="text-muted-foreground py-1.5 text-right font-mono">{{ fila.duracion_ms }}</td>
-                                </tr>
-                                <tr v-if="!props.bitacora.data?.length">
-                                    <td colspan="6" class="text-muted-foreground py-8 text-center">Sin filas registradas</td>
-                                </tr>
-                            </tbody>
-                        </table>
+                    <CardContent>
+                        <div class="border-sidebar-border/60 mb-3 grid gap-2 rounded-lg border p-3 sm:grid-cols-2 xl:grid-cols-5">
+                            <label class="text-muted-foreground flex flex-col gap-1 text-[10px] font-semibold uppercase">
+                                Desde (fecha y hora)
+                                <input
+                                    type="datetime-local"
+                                    :value="props.bitacoraFiltro.desde"
+                                    @change="cambiarBitacoraDesde"
+                                    class="border-sidebar-border/60 bg-background text-foreground h-8 rounded-md border px-2 text-xs font-normal normal-case"
+                                />
+                            </label>
+                            <label class="text-muted-foreground flex flex-col gap-1 text-[10px] font-semibold uppercase">
+                                Hasta (fecha y hora)
+                                <input
+                                    type="datetime-local"
+                                    :value="props.bitacoraFiltro.hasta"
+                                    @change="cambiarBitacoraHasta"
+                                    class="border-sidebar-border/60 bg-background text-foreground h-8 rounded-md border px-2 text-xs font-normal normal-case"
+                                />
+                            </label>
+                            <label class="text-muted-foreground flex flex-col gap-1 text-[10px] font-semibold uppercase">
+                                Usuario con historial
+                                <select
+                                    :value="props.bitacoraFiltro.usuario ?? ''"
+                                    @change="cambiarBitacoraUsuario"
+                                    class="border-sidebar-border/60 bg-background text-foreground h-8 rounded-md border px-2 text-xs font-normal normal-case"
+                                >
+                                    <option value="">Todos</option>
+                                    <option v-for="usuario in props.usuarios_historial" :key="usuario.id" :value="usuario.id">
+                                        {{ usuario.nombre }}
+                                    </option>
+                                </select>
+                            </label>
+                            <label class="text-muted-foreground flex flex-col gap-1 text-[10px] font-semibold uppercase">
+                                Tipo de registro
+                                <select
+                                    :value="props.bitacoraFiltro.tipo"
+                                    @change="cambiarBitacoraTipo"
+                                    class="border-sidebar-border/60 bg-background text-foreground h-8 rounded-md border px-2 text-xs font-normal normal-case"
+                                >
+                                    <option value="todos">Todos</option>
+                                    <option value="acciones">Acciones</option>
+                                    <option value="navegacion">Navegación</option>
+                                </select>
+                            </label>
+                            <label class="text-muted-foreground flex flex-col gap-1 text-[10px] font-semibold uppercase">
+                                Método HTTP
+                                <select
+                                    :value="props.bitacoraFiltro.metodo"
+                                    @change="cambiarBitacoraMetodo"
+                                    class="border-sidebar-border/60 bg-background text-foreground h-8 rounded-md border px-2 text-xs font-normal normal-case"
+                                >
+                                    <option value="">Todos</option>
+                                    <option v-for="metodo in props.opciones.metodos" :key="metodo" :value="metodo">{{ metodo }}</option>
+                                </select>
+                            </label>
+                        </div>
+
+                        <div class="max-h-[420px] overflow-auto">
+                            <table class="w-full text-[11px]">
+                                <thead class="bg-card sticky top-0">
+                                    <tr
+                                        class="border-sidebar-border/60 text-muted-foreground border-b text-left text-[10px] tracking-wider uppercase"
+                                    >
+                                        <th class="py-2 pr-3 font-semibold">Cuándo</th>
+                                        <th class="py-2 pr-3 font-semibold">Usuario</th>
+                                        <th class="py-2 pr-3 font-semibold">Acción</th>
+                                        <th class="py-2 pr-3 font-semibold">Ruta</th>
+                                        <th class="py-2 pr-3 font-semibold">Método</th>
+                                        <th class="py-2 pr-3 font-semibold">IP</th>
+                                        <th class="py-2 pr-3 text-right font-semibold">ms</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr v-for="fila in props.bitacora.data" :key="fila.id" class="border-sidebar-border/30 border-b">
+                                        <td class="text-muted-foreground py-1.5 pr-3 font-mono">{{ fila.cuando }}</td>
+                                        <td class="text-foreground truncate py-1.5 pr-3">{{ fila.usuario }}</td>
+                                        <td class="py-1.5 pr-3">
+                                            <span
+                                                class="mr-1.5 rounded px-1.5 py-0.5 font-mono text-[9px] uppercase"
+                                                :class="
+                                                    fila.tipo === 'accion'
+                                                        ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400'
+                                                        : 'bg-muted text-muted-foreground'
+                                                "
+                                            >
+                                                {{ fila.tipo === 'accion' ? 'acción' : 'petición' }}
+                                            </span>
+                                            <span :class="fila.esEscritura ? 'font-semibold text-blue-600 dark:text-blue-400' : 'text-foreground'">
+                                                {{ fila.etiqueta }}
+                                            </span>
+                                            <span v-if="fila.entidad" class="text-muted-foreground ml-1 font-mono text-[10px]">{{
+                                                fila.entidad
+                                            }}</span>
+                                            <p
+                                                v-if="fila.error || fila.detalle"
+                                                class="truncate text-[10px]"
+                                                :class="fila.error ? 'text-amber-700 dark:text-amber-400' : 'text-muted-foreground'"
+                                            >
+                                                {{ fila.error ?? fila.detalle }}
+                                            </p>
+                                        </td>
+                                        <td class="text-muted-foreground py-1.5 pr-3 font-mono">/{{ fila.ruta }}</td>
+                                        <td class="text-muted-foreground py-1.5 pr-3 font-mono">{{ fila.metodo }}</td>
+                                        <td class="text-muted-foreground py-1.5 pr-3 font-mono" :title="fila.ip ?? 'La IP no está disponible'">
+                                            {{ fila.ip ?? 'no disponible' }}
+                                        </td>
+                                        <td class="text-muted-foreground py-1.5 text-right font-mono">{{ fila.duracion_ms }}</td>
+                                    </tr>
+                                    <tr v-if="!props.bitacora.data?.length">
+                                        <td colspan="7" class="text-muted-foreground py-8 text-center">Sin filas registradas</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </CardContent>
+                </Card>
+            </div>
+
+            <div class="mt-8">
+                <Card>
+                    <CardHeader>
+                        <div class="flex items-center gap-2">
+                            <BookmarkCheck class="h-5 w-5 text-muted-foreground" />
+                            <CardTitle class="text-base font-semibold">Solo Lectura</CardTitle>
+                        </div>
+                        <CardDescription>
+                            Módulos de consulta y visualización de datos sin permisos de edición.
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
+                            <Link
+                                href="/EstadoOperacion"
+                                class="flex items-center gap-3 rounded-lg border p-4 transition-colors hover:bg-muted/50"
+                            >
+                                <div class="rounded-md bg-muted p-2 text-foreground">
+                                    <SlidersHorizontal class="h-5 w-5" />
+                                </div>
+                                <div>
+                                    <div class="font-medium">EstadoOperacion</div>
+                                    <div class="text-xs text-muted-foreground">Consulta de estados de operación</div>
+                                </div>
+                            </Link>
+                            <Link
+                                href="/Distribucion_por_tallas"
+                                class="flex items-center gap-3 rounded-lg border p-4 transition-colors hover:bg-muted/50"
+                            >
+                                <div class="rounded-md bg-muted p-2 text-foreground">
+                                    <Grid3x3 class="h-5 w-5" />
+                                </div>
+                                <div>
+                                    <div class="font-medium">Distribución por tallas</div>
+                                    <div class="text-xs text-muted-foreground">Consulta de distribución por tallas</div>
+                                </div>
+                            </Link>
+                        </div>
                     </CardContent>
                 </Card>
             </div>

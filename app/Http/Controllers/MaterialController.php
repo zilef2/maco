@@ -134,6 +134,7 @@ class MaterialController extends Controller {
             'total' => $Materiales->count(),
             'prevision' => $this->prevision(),
             'faltantesOp' => $this->faltantesPorOp(),
+            'materialesEnOp' => $this->materialesEnOrden(),
             'breadcrumbs' => [['label' => __('app.label.' . $this->FromController), 'href' => route($this->FromController . '.index')]],
             'title' => __('app.label.' . $this->FromController),
             'perPage' => 10,
@@ -346,6 +347,28 @@ class MaterialController extends Controller {
             ->sortByDesc('faltante')
             ->values()
             ->all();
+    }
+
+    /**
+     * Materiales que participan en alguna orden de producción: por el kit de un
+     * proceso, por el detalle de materiales de la OP o como origen de un
+     * proceso externo. Alimenta el filtro "En una OP" del listado.
+     *
+     * @return list<int>
+     */
+    private function materialesEnOrden(): array {
+        $ids = KitProceso::query()->distinct()->pluck('material_id')
+            ->merge(DB::table('orden_produccion_material')->distinct()->pluck('material_id'))
+            ->merge(DB::table('proceso_externos')->distinct()->pluck('material_origen_id'))
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        sort($ids);
+
+        return $ids;
     }
 
 	public function losSelect(string $modelClass, string $label, string $displayField = 'nombre'): array {
