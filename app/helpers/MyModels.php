@@ -56,6 +56,7 @@ class MyModels {
 			'FichaEnsamble',
 			'FichaEnsambleMaterial',
 			'Procesoop',
+			'Compromisomaterial',
 			//aquipues
 
 		];

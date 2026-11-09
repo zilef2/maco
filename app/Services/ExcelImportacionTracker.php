@@ -24,10 +24,11 @@ class ExcelImportacionTracker
         'proveedor',
         'usuario',
         'mpp',
+        'ficha_tecnica_materiales',
     ];
 
     /** Entidades cuyo procesamiento pesado corre en la cola. */
-    public const ASINCRONAS = ['taller', 'proveedor', 'usuario', 'mpp'];
+    public const ASINCRONAS = ['taller', 'proveedor', 'usuario', 'mpp', 'ficha_tecnica_materiales'];
 
     private const ENTIDAD_POR_RUTA = [
         'Producto.upload-excel' => 'producto',
@@ -37,6 +38,7 @@ class ExcelImportacionTracker
         'Proveedor.upload-excel' => 'proveedor',
         'user.upload-excel' => 'usuario',
         'ImportarExcel.mpp' => 'mpp',
+        'ImportarExcel.ficha-producto' => 'ficha_tecnica_materiales',
     ];
 
     /** Cuántas cargas recientes entran en el promedio de la vista. */

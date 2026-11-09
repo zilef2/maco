@@ -96,6 +96,7 @@ Route::middleware('auth', 'verified')->group(function () {
 	Route::resource("/GrupoTalla", \App\Http\Controllers\GrupoTallaController::class);
 	Route::get("/ImportarExcel", [\App\Http\Controllers\ImportarExcelController::class, 'index'])->name('ImportarExcel.index');
 	Route::post("/ImportarExcel/mpp", [\App\Http\Controllers\ImportarExcelController::class, 'uploadMpp'])->name('ImportarExcel.mpp');
+	Route::post("/ImportarExcel/ficha-producto", [\App\Http\Controllers\ImportarExcelController::class, 'uploadFichaProducto'])->name('ImportarExcel.ficha-producto');
 	Route::post("/ImportarExcel/entidad", [\App\Http\Controllers\ImportarExcelController::class, 'toggleEntidad'])->name('ImportarExcel.toggleEntidad');
 	Route::get("/ImportarExcel/plantilla/{clave}", [\App\Http\Controllers\ImportarExcelController::class, 'descargarPlantilla'])->name('ImportarExcel.plantilla');
 	Route::resource("/EstadoOpMaterial", \App\Http\Controllers\EstadoOpMaterialController::class);
@@ -114,6 +115,7 @@ Route::middleware('auth', 'verified')->group(function () {
 		]);
 	})->name('Explicaciones.index');
 	Route::resource("/Procesoop", \App\Http\Controllers\ProcesoopController::class);
+	Route::resource("/Compromisomaterial", \App\Http\Controllers\CompromisomaterialController::class);
 	//aquipues
 }); //fin verified
 

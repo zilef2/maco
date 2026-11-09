@@ -3,7 +3,7 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import PrimaryButton from '@/components/PrimaryButton.vue';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 
 import Create from '@/pages/OrdenProduccion/Create.vue';
 import Edit from '@/pages/OrdenProduccion/Edit.vue';
@@ -45,7 +45,7 @@ import {
 import { formatDate, formatdinero, zilef_nuber_format } from '@/global.ts';
 
 const props = defineProps({
-    ordenes: { type: Array as () => any[], default: () => [] },
+    ordenes: { type: Array as () => any[] | null, default: null },
     total: Number,
     breadcrumbs: Array as () => Array<{ label?: string; href?: string }>,
     perPage: Number,
@@ -769,19 +769,45 @@ const tooltipFaltantes = (op: any) => {
 
 /* -------------------------- Carga / recarga ----------------------------- */
 
-const cargando = ref(false);
+const carga = reactive({
+    activa: false,
+    tablaLista: false,
+    resumenListo: false,
+});
 const rutaIndex = new URL(String(route('OrdenProduccion.index')), window.location.origin).pathname;
+
+watch(
+    () => props.ordenes,
+    (nuevasOrdenes) => {
+        if (Array.isArray(nuevasOrdenes)) {
+            carga.tablaLista = true;
+            setTimeout(() => {
+                carga.resumenListo = true;
+            }, 500);
+        } else {
+            carga.tablaLista = false;
+            carga.resumenListo = false;
+        }
+    },
+    { immediate: true },
+);
 
 router.on('start', (event) => {
     const url = event.detail.visit.url;
     const pathname = url instanceof URL ? url.pathname : new URL(String(url), window.location.origin).pathname;
-    if (pathname === rutaIndex) cargando.value = true;
+    if (pathname === rutaIndex) {
+        carga.activa = true;
+        carga.tablaLista = false;
+        carga.resumenListo = false;
+    }
 });
 router.on('finish', () => {
-    cargando.value = false;
+    carga.activa = false;
 });
 
 const recargar = () => {
+    carga.tablaLista = false;
+    carga.resumenListo = false;
     router.reload({ only: ['ordenes', 'total', 'borradorUltimo', 'losSelect'], preserveScroll: true });
 };
 
@@ -830,12 +856,13 @@ const titulos = [
                     <div class="min-w-0">
                         <h1 class="text-2xl font-semibold tracking-tight text-foreground">Órdenes de producción</h1>
                         <p class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground" role="status" aria-live="polite">
-                            <span class="tabular-nums">
+                            <span v-if="!carga.tablaLista" class="inline-flex h-4 w-28 animate-pulse rounded bg-muted"></span>
+                            <span v-else class="tabular-nums">
                                 <span class="font-medium text-foreground">{{ totalFiltrado }}</span>
                                 de {{ filas.length }} órdenes
                             </span>
                             <span
-                                v-if="hayFiltros"
+                                v-if="carga.tablaLista && hayFiltros"
                                 class="inline-flex items-center gap-1 rounded-full border border-border bg-muted/60 px-2 py-0.5 text-[11px] font-medium text-foreground"
                             >
                                 <FunnelIcon class="h-3 w-3" />
@@ -848,12 +875,12 @@ const titulos = [
                         <button
                             type="button"
                             @click="recargar"
-                            :disabled="cargando"
+                            :disabled="carga.activa"
                             title="Actualizar datos"
                             aria-label="Actualizar datos"
                             class="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50"
                         >
-                            <ArrowPathIcon class="h-4 w-4" :class="{ 'animate-spin': cargando }" />
+                            <ArrowPathIcon class="h-4 w-4" :class="{ 'animate-spin': carga.activa }" />
                         </button>
 
                         <button
@@ -999,21 +1026,70 @@ const titulos = [
                         </thead>
 
                         <!-- Cargando -->
-                        <tbody v-if="cargando">
-                            <tr v-for="n in 8" :key="'skeleton-' + n" class="border-b border-border/60">
-                                <td :colspan="columnas.length + 1" class="px-4 py-3">
-                                    <div class="flex items-center gap-4">
-                                        <div class="h-3.5 w-16 animate-pulse rounded bg-muted"></div>
-                                        <div class="h-3.5 w-44 animate-pulse rounded bg-muted"></div>
-                                        <div class="h-3.5 flex-1 animate-pulse rounded bg-muted"></div>
-                                        <div class="h-3.5 w-24 animate-pulse rounded bg-muted"></div>
+                        <tbody v-if="carga.activa || !carga.tablaLista">
+                            <tr v-for="n in porPagina" :key="'skeleton-' + n" class="border-b border-border/60">
+                                <td class="px-3 py-3 align-top">
+                                    <div class="animate-pulse space-y-1.5">
+                                        <div class="h-3.5 w-20 rounded bg-muted"></div>
+                                        <div class="h-3 w-28 rounded bg-muted/60"></div>
+                                    </div>
+                                </td>
+                                <td class="px-3 py-3 align-top">
+                                    <div class="animate-pulse space-y-1.5">
+                                        <div class="h-3.5 w-40 rounded bg-muted"></div>
+                                        <div class="h-3 w-24 rounded bg-muted/60"></div>
+                                    </div>
+                                </td>
+                                <td class="px-3 py-3 text-right align-top">
+                                    <div class="animate-pulse flex flex-col items-end gap-1.5">
+                                        <div class="h-3.5 w-12 rounded bg-muted"></div>
+                                        <div class="h-3 w-16 rounded bg-muted/60"></div>
+                                    </div>
+                                </td>
+                                <td class="px-3 py-3 text-right align-top">
+                                    <div class="animate-pulse space-y-1.5">
+                                        <div class="h-3 w-28 rounded bg-muted/60"></div>
+                                        <div class="h-3 w-28 rounded bg-muted/60"></div>
+                                        <div class="h-3.5 w-24 rounded bg-muted mt-1"></div>
+                                    </div>
+                                </td>
+                                <td class="hidden px-3 py-3 align-top md:table-cell">
+                                    <div class="animate-pulse space-y-1.5">
+                                        <div class="h-3.5 w-28 rounded bg-muted"></div>
+                                        <div class="h-3 w-20 rounded bg-muted/60"></div>
+                                    </div>
+                                </td>
+                                <td class="px-3 py-3 align-top">
+                                    <div class="animate-pulse">
+                                        <div class="h-5 w-28 rounded-full bg-muted"></div>
+                                    </div>
+                                </td>
+                                <td class="px-3 py-3 align-top">
+                                    <div class="animate-pulse">
+                                        <div class="h-5 w-24 rounded-full bg-muted/60"></div>
+                                    </div>
+                                </td>
+                                <td class="hidden px-3 py-3 align-top lg:table-cell">
+                                    <div class="animate-pulse">
+                                        <div class="h-3.5 w-24 rounded bg-muted"></div>
+                                    </div>
+                                </td>
+                                <td class="hidden px-3 py-3 align-top 2xl:table-cell">
+                                    <div class="animate-pulse">
+                                        <div class="h-3 w-36 rounded bg-muted/60"></div>
+                                    </div>
+                                </td>
+                                <td class="sticky right-0 z-10 w-[104px] border-l border-border/60 bg-card px-2 py-2 align-middle">
+                                    <div class="animate-pulse flex items-center justify-end gap-1">
+                                        <div class="h-7 w-7 rounded-md bg-muted"></div>
+                                        <div class="h-7 w-7 rounded-md bg-muted"></div>
                                     </div>
                                 </td>
                             </tr>
                         </tbody>
 
                         <!-- Filas -->
-                        <tbody v-else-if="visibles.length" :key="paginaActual" class="op-page">
+                        <tbody v-else-if="carga.tablaLista && visibles.length" :key="paginaActual" class="op-page">
                             <tr
                                 v-for="op in visibles"
                                 :key="op.id"
@@ -1301,7 +1377,7 @@ const titulos = [
 
                 <!-- Paginación -->
                 <footer
-                    v-if="!cargando && totalFiltrado > 0"
+                    v-if="!carga.activa && totalFiltrado > 0"
                     class="flex flex-wrap items-center justify-between gap-3 border-t border-border bg-card px-3 py-2.5 sm:px-4"
                 >
                     <p class="text-xs text-muted-foreground" role="status" aria-live="polite">
@@ -1372,7 +1448,41 @@ const titulos = [
             </div>
 
             <!-- Resumen bajo la tabla: totales y órdenes que requieren atención -->
-            <section v-if="filas.length" class="rounded-xl border border-border bg-card shadow-sm">
+            <section v-if="!carga.resumenListo || filas.length" class="rounded-xl border border-border bg-card shadow-sm">
+                <template v-if="!carga.resumenListo">
+                    <!-- Skeleton resumen -->
+                    <div class="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3">
+                        <div class="flex items-start gap-2.5">
+                            <div class="h-8 w-8 animate-pulse rounded-lg bg-muted"></div>
+                            <div class="space-y-1.5">
+                                <div class="h-3.5 w-32 animate-pulse rounded bg-muted"></div>
+                                <div class="h-3 w-56 animate-pulse rounded bg-muted/60"></div>
+                            </div>
+                        </div>
+                        <div class="h-3 w-16 animate-pulse rounded bg-muted/60"></div>
+                    </div>
+                    <div class="flex flex-col gap-3 p-4">
+                        <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                            <div v-for="n in 6" :key="n" class="animate-pulse rounded-lg border border-border bg-background p-3 space-y-2">
+                                <div class="h-2.5 w-16 rounded bg-muted/60"></div>
+                                <div class="h-7 w-12 rounded bg-muted"></div>
+                                <div class="h-2.5 w-24 rounded bg-muted/60"></div>
+                            </div>
+                        </div>
+                        <div class="grid gap-2.5 lg:grid-cols-2">
+                            <div v-for="n in 3" :key="n" class="animate-pulse rounded-lg border border-border bg-background p-3 space-y-2">
+                                <div class="flex items-center justify-between">
+                                    <div class="h-3 w-28 rounded bg-muted"></div>
+                                    <div class="h-5 w-10 rounded-full bg-muted/60"></div>
+                                </div>
+                                <div class="h-2.5 w-48 rounded bg-muted/60"></div>
+                                <div class="h-28 rounded-md bg-muted/40"></div>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+
+                <template v-else>
                 <div class="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3">
                     <div class="flex items-start gap-2.5">
                         <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-border bg-muted/60">
@@ -1709,6 +1819,7 @@ const titulos = [
                         </div>
                     </div>
                 </div>
+                </template>
             </section>
 
             <!-- Guía de estados: qué pasa y quién interviene -->

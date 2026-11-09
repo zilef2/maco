@@ -111,7 +111,12 @@ const navDropdown: NavGroup[] = [
             //     href: '/KitProceso',
             //     icon: PackageCheck,
             // },
-            //aquipuesSide
+            {
+		title: 'Compromisomaterial',
+		href: '/Compromisomaterial',
+		icon: LayoutGrid,
+	},
+	//aquipuesSide
 
         ],
     },
@@ -120,7 +125,12 @@ const navDropdown: NavGroup[] = [
     //     icon: Layers,
     //     items: [
            
-    //         //aquipuesSide
+    //         {
+		title: 'Compromisomaterial',
+		href: '/Compromisomaterial',
+		icon: LayoutGrid,
+	},
+	//aquipuesSide
 
     //     ],
     // },

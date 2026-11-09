@@ -68,13 +68,16 @@ class PlantillasExcelService
             ],
         ],
         'ficha_tecnica_materiales' => [
-            'nombre' => 'Ficha técnica de materiales',
-            'hoja' => 'Ficha técnica',
-            'archivo' => 'plantilla-ficha-tecnica-materiales.xlsx',
+            'nombre' => 'Ficha de producto',
+            'hoja' => 'Codigos',
+            'archivo' => 'plantilla-ficha-producto.xlsx',
             'columnas' => [
-                ['titulo' => 'Producto o material procesado', 'requerida' => true, 'descripcion' => 'Código del producto o del material con proceso al que pertenece la ficha. Un mismo objetivo puede repetirse en varias filas, una por cada material de su receta.', 'ejemplos' => ['CAL-BOT-01', 'MAT-PRO-1']],
-                ['titulo' => 'Material', 'requerida' => true, 'descripcion' => 'Código del material existente en el inventario que se incorpora a la ficha.', 'ejemplos' => ['CUE-VAC-1', 'FOR-BAD-2']],
-                ['titulo' => 'Cantidad', 'requerida' => true, 'descripcion' => 'Cantidad o consumo estándar del material por una unidad del producto o material procesado. Debe ser mayor que cero y usar punto decimal.', 'ejemplos' => ['0.35', '0.25']],
+                ['titulo' => 'Codigo producto', 'requerida' => true, 'descripcion' => 'Código interno del producto (productos.Codigo_interno, ej: PT-042). Todas las filas con el mismo código forman una sola ficha. Debe existir en la app: si falta, se rechaza el archivo completo antes de importar.', 'ejemplos' => ['PT-998', 'PT-998']],
+                ['titulo' => 'Producto', 'requerida' => false, 'descripcion' => 'Nombre del producto. Es solo texto de ayuda; el importador ignora esta columna.', 'ejemplos' => ['Zapato de ejemplo', 'Zapato de ejemplo']],
+                ['titulo' => 'codigo material', 'requerida' => true, 'descripcion' => 'Código del material (materials.codigo_material, ej: COM-SES-039). Debe existir en la app. Si un material se repite para el mismo producto, gana la última fila.', 'ejemplos' => ['COM-SES-998', 'TEX-LFL-998']],
+                ['titulo' => 'Material', 'requerida' => false, 'descripcion' => 'Nombre del material. Es solo texto de ayuda; el importador ignora esta columna.', 'ejemplos' => ['Sesgo de ejemplo', 'Lana flock de ejemplo']],
+                ['titulo' => 'consumo por par', 'requerida' => true, 'descripcion' => 'Cuánto del material consume un par. Número mayor que cero; acepta coma o punto decimal (1,2 / 1.2) y se guarda con dos decimales.', 'ejemplos' => ['1,20', '0,35']],
+                ['titulo' => 'unidad', 'requerida' => false, 'descripcion' => 'Unidad del consumo (metro, unidad…). Sirve de referencia: la ficha conserva la unidad de inventario que ya tiene el material.', 'ejemplos' => ['metro', 'unidad']],
             ],
         ],
         'estado_operacion' => [

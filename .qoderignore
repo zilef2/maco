@@ -1,0 +1,46 @@
+# Specify files and folders to ignore during indexing. Uses the same matching rules as .gitignore and supports wildcard patterns such as my-security/ and *.log.
+# ==========================================
+# Dependencias (Códgo de terceros)
+# ==========================================
+/vendor/
+/node_modules/
+
+# ==========================================
+# Archivos de caché y generados por el framework
+# ==========================================
+/storage/
+/bootstrap/cache/
+/public/build/
+/public/hot
+/public/storage
+
+# ==========================================
+# Entorno y Secretos (Seguridad)
+# ==========================================
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ==========================================
+# Bases de datos y Logs
+# ==========================================
+*.sqlite
+*.sqlite3
+*.log
+*.sql
+/database/snapshots/
+
+# ==========================================
+# Archivos del sistema y del IDE
+# ==========================================
+/.git/
+/.idea/
+/.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+Thumbs.db

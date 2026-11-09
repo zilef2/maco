@@ -336,7 +336,7 @@ return [
 		'regla_clave' => 'Regla clave',
 		'puede_pasar_a' => 'Puede pasar a',
 		'fichatecnicamateriales' => 'ficha de producto',
-		'FichaTecnicaMateriales' => 'Ficha técnica de materiales',
+		'FichaTecnicaMateriales' => 'Ficha de producto',
 		'aporta' => 'aporta',
 		'estado_al_llegar_ensamble' => 'Estado al llegar ensamble',
 		'consumo_estandar' => 'Consumo estándar',
@@ -434,6 +434,13 @@ return [
 		'Procesoop' => 'Procesos',
 		'producto_id' => 'Producto id',
 		'coste_proceso' => 'Coste proceso',
+		'compromisomaterial' => 'Compromisomaterial',
+		'Compromisomaterial' => 'Compromisomaterial',
+		'material_id' => 'material_id',
+		'op_origen_id' => 'op_origen_id',
+		'op_destino_id' => 'op_destino_id',
+		'cantidad' => 'cantidad',
+		'estado' => 'estado',
 		//aquipues
 	    
     ],
@@ -841,6 +848,13 @@ return [
 		'Procesoop' => 'Procesos',
 		'producto_id' => 'Producto id',
 		'coste_proceso' => 'Coste proceso',
+		'compromisomaterial' => 'Compromisomaterial',
+		'Compromisomaterial' => 'Compromisomaterial',
+		'material_id' => 'material_id',
+		'op_origen_id' => 'op_origen_id',
+		'op_destino_id' => 'op_destino_id',
+		'cantidad' => 'cantidad',
+		'estado' => 'estado',
 		//aquipues
     ],
 ];

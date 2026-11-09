@@ -54,15 +54,35 @@ class OrdenProduccionController extends Controller {
         $this->thisAtributos = (new OrdenProduccion())->getFillable();
     }
 
-    public function index(Request $request) {
+    public function index(Request $request): \Inertia\Response {
         $numberPermissions = MyModels::getPermissionToNumber(Myhelp::EscribirEnLog($this, ' OrdenProduccions '));
+        $losSelect = $this->obtenerSelects();
 
-        // Listado completo: la tabla filtra, ordena y pagina en el frontend.
-        // La clave solo depende de la versión, que se incrementa al escribir.
-        $claveListado = 'op_index_v12_' . $this->versionCache();
-        $OrdenProduccions = Cache::remember($claveListado, now()->addMinutes(10), function () {
-            // Turno en la cola de «Esperando materiales», una sola consulta para
-            // todo el listado en lugar de una por fila.
+        $borradorId = OrdenProduccion::where('estado_op_id', EstadoOperacion::where('nombre', 'Borrador')->value('id'))
+            ->latest('updated_at')->value('id');
+        $borradorUltimo = $borradorId
+            ? OrdenProduccion::with(['productos:id,Titulo_Shopify,Codigo_interno', 'materiales:id,codigo_material,nombre_base', 'distribucionesPorTallas'])->find($borradorId)
+            : null;
+
+        return Inertia::render($this->FromController . '/Index', [
+            'ordenes' => Inertia::defer(fn () => $this->obtenerListadoOrdenes()),
+            'total' => Inertia::defer(fn () => $this->obtenerListadoOrdenes()->count()),
+            'breadcrumbs' => [['label' => __('app.label.' . $this->FromController), 'href' => route($this->FromController . '.index')]],
+            'title' => __('app.label.' . $this->FromController),
+            'perPage' => 10,
+            'numberPermissions' => $numberPermissions,
+            'losSelect'         => $losSelect,
+            'titulos'           => OrdenProduccion::getFillableWithTypes(),
+            'borradorUltimo'    => $borradorUltimo,
+            'mostrarRestaMateriales' => Parametro::bool(Parametro::MOSTRAR_RESTA_MATERIALES_TALLER, true),
+            'metodoCostos' => $this->costosMateriales->metodo(),
+            'metodoCostosLabel' => $this->costosMateriales->labelMetodo(),
+        ]);
+    }
+
+    private function obtenerListadoOrdenes(): Collection {
+        $claveListado = 'op_index_v13_' . $this->versionCache();
+        return Cache::remember($claveListado, now()->addMinutes(10), function () {
             $posiciones = $this->colaMateriales->posiciones();
 
             return OrdenProduccion::query()
@@ -94,9 +114,28 @@ class OrdenProduccionController extends Controller {
                         'id' => (int) $m->id,
                         'nombre' => $nombreMaterial($m),
                         'cantidad' => (int) ($m->pivot->cantidad ?? 0),
+                        'unidad' => $m->unidad_inventario ?: 'u',
                     ])->values()->all();
 
-                    // Nombres por producto para las tablas de detalle (tallas y recepción).
+                    $cantidadesPorProducto = $op->distribucionesPorTallas
+                        ->filter(fn ($d) => $d->producto_id)
+                        ->groupBy('producto_id')
+                        ->map(fn ($filas) => (float) $filas->sum('cantidad_planificada'));
+
+                    $op->productos_objetivo = $op->productos->map(function ($p) use ($nombreProducto, $cantidadesPorProducto, $op) {
+                        $cantidad = (float) ($cantidadesPorProducto[$p->id] ?? 0);
+                        if ($cantidad <= 0 && $op->productos->count() === 1) {
+                            $cantidad = (float) $op->cantidad_planificada;
+                        }
+
+                        return [
+                            'id' => (int) $p->id,
+                            'nombre' => $nombreProducto($p) ?: ('Producto #' . $p->id),
+                            'cantidad' => round($cantidad, 2),
+                            'unidad' => 'pares',
+                        ];
+                    })->values()->all();
+
                     $nombresProductos = $op->productos->mapWithKeys(
                         fn ($p) => [$p->id => $nombreProducto($p)]
                     );
@@ -104,9 +143,6 @@ class OrdenProduccionController extends Controller {
                         fn ($m) => [$m->id => $nombreMaterial($m)]
                     );
 
-                    // Relación material -> productos que lo usan según la ficha
-                    // técnica de cada producto. Permite mostrar a qué producto
-                    // pertenece cada material faltante.
                     $productosPorMaterial = [];
                     foreach ($op->productos as $productoKit) {
                         $ficha = $productoKit->fichaTecnica->first();
@@ -142,8 +178,6 @@ class OrdenProduccionController extends Controller {
                         }
                     }
 
-                    // Detalle por talla con su producto o material, para la
-                    // recepción de calidad.
                     $op->distribuciones_detalle = $op->distribucionesPorTallas->map(function ($d) use ($nombreProducto, $nombresProductos, $nombreMaterial, $nombresMaterialesObjetivo) {
                         return [
                             'id'                   => $d->id,
@@ -160,8 +194,6 @@ class OrdenProduccionController extends Controller {
                         ];
                     })->values()->all();
 
-                    // Materiales del kit, con la necesidad total y la existencia
-                    // actual. Se usan en el detalle al hacer clic en el estado.
                     $op->materiales_detalle = $op->kitProcesos->map(function ($kit) use ($productosPorMaterial) {
                         $requerida = (float) ($kit->cantidad_requerida ?? 0);
                         $disponible = (float) ($kit->material?->existencia_actual ?? 0);
@@ -188,10 +220,6 @@ class OrdenProduccionController extends Controller {
                         ->filter(fn ($fila) => $fila['faltante'] > 0)
                         ->values()->all();
 
-                    // Costo de los materiales de la OP. El precio unitario de
-                    // cada material queda guardado en la OP según el parámetro
-                    // costos_promedio; si la OP aún no tiene su precio guardado
-                    // se calcula en vivo con ese mismo método.
                     $op->costo_fichas = $op->costoFichasTecnicas();
                     $op->costo_proceso = round((float) ($op->costo_proceso ?? 0), 2);
                     $op->costo_total = round($op->costo_fichas + $op->costo_proceso, 2);
@@ -200,7 +228,6 @@ class OrdenProduccionController extends Controller {
                     $nombrePorMaterial = collect($nombresMateriales)
                         ->mapWithKeys(fn ($fila) => [$fila['material_id'] => $fila['nombre']]);
 
-                    // Precio guardado por material, para el detalle de la OP.
                     $op->costos_detalle = $op->costosMateriales
                         ->sortBy('material_id')
                         ->map(function ($fila) use ($nombrePorMaterial) {
@@ -216,7 +243,6 @@ class OrdenProduccionController extends Controller {
                             ];
                         })->values()->all();
 
-                    // Historial de los precios que cambió el material en esta OP.
                     $op->costos_cambios_detalle = $op->costosCambios
                         ->sortByDesc('id')
                         ->map(function ($cambio) use ($nombrePorMaterial) {
@@ -234,14 +260,9 @@ class OrdenProduccionController extends Controller {
                             ];
                         })->values()->all();
 
-                    // Costo de materiales de una unidad de cada producto de la OP,
-                    // con los precios guardados. Lo usa el formulario de recepción
-                    // para costear aprobados y no recuperables.
                     $op->costo_unitario_productos = $this->costosRecepcion->unitarios($op);
                     $op->costo_unitario_materiales = $this->costosRecepcion->unitariosMateriales($op);
 
-                    // Recepciones ya registradas, para precargar el formulario
-                    // de calidad y para el detalle de solo lectura del estado.
                     $op->recepciones_detalle = $op->recepcionesCalidad->map(fn ($r) => [
                         'id'                      => $r->id,
                         'producto_id'             => $r->producto_referencia_id,
@@ -262,8 +283,6 @@ class OrdenProduccionController extends Controller {
                             : null,
                     ])->values()->all();
 
-                    // Compromisos de reparación sin resolver: precargan la
-                    // fecha de compromiso pendiente en el formulario de recepción.
                     $op->compromisos_detalle = $op->compromisosReparacion
                         ->reject(fn ($c) => $c->atendido)
                         ->map(fn ($c) => [
@@ -280,8 +299,6 @@ class OrdenProduccionController extends Controller {
                             'fecha_compromiso'       => $c->fecha_compromiso?->toDateString(),
                         ])->values()->all();
 
-                    // Último cierre registrado, para mostrarlo en el detalle de
-                    // la OP y en el resumen de cierre.
                     $cierre = $op->cierres->sortByDesc('id')->first();
                     $op->cierre_detalle = $cierre ? [
                         'id'                  => $cierre->id,
@@ -299,35 +316,6 @@ class OrdenProduccionController extends Controller {
                 })
                 ->values();
         });
-
-        // Selects para los formularios (productos, talleres, estados, usuarios, grupos, siguiente OP)
-        $losSelect = $this->obtenerSelects();
-
-        // Último borrador pendiente (guardado con "Terminar después") para el botón "Continuar última OP"
-        $borradorId = OrdenProduccion::where('estado_op_id', EstadoOperacion::where('nombre', 'Borrador')->value('id'))
-            ->latest('updated_at')->value('id');
-        $borradorUltimo = $borradorId
-            ? OrdenProduccion::with(['productos:id,Titulo_Shopify,Codigo_interno', 'materiales:id,codigo_material,nombre_base', 'distribucionesPorTallas'])->find($borradorId)
-            : null;
-
-        return Inertia::render($this->FromController . '/Index', [
-            'ordenes' => $OrdenProduccions,
-            'total' => $OrdenProduccions->count(),
-            'breadcrumbs' => [['label' => __('app.label.' . $this->FromController), 'href' => route($this->FromController . '.index')]],
-            'title' => __('app.label.' . $this->FromController),
-            'perPage' => 10,
-            'numberPermissions' => $numberPermissions,
-            'losSelect'         => $losSelect,
-	        'titulos'           => OrdenProduccion::getFillableWithTypes(),
-            'borradorUltimo'    => $borradorUltimo,
-            // Si es verdadero, el cambio de estado a «En taller» muestra
-            // cuánto se resta de inventario por material.
-            'mostrarRestaMateriales' => Parametro::bool(Parametro::MOSTRAR_RESTA_MATERIALES_TALLER, true),
-            // Cómo se tomó el precio de los materiales guardado en las OPs.
-            'metodoCostos' => $this->costosMateriales->metodo(),
-            'metodoCostosLabel' => $this->costosMateriales->labelMetodo(),
-
-        ]);
     }
 
     /**

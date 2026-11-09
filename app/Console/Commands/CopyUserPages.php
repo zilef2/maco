@@ -49,17 +49,19 @@ class CopyUserPages extends Command
         // Tipos válidos: string text number dinero date datetime boolean foreign json
         // Cada entrada: [ 'NombreModelo', 'required' => [...], 'optional' => [...] ]
         return [
-    [
-        'Procesoop',
-        'required' => [
-            'nombre'          => 'string',   
-            'producto_id'     => 'foreign',
-            'coste_proceso'     => 'dinero',
-        ],
-        'optional' => [
-        ],
-    ],
-];
+            [
+                'Compromisomaterial',
+                'required' => [
+                    'material_id' => 'foreign',
+                    'op_origen_id' => 'foreign',
+                    'op_destino_id' => 'foreign',
+                    'cantidad' => 'decimal',
+                    'estado' => 'string',
+                ],
+                'optional' => [
+                ],
+            ],
+        ];
     }
 
     private function allAttributes(): array

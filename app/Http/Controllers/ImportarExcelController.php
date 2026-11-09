@@ -3,8 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\helpers\Myhelp;
+use App\Jobs\ImportarFichaProductoJob;
 use App\Jobs\ImportarMPPJob;
 use App\Models\Parametro;
+use App\Services\ExcelFichasProductoService;
 use App\Services\ExcelImportacionTracker;
 use App\Services\ExcelMPPService;
 use App\Services\ImportacionExcelNotificador;
@@ -36,7 +38,7 @@ class ImportarExcelController extends Controller
      * cargan con el archivo de talleres, cuya columna de clasificación decide
      * el destino de cada fila.
      */
-    private const ENTIDADES_CON_EXCEL_DEFAULT = ['producto', 'material', 'estado_operacion', 'taller', 'usuario', 'mpp'];
+    private const ENTIDADES_CON_EXCEL_DEFAULT = ['producto', 'material', 'estado_operacion', 'taller', 'usuario', 'mpp', 'ficha_tecnica_materiales'];
 
     private const CATALOGO_ENTIDADES = [
         ['clave' => 'producto', 'nombre' => 'Producto', 'grupo' => 'Inventario'],
@@ -47,7 +49,7 @@ class ImportarExcelController extends Controller
         ['clave' => 'recepcion_calidad', 'nombre' => 'Recepción calidad', 'grupo' => 'Orden producción'],
         ['clave' => 'cierre_orden_produccion', 'nombre' => 'Cierre de OP', 'grupo' => 'Orden producción'],
         ['clave' => 'kit_proceso', 'nombre' => 'Kit de proceso', 'grupo' => 'Producción'],
-        ['clave' => 'ficha_tecnica_materiales', 'nombre' => 'Ficha técnica materiales', 'grupo' => 'Producción'],
+        ['clave' => 'ficha_tecnica_materiales', 'nombre' => 'Ficha de producto', 'grupo' => 'Producción'],
         ['clave' => 'taller', 'nombre' => 'Taller', 'grupo' => 'Producción'],
         ['clave' => 'estado_op_material', 'nombre' => 'Estado OP materiales', 'grupo' => 'Producción'],
         ['clave' => 'estado_operacion', 'nombre' => 'Estado de operación', 'grupo' => 'Listas'],
@@ -84,11 +86,11 @@ class ImportarExcelController extends Controller
             ],
             [
                 'id'                  => 'ficha_tecnica_materiales',
-                'nombre'              => 'Ficha técnica de materiales',
+                'nombre'              => 'Ficha de producto',
                 'grupo'               => 'Producción',
-                'descripcion'         => 'Plantilla para registrar la receta de materiales de cada producto',
-                'ruta'                => null,
-                'nota'                => 'Cada fila representa un material de la ficha. La primera columna acepta el código de un producto o de un material con proceso; la segunda, el código del material; y la tercera, la cantidad consumida. La carga masiva todavía no está habilitada; por ahora, esta tarjeta solo permite descargar el formato .xlsx.',
+                'descripcion'         => 'Receta de materiales de cada producto, una fila por material',
+                'ruta'                => route('ImportarExcel.ficha-producto'),
+                'nota'                => 'La hoja se llama "Codigos" y la fila 1 trae los títulos: "Codigo producto", "Producto", "codigo material", "Material", "consumo por par" y "unidad". Las dos columnas de nombres son solo texto de ayuda; lo que se usa son los códigos y el consumo. Cada fila es un material de la receta del producto, y todas las filas con el mismo código de producto forman una sola ficha llamada "Ficha PT-042", con el código del producto. Si ese producto ya tenía ficha, se reemplazan sus materiales por los del archivo; si la ficha compartida cubre más productos, se conservan. Antes de guardar, la subida verifica que cada código de producto exista en productos y cada código de material en materiales, y que ninguna orden de producción abierta bloquee la ficha: si falta un solo código o hay una OP activa, se rechaza el archivo completo con la lista, sin importar nada. Por eso la validación tarda unos segundos. El archivo se procesa en segundo plano y recibirás un correo con el resultado.',
             ],
             [
                 'id'                  => 'estado_operacion',
@@ -241,6 +243,82 @@ class ImportarExcelController extends Controller
 
             $notificador->fallo($usuario?->email, $usuario?->name, $nombreArchivo, 'MPP (materiales, productos y proveedores)', $e);
             Myhelp::EscribirEnLog($this, 'uploadMpp ERROR', $e->getMessage());
+
+            return back()->with('error', 'No se importó nada: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Carga masiva de la ficha de producto.
+     *
+     * A diferencia del resto de las tarjetas, aquí se valida el contenido
+     * completo del archivo en la misma petición: cada código de producto y de
+     * material tiene que existir en la app y ninguna ficha puede estar bloqueada
+     * por una OP activa. Si falta algo, el archivo se rechaza con la lista de
+     * los códigos y el usuario lo corrige antes de volver a subirlo; por eso
+     * hay que esperar unos segundos mientras se lee la hoja.
+     */
+    public function uploadFichaProducto(
+        Request $request,
+        ExcelFichasProductoService $excel,
+    ): RedirectResponse {
+        Myhelp::EscribirEnLog($this, ' uploadFichaProducto ');
+
+        $request->validate([
+            'archivo' => ['required', 'file', 'max:10240', 'mimes:xlsx'],
+        ], [
+            'archivo.required' => 'Selecciona un archivo .xlsx.',
+            'archivo.file' => 'El archivo no es válido.',
+            'archivo.max' => 'El archivo supera el tamaño máximo de 10 MB.',
+            'archivo.mimes' => 'Solo se permiten archivos .xlsx.',
+        ]);
+
+        $archivo = $request->file('archivo');
+        $usuario = $request->user();
+        $nombreArchivo = $archivo->getClientOriginalName();
+        $rutaRelativa = null;
+
+        try {
+            if (strtolower($archivo->getClientOriginalExtension()) !== 'xlsx') {
+                throw new RuntimeException('Solo se permiten archivos con extensión .xlsx.');
+            }
+
+            $problemas = $excel->escanearSeguridad($archivo->getRealPath());
+            if (!empty($problemas)) {
+                throw new RuntimeException(implode(' | ', $problemas));
+            }
+
+            // Se rechaza todo el archivo aquí, antes de encolar nada.
+            $validacion = $excel->validar($archivo->getRealPath());
+
+            $rutaRelativa = $archivo->store('imports/ficha-producto', 'local');
+            if (!$rutaRelativa) {
+                throw new RuntimeException('No se pudo guardar el archivo para su procesamiento.');
+            }
+
+            ImportarFichaProductoJob::dispatch(
+                $rutaRelativa,
+                $nombreArchivo,
+                $usuario?->email,
+                $usuario?->name,
+                $usuario?->id,
+                $request->attributes->get('importacion_excel_id'),
+            );
+
+            Myhelp::EscribirEnLog($this, 'uploadFichaProducto ENCOLADO', $nombreArchivo);
+
+            return back()->with(
+                'success',
+                'El archivo pasó la validación: ' . $validacion['fichas'] . ' ficha(s), '
+                . $validacion['materiales'] . ' material(es) en ' . $validacion['filas']
+                . ' fila(s). Las fichas se están guardando; recibirás un correo al terminar.'
+            );
+        } catch (\Throwable $e) {
+            if ($rutaRelativa) {
+                Storage::disk('local')->delete($rutaRelativa);
+            }
+
+            Myhelp::EscribirEnLog($this, 'uploadFichaProducto ERROR', $e->getMessage());
 
             return back()->with('error', 'No se importó nada: ' . $e->getMessage());
         }
