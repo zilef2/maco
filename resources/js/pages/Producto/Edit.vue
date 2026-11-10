@@ -248,14 +248,22 @@ watchEffect(() => {
                             <ClipboardDocumentListIcon class="w-4 h-4 text-gray-400 dark:text-gray-500" />
                             Información principal
                         </h3>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+                        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-x-6 gap-y-4">
                             <div>
                                 <InputLabel for="Codigo_interno"
                                     :value="lang().t('app.label.Codigo_interno') || 'Código interno'" />
-                                <TextInput id="Codigo_interno" type="text" class="mt-1 block w-full"
-                                    v-model="form.Codigo_interno" required placeholder="Código interno"
+                                <TextInput id="Codigo_interno" type="text" class="mt-1 block w-full bg-gray-400"
+                                    v-model="form.Codigo_interno" required placeholder="Código interno" disabled
                                     :error="form.errors.Codigo_interno" />
                                 <InputError class="mt-2" :message="form.errors.Codigo_interno" />
+                            </div>
+                            <div class="md:col-span-2">
+                                <InputLabel for="Titulo_Shopify"
+                                    :value="lang().t('app.label.Titulo_Shopify') || 'Título Shopify / Nombre'" />
+                                <TextInput id="Titulo_Shopify" type="text" class="mt-1 block w-full"
+                                    v-model="form.Titulo_Shopify" required placeholder="Título Shopify"
+                                    :error="form.errors.Titulo_Shopify" />
+                                <InputError class="mt-2" :message="form.errors.Titulo_Shopify" />
                             </div>
 
                             <div>
@@ -272,14 +280,7 @@ watchEffect(() => {
                                 <InputError class="mt-2" :message="form.errors.Familia_normalizada" />
                             </div>
 
-                            <div class="md:col-span-2">
-                                <InputLabel for="Titulo_Shopify"
-                                    :value="lang().t('app.label.Titulo_Shopify') || 'Título Shopify / Nombre'" />
-                                <TextInput id="Titulo_Shopify" type="text" class="mt-1 block w-full"
-                                    v-model="form.Titulo_Shopify" required placeholder="Título Shopify"
-                                    :error="form.errors.Titulo_Shopify" />
-                                <InputError class="mt-2" :message="form.errors.Titulo_Shopify" />
-                            </div>
+                            
 
                             <div class="md:col-span-2">
                                 <InputLabel for="descripcion"
@@ -291,12 +292,12 @@ watchEffect(() => {
                                 <InputError class="mt-2" :message="form.errors.descripcion" />
                             </div>
 
-                            <div class="md:col-span-2">
-                                <InputLabel for="instrucciones" value="Instrucciones" />
+                            <div class="md:col-span-2 xl:col-span-3">
+                                <InputLabel for="instrucciones" value="Instrucciones de ensamble" />
                                 <textarea id="instrucciones" rows="2"
                                     class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 focus:border-indigo-500 dark:focus:border-indigo-600 focus:ring-indigo-500 dark:focus:ring-indigo-600 shadow-sm text-sm"
                                     v-model="form.instrucciones"
-                                    placeholder="Instrucciones de producción (opcional)"></textarea>
+                                    placeholder="Instrucciones de ensamble (opcional)"></textarea>
                                 <InputError class="mt-2" :message="form.errors.instrucciones" />
                             </div>
 
@@ -328,7 +329,7 @@ watchEffect(() => {
                                 <InputError class="mt-2" :message="form.errors.Control_de_variante" />
                             </div>
 
-                            <div class="md:col-span-2">
+                            <div class="">
                                 <InputLabel for="Opciones" :value="lang().t('app.label.Opciones') || 'Opciones'" />
 
                                 <!-- Sin talla: las opciones no aplican -->

@@ -14,9 +14,11 @@ const emit = defineEmits(['close']);
 // Necesidad e inventario por material, sin importar el estado de la OP.
 const materiales = computed<any[]>(() => (props.op as any)?.materiales_detalle ?? []);
 
-const faltante = (fila: any): number => Math.max(0, (Number(fila?.requerida) || 0) - (Number(fila?.disponible) || 0));
+// Faltante proyectado: ya descuenta lo comprometido con otras OP, así que es
+// lo que de verdad habrá que comprar o esperar.
+const faltanteProyectado = (fila: any): number => Math.max(0, Number(fila?.faltante_proyectado) || 0);
 
-const cuantosFaltan = computed(() => materiales.value.filter((fila) => faltante(fila) > 0).length);
+const cuantosFaltan = computed(() => materiales.value.filter((fila) => faltanteProyectado(fila) > 0).length);
 
 const cantidad = (valor: any, decimales = 2): string => {
     if (valor === null || valor === undefined || valor === '') return '—';
@@ -27,6 +29,20 @@ const cantidad = (valor: any, decimales = 2): string => {
 
 const productosTexto = (fila: any): string =>
     Array.isArray(fila?.productos) && fila.productos.length ? fila.productos.join(', ') : '—';
+
+// OP productoras que comprometieron material para esta OP.
+const origenTexto = (fila: any): string => {
+    const origenes = Array.isArray(fila?.origenes) ? fila.origenes : [];
+    if (!origenes.length) return 'Sin producción comprometida';
+
+    return origenes
+        .map((origen: any) => {
+            const etiqueta = origen?.numero_op ?? 'OP';
+            const pendiente = Number(origen?.pendiente ?? origen?.cantidad ?? 0);
+            return `${etiqueta} (${cantidad(pendiente)})`;
+        })
+        .join(', ');
+};
 
 // Qué sale de la OP: los materiales con proceso o, si no hay, sus productos.
 const objetivos = computed<any[]>(() => {
@@ -120,19 +136,23 @@ const objetivos = computed<any[]>(() => {
             <section class="mt-6">
                 <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">Materiales necesarios</h3>
                 <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    Cantidad necesaria según la ficha técnica y existencia actual del inventario.
+                    Necesidad según la ficha técnica e inventario proyectado: físico + producción pendiente − compromisos con otras OP.
                 </p>
 
                 <div v-if="materiales.length" class="mt-3 overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
                     <div class="overflow-x-auto">
-                        <table class="w-full min-w-[720px] text-sm">
+                        <table class="w-full min-w-[1120px] text-sm">
                             <thead>
                                 <tr class="border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-400">
                                     <th scope="col" class="px-3 py-2 font-semibold">Material</th>
-                                    <th scope="col" class="w-24 px-3 py-2 font-semibold">Unidad</th>
+                                    <th scope="col" class="w-20 px-3 py-2 font-semibold">Unidad</th>
                                     <th scope="col" class="w-28 px-3 py-2 text-right font-semibold">Se necesita</th>
-                                    <th scope="col" class="w-28 px-3 py-2 text-right font-semibold">Hay</th>
-                                    <th scope="col" class="w-28 px-3 py-2 text-right font-semibold">Falta</th>
+                                    <th scope="col" class="w-28 px-3 py-2 text-right font-semibold">Físico</th>
+                                    <th scope="col" class="w-32 px-3 py-2 text-right font-semibold">En producción</th>
+                                    <th scope="col" class="w-32 px-3 py-2 text-right font-semibold">Comprometido</th>
+                                    <th scope="col" class="w-28 px-3 py-2 text-right font-semibold">Proyectado</th>
+                                    <th scope="col" class="w-32 px-3 py-2 text-right font-semibold">Falta proyectada</th>
+                                    <th scope="col" class="min-w-[200px] px-3 py-2 font-semibold">De dónde</th>
                                     <th scope="col" class="px-3 py-2 font-semibold">Productos</th>
                                 </tr>
                             </thead>
@@ -144,25 +164,37 @@ const objetivos = computed<any[]>(() => {
                                         {{ cantidad(fila.requerida) }}
                                     </td>
                                     <td class="px-3 py-2 text-right tabular-nums text-gray-500 dark:text-gray-400">
-                                        {{ cantidad(fila.disponible) }}
+                                        {{ cantidad(fila.fisico ?? fila.disponible) }}
+                                    </td>
+                                    <td class="px-3 py-2 text-right tabular-nums text-gray-500 dark:text-gray-400">
+                                        {{ cantidad(fila.pendiente) }}
+                                    </td>
+                                    <td class="px-3 py-2 text-right tabular-nums text-gray-500 dark:text-gray-400">
+                                        {{ cantidad(fila.comprometido) }}
+                                    </td>
+                                    <td class="px-3 py-2 text-right tabular-nums font-medium text-gray-900 dark:text-gray-100">
+                                        {{ cantidad(fila.disponible_proyectado) }}
                                     </td>
                                     <td
                                         class="px-3 py-2 text-right tabular-nums font-semibold"
-                                        :class="faltante(fila) > 0 ? 'text-rose-700 dark:text-rose-300' : 'text-emerald-700 dark:text-emerald-300'"
+                                        :class="faltanteProyectado(fila) > 0 ? 'text-rose-700 dark:text-rose-300' : 'text-emerald-700 dark:text-emerald-300'"
                                     >
-                                        {{ faltante(fila) > 0 ? cantidad(faltante(fila)) : '0' }}
+                                        {{ faltanteProyectado(fila) > 0 ? cantidad(faltanteProyectado(fila)) : '0' }}
                                     </td>
-                                    <td class="max-w-[240px] truncate px-3 py-2 text-xs text-gray-500 dark:text-gray-400" :title="productosTexto(fila)">
+                                    <td class="max-w-[240px] truncate px-3 py-2 text-xs text-gray-500 dark:text-gray-400" :title="origenTexto(fila)">
+                                        {{ origenTexto(fila) }}
+                                    </td>
+                                    <td class="max-w-[220px] truncate px-3 py-2 text-xs text-gray-500 dark:text-gray-400" :title="productosTexto(fila)">
                                         {{ productosTexto(fila) }}
                                     </td>
                                 </tr>
                             </tbody>
                             <tfoot>
                                 <tr class="border-t border-gray-200 bg-gray-50 dark:border-gray-700 dark:bg-gray-900/40">
-                                    <td colspan="5" class="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                                    <td colspan="9" class="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">
                                         {{ materiales.length }} {{ materiales.length === 1 ? 'material' : 'materiales' }}
                                         <span v-if="cuantosFaltan" class="normal-case font-medium text-rose-700 dark:text-rose-300">
-                                            · faltan {{ cuantosFaltan }}
+                                            · faltan {{ cuantosFaltan }} según la proyección
                                         </span>
                                     </td>
                                     <td></td>

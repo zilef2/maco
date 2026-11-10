@@ -160,8 +160,53 @@ const distribucionPorProducto = (productoId: number) => distribucion.items.filte
 const totalCantidadDistribucionProducto = (productoId: number) =>
     distribucionPorProducto(productoId).reduce((acc, item) => acc + (Number(item.cantidad_planificada) || 0), 0);
 
+const consumoPropioDelMaterial = (m: any): any => {
+    const propioId = Number(op.value.id) || null;
+    if (!propioId) return null;
+    return (m.consumidores || []).find((c: any) => Number(c.op_id) === propioId) ?? null;
+};
+
+const proyeccionDelMaterial = (m: any) => {
+    const proyectado = Number(m.proyectado) || 0;
+    const propio = consumoPropioDelMaterial(m);
+    // Lo ya reservado para esta misma OP no resta su propia disponibilidad.
+    return proyectado + (Number(propio?.comprometido) || 0);
+};
+
+// Lo que esta OP puede tomar de cada productora: lo libre más lo que ya tiene
+// reservado con ella (esa reserva es propia, no de terceros).
+const productoresDelMaterial = (m: any): any[] => {
+    const propio = consumoPropioDelMaterial(m);
+    const propioPorOrigen = new Map<number, number>(
+        (propio?.compromisos || []).map((c: any) => [
+            Number(c.op_id),
+            Math.max(0, Number(c.pendiente) || 0),
+        ]),
+    );
+
+    return (m.productores || [])
+        .filter((p: any) => Number(p.pendiente) > 0)
+        .map((p: any) => ({
+            ...p,
+            libre: (Number(p.libre) || 0) + (propioPorOrigen.get(Number(p.op_id)) || 0),
+        }));
+};
+
 const resumenMateriales = computed(() => {
-    const mapa = new Map<number, { material_id: number; nombre: string; necesita: number; hay: number; unidad: string }>();
+    const mapa = new Map<
+        number,
+        {
+            material_id: number;
+            nombre: string;
+            necesita: number;
+            fisico: number;
+            pendiente: number;
+            comprometido: number;
+            proyectado: number;
+            unidad: string;
+            productores: any[];
+        }
+    >();
 
     const sumarFicha = (ficha: any[], cantidad: number) => {
         (ficha || []).forEach((m: any) => {
@@ -169,8 +214,15 @@ const resumenMateriales = computed(() => {
                 material_id: m.material_id,
                 nombre: m.nombre,
                 necesita: 0,
-                hay: Number(m.existencia_actual) || 0,
+                fisico: Number(m.fisico ?? m.existencia_actual) || 0,
+                pendiente: Number(m.pendiente) || 0,
+                // Lo reservado por esta misma OP no compite contra ella.
+                comprometido:
+                    (Number(m.comprometido) || 0)
+                    - (Number(consumoPropioDelMaterial(m)?.comprometido) || 0),
+                proyectado: proyeccionDelMaterial(m),
                 unidad: m.unidad_medida || '',
+                productores: productoresDelMaterial(m),
             };
             actual.necesita += (Number(m.consumo_estandar) || 0) * cantidad;
             mapa.set(m.material_id, actual);
@@ -187,7 +239,9 @@ const resumenMateriales = computed(() => {
         sumarFicha(opcion?.ficha_materiales, Number(m.cantidad) || 0);
     });
 
-    return Array.from(mapa.values()).sort((a, b) => b.necesita - b.hay - (a.necesita - a.hay));
+    return Array.from(mapa.values()).sort(
+        (a, b) => b.necesita - b.proyectado - (a.necesita - a.proyectado),
+    );
 });
 
 // Costo de los materiales por las cantidades distribuidas de cada producto.
@@ -228,7 +282,7 @@ const productosSinFicha = computed(() =>
     }),
 );
 
-const hayFaltantes = computed(() => resumenMateriales.value.some((m) => m.necesita > m.hay));
+const hayFaltantes = computed(() => resumenMateriales.value.some((m) => m.necesita > m.proyectado));
 
 const form = useForm({
     numero_op: '',
@@ -910,36 +964,64 @@ watch([() => props.show, () => op.value.id], cargarOp, { immediate: true, flush:
                             (consumo ficha × {{ esOpMaterial ? 'cantidad del material' : 'total de tallas' }})
                         </span>
                     </h4>
-                    <table class="mt-2 w-full text-sm">
-                        <thead>
-                            <tr class="text-left text-xs text-gray-500 uppercase dark:text-gray-400">
-                                <th class="py-1 pr-2">Material</th>
-                                <th class="py-1 pr-2 text-right">Necesita</th>
-                                <th class="py-1 pr-2 text-right">Hay</th>
-                                <th class="py-1 text-right">Faltante</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr
-                                v-for="m in resumenMateriales"
-                                :key="m.material_id"
-                                :class="
-                                    m.necesita > m.hay
-                                        ? 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400'
-                                        : 'text-gray-700 dark:text-gray-300'
-                                "
-                            >
-                                <td class="px-1 py-1 pr-2">{{ m.nombre }}</td>
-                                <td class="px-1 py-1 pr-2 text-right">{{ m.necesita.toLocaleString() }} {{ m.unidad }}</td>
-                                <td class="px-1 py-1 pr-2 text-right">{{ m.hay.toLocaleString() }}</td>
-                                <td class="px-1 py-1 text-right font-semibold">
-                                    {{ m.necesita > m.hay ? 'Falta: ' + (m.necesita - m.hay).toLocaleString() : '—' }}
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        Proyectado = físico + producción pendiente − compromisos con otras OP.
+                    </p>
+                    <div class="mt-2 overflow-x-auto">
+                        <table class="w-full min-w-[860px] text-sm">
+                            <thead>
+                                <tr class="text-left text-xs text-gray-500 uppercase dark:text-gray-400">
+                                    <th class="py-1 pr-2">Material</th>
+                                    <th class="py-1 pr-2 text-right">Necesita</th>
+                                    <th class="py-1 pr-2 text-right">Físico</th>
+                                    <th class="py-1 pr-2 text-right">En producción</th>
+                                    <th class="py-1 pr-2 text-right">Comprometido</th>
+                                    <th class="py-1 pr-2 text-right">Proyectado</th>
+                                    <th class="py-1 pr-2 text-right">Faltante</th>
+                                    <th class="py-1">De dónde</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr
+                                    v-for="m in resumenMateriales"
+                                    :key="m.material_id"
+                                    :class="
+                                        m.necesita > m.proyectado
+                                            ? 'bg-red-50 text-red-700 dark:bg-red-900/20 dark:text-red-400'
+                                            : 'text-gray-700 dark:text-gray-300'
+                                    "
+                                >
+                                    <td class="px-1 py-1 pr-2">{{ m.nombre }}</td>
+                                    <td class="px-1 py-1 pr-2 text-right">
+                                        {{ m.necesita.toLocaleString() }} {{ m.unidad }}
+                                    </td>
+                                    <td class="px-1 py-1 pr-2 text-right">{{ m.fisico.toLocaleString() }}</td>
+                                    <td class="px-1 py-1 pr-2 text-right">{{ m.pendiente.toLocaleString() }}</td>
+                                    <td class="px-1 py-1 pr-2 text-right">{{ m.comprometido.toLocaleString() }}</td>
+                                    <td class="px-1 py-1 pr-2 text-right font-medium">{{ m.proyectado.toLocaleString() }}</td>
+                                    <td class="px-1 py-1 pr-2 text-right font-semibold">
+                                        {{
+                                            m.necesita > m.proyectado
+                                                ? 'Falta: ' + (m.necesita - m.proyectado).toLocaleString()
+                                                : '—'
+                                        }}
+                                    </td>
+                                    <td class="px-1 py-1 text-xs">
+                                        <span v-if="m.productores.length">
+                                            {{
+                                                m.productores
+                                                    .map((p: any) => `${p.numero_op} (${Number(p.libre).toLocaleString()})`)
+                                                    .join(', ')
+                                            }}
+                                        </span>
+                                        <span v-else class="text-gray-400 dark:text-gray-500">Sin producción pendiente</span>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
                     <p v-if="hayFaltantes" class="mt-2 text-xs font-medium text-red-600 dark:text-red-400">
-                        Inventario insuficiente: al guardar la orden se generará una notificación de faltantes.
+                        Inventario proyectado insuficiente: al guardar la orden se generará una notificación de faltantes.
                     </p>
                     <p
                         v-if="!esOpMaterial && productosSinFicha.length"

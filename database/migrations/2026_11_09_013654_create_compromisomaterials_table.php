@@ -11,14 +11,28 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // La tabla pudo quedar creada a medias por una version anterior de la
+        // migracion; se recrea para asegurar las columnas y llaves foraneas.
+        Schema::dropIfExists('compromisomaterials');
+
         Schema::create('compromisomaterials', function (Blueprint $table) {
-            $table->foreign('material_id');
-            $table->foreign('op_origen_id');
-            $table->foreign('op_destino_id');
-            $table->decimal('cantidad');
-            $table->string('estado');
             $table->id();
+            $table->foreignId('material_id')->constrained('materials')->cascadeOnDelete();
+            $table->foreignId('op_origen_id')->constrained('orden_produccions')->cascadeOnDelete();
+            $table->foreignId('op_destino_id')->constrained('orden_produccions')->cascadeOnDelete();
+
+            $table->decimal('cantidad', 12, 4)->default(0);
+            $table->decimal('cantidad_cumplida', 12, 4)->default(0);
+            $table->string('estado')->default('comprometido');
             $table->timestamps();
+
+            $table->unique(
+                ['material_id', 'op_origen_id', 'op_destino_id'],
+                'compromiso_material_unico'
+            );
+            $table->index(['material_id', 'estado']);
+            $table->index(['op_origen_id', 'estado']);
+            $table->index(['op_destino_id', 'estado']);
         });
     }
 

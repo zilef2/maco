@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\FichaTecnica;
+use App\Models\Compromisomaterial;
 use App\Models\KitProceso;
 use App\Models\Material;
 use App\Models\MaterialMovimiento;
@@ -14,6 +15,7 @@ use App\Services\FichaTecnicaService;
 use App\Services\ListaDesplegableService;
 use App\Services\CostoMaterialOpService;
 use App\Services\ColaMaterialesOpService;
+use App\Services\CompromisoMaterialService;
 use App\Services\ExcelMaterialesService;
 use App\Services\MaterialBulkDeleteService;
 use App\Services\MaterialCompraPredictorService;
@@ -48,7 +50,8 @@ class MaterialController extends Controller {
         protected MaterialCompraPredictorService $compraPredictor,
         protected PlantillasExcelService $plantillas,
         protected ExcelMaterialesService $excelMateriales,
-        protected ColaMaterialesOpService $colaMateriales
+        protected ColaMaterialesOpService $colaMateriales,
+        protected CompromisoMaterialService $compromisos
     ) {
 //        $this->middleware('permission:create Material', ['only' => ['create', 'store']]);
 //        $this->middleware('permission:read Material', ['only' => ['index', 'show']]);
@@ -129,12 +132,27 @@ class MaterialController extends Controller {
                 ];
             });
 
+        $materialesEnOp = $this->materialesEnOrden();
+        // Solo se proyectan los materiales que participan en alguna OP (o que
+        // aún tienen una reserva vigente); el resto equivale a su existencia.
+        $materialesProyectables = array_values(array_unique(array_merge(
+            $materialesEnOp,
+            Compromisomaterial::query()
+                ->activos()
+                ->distinct()
+                ->pluck('material_id')
+                ->map(fn ($id) => (int) $id)
+                ->all()
+        )));
+
         return Inertia::render($this->FromController . '/Index', [
             'materiales' => $Materiales,
             'total' => $Materiales->count(),
             'prevision' => $this->prevision(),
             'faltantesOp' => $this->faltantesPorOp(),
-            'materialesEnOp' => $this->materialesEnOrden(),
+            'materialesEnOp' => $materialesEnOp,
+            // Inventario proyectado: físico + producción pendiente − compromisos.
+            'proyeccionMateriales' => $this->compromisos->proyeccionPorMaterial($materialesProyectables),
             'breadcrumbs' => [['label' => __('app.label.' . $this->FromController), 'href' => route($this->FromController . '.index')]],
             'title' => __('app.label.' . $this->FromController),
             'perPage' => 10,

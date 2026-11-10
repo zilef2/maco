@@ -226,11 +226,25 @@ const valorOrden = (op: any, key: string): any => {
     }
 };
 
+const ESTADO_ESPERANDO_MATERIALES = 'Esperando materiales';
+
+// La cola de «Esperando materiales» es FIFO: la OP con turno 1 es la próxima en
+// salir en cuanto una compra complete su kit, así que esa fila se muestra de
+// primera en la tabla sin importar la columna ni el sentido del orden elegido.
+// El resto de las OPs conserva el orden que el usuario aplicó.
+const esPrimeroEnCola = (op: any): boolean =>
+    normalizar(op?.estado_nombre) === normalizar(ESTADO_ESPERANDO_MATERIALES)
+    && Number(op?.cola_posicion) === 1;
+
 const ordenadas = computed(() => {
     const dir = sortDir.value === 'asc' ? 1 : -1;
     const key = sortKey.value;
 
     return [...filtradas.value].sort((a: any, b: any) => {
+        const primeroA = esPrimeroEnCola(a);
+        const primeroB = esPrimeroEnCola(b);
+        if (primeroA !== primeroB) return primeroA ? -1 : 1;
+
         const va = valorOrden(a, key);
         const vb = valorOrden(b, key);
         const nuloA = va === null || va === undefined || va === '';
@@ -247,8 +261,10 @@ const ordenadas = computed(() => {
 const estadoCoincide = (op: any, nombre: string): boolean =>
     normalizar(op?.estado_nombre) === normalizar(nombre);
 
+// El faltante proyectado descuenta lo que otras OP se comprometieron a producir,
+// así que es el que decide si la orden realmente puede arrancar.
 const tieneFaltantes = (op: any): boolean =>
-    Array.isArray(op?.materiales_faltantes) && op.materiales_faltantes.length > 0;
+    Array.isArray(op?.materiales_faltantes_proyectados) && op.materiales_faltantes_proyectados.length > 0;
 
 // Los faltantes solo se vigilan antes de que el material salga al taller:
 // desde "En taller" el inventario ya se descontó y la comparación dejaría
@@ -339,25 +355,27 @@ const alternarCompromisosOp = (id: number | string) => {
 };
 
 // Materiales que faltan, agrupados por nombre + unidad para mostrarlos de forma
-// compacta. Cada grupo guarda las OP que los necesitan.
+// compacta. Cada grupo guarda las OP que los necesitan y de dónde se espera
+// cubrir la necesidad (compromisos con OP productoras).
 const materialesFaltantes = computed(() => {
     const grupos = new Map<string, {
         clave: string;
         nombre: string;
         unidad: string;
         faltante: number;
-        ops: Array<{ op: any; faltante: number; productos: string[] }>;
+        ops: Array<{ op: any; faltante: number; productos: string[]; origenes: any[] }>;
     }>();
 
     for (const op of opsConFaltantes.value) {
-        for (const material of ((op as any).materiales_faltantes || [])) {
+        for (const material of ((op as any).materiales_faltantes_proyectados || [])) {
             const nombre = String(material?.nombre || 'Material');
             const unidad = String(material?.unidad || '').trim();
             const clave = `${material?.material_id ?? nombre}|${unidad}`;
-            const faltante = Number(material?.faltante) || 0;
+            const faltante = Number(material?.faltante_proyectado) || 0;
             const productos = Array.isArray(material?.productos)
                 ? material.productos.map((producto: any) => String(producto)).filter(Boolean)
                 : [];
+            const origenes = Array.isArray(material?.origenes) ? material.origenes : [];
 
             if (!grupos.has(clave)) {
                 grupos.set(clave, { clave, nombre, unidad, faltante: 0, ops: [] });
@@ -371,7 +389,7 @@ const materialesFaltantes = computed(() => {
                 detalle.faltante += faltante;
                 detalle.productos = Array.from(new Set([...detalle.productos, ...productos]));
             } else {
-                grupo.ops.push({ op, faltante, productos });
+                grupo.ops.push({ op, faltante, productos, origenes });
             }
         }
     }
@@ -754,14 +772,19 @@ const tooltipProductos = (op: any) => {
 
 const tooltipFaltantes = (op: any) => {
     const escapar = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    const lineas = (op?.materiales_faltantes || []).map((m: any) => {
-        const cantidad = zilef_nuber_format(m.faltante ?? 0, 2, false);
+    const lineas = (op?.materiales_faltantes_proyectados || []).map((m: any) => {
+        const cantidad = zilef_nuber_format(m.faltante_proyectado ?? 0, 2, false);
         const unidad = escapar(String(m.unidad ?? '')).trim();
         const productos = Array.isArray(m.productos)
             ? m.productos.map((producto: any) => escapar(String(producto))).filter(Boolean)
             : [];
         const detalleProducto = productos.length ? ` · ${productos.join(', ')}` : '';
-        return `${escapar(String(m.nombre ?? 'Material'))}: faltan ${cantidad}${unidad ? ' ' + unidad : ''}${detalleProducto}`;
+        const origenes = Array.isArray(m.origenes) && m.origenes.length
+            ? ' · de ' + m.origenes
+                .map((origen: any) => `${escapar(String(origen.numero_op ?? 'OP'))} (${zilef_nuber_format(origen.pendiente ?? origen.cantidad ?? 0, 2, false)})`)
+                .join(', ')
+            : ' · sin producción comprometida';
+        return `${escapar(String(m.nombre ?? 'Material'))}: faltan ${cantidad}${unidad ? ' ' + unidad : ''}${detalleProducto}${origenes}`;
     });
     if (!lineas.length) return undefined;
     return { content: lineas.join('<br>'), html: true, delay: { show: 200, hide: 100 } };
@@ -1231,8 +1254,9 @@ const titulos = [
                                             Materiales completos
                                         </span>
                                         <span v-if="tieneFaltantes(op)" class="text-[11px] tabular-nums text-muted-foreground">
-                                            {{ op.materiales_faltantes.length }}
-                                            {{ op.materiales_faltantes.length === 1 ? 'material' : 'materiales' }}
+                                            {{ op.materiales_faltantes_proyectados.length }}
+                                            {{ op.materiales_faltantes_proyectados.length === 1 ? 'material faltante' : 'materiales faltantes' }}
+                                            en la proyección
                                         </span>
                                     </div>
 
@@ -1570,7 +1594,7 @@ const titulos = [
                                 class="mt-0.5 text-[11px]"
                                 :class="opsConFaltantes.length ? 'text-rose-700/80 dark:text-rose-300/80' : 'text-emerald-700/80 dark:text-emerald-300/80'"
                             >
-                                {{ opsSinFaltantes }} sin faltantes
+                                {{ opsSinFaltantes }} sin faltantes proyectados
                             </p>
                         </div>
                     </div>
@@ -1582,7 +1606,7 @@ const titulos = [
                             <div class="flex flex-wrap items-center justify-between gap-2">
                                 <h3 class="inline-flex items-center gap-1.5 text-xs font-semibold text-rose-800 dark:text-rose-300">
                                     <ExclamationTriangleIcon class="h-4 w-4" />
-                                    Materiales faltantes
+                                    Faltantes proyectados
                                 </h3>
                                 <span class="rounded-full border border-rose-200 bg-white/60 px-2 py-0.5 text-[10px] font-semibold tabular-nums text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">
                                     {{ materialesFaltantes.length }}
@@ -1590,7 +1614,7 @@ const titulos = [
                                 </span>
                             </div>
                             <p class="mt-0.5 text-[11px] text-rose-700/80 dark:text-rose-300/80">
-                                Faltante total por material. Haz clic para ver las OP.
+                                Faltante tras descontar lo comprometido con otras OP. Haz clic para ver las OP y sus orígenes.
                             </p>
 
                             <div v-if="materialesFaltantes.length" class="mt-2 max-h-56 space-y-1.5 overflow-y-auto pr-1">
@@ -1630,18 +1654,35 @@ const titulos = [
                                             <li
                                                 v-for="detalle in material.ops"
                                                 :key="detalle.op.id"
-                                                class="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 px-2 py-1 text-[11px] text-rose-900 dark:text-rose-200"
+                                                class="px-2 py-1 text-[11px] text-rose-900 dark:text-rose-200"
                                             >
-                                                <span class="font-semibold">{{ etiquetaOp(detalle.op) }}</span>
-                                                <template v-if="detalle.productos.length || detalle.op.productos_nombres || detalle.op.producto_nombre">
-                                                    <span class="text-rose-400 dark:text-rose-500">·</span>
-                                                    <span class="font-medium">
-                                                        {{ detalle.productos.length ? detalle.productos.join(', ') : (detalle.op.productos_nombres || detalle.op.producto_nombre) }}
+                                                <div class="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                                                    <span class="font-semibold">{{ etiquetaOp(detalle.op) }}</span>
+                                                    <template v-if="detalle.productos.length || detalle.op.productos_nombres || detalle.op.producto_nombre">
+                                                        <span class="text-rose-400 dark:text-rose-500">·</span>
+                                                        <span class="font-medium">
+                                                            {{ detalle.productos.length ? detalle.productos.join(', ') : (detalle.op.productos_nombres || detalle.op.producto_nombre) }}
+                                                        </span>
+                                                    </template>
+                                                    <span class="ml-auto tabular-nums text-rose-700/70 dark:text-rose-300/70">
+                                                        Faltan {{ zilef_nuber_format(detalle.faltante, 2, false) }}<template v-if="material.unidad"> {{ material.unidad }}</template>
                                                     </span>
-                                                </template>
-                                                <span class="ml-auto tabular-nums text-rose-700/70 dark:text-rose-300/70">
-                                                    Faltan {{ zilef_nuber_format(detalle.faltante, 2, false) }}<template v-if="material.unidad"> {{ material.unidad }}</template>
-                                                </span>
+                                                </div>
+                                                <div
+                                                    v-if="detalle.origenes.length"
+                                                    class="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-[10px] text-rose-700/70 dark:text-rose-300/70"
+                                                >
+                                                    <span class="font-semibold uppercase tracking-[0.06em]">De</span>
+                                                    <span
+                                                        v-for="origen in detalle.origenes"
+                                                        :key="`${origen.op_id}-${origen.numero_op}`"
+                                                        class="rounded border border-rose-200/70 bg-white/60 px-1 py-px tabular-nums dark:border-rose-500/30 dark:bg-rose-500/10"
+                                                        :title="origen.estado ? `Estado de la OP productora: ${origen.estado}` : undefined"
+                                                    >
+                                                        {{ origen.numero_op }}
+                                                        ({{ zilef_nuber_format(origen.pendiente ?? origen.cantidad ?? 0, 2, false) }})
+                                                    </span>
+                                                </div>
                                             </li>
                                         </ul>
                                     </div>

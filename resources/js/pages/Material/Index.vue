@@ -14,6 +14,7 @@ import AlterarExistencia from '@/pages/Material/AlterarExistencia.vue';
 import HistorialMovimientos from '@/pages/Material/HistorialMovimientos.vue';
 import HistorialMultiples from '@/pages/Material/HistorialMultiples.vue';
 import RegistrarCompra from '@/pages/Material/RegistrarCompra.vue';
+import ProyeccionMaterialModal from '@/pages/Material/ProyeccionMaterialModal.vue';
 
 import {
     ArrowPathIcon,
@@ -62,6 +63,8 @@ const props = defineProps({
     faltantesOp: { type: Array as () => any[], default: () => [] },
     /** ids de los materiales que participan en alguna OP. */
     materialesEnOp: { type: Array as () => number[], default: () => [] },
+    /** Inventario proyectado por material: físico + producción pendiente − compromisos. */
+    proyeccionMateriales: { type: Object as () => Record<string, any>, default: () => ({}) },
 });
 
 /* --------------------------------------------------------------------------
@@ -128,27 +131,39 @@ const procesadoSinFicha = (m: any): boolean => {
     return estaProcesado(m?.material_procesado) && !tieneFichaTecnica(m);
 };
 
+const proyeccionPorId = computed<Record<string, any>>(() => (props.proyeccionMateriales as Record<string, any>) ?? {});
+
+const proyeccionDe = (m: any): any => proyeccionPorId.value[String(m?.id)] ?? null;
+
 const preparadas = computed(() =>
-    filas.value.map((m: any) => ({
-        ...m,
-        _estado: estadoNormalizado(m.estado),
-        _busqueda: normalizar(
-            [
-                m.codigo_material,
-                m.nombre_base,
-                m.categoria,
-                m.unidad_inventario,
-                estadoNormalizado(m.estado),
-                m.modelo_diseno_acabado,
-                m.color,
-                m.talla_tamano,
-                m.variante_atributo_sugerido,
-                (m.variants ?? []).map((v: any) => v.nombre).join(' '),
-                m.proveedor_nombre,
-                m.observaciones,
-            ].join(' '),
-        ),
-    })),
+    filas.value.map((m: any) => {
+        const proyeccion = proyeccionDe(m);
+
+        return {
+            ...m,
+            _estado: estadoNormalizado(m.estado),
+            _proyeccion: Number(proyeccion?.proyectado ?? m.existencia_actual ?? 0),
+            _pendiente: Number(proyeccion?.pendiente ?? 0),
+            _comprometido: Number(proyeccion?.comprometido ?? 0),
+            _proyeccionDetalle: proyeccion,
+            _busqueda: normalizar(
+                [
+                    m.codigo_material,
+                    m.nombre_base,
+                    m.categoria,
+                    m.unidad_inventario,
+                    estadoNormalizado(m.estado),
+                    m.modelo_diseno_acabado,
+                    m.color,
+                    m.talla_tamano,
+                    m.variante_atributo_sugerido,
+                    (m.variants ?? []).map((v: any) => v.nombre).join(' '),
+                    m.proveedor_nombre,
+                    m.observaciones,
+                ].join(' '),
+            ),
+        };
+    }),
 );
 
 const baseFiltrada = computed(() =>
@@ -305,6 +320,8 @@ const valorOrden = (m: any, key: string): any => {
             return m.proveedor_nombre ?? '';
         case 'last_purchase_price':
             return m.last_purchase_price ?? -1; // Poner los sin precio al final
+        case 'proyeccion':
+            return Number(m._proyeccion ?? 0);
         default:
             return m[key];
     }
@@ -494,6 +511,7 @@ const columnas = [
     { key: 'modelo_diseno_acabado', label: 'Modelo - diseño - acabado', sortable: true, align: 'left', headerClass: 'hidden min-w-[160px] xl:table-cell', cellClass: 'hidden min-w-[160px] xl:table-cell' },
     { key: 'last_purchase_price', label: 'Último precio', sortable: true, align: 'right', headerClass: 'min-w-[140px]', cellClass: 'min-w-[140px]' },
     { key: 'existencia_actual', label: 'Existencia', sortable: true, align: 'right', headerClass: 'w-[120px]', cellClass: 'w-[120px]' },
+    { key: 'proyeccion', label: 'Proyectado', sortable: true, align: 'right', headerClass: 'w-[130px]', cellClass: 'w-[130px]' },
     { key: 'gasto_diario', label: 'Gasto diario', sortable: true, align: 'right', headerClass: 'w-[130px]', cellClass: 'w-[130px]' },
     { key: 'estado', label: 'Estado', sortable: true, align: 'left', headerClass: 'min-w-[130px]', cellClass: 'min-w-[130px]' },
     { key: 'material_procesado', label: 'Procesado', sortable: true, align: 'left', headerClass: 'min-w-[110px]', cellClass: 'min-w-[110px]' },
@@ -530,7 +548,14 @@ const data = reactive({
     historialOpen: false,
     historialMultipleOpen: false,
     historialMateriales: [] as any[],
+    proyeccionOpen: false,
+    proyeccionMaterial: null as any,
 });
+
+const abrirProyeccion = (material: any) => {
+    data.proyeccionMaterial = material;
+    data.proyeccionOpen = true;
+};
 
 // Historial de varios materiales: activo solo con 1 a 3 seleccionados
 const MAX_HISTORIAL_MULTIPLE = 3;
@@ -605,7 +630,7 @@ router.on('finish', () => {
 });
 
 const recargar = () => {
-    router.reload({ only: ['materiales', 'total', 'losSelect', 'prevision', 'faltantesOp', 'materialesEnOp'], preserveScroll: true });
+    router.reload({ only: ['materiales', 'total', 'losSelect', 'prevision', 'faltantesOp', 'materialesEnOp', 'proyeccionMateriales'], preserveScroll: true });
 };
 
 /* Títulos para los modales de crear/editar (mismo contrato de antes). */
@@ -1120,6 +1145,28 @@ const titulos = [
                                     </div>
                                 </td>
 
+                                <!-- Proyectado: físico + producción pendiente − compromisos -->
+                                <td class="px-3 py-3 text-right align-top">
+                                    <button
+                                        type="button"
+                                        class="group/proy flex w-full flex-col items-end gap-0.5 rounded-sm text-right focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                        @click="abrirProyeccion(material)"
+                                        :title="`Físico ${zilef_nuber_format(material.existencia_actual, 2, false)} + producción pendiente ${zilef_nuber_format(material._pendiente, 2, false)} − comprometido ${zilef_nuber_format(material._comprometido, 2, false)}`"
+                                    >
+                                        <span
+                                            class="font-semibold tabular-nums underline-offset-2 group-hover/proy:underline"
+                                            :class="material._comprometido > 0 ? 'text-amber-700 dark:text-amber-300' : 'text-foreground'"
+                                        >
+                                            {{ zilef_nuber_format(material._proyeccion, 0, false) }}
+                                        </span>
+                                        <span class="text-[10px] text-muted-foreground tabular-nums">
+                                            <template v-if="material._pendiente">+{{ zilef_nuber_format(material._pendiente, 0, false) }} prod</template>
+                                            <template v-if="material._comprometido"> −{{ zilef_nuber_format(material._comprometido, 0, false) }} comp</template>
+                                            <template v-if="!material._pendiente && !material._comprometido">sin OP</template>
+                                        </span>
+                                    </button>
+                                </td>
+
                                 <!-- Gasto diario -->
                                 <td class="px-3 py-3 text-right align-top">
                                     <div class="flex flex-col items-end gap-0.5">
@@ -1488,6 +1535,13 @@ const titulos = [
             :show="data.historialOpen"
             :material="data.Materialo"
             @close="data.historialOpen = false"
+        />
+
+        <ProyeccionMaterialModal
+            :show="data.proyeccionOpen"
+            :material="data.proyeccionMaterial"
+            :proyeccion="data.proyeccionMaterial?._proyeccionDetalle ?? null"
+            @close="data.proyeccionOpen = false"
         />
     </AppLayout>
 </template>

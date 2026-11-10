@@ -66,7 +66,7 @@ class FichaTecnicaService
     {
         $productos = Producto::all(['id', 'Titulo_Shopify', 'Codigo_interno'])
             ->map(function ($p) {
-                $nombre = $p->Titulo_Shopify ?: ($p->Codigo_interno ?: 'Producto #' . $p->id);
+                $nombre = $this->nombreProducto($p);
                 return [
                     'id'    => $p->id,
                     'value' => $p->id,
@@ -106,8 +106,7 @@ class FichaTecnicaService
 
     private function opcionMaterialProcesado(Material $material): array
     {
-        $nombre = trim(($material->codigo_material ? $material->codigo_material . ' — ' : '') . $material->nombre_base)
-            ?: ('Material #' . $material->id);
+        $nombre = $this->nombreMaterialProcesado($material);
 
         return [
             'id'    => $material->id,
@@ -116,6 +115,53 @@ class FichaTecnicaService
             'label' => $nombre,
             'title' => $nombre,
         ];
+    }
+
+    /** Nombre del producto tal como se muestra en los objetivos de la ficha. */
+    private function nombreProducto(Producto $producto): string
+    {
+        return $producto->Titulo_Shopify ?: ($producto->Codigo_interno ?: 'Producto #' . $producto->id);
+    }
+
+    /** Nombre del material procesado tal como se muestra en los objetivos. */
+    private function nombreMaterialProcesado(Material $material): string
+    {
+        return trim(($material->codigo_material ? $material->codigo_material . ' — ' : '') . $material->nombre_base)
+            ?: ('Material #' . $material->id);
+    }
+
+    /**
+     * Nombre automático de la ficha: se arma con el mismo criterio con que se
+     * muestran los objetivos (título o código del producto; código — nombre
+     * del material procesado). No se usa cuando el llamador ya envía un nombre.
+     *
+     * @param  list<int>  $productoIds
+     * @param  list<int>  $materialProcesadoIds
+     */
+    public function nombreAutomatico(array $productoIds, array $materialProcesadoIds): string
+    {
+        $nombres = Producto::whereIn('id', $productoIds)
+            ->get(['id', 'Titulo_Shopify', 'Codigo_interno'])
+            ->map(fn (Producto $p) => $this->nombreProducto($p));
+
+        $nombres = $nombres
+            ->concat(
+                Material::whereIn('id', $materialProcesadoIds)
+                    ->orderBy('nombre_base')
+                    ->get(['id', 'codigo_material', 'nombre_base'])
+                    ->map(fn (Material $m) => $this->nombreMaterialProcesado($m))
+            )
+            ->map(fn ($nombre) => trim((string) $nombre))
+            ->filter()
+            ->values();
+
+        if ($nombres->isEmpty()) {
+            return '';
+        }
+
+        return $nombres->count() === 1
+            ? $nombres->first()
+            : $nombres->first() . ' (+' . ($nombres->count() - 1) . ')';
     }
 
     /**
@@ -215,15 +261,34 @@ class FichaTecnicaService
 
     /**
      * Crea o actualiza la ficha con sus materiales, productos y materiales
-     * procesados. Un producto o material procesado solo puede pertenecer a una
-     * ficha. No se puede modificar si el objetivo está en una OP activa.
+     * procesados. Una ficha necesita exactamente un tipo de objetivo: un
+     * producto o un material procesado, nunca ambos ni ninguno. El nombre es
+     * automático cuando no se envía. No se puede modificar si el objetivo está
+     * en una OP activa.
      *
-     * @param  array{nombre: string, productos?: array, materiales_procesados?: array, materiales: array}  $datos
+     * @param  array{nombre?: string, productos?: array, materiales_procesados?: array, materiales: array}  $datos
      */
     public function guardar(array $datos, ?FichaTecnica $ficha = null): FichaTecnica
     {
         $productoIds = array_values(array_unique(array_map('intval', $datos['productos'] ?? [])));
         $materialProcesadoIds = array_values(array_unique(array_map('intval', $datos['materiales_procesados'] ?? [])));
+
+        // Una ficha sin objetivos no debe existir, y tampoco una que mezcle los
+        // dos tipos: se pide uno o el otro.
+        if (empty($productoIds) && empty($materialProcesadoIds)) {
+            throw ValidationException::withMessages([
+                'productos' => 'Seleccione un producto o un material procesado para esta ficha.',
+            ]);
+        }
+        if (!empty($productoIds) && !empty($materialProcesadoIds)) {
+            throw ValidationException::withMessages([
+                'productos' => 'Una ficha se asigna a un producto o a un material procesado, no a ambos.',
+            ]);
+        }
+
+        // El nombre es automático: si no llega, se arma desde el objetivo.
+        $nombre = trim((string) ($datos['nombre'] ?? ''))
+            ?: $this->nombreAutomatico($productoIds, $materialProcesadoIds);
 
         // Los objetivos que ya tenía la ficha también cuentan: quitarlos es un
         // cambio de ficha y no puede saltarse el bloqueo de una OP activa.
@@ -305,9 +370,9 @@ class FichaTecnicaService
             ->keyBy('id');
 
         if (!$ficha) {
-            $ficha = FichaTecnica::create(['nombre' => $datos['nombre']]);
+            $ficha = FichaTecnica::create(['nombre' => $nombre]);
         } else {
-            $ficha->update(['nombre' => $datos['nombre']]);
+            $ficha->update(['nombre' => $nombre]);
         }
 
         $ficha->materiales()->delete();

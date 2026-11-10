@@ -21,6 +21,7 @@ use App\Models\Taller;
 use App\Http\Requests\StoreOrdenProduccionRequest;
 use App\Services\Bitacora;
 use App\Services\ColaMaterialesOpService;
+use App\Services\CompromisoMaterialService;
 use App\Services\CostoMaterialOpService;
 use App\Services\CostoRecepcionOpService;
 use App\Services\MermaRecepcionService;
@@ -49,7 +50,8 @@ class OrdenProduccionController extends Controller {
         protected CostoMaterialOpService $costosMateriales,
         protected CostoRecepcionOpService $costosRecepcion,
         protected MermaRecepcionService $mermasRecepcion,
-        protected ColaMaterialesOpService $colaMateriales
+        protected ColaMaterialesOpService $colaMateriales,
+        protected CompromisoMaterialService $compromisos
     ) {
         $this->thisAtributos = (new OrdenProduccion())->getFillable();
     }
@@ -85,11 +87,20 @@ class OrdenProduccionController extends Controller {
         return Cache::remember($claveListado, now()->addMinutes(10), function () {
             $posiciones = $this->colaMateriales->posiciones();
 
+            // Proyección de los materiales que consumen las OP: físico +
+            // producción pendiente − compromisos de otras órdenes.
+            $materialesKit = DB::table('kit_procesos')
+                ->distinct()
+                ->pluck('material_id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+            $proyeccion = $this->compromisos->proyeccionPorMaterial($materialesKit);
+
             return OrdenProduccion::query()
                 ->with(['productoReferencia.fichaTecnica.materiales', 'taller', 'empresaExterna', 'estadoOp', 'responsable', 'distribucionesPorTallas.producto', 'distribucionesPorTallas.material', 'productos.fichaTecnica.materiales', 'productos.procesos', 'materiales.fichaTecnica.materiales', 'recepcionesCalidad.materialReferencia', 'compromisosReparacion.materialReferencia', 'kitProcesos.material', 'cierres', 'costosMateriales.material', 'costosCambios.material', 'costosCambios.usuario'])
                 ->orderByDesc('updated_at')
                 ->get()
-                ->map(function ($op) use ($posiciones) {
+                ->map(function ($op) use ($posiciones, $proyeccion) {
                     $producto = $op->productoReferencia;
                     $nombreProducto = fn ($p) => $p
                         ? ($p->Titulo_Shopify ?: ($p->Codigo_interno ?: 'Producto #' . $p->id))
@@ -194,7 +205,13 @@ class OrdenProduccionController extends Controller {
                         ];
                     })->values()->all();
 
-                    $op->materiales_detalle = $op->kitProcesos->map(function ($kit) use ($productosPorMaterial) {
+                    $esConsumidorVigente = in_array(
+                        $op->estadoOp?->nombre,
+                        CompromisoMaterialService::ESTADOS_CONSUMIDOR,
+                        true
+                    );
+
+                    $op->materiales_detalle = $op->kitProcesos->map(function ($kit) use ($productosPorMaterial, $proyeccion, $op, $esConsumidorVigente) {
                         $requerida = (float) ($kit->cantidad_requerida ?? 0);
                         $disponible = (float) ($kit->material?->existencia_actual ?? 0);
                         $nombre = trim(
@@ -202,22 +219,52 @@ class OrdenProduccionController extends Controller {
                             . ($kit->material?->nombre_base ?? '')
                         );
 
+                        $materialProy = $proyeccion[(int) $kit->material_id] ?? null;
+                        $consumidorProy = null;
+                        foreach ($materialProy['consumidores'] ?? [] as $detalleConsumidor) {
+                            if ((int) $detalleConsumidor['op_id'] === (int) $op->id) {
+                                $consumidorProy = $detalleConsumidor;
+                                break;
+                            }
+                        }
+
+                        $faltante = round(max(0, $requerida - $disponible), 4);
+                        $proyectado = $consumidorProy
+                            ? (float) $consumidorProy['disponible_proyectado']
+                            : max(
+                                0,
+                                (float) ($materialProy['fisico'] ?? $disponible)
+                                    + (float) ($materialProy['pendiente'] ?? 0)
+                                    - (float) ($materialProy['comprometido'] ?? 0)
+                            );
+
                         return [
                             'material_id' => $kit->material_id,
                             'nombre'      => $nombre !== '' ? $nombre : ('Material #' . $kit->material_id),
                             'unidad'      => $kit->unidad ?: ($kit->material?->unidad_inventario ?: 'u'),
                             'requerida'   => round($requerida, 4),
                             'disponible'  => round($disponible, 4),
+                            'faltante'    => $faltante,
+                            'fisico'      => round((float) ($materialProy['fisico'] ?? $disponible), 4),
+                            'pendiente'   => round((float) ($materialProy['pendiente'] ?? 0), 4),
+                            'comprometido' => round((float) ($consumidorProy['comprometido'] ?? 0), 4),
+                            'comprometido_otras' => round((float) ($consumidorProy['comprometido_otras'] ?? 0), 4),
+                            'disponible_proyectado' => round($proyectado, 4),
+                            'faltante_proyectado' => $esConsumidorVigente
+                                ? round(max(0, $requerida - $proyectado), 4)
+                                : 0.0,
+                            'origenes'    => $consumidorProy['compromisos'] ?? [],
                             'proveedor_id' => $kit->proveedor_id,
                             'productos'   => array_values($productosPorMaterial[$kit->material_id] ?? []),
                         ];
                     })->values()->all();
 
                     $op->materiales_faltantes = collect($op->materiales_detalle)
-                        ->map(fn ($fila) => $fila + [
-                            'faltante' => round(max(0, (float) $fila['requerida'] - (float) $fila['disponible']), 4),
-                        ])
                         ->filter(fn ($fila) => $fila['faltante'] > 0)
+                        ->values()->all();
+
+                    $op->materiales_faltantes_proyectados = collect($op->materiales_detalle)
+                        ->filter(fn ($fila) => $fila['faltante_proyectado'] > 0)
                         ->values()->all();
 
                     $op->costo_fichas = $op->costoFichasTecnicas();
@@ -471,6 +518,51 @@ class OrdenProduccionController extends Controller {
                     ])->values()->all() ?? [],
                 ];
             })->values()->all();
+
+        // Proyección de los componentes de las fichas: la vista previa de la
+        // OP debe comparar contra físico + producción pendiente − compromisos.
+        $materialesComponente = $productos
+            ->flatMap(fn ($producto) => collect($producto['ficha_materiales'])->pluck('material_id'))
+            ->merge(collect($materialesProcesados)->flatMap(
+                fn ($material) => collect($material['ficha_materiales'])->pluck('material_id')
+            ))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        $proyeccionFichas = $this->compromisos->proyeccionPorMaterial($materialesComponente);
+
+        $enriquecerFicha = function (array $filas) use ($proyeccionFichas): array {
+            return array_map(function (array $fila) use ($proyeccionFichas) {
+                $proyeccion = $proyeccionFichas[(int) ($fila['material_id'] ?? 0)] ?? null;
+                $fisico = (float) ($proyeccion['fisico'] ?? ($fila['existencia_actual'] ?? 0));
+
+                return $fila + [
+                    'fisico'       => round($fisico, 4),
+                    'pendiente'    => round((float) ($proyeccion['pendiente'] ?? 0), 4),
+                    'comprometido' => round((float) ($proyeccion['comprometido'] ?? 0), 4),
+                    'proyectado'   => round((float) ($proyeccion['proyectado'] ?? $fisico), 4),
+                    'productores'  => $proyeccion['productores'] ?? [],
+                    'consumidores' => $proyeccion['consumidores'] ?? [],
+                ];
+            }, $filas);
+        };
+
+        $productos = $productos->map(function ($producto) use ($enriquecerFicha) {
+            $producto['ficha_materiales'] = $enriquecerFicha($producto['ficha_materiales']);
+
+            return $producto;
+        });
+
+        $materialesProcesados = collect($materialesProcesados)
+            ->map(function ($material) use ($enriquecerFicha) {
+                $material['ficha_materiales'] = $enriquecerFicha($material['ficha_materiales']);
+
+                return $material;
+            })
+            ->values()
+            ->all();
 
         $siguienteNumeroOp = (int) str_replace('OP-', '', OrdenProduccion::siguienteNumeroOp());
 
@@ -741,6 +833,8 @@ class OrdenProduccionController extends Controller {
 
         $this->guardarCostosMateriales($OrdenProduccion);
 
+        $this->compromisos->sincronizar($OrdenProduccion);
+
         DB::commit();
         $this->invalidarCache();
         $identificador = $OrdenProduccion->numero_op ?? $OrdenProduccion->id;
@@ -869,6 +963,8 @@ class OrdenProduccionController extends Controller {
         );
 
         $this->guardarCostosMateriales($OrdenProduccion);
+
+        $this->compromisos->sincronizar($OrdenProduccion);
 
         DB::commit();
         $this->invalidarCache();
@@ -1021,6 +1117,8 @@ class OrdenProduccionController extends Controller {
         );
 
         $this->guardarCostosMateriales($OrdenProduccion);
+
+        $this->compromisos->sincronizar($OrdenProduccion);
 
         DB::commit();
         $this->invalidarCache();
@@ -1467,6 +1565,10 @@ class OrdenProduccionController extends Controller {
                 $productosIncrementados = $this->incrementarProductos($OrdenProduccion, $recepciones);
                 $compromisosAvisados = $this->registrarCompromisosReparacion($OrdenProduccion, $recepciones);
             }
+
+            // El cambio de estado mueve la proyección: lo recibido pasa a
+            // físico y lo que entra a taller deja de reservar materiales.
+            $this->compromisos->sincronizar($OrdenProduccion);
         });
 
         $this->invalidarCache();
@@ -1626,6 +1728,8 @@ class OrdenProduccionController extends Controller {
                 $pasoARecibiendo = true;
             }
         }
+
+        $this->compromisos->sincronizar($orden);
 
         $this->invalidarCache();
 
@@ -2237,8 +2341,11 @@ class OrdenProduccionController extends Controller {
 
         // Las filas del kit tienen llave foránea a la OP: se eliminan primero
         // para que la OP pueda borrarse.
+        $materialesAfectados = $this->compromisos->materialesDeOrden($OrdenProduccion);
+        $this->compromisos->eliminarParaOrden((int) $OrdenProduccion->id);
         KitProceso::where('orden_produccion_id', $OrdenProduccion->id)->delete();
         $OrdenProduccion->delete();
+        $this->compromisos->sincronizarMateriales($materialesAfectados);
 
         $this->invalidarCache();
         Myhelp::EscribirEnLog($this, 'DELETE:OrdenProduccions', 'OrdenProduccion id:' . $OrdenProduccionid . ' | ' . $identificador . ' borrado', false);
@@ -2261,8 +2368,18 @@ class OrdenProduccionController extends Controller {
             return back()->with('error', 'No es posible borrar las OPs seleccionadas porque tienen recepciones asociadas.');
         }
 
+        $materialesAfectados = [];
+        foreach (OrdenProduccion::whereIn('id', $deletables)->get() as $orden) {
+            $materialesAfectados = array_merge($materialesAfectados, $this->compromisos->materialesDeOrden($orden));
+        }
+
+        foreach ($deletables as $opId) {
+            $this->compromisos->eliminarParaOrden((int) $opId);
+        }
+
         KitProceso::whereIn('orden_produccion_id', $deletables)->delete();
         OrdenProduccion::whereIn('id', $deletables)->delete();
+        $this->compromisos->sincronizarMateriales($materialesAfectados);
 
         $this->invalidarCache();
 

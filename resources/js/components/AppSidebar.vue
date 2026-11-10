@@ -91,7 +91,7 @@ const navDropdown: NavGroup[] = [
                 href: '/FichaTecnicaMateriales',
                 icon: FileSpreadsheet,
             },
-             {
+            {
                 title: 'Proceso',
                 href: '/Procesoop',
                 icon: LayoutGrid,
@@ -112,11 +112,11 @@ const navDropdown: NavGroup[] = [
             //     icon: PackageCheck,
             // },
             {
-		title: 'Compromisomaterial',
-		href: '/Compromisomaterial',
-		icon: LayoutGrid,
-	},
-	//aquipuesSide
+                title: 'Compromisomaterial',
+                href: '/Compromisomaterial',
+                icon: LayoutGrid,
+            },
+            //aquipuesSide
 
         ],
     },
@@ -124,17 +124,12 @@ const navDropdown: NavGroup[] = [
     //     label: 'Mantenimiento',
     //     icon: Layers,
     //     items: [
-           
-    //         {
-		title: 'Compromisomaterial',
-		href: '/Compromisomaterial',
-		icon: LayoutGrid,
-	},
-	//aquipuesSide
+
+    //aquipuesSide
 
     //     ],
     // },
-    
+
     // {
     //     label: 'Listas',
     //     icon: Database,

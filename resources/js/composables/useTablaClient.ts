@@ -53,13 +53,14 @@ export function useTablaClient(
     const pagina = ref(1);
 
     const filtradas = computed(() => {
-        const texto = normalizarTexto(busqueda.value);
+        const terminos = normalizarTexto(busqueda.value).split(' ').filter(Boolean);
         const todas = toValue(filas) ?? [];
-        if (texto === '') return todas;
+        if (terminos.length === 0) return todas;
 
-        return todas.filter((fila: any) =>
-            normalizarTexto(busquedaPor.map((clave) => valorDe(fila, clave)).join(' ')).includes(texto),
-        );
+        return todas.filter((fila: any) => {
+            const texto = normalizarTexto(busquedaPor.map((clave) => valorDe(fila, clave)).join(' '));
+            return terminos.every((termino) => texto.includes(termino));
+        });
     });
 
     const ordenadas = computed(() => {

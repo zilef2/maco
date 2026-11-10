@@ -93,6 +93,13 @@ const fecha = computed(() => (merma.value.fecha_registro ? formatDate(merma.valu
                         <dd class="text-foreground">{{ texto(merma.responsable) }}</dd>
                     </div>
                     <div class="flex flex-col gap-0.5">
+                        <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Taller / Empresa externa</dt>
+                        <dd class="text-foreground">
+                            {{ texto(merma.destino_nombre) }}
+                            <span v-if="merma.destino_tipo" class="text-xs text-muted-foreground">· {{ merma.destino_tipo }}</span>
+                        </dd>
+                    </div>
+                    <div class="flex flex-col gap-0.5">
                         <dt class="text-xs font-medium uppercase tracking-wide text-muted-foreground">Costo unitario</dt>
                         <dd class="tabular-nums text-foreground">{{ dinero(merma.costo_unitario) }}</dd>
                     </div>

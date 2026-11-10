@@ -143,6 +143,22 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     }
 
     /**
+     * Compromisos de material que esta OP produce para otras OP.
+     */
+    public function compromisosOrigen()
+    {
+        return $this->hasMany(Compromisomaterial::class, 'op_origen_id');
+    }
+
+    /**
+     * Compromisos de material que esta OP consume de otras OP.
+     */
+    public function compromisosDestino()
+    {
+        return $this->hasMany(Compromisomaterial::class, 'op_destino_id');
+    }
+
+    /**
      * Materiales que la OP tiene fuera en procesos externos.
      */
     public function procesosExternos()

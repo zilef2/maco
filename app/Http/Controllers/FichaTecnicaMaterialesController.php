@@ -225,10 +225,11 @@ class FichaTecnicaMaterialesController extends Controller {
     /**
      * Crea o actualiza la ficha con sus materiales y productos.
      * Un producto solo puede pertenecer a una ficha (ficha única por producto).
+     * El nombre es automático y lo arma el servicio desde el objetivo.
      */
     private function guardarFicha(Request $request, ?FichaTecnica $ficha = null): FichaTecnica {
         $datos = $request->validate([
-            'nombre'                          => ['required', 'string', 'max:255'],
+            'nombre'                          => ['nullable', 'string', 'max:255'],
             'productos'                       => ['present', 'array'],
             'productos.*'                     => ['integer', 'exists:productos,id'],
             'materiales_procesados'           => ['present', 'array'],
@@ -240,12 +241,6 @@ class FichaTecnicaMaterialesController extends Controller {
             'materiales.*.costo_asociado_teorico' => ['nullable', 'numeric', 'min:0'],
             'materiales.*.costo_asociado_real'    => ['nullable', 'numeric', 'min:0'],
         ]);
-
-        if (empty($datos['productos']) && empty($datos['materiales_procesados'])) {
-            throw \Illuminate\Validation\ValidationException::withMessages([
-                'productos' => 'Seleccione un producto o un material procesado para esta ficha.',
-            ]);
-        }
 
         $noProcesados = Material::whereIn('id', $datos['materiales_procesados'])
             ->where('material_procesado', false)

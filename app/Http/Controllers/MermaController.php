@@ -41,6 +41,8 @@ class MermaController extends Controller
     {
         return Merma::with([
             'ordenProduccion.estadoOp:id,nombre',
+            'ordenProduccion.taller:id,nombre,nombre_comercial',
+            'ordenProduccion.empresaExterna:id,nombre,nombre_comercial',
             'recepcionCalidad',
             'producto:id,Codigo_interno,Titulo_Shopify',
             'material:id,codigo_material,nombre_base',
@@ -52,12 +54,24 @@ class MermaController extends Controller
                 $recepcion = $merma->recepcionCalidad;
                 $fecha = $merma->fecha_registro;
 
+                $orden = $merma->ordenProduccion;
+                $taller = $orden?->taller;
+                $empresa = $orden?->empresaExterna;
+                $tallerNombre = $taller ? ($taller->nombre_comercial ?: $taller->nombre) : null;
+                $empresaNombre = $empresa ? ($empresa->nombre_comercial ?: $empresa->nombre) : null;
+
                 return [
                     'id' => $merma->id,
-                    'numero_op' => $merma->ordenProduccion?->numero_op ?? ('OP #' . $merma->orden_produccion_id),
-                    'estado_op' => $merma->ordenProduccion?->estadoOp?->nombre,
+                    'numero_op' => $orden?->numero_op ?? ('OP #' . $merma->orden_produccion_id),
+                    'estado_op' => $orden?->estadoOp?->nombre,
                     'objetivo' => $merma->objetivoNombre(),
                     'objetivo_tipo' => $merma->material_referencia_id ? 'Material' : 'Producto',
+                    'taller_id' => $orden?->taller_id,
+                    'taller_nombre' => $tallerNombre,
+                    'empresa_externa_id' => $orden?->empresa_externa_id,
+                    'empresa_externa_nombre' => $empresaNombre,
+                    'destino_nombre' => $empresaNombre ?: $tallerNombre,
+                    'destino_tipo' => $empresa ? 'Empresa externa' : ($taller ? 'Taller' : null),
                     'talla' => $merma->talla,
                     'cantidad' => (int) $merma->cantidad,
                     'costo_unitario' => (float) $merma->costo_unitario,
