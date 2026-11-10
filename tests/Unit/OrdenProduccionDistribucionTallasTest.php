@@ -6,7 +6,6 @@ use App\Models\Distribucion_por_tallas;
 use App\Models\EstadoOperacion;
 use App\Models\OrdenProduccion;
 use App\Models\Producto;
-use App\Models\Taller;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;

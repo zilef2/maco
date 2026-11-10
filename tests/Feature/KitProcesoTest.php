@@ -12,7 +12,7 @@ use App\Models\OrdenProduccion;
 use App\Models\Producto;
 use App\Models\Proveedor;
 use App\Models\Role;
-use App\Models\Taller;
+use App\Models\Tercero;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -266,7 +266,7 @@ class KitProcesoTest extends TestCase
 
         EstadoOperacion::create(['nombre' => 'Preparación']);
         $estadoMaterial = EstadoOpMaterial::create(['nombre' => 'Pendiente', 'valor' => 'pendiente']);
-        $taller = Taller::create(['nombre' => 'Taller de prueba', 'direccion' => 'Calle 1 # 2-3']);
+        $taller = Tercero::create(['tipo' => 'Taller', 'nombre' => 'Taller de prueba', 'direccion' => 'Calle 1 # 2-3']);
 
         $producto = Producto::create([
             'Codigo_interno' => 'TEST-KIT-001',

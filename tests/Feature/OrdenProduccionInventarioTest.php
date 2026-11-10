@@ -13,7 +13,7 @@ use App\Models\OrdenProduccion;
 use App\Models\Producto;
 use App\Models\ProductoMovimiento;
 use App\Models\Role;
-use App\Models\Taller;
+use App\Models\Tercero;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -394,7 +394,7 @@ class OrdenProduccionInventarioTest extends TestCase
             ]);
         }
 
-        $taller = Taller::create(['nombre' => 'Taller de inventario', 'direccion' => 'Calle 30 # 40-50']);
+        $taller = Tercero::create(['tipo' => 'Taller', 'nombre' => 'Taller de inventario', 'direccion' => 'Calle 30 # 40-50']);
         $estadoMaterial = EstadoOpMaterial::create(['nombre' => 'Pendiente', 'valor' => 'pendiente']);
 
         $componente = Material::create([
@@ -484,7 +484,7 @@ class OrdenProduccionInventarioTest extends TestCase
             ]);
         }
 
-        $taller = Taller::create(['nombre' => 'Taller de producto', 'direccion' => 'Calle 50 # 60-70']);
+        $taller = Tercero::create(['tipo' => 'Taller', 'nombre' => 'Taller de producto', 'direccion' => 'Calle 50 # 60-70']);
         $estadoMaterial = EstadoOpMaterial::create(['nombre' => 'Pendiente', 'valor' => 'pendiente']);
 
         $producto = Producto::create([

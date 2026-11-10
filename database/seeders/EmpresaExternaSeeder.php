@@ -2,8 +2,8 @@
 
 namespace Database\Seeders;
 
-use App\Models\EmpresaExterna;
 use App\Models\Proveedor;
+use App\Models\Tercero;
 use Illuminate\Database\Seeder;
 
 class EmpresaExternaSeeder extends Seeder
@@ -22,8 +22,11 @@ class EmpresaExternaSeeder extends Seeder
         ];
 
         foreach ($empresas as $empresa) {
-            EmpresaExterna::firstOrCreate(
-                ['nombre_comercial' => $empresa['nombre_comercial']],
+            Tercero::firstOrCreate(
+                [
+                    'tipo' => 'Empresa externa',
+                    'nombre_comercial' => $empresa['nombre_comercial'],
+                ],
                 $empresa + [
                     'tipo_proveedor' => Proveedor::TIPOS_PROVEEDOR[1],
                     'estado' => Proveedor::ESTADOS[0],

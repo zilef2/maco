@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use App\Models\Material;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
 class StoreOrdenProduccionRequest extends FormRequest
@@ -35,8 +36,8 @@ class StoreOrdenProduccionRequest extends FormRequest
             'costo_proceso' => ['nullable', 'numeric', 'min:0'],
             'fecha_prevista_envio_taller' => ['nullable', 'date'],
             'tipo' => ['required', 'in:taller,externa'],
-            'taller_id' => ['required_if:tipo,taller', 'nullable', 'integer', 'exists:tallers,id'],
-            'empresa_externa_id' => ['required_if:tipo,externa', 'nullable', 'integer', 'exists:empresa_externas,id'],
+            'taller_id' => ['required_if:tipo,taller', 'nullable', 'integer', Rule::exists('proveedores_maco', 'id')->where('tipo', 'Taller')],
+            'empresa_externa_id' => ['required_if:tipo,externa', 'nullable', 'integer', Rule::exists('proveedores_maco', 'id')->where('tipo', 'Empresa externa')],
             'estado_op_material_id' => ['nullable', 'integer', 'exists:estado_op_materials,id'],
             'externa' => ['nullable', 'boolean'],
             'observaciones' => ['nullable', 'string'],

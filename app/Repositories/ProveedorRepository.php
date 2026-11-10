@@ -2,39 +2,38 @@
 
 namespace App\Repositories;
 
-use App\Models\Proveedor;
+use App\Models\Tercero;
 use Illuminate\Database\Eloquent\Collection;
 
 class ProveedorRepository
 {
     public function all(): Collection
     {
-        return Proveedor::query()->orderByDesc('updated_at')->get();
+        return Tercero::query()->orderByDesc('updated_at')->get();
     }
 
-    public function findById(int $id): ?Proveedor
+    public function findById(int $id): ?Tercero
     {
-        return Proveedor::find($id);
+        return Tercero::find($id);
     }
 
-    public function create(array $data): Proveedor
+    public function create(array $data): Tercero
     {
-        return Proveedor::create($data);
+        return Tercero::create($data);
     }
 
-    public function update(Proveedor $proveedor, array $data): bool
+    public function update(Tercero $tercero, array $data): bool
     {
-        return $proveedor->update($data);
+        return $tercero->update($data);
     }
 
-    public function delete(Proveedor $proveedor): bool
+    public function delete(Tercero $tercero): bool
     {
-        return (bool) $proveedor->delete();
+        return (bool) $tercero->delete();
     }
 
     public function deleteBulk(array $ids): int
     {
-        return Proveedor::whereIn('id', $ids)->delete();
+        return Tercero::whereIn('id', $ids)->delete();
     }
 }
-

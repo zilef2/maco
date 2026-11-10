@@ -562,16 +562,16 @@ class ExcelMaterialesService
         $porClave = [];
         $porNombre = [];
 
-        $query = Proveedor::query()->get(['id', 'codigo_proveedor', 'nombre_comercial', 'razon_social', 'nombre', 'nit']);
+        $query = Proveedor::query()->get(['id', 'codigo', 'nombre_comercial', 'razon_social', 'nombre', 'nit']);
 
         foreach ($query as $proveedor) {
             $identificadores = [
                 $proveedor->nombre_comercial,
                 $proveedor->razon_social,
                 $proveedor->nombre,
-                $proveedor->codigo_proveedor,
+                $proveedor->codigo,
                 $proveedor->nit,
-                // Código visual que usa el listado cuando no hay codigo_proveedor.
+                // Código visual que usa el listado cuando no hay código.
                 'PRV-' . $proveedor->id,
                 'PROV-' . $proveedor->id,
                 (string) $proveedor->id,

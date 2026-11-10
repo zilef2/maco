@@ -2,7 +2,7 @@
 
 namespace Database\Seeders;
 
-use App\Models\Taller;
+use App\Models\Tercero;
 use Illuminate\Database\Seeder;
 
 class TallerSeeder extends Seeder
@@ -27,7 +27,8 @@ class TallerSeeder extends Seeder
         $sectores = ['Centro', 'Norte', 'Sur', 'Occidente', 'Chapinero', 'Kennedy', 'Suba', 'Usaquén'];
 
         for ($i = 1; $i <= self::CANTIDAD; $i++) {
-            Taller::create([
+            Tercero::create([
+                'tipo'      => 'Taller',
                 'nombre'    => $nombres[array_rand($nombres)] . ' #' . $i . '-' . rand(10, 99),
                 'direccion' => $calles[array_rand($calles)] . ' #' . rand(1, 99) . '-' . rand(1, 20)
                     . ', ' . $sectores[array_rand($sectores)],

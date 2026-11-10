@@ -636,7 +636,7 @@ export const explicaciones: Explicacion[] = [
             'app/Services/PlantillasExcelService.php (descripcion de la columna Proveedor habitual)',
             'app/Http/Controllers/ImportarExcelController.php (tarjeta de materiales del Centro de Importación)',
             'resources/js/pages/Material/ImportarMaterialModal.vue (ayuda visible al subir)',
-            'tabla proveedors (nit, nombre_comercial, razon_social, codigo_proveedor, nombre)',
+            'tabla proveedores_maco (nit, nombre_comercial, razon_social, codigo, nombre)',
         ],
     },
     {

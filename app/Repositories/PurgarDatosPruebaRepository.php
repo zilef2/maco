@@ -44,9 +44,7 @@ class PurgarDatosPruebaRepository
             'producto_tallas_history',
             'producto_movimientos',
             'productos',
-            'tallers',
-            'empresa_externas',
-            'proveedors',
+            'proveedores_maco',
         ];
 
         foreach ($tablas as $tabla) {

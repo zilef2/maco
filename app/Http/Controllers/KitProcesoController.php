@@ -15,6 +15,7 @@ use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -149,7 +150,7 @@ class KitProcesoController extends Controller {
         $datos = $request->validate([
             'orden_produccion_id' => ['required', 'integer', 'exists:orden_produccions,id'],
             'material_id' => ['required', 'integer', 'exists:materials,id'],
-            'proveedor_id' => ['nullable', 'integer', 'exists:proveedors,id'],
+            'proveedor_id' => ['nullable', 'integer', Rule::exists('proveedores_maco', 'id')->where('tipo', 'Proveedor')],
             'estado_requerido' => ['nullable', 'string', 'max:255'],
             'unidad' => ['nullable', 'string', 'max:100'],
             'cantidad_requerida' => ['nullable', 'numeric', 'min:0'],
@@ -194,7 +195,7 @@ class KitProcesoController extends Controller {
 
         $datos = $request->validate([
             'estado_requerido' => ['required', 'string', 'max:255'],
-            'proveedor_id' => ['required', 'integer', 'exists:proveedors,id'],
+            'proveedor_id' => ['required', 'integer', Rule::exists('proveedores_maco', 'id')->where('tipo', 'Proveedor')],
             'cantidad_preparada' => ['nullable', 'numeric', 'min:0'],
             'observaciones' => ['nullable', 'string', 'max:1000'],
         ]);
@@ -233,7 +234,7 @@ class KitProcesoController extends Controller {
             'filas' => ['required', 'array', 'min:1'],
             'filas.*.id' => ['required', 'integer', 'exists:kit_procesos,id'],
             'filas.*.estado_requerido' => ['required', 'string', 'max:255'],
-            'filas.*.proveedor_id' => ['required', 'integer', 'exists:proveedors,id'],
+            'filas.*.proveedor_id' => ['required', 'integer', Rule::exists('proveedores_maco', 'id')->where('tipo', 'Proveedor')],
             'filas.*.cantidad_preparada' => ['nullable', 'numeric', 'min:0'],
             'filas.*.observaciones' => ['nullable', 'string', 'max:1000'],
         ]);

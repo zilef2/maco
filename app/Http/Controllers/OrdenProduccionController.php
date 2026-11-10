@@ -15,9 +15,8 @@ use App\Models\EstadoOperacion;
 use App\Models\EstadoOpMaterial;
 use App\Models\Producto;
 use App\Models\ProductoMovimiento;
-use App\Models\EmpresaExterna;
 use App\Models\RecepcionCalidad;
-use App\Models\Taller;
+use App\Models\Tercero;
 use App\Http\Requests\StoreOrdenProduccionRequest;
 use App\Services\Bitacora;
 use App\Services\ColaMaterialesOpService;
@@ -577,7 +576,8 @@ class OrdenProduccionController extends Controller {
                 ];
             });
 
-        $talleres = Taller::all(['id', 'nombre', 'nombre_comercial'])
+        $talleres = Tercero::where('tipo', 'Taller')
+            ->get(['id', 'nombre', 'nombre_comercial'])
             ->map(function ($taller) {
                 // Los desplegables muestran el nombre comercial del taller.
                 $nombre = $taller->nombre_comercial ?: $taller->nombre;
@@ -590,7 +590,8 @@ class OrdenProduccionController extends Controller {
                 ];
             });
 
-        $empresasExternas = EmpresaExterna::all(['id', 'nombre', 'nombre_comercial'])
+        $empresasExternas = Tercero::where('tipo', 'Empresa externa')
+            ->get(['id', 'nombre', 'nombre_comercial'])
             ->map(function ($empresa) {
                 $nombre = $empresa->nombre_comercial ?: $empresa->nombre;
                 return [
@@ -865,9 +866,9 @@ class OrdenProduccionController extends Controller {
             'cantidad_planificada' => ['nullable', 'numeric', 'min:0'],
             'costo_proceso' => ['nullable', 'numeric', 'min:0'],
             'fecha_prevista_envio_taller' => ['nullable', 'date'],
-            'taller_id' => ['nullable', 'integer', 'exists:tallers,id'],
+            'taller_id' => ['nullable', 'integer', Rule::exists('proveedores_maco', 'id')->where('tipo', 'Taller')],
             'tipo' => ['nullable', 'in:taller,externa'],
-            'empresa_externa_id' => ['nullable', 'integer', 'exists:empresa_externas,id'],
+            'empresa_externa_id' => ['nullable', 'integer', Rule::exists('proveedores_maco', 'id')->where('tipo', 'Empresa externa')],
             'id_shopify_producto' => ['nullable', 'string'],
             'observaciones' => ['nullable', 'string'],
             'estado_op_material_id' => ['nullable', 'integer', 'exists:estado_op_materials,id'],

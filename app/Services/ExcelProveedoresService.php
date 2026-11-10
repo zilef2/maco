@@ -330,12 +330,13 @@ class ExcelProveedoresService
                 $ahora = now();
 
                 foreach ($nuevos as &$datos) {
-                    $datos['codigo_proveedor'] = 'PRV-' . str_pad(
+                    $datos['codigo'] = 'PRV-' . str_pad(
                         (string) $siguienteCodigo++,
                         3,
                         '0',
                         STR_PAD_LEFT
                     );
+                    $datos['tipo'] = 'Proveedor';
                     $datos['nombre'] = $datos['nombre']
                         ?? ($datos['nombre_comercial'] ?? ($datos['razon_social'] ?? 'Sin nombre'));
                     $datos['created_at'] = $ahora;
@@ -380,7 +381,7 @@ class ExcelProveedoresService
     {
         $maximo = 0;
 
-        foreach (Proveedor::query()->whereNotNull('codigo_proveedor')->pluck('codigo_proveedor') as $codigo) {
+        foreach (Proveedor::query()->whereNotNull('codigo')->pluck('codigo') as $codigo) {
             $numero = (int) preg_replace('/\D+/', '', (string) $codigo);
             if ($numero > $maximo) {
                 $maximo = $numero;

@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Models\Proveedor;
+use App\Models\Tercero;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -16,7 +17,7 @@ class StoreProveedorRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'codigo_proveedor' => ['nullable', 'string', 'max:255'],
+            'tipo' => ['required', 'string', Rule::in(Tercero::TIPOS_FICHA)],
             'nit' => ['nullable', 'string', 'max:255'],
             'nombre_comercial' => ['required', 'string', 'max:255'],
             'razon_social' => ['nullable', 'string', 'max:255'],

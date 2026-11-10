@@ -18,7 +18,8 @@ const emits = defineEmits<{
   'update:open': [open: boolean]
 }>()
 
-const isMobile = useMediaQuery('(max-width: 768px)')
+// Celular y tablet: la barra se oculta sola y se abre con el botón del encabezado.
+const isMobile = useMediaQuery('(max-width: 1023.98px)')
 const openMobile = ref(false)
 
 const open = useVModel(props, 'open', emits, {

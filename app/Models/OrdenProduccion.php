@@ -73,12 +73,14 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
     public function taller()
     {
-        return $this->belongsTo(Taller::class, 'taller_id');
+        return $this->belongsTo(Tercero::class, 'taller_id')
+            ->where('proveedores_maco.tipo', 'Taller');
     }
 
     public function empresaExterna()
     {
-        return $this->belongsTo(EmpresaExterna::class, 'empresa_externa_id');
+        return $this->belongsTo(Tercero::class, 'empresa_externa_id')
+            ->where('proveedores_maco.tipo', 'Empresa externa');
     }
 
     public function estadoOp()

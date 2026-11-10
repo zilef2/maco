@@ -102,10 +102,10 @@ class ImportarExcelController extends Controller
             ],
             [
                 'id'                  => 'taller',
-                'nombre'              => 'Talleres',
+                'nombre'              => 'Proveedores y terceros',
                 'grupo'               => 'Producción',
                 'descripcion'         => 'Ficha de terceros: talleres, empresas externas y proveedores',
-                'ruta'                => route('Taller.upload-excel'),
+                'ruta'                => route('Proveedor.upload-terceros-excel'),
                 'nota'                => 'La fila 1 debe contener los títulos de las columnas. El nombre, el tipo proveedor y la columna "proveedor o externa o macondas" son obligatorios; el código se autogenera si queda vacío. Esa columna decide dónde va cada fila: macondas se guarda en Taller, taller de proceso externo en Empresa externa y proveedor en Proveedor; cualquier otro valor o una celda vacía cancela la subida antes de procesar el archivo. Si el registro ya existe (mismo código, mismo NIT o mismo nombre) se actualiza; las celdas vacías no borran los datos que ya tenía. La importación se procesa en segundo plano y recibirás un correo con el resultado.',
             ],
             [

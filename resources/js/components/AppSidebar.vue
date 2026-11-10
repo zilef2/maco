@@ -4,7 +4,8 @@ import NavMain from '@/components/NavMain.vue';
 import NavUser from '@/components/NavUser.vue';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { type NavGroup } from '@/types';
-import { Link } from '@inertiajs/vue3';
+import { Link, usePage } from '@inertiajs/vue3';
+import { computed } from 'vue';
 import {
     Building2,
     Activity,
@@ -60,176 +61,153 @@ const navGroups: NavGroup[] = [
     },
 ];
 
-const navDropdown: NavGroup[] = [
-    {
-        label: 'Taller & Externo',
-        icon: Building2,
-        items: [
-            {
-                title: 'EmpresaExterna',
-                href: '/EmpresaExterna',
-                icon: Building2,
-            },
-            {
-                title: 'Taller',
-                href: '/Taller',
-                icon: Building2,
-            },
-            {
-                title: 'Proveedor',
-                href: '/Proveedor',
-                icon: Truck,
-            },
-        ],
-    },
-    {
-        label: 'Fichas y Procesos',
-        icon: Layers,
-        items: [
-            {
-                title: 'FichaTecnicaMateriales',
-                href: '/FichaTecnicaMateriales',
-                icon: FileSpreadsheet,
-            },
-            {
-                title: 'Proceso',
-                href: '/Procesoop',
-                icon: LayoutGrid,
-            },
-            // {
-            //     title: 'FichaEnsamble',
-            //     href: '/FichaEnsamble',
-            //     icon: FileSpreadsheet,
-            // },
-            // {
-            //     title: 'FichaEnsambleMaterial',
-            //     href: '/FichaEnsambleMaterial',
-            //     icon: FileSpreadsheet,
-            // },
-            // {
-            //     title: 'KitProceso',
-            //     href: '/KitProceso',
-            //     icon: PackageCheck,
-            // },
-            {
-                title: 'Compromisomaterial',
-                href: '/Compromisomaterial',
-                icon: LayoutGrid,
-            },
-            //aquipuesSide
+const page = usePage();
+const esSuperadmin = computed(() => Boolean((page.props as any)?.auth?.can?.['issuperadmin']));
 
-        ],
-    },
-    // {
-    //     label: 'Mantenimiento',
-    //     icon: Layers,
-    //     items: [
+const navDropdown = computed<NavGroup[]>(() => {
+    const items: NavGroup[] = [
+        {
+            label: 'Terceros',
+            icon: Building2,
+            items: [
+                {
+                    title: 'Proveedores y terceros',
+                    href: '/Proveedor',
+                    icon: Truck,
+                },
+            ],
+        },
+        {
+            label: 'Fichas y Procesos',
+            icon: Layers,
+            items: [
+                {
+                    title: 'Ficha Producto',
+                    href: '/FichaTecnicaMateriales',
+                    icon: FileSpreadsheet,
+                },
+                {
+                    title: 'Proceso',
+                    href: '/Procesoop',
+                    icon: LayoutGrid,
+                },
+                // {
+                //     title: 'FichaEnsamble',
+                //     href: '/FichaEnsamble',
+                //     icon: FileSpreadsheet,
+                // },
+                // {
+                //     title: 'FichaEnsambleMaterial',
+                //     href: '/FichaEnsambleMaterial',
+                //     icon: FileSpreadsheet,
+                // },
+                // {
+                //     title: 'KitProceso',
+                //     href: '/KitProceso',
+                //     icon: PackageCheck,
+                // },
+                {
+                    title: 'Compromiso Material',
+                    href: '/Compromisomaterial',
+                    icon: LayoutGrid,
+                },
+                //aquipuesSide
 
-    //aquipuesSide
+            ],
+        },
+        // {
+        //     label: 'Mantenimiento',
+        //     icon: Layers,
+        //     items: [
 
-    //     ],
-    // },
+        //aquipuesSide
 
-    // {
-    //     label: 'Listas',
-    //     icon: Database,
-    //     items: [
+        //     ],
+        // },
+
+        // {
+        //     label: 'Listas',
+        //     icon: Database,
+        //     items: [
 
 
-    //         // {
-    //         //     title: 'GrupoTalla',
-    //         //     href: '/GrupoTalla',
-    //         //     icon: Tag,
-    //         // },
+        //         // {
+        //         //     title: 'GrupoTalla',
+        //         //     href: '/GrupoTalla',
+        //         //     icon: Tag,
+        //         // },
 
 
-    //         // {
-    //         //     title: 'EstadoOpMaterial',
-    //         //     href: '/EstadoOpMaterial',
-    //         //     icon: LayoutGrid,
-    //         // },
+        //         // {
+        //         //     title: 'EstadoOpMaterial',
+        //         //     href: '/EstadoOpMaterial',
+        //         //     icon: LayoutGrid,
+        //         // },
 
 
-    //     ],
-    // },
-    {
-        label: 'PosProducción',
-        icon: Factory,
-        items: [
-            // {
-            //     title: 'ProcesoExterno',
-            //     href: '/ProcesoExterno',
-            //     icon: ArrowLeftRight,
-            // },
-            {
-                title: 'RecepcionCalidad',
-                href: '/RecepcionCalidad',
-                icon: ShieldCheck,
-            },
-            // {
-            //     title: 'CierreOrdenProduccion',
-            //     href: '/CierreOrdenProduccion',
-            //     icon: CheckCircle2,
-            // },
-            {
-                title: 'Merma',
-                href: '/Merma',
-                icon: LayoutGrid,
-            },
+        //     ],
+        // },
+        {
+            label: 'PosProducción',
+            icon: Factory,
+            items: [
+                // {
+                //     title: 'ProcesoExterno',
+                //     href: '/ProcesoExterno',
+                //     icon: ArrowLeftRight,
+                // },
+                {
+                    title: 'RecepcionCalidad',
+                    href: '/RecepcionCalidad',
+                    icon: ShieldCheck,
+                },
+                // {
+                //     title: 'CierreOrdenProduccion',
+                //     href: '/CierreOrdenProduccion',
+                //     icon: CheckCircle2,
+                // },
+                {
+                    title: 'Merma',
+                    href: '/Merma',
+                    icon: LayoutGrid,
+                },
 
-        ],
-    },
-    {
-        label: 'Personas',
-        icon: Users,
-        items: [
-            {
-                title: 'Usuarios',
-                href: '/user',
-                icon: Users,
-            },
-            {
-                title: 'Proveedor',
-                href: '/Proveedor',
-                icon: Truck,
-            },
-        ],
-    },
-    {
-        label: 'Sistema',
-        icon: Settings,
-        items: [
+            ],
+        },
+        {
+            label: 'Personas',
+            icon: Users,
+            items: [
+                {
+                    title: 'Usuarios',
+                    href: '/user',
+                    icon: Users,
+                },
+                {
+                    title: 'Proveedor',
+                    href: '/Proveedor',
+                    icon: Truck,
+                },
+            ],
+        },
+    ];
 
-            {
-                title: 'Importar Excel',
-                href: '/ImportarExcel',
-                icon: FileUp,
-            },
-            // {
-            //     title: 'Explicaciones',
-            //     href: '/Explicaciones',
-            //     icon: BookOpen,
-            // },
-        ],
-    },
-    // {
-    //     label: 'Dudas',
-    //     icon: Settings,
-    //     items: [
+    if (esSuperadmin.value) {
+        items.push({
+            label: 'Sistema',
+            icon: Settings,
+            items: [
+                {
+                    title: 'Importar Excel',
+                    href: '/ImportarExcel',
+                    icon: FileUp,
+                },
+            ],
+        });
+    }
 
-    //         {
-    //             title: 'FichaEnsamble',
-    //             href: '/FichaEnsamble',
-    //             icon: FileSpreadsheet,
-    //         },
-    //         {
-    //             title: 'KitProceso',
-    //             href: '/KitProceso',
-    //             icon: PackageCheck,
-    //         },
-    //     ],
-    // },
-];
+    return items;
+});
 
 // const footerAdminItems = [
 //     ];

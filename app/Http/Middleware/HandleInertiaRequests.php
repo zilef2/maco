@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Services\FaltantesOpService;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\App;
@@ -75,6 +76,11 @@ class HandleInertiaRequests extends Middleware {
 			'sidebarOpen'  => !$request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
 			'locale'       => $locale,              // por ejemplo "es"
 			'translations' => $translations,
+			// Carencias de las OP abiertas: la barra superior las muestra en
+			// cualquier página y desde ahí se abre el registro de compra.
+			'faltantesOp'  => fn() => $request->user()?->can('update Material')
+				? app(FaltantesOpService::class)->listar()
+				: [],
 		];
 	}
 }

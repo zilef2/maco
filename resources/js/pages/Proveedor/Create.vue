@@ -35,6 +35,7 @@ const state = reactive({
 });
 
 const form = useForm({
+    tipo: 'Proveedor',
     nit: '',
     nombre_comercial: '',
     razon_social: '',
@@ -54,6 +55,33 @@ const form = useForm({
 });
 
 const opcionesEstado = computed(() => props.opcionesSelect?.estado ?? ['Activo', 'Inactivo']);
+
+const opcionesTipo = computed<string[]>(
+    () => (props.opcionesSelect as any)?.tipo ?? ['Proveedor', 'Taller', 'Empresa externa'],
+);
+
+const claseTipoSeleccionado = (opcion: string): string =>
+    opcion === 'Proveedor'
+        ? 'bg-sky-600 text-white shadow-sm'
+        : opcion === 'Taller'
+          ? 'bg-amber-600 text-white shadow-sm'
+          : 'bg-violet-600 text-white shadow-sm';
+
+const tituloTipo = computed(() => {
+    if (form.tipo === 'Taller') return 'taller';
+    if (form.tipo === 'Empresa externa') return 'empresa externa';
+    return 'proveedor';
+});
+
+const prefijoActual = computed(() =>
+    form.tipo === 'Taller' ? 'TAL' : form.tipo === 'Empresa externa' ? 'EMP' : 'PRV',
+);
+
+const encabezadoTipo = computed(() => {
+    if (form.tipo === 'Taller') return 'Nuevo taller';
+    if (form.tipo === 'Empresa externa') return 'Nueva empresa externa';
+    return 'Nuevo proveedor';
+});
 
 const etiquetas: Record<string, string> = {
     nit: 'NIT',
@@ -109,16 +137,12 @@ const camposOpcionales = [
     'razon_social',
     'direccion',
     'observaciones_direccion',
-    'correo_electronico',
     'ciudad',
     'telefono_principal',
     'tipo_proveedor',
     'que_suministra',
-    'persona_contacto',
-    'celular_contacto',
     'forma_pago',
     'tiempo_entrega',
-    'estado',
     'observaciones_generales',
 ];
 
@@ -159,7 +183,7 @@ watch(
             form.clearErrors();
             reiniciarPlazo();
             reiniciarTipo();
-            // codigo_proveedor se genera automáticamente en el modelo
+            // El código se genera automáticamente en el modelo
             form.estado = 'Activo';
         }
     },
@@ -171,44 +195,94 @@ watch(
         <form class="p-6" @submit.prevent="submit(false)">
             <div class="border-b border-border pb-4">
                 <h2 class="text-lg font-semibold text-foreground">
-                    Nuevo proveedor
+                    {{ encabezadoTipo }}
                 </h2>
                 <p class="mt-1 text-sm text-muted-foreground">
-                    Ingresa los datos generales, de contacto y comerciales del proveedor.
+                    Ingresa los datos generales, de contacto y comerciales del tercero.
                 </p>
             </div>
 
-            <!-- Campos obligatorios arriba -->
-            <div class="my-6 space-y-4">
-                <h3 class="text-sm font-medium text-muted-foreground mb-2">Campos obligatorios</h3>
-                <div v-for="campo in camposObligatorios" :key="campo">
-                    <InputLabel :for="campo" :value="etiquetas[campo]"/>
-                    <TextInput
-                        :id="campo"
-                        v-model="form[campo]"
-                        type="text"
-                        class="mt-1 block w-full"
-                        :placeholder="campo === 'nit' ? 'Ej. 900.123.456-7' : 'Razón social'"
-                        :error="form.errors[campo]"
-                    />
-                    <InputError class="mt-1" :message="form.errors[campo]" />
+            <!-- Tipo de tercero y estado -->
+            <div class="my-6 grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div>
+                    <InputLabel value="Tipo de tercero" />
+                    <div
+                        class="mt-1 inline-flex items-center gap-1 rounded-md border border-input bg-muted p-1"
+                        role="group"
+                        aria-label="Tipo de tercero"
+                    >
+                        <button
+                            v-for="opcion in opcionesTipo"
+                            :key="opcion"
+                            type="button"
+                            :aria-pressed="form.tipo === opcion"
+                            :class="[
+                                'rounded px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                                form.tipo === opcion
+                                    ? claseTipoSeleccionado(opcion)
+                                    : 'text-muted-foreground hover:bg-background hover:text-foreground',
+                            ]"
+                            @click="form.tipo = opcion"
+                        >
+                            {{ opcion }}
+                        </button>
+                    </div>
+                    <InputError class="mt-1" :message="form.errors.tipo" />
+                </div>
+
+                <div>
+                    <InputLabel for="estado" value="Estado" />
+                    <div
+                        class="mt-1 inline-flex items-center gap-1 rounded-md border border-input bg-muted p-1"
+                        role="group"
+                        aria-label="Estado"
+                    >
+                        <button
+                            v-for="opcion in opcionesEstado"
+                            :key="opcion"
+                            type="button"
+                            :aria-pressed="form.estado === opcion"
+                            :class="[
+                                'rounded px-3 py-1 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
+                                form.estado === opcion
+                                    ? claseEstadoSeleccionado(opcion)
+                                    : 'text-muted-foreground hover:bg-background hover:text-foreground',
+                            ]"
+                            @click="form.estado = opcion"
+                        >
+                            {{ opcion }}
+                        </button>
+                    </div>
+                    <InputError class="mt-1" :message="form.errors.estado" />
                 </div>
             </div>
 
-            <!-- Código de proveedor generado automáticamente -->
+            <!-- Campos obligatorios -->
             <div class="my-6">
-                <InputLabel for="codigo_proveedor" value="Código proveedor"/>
-                <TextInput
-                    id="codigo_proveedor"
-                    v-model="form.codigo_proveedor"
-                    type="text"
-                    class="mt-1 block w-full bg-gray-50 cursor-not-allowed"
-                    placeholder="Ej. PRV-001 (generado automáticamente)"
-                    readonly
-                    :error="form.errors.codigo_proveedor"
-                />
-                <InputError class="mt-1" :message="form.errors.codigo_proveedor" />
-                <p class="text-xs text-muted-foreground mt-1">Se genera automáticamente al guardar (formato: PRV-001, PRV-002, ...)</p>
+                <h3 class="mb-2 text-sm font-medium text-muted-foreground">Campos obligatorios</h3>
+                <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                    <div v-for="campo in camposObligatorios" :key="campo">
+                        <InputLabel :for="campo" :value="etiquetas[campo]" />
+                        <TextInput
+                            :id="campo"
+                            v-model="form[campo]"
+                            type="text"
+                            class="mt-1 block w-full"
+                            :placeholder="campo === 'nit' ? 'Ej. 900.123.456-7' : 'Razón social'"
+                            :error="form.errors[campo]"
+                        />
+                        <InputError class="mt-1" :message="form.errors[campo]" />
+                    </div>
+                </div>
+            </div>
+
+            <!-- Código generado automáticamente -->
+            <div class="my-6 rounded-md border border-border bg-muted/40 p-3">
+                <p class="text-sm font-medium text-foreground">Código</p>
+                <p class="mt-1 text-xs text-muted-foreground">
+                    Se genera automáticamente al guardar con el prefijo del tipo elegido:
+                    {{ prefijoActual }}-001, {{ prefijoActual }}-002, ...
+                </p>
             </div>
 
             <!-- Campos opcionales abajo -->
@@ -284,19 +358,18 @@ watch(
                         />
                     </template>
 
-                    <!-- Ciudad seleccionable -->
-                    <select
+                    <!-- Ciudad: permite escribir para buscar entre las opciones -->
+                    <v-select
                         v-else-if="campo === 'ciudad'"
                         :id="campo"
                         v-model="form[campo]"
-                        :class="selectClass"
-                    >
-                        <option value="">Seleccione una ciudad</option>
-                        <option v-for="ciudad in opcionesDe(campo)" :key="ciudad" :value="ciudad">{{ ciudad }}</option>
-                        <option v-if="form.ciudad && !opcionesDe(campo).includes(form.ciudad)" :value="form.ciudad">
-                            {{ form.ciudad }}
-                        </option>
-                    </select>
+                        :options="opcionesDe(campo)"
+                        :filterable="true"
+                        :clearable="true"
+                        :taggable="true"
+                        placeholder="Escribe para buscar una ciudad"
+                        class="mt-1 block w-full"
+                    />
 
                     <!-- Teléfono y celular: solo números -->
                     <TextInput
@@ -310,6 +383,16 @@ watch(
                         @update:model-value="(valor: string) => setCampo(campo, soloDigitos(valor))"
                     />
 
+                    <!-- Observaciones generales: área de texto -->
+                    <textarea
+                        v-else-if="campo === 'observaciones_generales'"
+                        :id="campo"
+                        v-model="form[campo]"
+                        rows="4"
+                        class="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30"
+                        placeholder="Escribe las observaciones generales"
+                    ></textarea>
+
                     <!-- Campos texto normales -->
                     <TextInput
                         v-else
@@ -321,6 +404,54 @@ watch(
                         :error="form.errors[campo]"
                     />
                     <InputError class="mt-1" :message="form.errors[campo]" />
+                </div>
+            </div>
+
+            <!-- Datos de contacto al final del formulario -->
+            <div class="my-6 border-t border-border pt-6">
+                <h3 class="mb-4 text-sm font-medium text-muted-foreground">Datos de contacto</h3>
+                <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                    <div>
+                        <InputLabel for="persona_contacto" value="Persona de contacto" />
+                        <TextInput
+                            id="persona_contacto"
+                            v-model="form.persona_contacto"
+                            type="text"
+                            class="mt-1 block w-full"
+                            :placeholder="'Nombre de la persona de contacto'"
+                            :error="form.errors.persona_contacto"
+                        />
+                        <InputError class="mt-1" :message="form.errors.persona_contacto" />
+                    </div>
+
+                    <div>
+                        <InputLabel for="correo_electronico" value="Correo" />
+                        <TextInput
+                            id="correo_electronico"
+                            v-model="form.correo_electronico"
+                            type="email"
+                            class="mt-1 block w-full"
+                            placeholder="correo@ejemplo.com"
+                            :error="form.errors.correo_electronico"
+                        />
+                        <InputError class="mt-1" :message="form.errors.correo_electronico" />
+                    </div>
+
+                    <div>
+                        <InputLabel for="celular_contacto" value="Celular" />
+                        <TextInput
+                            id="celular_contacto"
+                            :model-value="form.celular_contacto"
+                            type="tel"
+                            inputmode="numeric"
+                            class="mt-1 block w-full"
+                            placeholder="3001234567"
+                            :error="form.errors.celular_contacto"
+                            @update:model-value="(valor: string) => setCampo('celular_contacto', soloDigitos(valor))"
+                        />
+                        <p class="mt-1 text-xs text-muted-foreground">Todos los teléfonos son de Colombia.</p>
+                        <InputError class="mt-1" :message="form.errors.celular_contacto" />
+                    </div>
                 </div>
             </div>
 
@@ -337,7 +468,7 @@ watch(
                     {{ form.processing && state.guardarYContinuar ? 'Guardando...' : 'Guardar y continuar' }}
                 </PrimaryButton>
                 <PrimaryButton :disabled="form.processing" type="submit">
-                    {{ form.processing && !state.guardarYContinuar ? 'Guardando...' : 'Guardar proveedor' }}
+                    {{ form.processing && !state.guardarYContinuar ? 'Guardando...' : `Guardar ${tituloTipo}` }}
                 </PrimaryButton>
             </div>
         </form>

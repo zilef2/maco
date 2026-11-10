@@ -16,7 +16,6 @@ class UpdateProveedorRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'codigo_proveedor' => ['nullable', 'string', 'max:255'],
             'nit' => ['nullable', 'string', 'max:255'],
             'nombre_comercial' => ['required', 'string', 'max:255'],
             'razon_social' => ['nullable', 'string', 'max:255'],

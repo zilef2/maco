@@ -3,14 +3,13 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import PrimaryButton from '@/components/PrimaryButton.vue';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 
 import Create from '@/pages/Material/Create.vue';
 import Edit from '@/pages/Material/Edit.vue';
 import Delete from '@/pages/Material/Delete.vue';
 import DeleteBulk from '@/pages/Material/DeleteBulk.vue';
 import ImportarMaterialModal from '@/pages/Material/ImportarMaterialModal.vue';
-import AlterarExistencia from '@/pages/Material/AlterarExistencia.vue';
 import HistorialMovimientos from '@/pages/Material/HistorialMovimientos.vue';
 import HistorialMultiples from '@/pages/Material/HistorialMultiples.vue';
 import RegistrarCompra from '@/pages/Material/RegistrarCompra.vue';
@@ -544,7 +543,6 @@ const data = reactive({
     importOpen: false,
     compraOpen: false,
     compraFaltantes: false,
-    alterarExistenciaOpen: false,
     historialOpen: false,
     historialMultipleOpen: false,
     historialMateriales: [] as any[],
@@ -581,6 +579,23 @@ const abrirCompra = (faltantes: boolean) => {
     data.compraOpen = true;
 };
 
+/* El botón «Comprar faltantes» de la barra superior llega con este parámetro. */
+const page = usePage();
+
+const abrirCompraDesdeUrl = () => {
+    const url = new URL(page.url, window.location.origin);
+    if (!url.searchParams.has('comprar_faltantes')) return;
+
+    abrirCompra(true);
+
+    // Se quita el parámetro para que recargar la página no reabra el modal.
+    url.searchParams.delete('comprar_faltantes');
+    window.history.replaceState(window.history.state, '', url.pathname + url.search + url.hash);
+};
+
+onMounted(abrirCompraDesdeUrl);
+watch(() => page.url, abrirCompraDesdeUrl);
+
 const alEliminarBulk = (resultado: any) => {
     if (Number(resultado?.eliminados) > 0) {
         data.selectedId = [];
@@ -610,7 +625,6 @@ const abrirCrear = () => (data.createOpen = true);
 const accionFila = (id: string, material: any) => {
     data.Materialo = material;
     if (id === 'edit') data.editOpen = true;
-    if (id === 'alterar') data.alterarExistenciaOpen = true;
     if (id === 'historial') data.historialOpen = true;
     if (id === 'delete') data.deleteOpen = true;
 };
@@ -745,17 +759,6 @@ const titulos = [
                         >
                             <ShoppingCartIcon class="mr-1.5 h-4 w-4" />
                             Registrar compra
-                        </PrimaryButton>
-
-                        <PrimaryButton
-                            v-if="can(['update Material']) && filas.length && faltantesDeOp.length"
-                            type="button"
-                            class="h-9 bg-amber-600 hover:bg-amber-700 focus:ring-amber-500"
-                            v-tooltip="`Compra la cantidad justa para cubrir los ${faltantesDeOp.length} material(es) que faltan en las OP abiertas`"
-                            @click="abrirCompra(true)"
-                        >
-                            <ExclamationTriangleIcon class="mr-1.5 h-4 w-4" />
-                            Comprar faltantes ({{ faltantesDeOp.length }})
                         </PrimaryButton>
 
                         <PrimaryButton
@@ -1309,14 +1312,14 @@ const titulos = [
                                             <PencilIcon class="h-4 w-4" />
                                         </button>
                                         <button
-                                            v-if="can(['update Material'])"
+                                            v-if="can(['read Material'])"
                                             type="button"
-                                            @click="accionFila('alterar', material)"
-                                            title="Alterar existencia"
-                                            :aria-label="`Alterar existencia de ${material.codigo_material || material.nombre_base}`"
+                                            @click="accionFila('historial', material)"
+                                            title="Ver historial"
+                                            :aria-label="`Ver historial de ${material.codigo_material || material.nombre_base}`"
                                             class="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                                         >
-                                            <ArrowUpTrayIcon class="h-4 w-4 rotate-180" />
+                                            <ClockIcon class="h-4 w-4" />
                                         </button>
                                         <DropdownMenu>
                                             <DropdownMenuTrigger
@@ -1328,14 +1331,6 @@ const titulos = [
                                                 <EllipsisVerticalIcon class="h-4 w-4" />
                                             </DropdownMenuTrigger>
                                             <DropdownMenuContent align="end" class="w-60 p-1">
-                                                <DropdownMenuItem
-                                                    v-if="can(['read Material'])"
-                                                    @click="accionFila('historial', material)"
-                                                    class="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-xs font-medium"
-                                                >
-                                                    <ClockIcon class="h-4 w-4" />
-                                                    <span>Ver historial</span>
-                                                </DropdownMenuItem>
                                                 <DropdownMenuItem
                                                     v-if="can(['delete Material'])"
                                                     @click="accionFila('delete', material)"
@@ -1521,13 +1516,6 @@ const titulos = [
             :title="props.title"
             @close="data.deleteBulkOpen = false"
             @eliminados="alEliminarBulk"
-        />
-
-        <AlterarExistencia
-            v-if="can(['update Material'])"
-            :show="data.alterarExistenciaOpen"
-            :material="data.Materialo"
-            @close="data.alterarExistenciaOpen = false"
         />
 
         <HistorialMovimientos

@@ -80,10 +80,10 @@ Route::middleware('auth', 'verified')->group(function () {
 	Route::post("/EstadoOperacion/upload-excel", [\App\Http\Controllers\EstadoOperacionController::class, 'uploadExcel'])->name('EstadoOperacion.upload-excel');
 	Route::resource("/FichaTecnicaMateriales", \App\Http\Controllers\FichaTecnicaMaterialesController::class);
 	Route::resource("/PendientesProduccion", \App\Http\Controllers\PendientesProduccionController::class);
-	Route::resource("/Taller", \App\Http\Controllers\TallerController::class);
-	Route::post("/Taller/upload-excel", [\App\Http\Controllers\TallerController::class, 'uploadExcel'])->name('Taller.upload-excel');
+	// Proveedor es la ficha única de proveedores, talleres y empresas externas.
 	Route::resource("/Proveedor", \App\Http\Controllers\ProveedorController::class);
 	Route::post("/Proveedor/upload-excel", [\App\Http\Controllers\ProveedorController::class, 'uploadExcel'])->name('Proveedor.upload-excel');
+	Route::post("/Proveedor/upload-terceros-excel", [\App\Http\Controllers\ProveedorController::class, 'uploadTercerosExcel'])->name('Proveedor.upload-terceros-excel');
 	Route::resource("/Distribucion_por_tallas", \App\Http\Controllers\Distribucion_por_tallasController::class);
 	Route::get("/Material/plantilla-excel", [\App\Http\Controllers\MaterialController::class, 'descargarPlantillaExcel'])->name('Material.plantilla-excel');
 	Route::resource("/Material", \App\Http\Controllers\MaterialController::class);
@@ -100,7 +100,6 @@ Route::middleware('auth', 'verified')->group(function () {
 	Route::post("/ImportarExcel/entidad", [\App\Http\Controllers\ImportarExcelController::class, 'toggleEntidad'])->name('ImportarExcel.toggleEntidad');
 	Route::get("/ImportarExcel/plantilla/{clave}", [\App\Http\Controllers\ImportarExcelController::class, 'descargarPlantilla'])->name('ImportarExcel.plantilla');
 	Route::resource("/EstadoOpMaterial", \App\Http\Controllers\EstadoOpMaterialController::class);
-	Route::resource("/EmpresaExterna", \App\Http\Controllers\EmpresaExternaController::class);
 	// La merma no se registra a mano: es el «No recuperable» de la recepción de la OP.
 	Route::get("/Merma", [\App\Http\Controllers\MermaController::class, 'index'])->name('Merma.index');
 	Route::resource("/FichaEnsamble", \App\Http\Controllers\FichaEnsambleController::class);

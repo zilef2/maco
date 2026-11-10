@@ -24,8 +24,31 @@ class ListaDesplegableService
      */
     public function nombresByCategoria(string $categoria): array
     {
-        return $this->listaDesplegableRepository->getByCategoria($categoria)
-            ->sortBy(fn($item) => $item->nombre, SORT_NATURAL | SORT_FLAG_CASE)
+        return $this->ordenarNombres(
+            $this->listaDesplegableRepository->getByCategoria($categoria)
+        );
+    }
+
+    /**
+     * Nombres de una categoría y subcategoría, ordenados alfabéticamente y sin repetir.
+     *
+     * @return list<string>
+     */
+    public function nombresByCategoriaAndSubcategoria(string $categoria, string $subcategoria): array
+    {
+        return $this->ordenarNombres(
+            $this->listaDesplegableRepository->getByCategoriaAndSubcategoria($categoria, $subcategoria)
+        );
+    }
+
+    /**
+     * @param  Collection<int, ListaDesplegable>  $items
+     * @return list<string>
+     */
+    private function ordenarNombres(Collection $items): array
+    {
+        return $items
+            ->sortBy(fn ($item) => $item->nombre, SORT_NATURAL | SORT_FLAG_CASE)
             ->pluck('nombre')
             ->unique()
             ->values()

@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Proveedor;
+use App\Models\Tercero;
 use App\Repositories\ProveedorRepository;
 use Illuminate\Database\Eloquent\Collection;
 
@@ -10,7 +11,7 @@ class ProveedorService
 {
     public function __construct(
         protected ProveedorRepository $proveedorRepository,
-        protected ?ListaDesplegableService $listas = null,
+        protected ListaDesplegableService $listas,
     ) {}
 
     public function listar(): Collection
@@ -18,32 +19,35 @@ class ProveedorService
         return $this->proveedorRepository->all();
     }
 
-    public function obtener(int $id): ?Proveedor
+    public function obtener(int $id): ?Tercero
     {
         return $this->proveedorRepository->findById($id);
     }
 
-    public function crear(array $data): Proveedor
+    public function crear(array $data): Tercero
     {
         return $this->proveedorRepository->create($data);
     }
 
-    public function actualizar(int $id, array $data): Proveedor
+    public function actualizar(int $id, array $data): Tercero
     {
-        $proveedor = $this->proveedorRepository->findById($id);
-        if (!$proveedor) {
+        $tercero = $this->proveedorRepository->findById($id);
+        if (! $tercero) {
             throw new \RuntimeException('Proveedor no encontrado');
         }
 
-        $this->proveedorRepository->update($proveedor, $data);
+        // El tipo y el código se fijan al crear la ficha y no se editan.
+        unset($data['tipo'], $data['codigo']);
 
-        return $proveedor->fresh();
+        $this->proveedorRepository->update($tercero, $data);
+
+        return $tercero->fresh();
     }
 
     public function eliminar(int $id): bool
     {
         $proveedor = $this->proveedorRepository->findById($id);
-        if (!$proveedor) {
+        if (! $proveedor) {
             return false;
         }
 
@@ -58,11 +62,11 @@ class ProveedorService
     public function obtenerOpcionesSelect(): array
     {
         return [
+            'tipo' => Tercero::TIPOS_FICHA,
             'tipo_proveedor' => Proveedor::TIPOS_PROVEEDOR,
             'estado' => Proveedor::ESTADOS,
             'forma_pago' => Proveedor::FORMAS_PAGO,
-            'ciudad' => $this->listas?->nombresByCategoria('ciudad') ?? [],
+            'ciudad' => $this->listas->nombresByCategoriaAndSubcategoria('ciudad', 'general'),
         ];
     }
 }
-

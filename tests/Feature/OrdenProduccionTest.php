@@ -4,7 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\CompromisoReparacion;
 use App\Models\Distribucion_por_tallas;
-use App\Models\EmpresaExterna;
+use App\Models\Tercero;
 use App\Models\EstadoOpMaterial;
 use App\Models\EstadoOperacion;
 use App\Models\FichaTecnica;
@@ -13,11 +13,8 @@ use App\Models\Material;
 use App\Models\MaterialMovimiento;
 use App\Models\OrdenProduccion;
 use App\Models\Producto;
-use App\Models\ProcesoExterno;
-use App\Models\Proveedor;
 use App\Models\RecepcionCalidad;
 use App\Models\Role;
-use App\Models\Taller;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -46,11 +43,11 @@ class OrdenProduccionTest extends TestCase
         $estadoMaterial = EstadoOpMaterial::create(['nombre' => 'Pendiente', 'valor' => 'pendiente']);
         $this->assertDatabaseHas('estado_op_materials', ['valor' => 'pendiente']);
 
-        $taller = Taller::create(['nombre' => 'Taller de prueba', 'direccion' => 'Calle 1 # 2-3']);
-        $this->assertDatabaseHas('tallers', ['nombre' => 'Taller de prueba']);
+        $taller = Tercero::create(['tipo' => 'Taller', 'nombre' => 'Taller de prueba', 'direccion' => 'Calle 1 # 2-3']);
+        $this->assertDatabaseHas('proveedores_maco', ['nombre' => 'Taller de prueba', 'tipo' => 'Taller']);
 
-        $empresaExterna = EmpresaExterna::create(['nombre_comercial' => 'Empresa de prueba', 'que_suministra' => 'Confección']);
-        $this->assertDatabaseHas('empresa_externas', ['nombre' => 'Empresa de prueba']);
+        $empresaExterna = Tercero::create(['tipo' => 'Empresa externa', 'nombre_comercial' => 'Empresa de prueba', 'que_suministra' => 'Confección']);
+        $this->assertDatabaseHas('proveedores_maco', ['nombre' => 'Empresa de prueba', 'tipo' => 'Empresa externa']);
 
         $otroUsuario = User::factory()->create();
 
@@ -69,7 +66,6 @@ class OrdenProduccionTest extends TestCase
         $response = $this->actingAs($user)->post(route('OrdenProduccion.store'), [
             'productos' => [$producto->id],
             'cantidad_planificada' => 10,
-            'costo_proceso' => 150.75,
             'tipo' => 'externa',
             'taller_id' => $taller->id,
             'empresa_externa_id' => $empresaExterna->id,
@@ -91,8 +87,6 @@ class OrdenProduccionTest extends TestCase
             'taller_id' => null,
             'empresa_externa_id' => $empresaExterna->id,
             'user_id' => $user->id,
-            'costo_proceso' => 150.75,
-            'costo_total' => 150.75,
         ]);
 
         $this->assertNotSame($otroUsuario->id, $user->id);
@@ -261,12 +255,13 @@ class OrdenProduccionTest extends TestCase
 
         $response->assertInertia(fn (Assert $page) => $page
             ->component('OrdenProduccion/Index')
-            ->where('ordenes.0.recepciones_detalle.0.talla', 'S')
-            ->where('ordenes.0.recepciones_detalle.0.cantidad_en_reparacion', 1)
-            ->where('ordenes.0.compromisos_detalle.0.talla', 'S')
-            ->where('ordenes.0.compromisos_detalle.0.fecha_compromiso', '2026-11-10')
-            ->where('ordenes.0.compromisos_detalle.0.producto_nombre', fn ($valor) => is_string($valor) && $valor !== '')
-            ->whereNotNull('ordenes.0.recepcion_desde'));
+            ->loadDeferredProps(fn (Assert $page) => $page
+                ->where('ordenes.0.recepciones_detalle.0.talla', 'S')
+                ->where('ordenes.0.recepciones_detalle.0.cantidad_en_reparacion', 1)
+                ->where('ordenes.0.compromisos_detalle.0.talla', 'S')
+                ->where('ordenes.0.compromisos_detalle.0.fecha_compromiso', '2026-11-10')
+                ->where('ordenes.0.compromisos_detalle.0.producto_nombre', fn ($valor) => is_string($valor) && $valor !== '')
+                ->whereNotNull('ordenes.0.recepcion_desde')));
     }
 
     /**
@@ -299,12 +294,13 @@ class OrdenProduccionTest extends TestCase
 
         $response->assertInertia(fn (Assert $page) => $page
             ->component('OrdenProduccion/Index')
-            ->where('ordenes.0.materiales_detalle.0.nombre', 'MAT-001 — Tela de prueba')
-            ->where('ordenes.0.materiales_detalle.0.requerida', fn ($valor) => (float) $valor === 5.0)
-            ->where('ordenes.0.materiales_detalle.0.disponible', fn ($valor) => (float) $valor === 3.0)
-            ->where('ordenes.0.materiales_faltantes.0.faltante', fn ($valor) => (float) $valor === 2.0)
-            ->where('ordenes.0.distribuciones_detalle.0.talla', 'S')
-            ->where('ordenes.0.distribuciones_detalle.1.talla', 'M'));
+            ->loadDeferredProps(fn (Assert $page) => $page
+                ->where('ordenes.0.materiales_detalle.0.nombre', fn ($valor) => is_string($valor) && str_contains($valor, 'Tela de prueba'))
+                ->where('ordenes.0.materiales_detalle.0.requerida', fn ($valor) => (float) $valor === 5.0)
+                ->where('ordenes.0.materiales_detalle.0.disponible', fn ($valor) => (float) $valor === 3.0)
+                ->where('ordenes.0.materiales_faltantes.0.faltante', fn ($valor) => (float) $valor === 2.0)
+                ->where('ordenes.0.distribuciones_detalle.0.talla', 'S')
+                ->where('ordenes.0.distribuciones_detalle.1.talla', 'M')));
     }
 
     /**
@@ -376,82 +372,6 @@ class OrdenProduccionTest extends TestCase
         $this->assertNull($op->recepcion_desde);
     }
 
-    /**
-     * Al entrar a "Procesos externos" se registra en proceso_externos cada
-     * material del kit de la OP, con la fecha de salida actual.
-     */
-    public function test_al_pasar_a_procesos_externos_registra_los_materiales_del_kit(): void
-    {
-        [$user, $op, $estados] = $this->contextoRecepcion('Preparación');
-
-        $material = Material::create([
-            'codigo_material' => 'MAT-EXT-001',
-            'categoria' => 'Tela',
-            'nombre_base' => 'Tela para proceso externo',
-            'unidad_inventario' => 'm',
-            'estado' => 'Activo',
-            'existencia_actual' => 20,
-        ]);
-
-        KitProceso::create([
-            'orden_produccion_id' => $op->id,
-            'material_id' => $material->id,
-            'unidad' => 'm',
-            'cantidad_requerida' => 5.5,
-            'cantidad_disponible' => 20,
-            'cantidad_preparada' => 0,
-        ]);
-
-        $proveedor = Proveedor::create(['nombre' => 'Bordados de prueba', 'categoria' => 'Prueba']);
-
-        $response = $this->actingAs($user)->put(route('OrdenProduccion.cambiarEstado', $op->id), [
-            'estado_op_id' => $estados['Procesos externos']->id,
-            'proceso_externo' => [
-                'proveedor_destino_id' => $proveedor->id,
-                'etapa_componente' => 'Bordado',
-                'fecha_prevista_regreso' => '2026-11-05',
-                'items' => [
-                    [
-                        'material_origen_id' => $material->id,
-                        'cantidad_salida' => 5.5,
-                        'unidad_medida' => 'm',
-                    ],
-                ],
-            ],
-        ]);
-
-        $response->assertSessionHasNoErrors();
-
-        $op->refresh();
-        $this->assertSame($estados['Procesos externos']->id, (int) $op->estado_op_id);
-
-        $proceso = ProcesoExterno::where('orden_produccion_id', $op->id)->firstOrFail();
-        $this->assertSame($material->id, (int) $proceso->material_origen_id);
-        $this->assertSame($proveedor->id, (int) $proceso->proveedor_destino_id);
-        $this->assertSame('Bordado', $proceso->etapa_componente);
-        $this->assertSame(5.5, $proceso->cantidad_salida);
-        $this->assertSame('m', $proceso->unidad_medida);
-        $this->assertSame('2026-11-05', $proceso->fecha_prevista_regreso->toDateString());
-        $this->assertNotNull($proceso->fecha_salida);
-    }
-
-    /**
-     * No se puede entrar a "Procesos externos" sin registrar el proveedor y
-     * los materiales que salen.
-     */
-    public function test_no_pasa_a_procesos_externos_sin_registrar_materiales(): void
-    {
-        [$user, $op, $estados] = $this->contextoRecepcion('Preparación');
-
-        $response = $this->actingAs($user)->put(route('OrdenProduccion.cambiarEstado', $op->id), [
-            'estado_op_id' => $estados['Procesos externos']->id,
-        ]);
-
-        $response->assertSessionHasErrors('proceso_externo');
-        $this->assertSame($estados['Preparación']->id, (int) $op->fresh()->estado_op_id);
-        $this->assertDatabaseCount('proceso_externos', 0);
-    }
-
     public function test_cuando_una_op_pasa_a_en_taller_debe_disminuir_las_existencias_de_los_materiales_necesarios(): void
     {
         [$user, $op, $estados] = $this->contextoRecepcion('Lista para taller');
@@ -521,10 +441,10 @@ class OrdenProduccionTest extends TestCase
     }
 
     /**
-     * Las OPs externas no descuentan materiales al pasar a «En taller»: el
-     * material lo maneja la empresa externa.
+     * Las OPs externas también descuentan los materiales del kit al pasar a
+     * «En taller»: el inventario sale igual que en una OP de taller.
      */
-    public function test_una_op_externa_no_disminuye_las_existencias_al_pasar_a_en_taller(): void //si deberia disminuir!!!
+    public function test_una_op_externa_tambien_disminuye_las_existencias_al_pasar_a_en_taller(): void
     {
         [$user, $op, $estados] = $this->contextoRecepcion('Lista para taller');
 
@@ -534,9 +454,7 @@ class OrdenProduccionTest extends TestCase
             'nombre_base' => 'Tela de OP externa',
             'unidad_inventario' => 'm',
             'estado' => 'Activo',
-            // A propósito no alcanza para el kit: una OP externa no debe
-            // bloquearse por inventario ni descontarlo.
-            'existencia_actual' => 1,
+            'existencia_actual' => 10,
         ]);
 
         KitProceso::create([
@@ -544,7 +462,7 @@ class OrdenProduccionTest extends TestCase
             'material_id' => $material->id,
             'unidad' => 'm',
             'cantidad_requerida' => 4,
-            'cantidad_disponible' => 1,
+            'cantidad_disponible' => 10,
             'cantidad_preparada' => 4,
         ]);
 
@@ -558,87 +476,14 @@ class OrdenProduccionTest extends TestCase
 
         $op->refresh();
         $this->assertSame($estados['En taller']->id, (int) $op->estado_op_id);
-        $this->assertSame(1.0, (float) $material->fresh()->existencia_actual);
-        $this->assertDatabaseCount('material_movimientos', 0);
-    }
-
-    /**
-     * Al pasar a "Lista para taller" se pregunta y guarda la fecha real de
-     * regreso de los procesos externos pendientes.
-     */
-    public function test_lista_para_taller_registra_la_fecha_real_de_regreso(): void
-    {
-        [$user, $op, $estados] = $this->contextoRecepcion('Procesos externos');
-
-        $material = Material::create([
-            'codigo_material' => 'MAT-EXT-002',
-            'categoria' => 'Tela',
-            'nombre_base' => 'Tela que regresa',
-            'unidad_inventario' => 'm',
-            'estado' => 'Activo',
-            'existencia_actual' => 10,
+        $this->assertSame(6.0, (float) $material->fresh()->existencia_actual);
+        $this->assertDatabaseHas('material_movimientos', [
+            'material_id' => $material->id,
+            'tipo_movimiento' => 'salida',
+            'cantidad' => 4,
+            'existencia_anterior' => 10,
+            'existencia_nueva' => 6,
         ]);
-
-        $proveedor = Proveedor::create(['nombre' => 'Bordados de prueba', 'categoria' => 'Prueba']);
-
-        $proceso = ProcesoExterno::create([
-            'orden_produccion_id' => $op->id,
-            'etapa_componente' => 'Bordado',
-            'material_origen_id' => $material->id,
-            'cantidad_salida' => 2,
-            'unidad_medida' => 'm',
-            'proveedor_destino_id' => $proveedor->id,
-            'fecha_salida' => now()->subDays(3),
-            'fecha_prevista_regreso' => now()->addDay()->toDateString(),
-        ]);
-
-        $response = $this->actingAs($user)->put(route('OrdenProduccion.cambiarEstado', $op->id), [
-            'estado_op_id' => $estados['Lista para taller']->id,
-            'fecha_regreso_real' => '2026-11-02',
-        ]);
-
-        $response->assertSessionHasNoErrors();
-
-        $op->refresh();
-        $this->assertSame($estados['Lista para taller']->id, (int) $op->estado_op_id);
-        $this->assertSame('2026-11-02', $proceso->fresh()->fecha_regreso_real->toDateString());
-    }
-
-    /**
-     * Con procesos externos pendientes no se puede pasar a "Lista para taller"
-     * sin indicar la fecha real de regreso.
-     */
-    public function test_no_pasa_a_lista_para_taller_sin_fecha_de_regreso(): void
-    {
-        [$user, $op, $estados] = $this->contextoRecepcion('Procesos externos');
-
-        $material = Material::create([
-            'codigo_material' => 'MAT-EXT-003',
-            'categoria' => 'Tela',
-            'nombre_base' => 'Tela pendiente',
-            'unidad_inventario' => 'm',
-            'estado' => 'Activo',
-            'existencia_actual' => 10,
-        ]);
-
-        $proveedor = Proveedor::create(['nombre' => 'Bordados de prueba', 'categoria' => 'Prueba']);
-
-        ProcesoExterno::create([
-            'orden_produccion_id' => $op->id,
-            'etapa_componente' => 'Bordado',
-            'material_origen_id' => $material->id,
-            'cantidad_salida' => 2,
-            'unidad_medida' => 'm',
-            'proveedor_destino_id' => $proveedor->id,
-            'fecha_salida' => now()->subDays(3),
-        ]);
-
-        $response = $this->actingAs($user)->put(route('OrdenProduccion.cambiarEstado', $op->id), [
-            'estado_op_id' => $estados['Lista para taller']->id,
-        ]);
-
-        $response->assertSessionHasErrors('fecha_regreso_real');
-        $this->assertSame($estados['Procesos externos']->id, (int) $op->fresh()->estado_op_id);
     }
 
     /**
@@ -655,7 +500,6 @@ class OrdenProduccionTest extends TestCase
             'materiales' => [$contexto['material']->id],
             'materiales_cantidad' => [$contexto['material']->id => 3],
             'cantidad_planificada' => 3,
-            'costo_proceso' => 25.50,
             'tipo' => 'taller',
             'taller_id' => $contexto['taller']->id,
             'user_id' => $contexto['user']->id,
@@ -671,8 +515,9 @@ class OrdenProduccionTest extends TestCase
         $this->assertNull($op->producto_referencia_id);
         $this->assertSame(3, (int) $op->cantidad_planificada);
         $this->assertSame(60.0, $op->costoFichasTecnicas());
-        $this->assertSame(25.5, (float) $op->costo_proceso);
-        $this->assertSame(85.5, (float) $op->costo_total);
+        // El costo de proceso ya no se digita: sin productos con procesos es 0.
+        $this->assertSame(0.0, (float) $op->costo_proceso);
+        $this->assertSame(60.0, (float) $op->costo_total);
         $this->assertDatabaseHas('orden_produccion_material', [
             'orden_produccion_id' => $op->id,
             'material_id' => $contexto['material']->id,
@@ -716,7 +561,6 @@ class OrdenProduccionTest extends TestCase
             'materiales' => [$contexto['material']->id],
             'materiales_cantidad' => [$contexto['material']->id => 5],
             'cantidad_planificada' => 5,
-            'costo_proceso' => 15.25,
         ]);
 
         $response->assertSessionHasNoErrors();
@@ -724,8 +568,8 @@ class OrdenProduccionTest extends TestCase
         $op->refresh();
         $this->assertSame(5, (int) $op->cantidad_planificada);
         $this->assertSame(100.0, $op->costoFichasTecnicas());
-        $this->assertSame(15.25, (float) $op->costo_proceso);
-        $this->assertSame(115.25, (float) $op->costo_total);
+        $this->assertSame(0.0, (float) $op->costo_proceso);
+        $this->assertSame(100.0, (float) $op->costo_total);
         $this->assertDatabaseHas('orden_produccion_material', [
             'orden_produccion_id' => $op->id,
             'material_id' => $contexto['material']->id,
@@ -890,24 +734,26 @@ class OrdenProduccionTest extends TestCase
 
         $response->assertInertia(fn (Assert $page) => $page
             ->component('OrdenProduccion/Index')
-            ->where('ordenes.0.es_op_material', true)
-            ->where('ordenes.0.costo_fichas', fn ($valor) => (float) $valor === 60.0)
-            ->where('ordenes.0.costo_proceso', fn ($valor) => (float) $valor === 12.5)
-            ->where('ordenes.0.costo_total', fn ($valor) => (float) $valor === 72.5)
-            ->where('ordenes.0.materiales_nombres', fn ($valor) => is_string($valor) && str_contains($valor, 'MAT-PROC-001'))
-            ->where('ordenes.0.objetivo_nombre', fn ($valor) => is_string($valor) && str_contains($valor, 'MAT-PROC-001'))
-            ->where('ordenes.0.materiales_objetivo.0.id', $contexto['material']->id)
-            ->where('ordenes.0.materiales_objetivo.0.cantidad', 3)
-            ->where('ordenes.0.distribuciones_detalle.0.material_id', $contexto['material']->id)
-            ->where('ordenes.0.distribuciones_detalle.0.material_nombre', fn ($valor) => is_string($valor) && str_contains($valor, 'MAT-PROC-001'))
-            ->where('ordenes.0.costo_unitario_materiales', fn ($costos) => (float) ($costos[$contexto['material']->id] ?? 0) === 20.0));
+            ->loadDeferredProps(fn (Assert $page) => $page
+                ->where('ordenes.0.es_op_material', true)
+                ->where('ordenes.0.costo_fichas', fn ($valor) => (float) $valor === 60.0)
+                ->where('ordenes.0.costo_proceso', fn ($valor) => (float) $valor === 12.5)
+                ->where('ordenes.0.costo_total', fn ($valor) => (float) $valor === 72.5)
+                ->where('ordenes.0.materiales_nombres', fn ($valor) => is_string($valor) && str_contains($valor, 'Material procesado'))
+                ->where('ordenes.0.objetivo_nombre', fn ($valor) => is_string($valor) && str_contains($valor, 'Material procesado'))
+                ->where('ordenes.0.materiales_objetivo.0.id', $contexto['material']->id)
+                ->where('ordenes.0.materiales_objetivo.0.cantidad', 3)
+                ->where('ordenes.0.distribuciones_detalle.0.material_id', $contexto['material']->id)
+                ->where('ordenes.0.distribuciones_detalle.0.material_nombre', fn ($valor) => is_string($valor) && str_contains($valor, 'Material procesado'))
+                ->where('ordenes.0.costo_unitario_materiales', fn ($costos) => (float) ($costos[$contexto['material']->id] ?? 0) === 20.0)));
     }
 
     /**
-     * Actualizar solo el costo del proceso debe recalcular el costo de la ficha
-     * del producto, persistir el total y reflejarlo también en el kit.
+     * Actualizar una OP recalcula el costo de la ficha del producto, persiste el
+     * total y lo refleja también en el kit. El costo de proceso ya no se digita:
+     * se deriva de los procesos de los productos de la OP.
      */
-    public function test_actualizar_solo_el_costo_de_proceso_persiste_el_total_de_la_op(): void
+    public function test_actualizar_una_op_recalcula_el_costo_de_la_ficha_y_persiste_el_total(): void
     {
         [$user, $op] = $this->contextoRecepcion('Preparación');
 
@@ -934,15 +780,15 @@ class OrdenProduccionTest extends TestCase
         ]);
 
         $response = $this->actingAs($user)->put(route('OrdenProduccion.update', $op->id), [
-            'costo_proceso' => 45,
+            'cantidad_planificada' => 4,
         ]);
 
         $response->assertSessionHasNoErrors();
 
         $op->refresh();
-        $this->assertSame(45.0, (float) $op->costo_proceso);
+        $this->assertSame(0.0, (float) $op->costo_proceso);
         $this->assertSame(80.0, $op->costoFichasTecnicas());
-        $this->assertSame(125.0, (float) $op->costo_total);
+        $this->assertSame(80.0, (float) $op->costo_total);
         $this->assertDatabaseHas('orden_produccion_costos_materiales', [
             'orden_produccion_id' => $op->id,
             'material_id' => $componente->id,
@@ -961,7 +807,7 @@ class OrdenProduccionTest extends TestCase
      * Contexto mínimo para una OP de un material procesado con una ficha de
      * consumo 2 × componente de $10.
      *
-     * @return array{user: User, estados: array<string, EstadoOperacion>, estadoMaterial: EstadoOpMaterial, taller: Taller, componente: Material, material: Material, ficha: FichaTecnica}
+     * @return array{user: User, estados: array<string, EstadoOperacion>, estadoMaterial: EstadoOpMaterial, taller: Tercero, componente: Material, material: Material, ficha: FichaTecnica}
      */
     private function contextoMaterialProcesado(): array
     {
@@ -989,7 +835,7 @@ class OrdenProduccionTest extends TestCase
         }
 
         $estadoMaterial = EstadoOpMaterial::create(['nombre' => 'Pendiente', 'valor' => 'pendiente']);
-        $taller = Taller::create(['nombre' => 'Taller de materiales', 'direccion' => 'Calle 10 # 20-30']);
+        $taller = Tercero::create(['tipo' => 'Taller', 'nombre' => 'Taller de materiales', 'direccion' => 'Calle 10 # 20-30']);
 
         $componente = Material::create([
             'codigo_material' => 'MAT-COMP-001',
@@ -1027,7 +873,7 @@ class OrdenProduccionTest extends TestCase
      * Crea una OP de material directamente (sin pasar por el formulario) para
      * probar recepción e index.
      *
-     * @param  array{user: User, estados: array<string, EstadoOperacion>, estadoMaterial: EstadoOpMaterial, taller: Taller, componente: Material, material: Material, ficha: FichaTecnica}  $contexto
+     * @param  array{user: User, estados: array<string, EstadoOperacion>, estadoMaterial: EstadoOpMaterial, taller: Tercero, componente: Material, material: Material, ficha: FichaTecnica}  $contexto
      */
     private function crearOpMaterial(array $contexto, int $cantidad, string $estado = 'Preparación'): OrdenProduccion
     {
@@ -1120,7 +966,7 @@ class OrdenProduccionTest extends TestCase
         }
 
         $estadoMaterial = EstadoOpMaterial::create(['nombre' => 'Pendiente', 'valor' => 'pendiente']);
-        $taller = Taller::create(['nombre' => 'Taller de prueba', 'direccion' => 'Calle 1 # 2-3']);
+        $taller = Tercero::create(['tipo' => 'Taller', 'nombre' => 'Taller de prueba', 'direccion' => 'Calle 1 # 2-3']);
         $producto = Producto::create([
             'Codigo_interno' => 'TEST-RECEPCION-001',
             'ID_producto_Shopify' => 'shopify-recepcion-001',

@@ -17,7 +17,7 @@ class ProveedorFactory extends Factory
         $nombre = fake()->company();
 
         return [
-            'codigo_proveedor' => 'PROV-' . fake()->unique()->numberBetween(100, 9999),
+            'codigo' => 'PROV-' . fake()->unique()->numberBetween(100, 9999),
             'nit' => fake()->numerify('#########-#'),
             'nombre_comercial' => $nombre,
             'razon_social' => $nombre . ' S.A.S.',

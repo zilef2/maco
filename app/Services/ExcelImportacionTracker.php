@@ -34,7 +34,7 @@ class ExcelImportacionTracker
         'Producto.upload-excel' => 'producto',
         'Material.upload-excel' => 'material',
         'EstadoOperacion.upload-excel' => 'estado_operacion',
-        'Taller.upload-excel' => 'taller',
+        'Proveedor.upload-terceros-excel' => 'taller',
         'Proveedor.upload-excel' => 'proveedor',
         'user.upload-excel' => 'usuario',
         'ImportarExcel.mpp' => 'mpp',

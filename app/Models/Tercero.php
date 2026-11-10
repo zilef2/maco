@@ -4,24 +4,24 @@ namespace App\Models;
 
 use App\Traits\HasFichaDeTercero;
 use App\Traits\HasFillableWithTypes;
-
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-use Illuminate\Database\Eloquent\SoftDeletes;
-
-class EmpresaExterna extends Model
+/**
+ * Tabla unificada de terceros. `tipo` distingue proveedor, taller y empresa
+ * externa; los modelos hijos agregan ese filtro de forma automática.
+ */
+class Tercero extends Model
 {
-    /** @use HasFactory<\Database\Factories\EmpresaExternaFactory> */
-    use HasFactory;
-    use HasFillableWithTypes;
     use HasFichaDeTercero;
+    use HasFillableWithTypes;
 
-    protected $codigoColumna = 'codigo_empresa_externa';
-    protected $codigoPrefijo = 'EMP';
+    protected $table = 'proveedores_maco';
+
+    protected $codigoColumna = 'codigo';
 
     protected $fillable = [
-        'codigo_empresa_externa',
+        'tipo',
+        'codigo',
         'nit',
         'nombre_comercial',
         'nombre',
@@ -39,10 +39,8 @@ class EmpresaExterna extends Model
         'tiempo_entrega',
         'estado',
         'observaciones_generales',
+        'categoria',
+        'celular1',
+        'celular2',
     ];
-
-    public function ordenesProduccion()
-    {
-        return $this->hasMany(OrdenProduccion::class, 'empresa_externa_id');
-    }
 }

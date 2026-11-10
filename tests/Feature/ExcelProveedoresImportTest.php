@@ -64,7 +64,7 @@ class ExcelProveedoresImportTest extends TestCase
         $this->assertSame('Crédito 30 días', $proveedor->forma_pago);
         $this->assertSame('30', $proveedor->tiempo_entrega);
         $this->assertSame('Activo', $proveedor->estado);
-        $this->assertNotNull($proveedor->codigo_proveedor);
+        $this->assertNotNull($proveedor->codigo);
     }
 
     public function test_actualiza_el_proveedor_existente_sin_borrar_los_datos_vacios(): void
@@ -159,7 +159,7 @@ class ExcelProveedoresImportTest extends TestCase
             app(\App\Services\ExcelImportacionTracker::class),
         );
 
-        $this->assertDatabaseHas('proveedors', ['nombre_comercial' => 'Proveedor Notificado']);
+        $this->assertDatabaseHas('proveedores_maco', ['nombre_comercial' => 'Proveedor Notificado']);
         $this->assertDatabaseHas('notificaciones', [
             'mensaje' => 'La lectura de los proveedores en el archivo de excel ha finalizado',
             'prioridad' => 'alta',

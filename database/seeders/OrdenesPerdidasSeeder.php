@@ -8,7 +8,7 @@ use App\Models\Merma;
 use App\Models\OrdenProduccion;
 use App\Models\Producto;
 use App\Models\RecepcionCalidad;
-use App\Models\Taller;
+use App\Models\Tercero;
 use App\Models\User;
 use App\Services\MermaRecepcionService;
 use Illuminate\Database\Seeder;
@@ -102,7 +102,7 @@ class OrdenesPerdidasSeeder extends Seeder
 
         $productos = $this->productosParaGenerar();
         $usuarios = User::query()->pluck('id')->all();
-        $talleres = Taller::query()->pluck('id')->all();
+        $talleres = Tercero::where('tipo', 'Taller')->pluck('id')->all();
         $estadoRecibiendo = $this->estadoRecibiendo();
         $perdidasPorOp = $this->distribuirPerdidas($cantidadOrdenes, $promedioPerdidas);
         $costosGenericos = [];

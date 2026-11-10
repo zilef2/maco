@@ -2,9 +2,8 @@
 
 namespace App\Services;
 
-use App\Models\EmpresaExterna;
 use App\Models\Proveedor;
-use App\Models\Taller;
+use App\Models\Tercero;
 use App\Services\Concerns\LeeExcelRapido;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -62,19 +61,19 @@ class ExcelTalleresService
      */
     private const DESTINOS = [
         'tallerdeprocesoexterno' => [
-            'modelo' => EmpresaExterna::class,
-            'codigo' => 'codigo_empresa_externa',
+            'codigo' => 'codigo',
             'prefijo' => 'EMP',
+            'tipo' => 'Empresa externa',
         ],
         'macondas' => [
-            'modelo' => Taller::class,
-            'codigo' => 'codigo_taller',
+            'codigo' => 'codigo',
             'prefijo' => 'TAL',
+            'tipo' => 'Taller',
         ],
         'proveedor' => [
-            'modelo' => Proveedor::class,
-            'codigo' => 'codigo_proveedor',
+            'codigo' => 'codigo',
             'prefijo' => 'PRV',
+            'tipo' => 'Proveedor',
         ],
     ];
 
@@ -126,7 +125,7 @@ class ExcelTalleresService
     ];
 
     /**
-     * Reglas por columna, en línea con StoreTallerRequest.
+     * Reglas por columna, en línea con StoreProveedorRequest.
      *
      * @var array<string, array{max?: int, email?: bool}>
      */
@@ -333,9 +332,8 @@ class ExcelTalleresService
     {
         $creados = 0;
         $actualizados = 0;
-        $escribeEmpresaExterna = false;
 
-        DB::transaction(function () use ($registros, &$creados, &$actualizados, &$escribeEmpresaExterna) {
+        DB::transaction(function () use ($registros, &$creados, &$actualizados) {
             $existentes = [];
             $pendientes = [];
             $nuevos = [];
@@ -358,7 +356,9 @@ class ExcelTalleresService
                     $cambios = $this->soloConValor($datos);
                     unset($cambios[$destino['codigo']]);
                     if (!empty($cambios)) {
-                        $destino['modelo']::whereKey($idExistente)->update($cambios);
+                        Tercero::whereKey($idExistente)
+                            ->where('tipo', $destino['tipo'])
+                            ->update($cambios);
                     }
                     $actualizados++;
                     continue;
@@ -387,17 +387,12 @@ class ExcelTalleresService
             foreach (self::DESTINOS as $clave => $destino) {
                 if (!empty($nuevos[$clave])) {
                     $this->insertarNuevos($destino, $nuevos[$clave]);
-                    $escribeEmpresaExterna = $escribeEmpresaExterna || $clave === 'tallerdeprocesoexterno';
                 }
             }
         });
 
-        // Los desplegables de las OP y el listado de empresas externas se
-        // sirven en cache: hay que invalidarlos tras escribir.
+        // Los desplegables de la OP se sirven en cache: hay que invalidarlos.
         Cache::forget('op_selects');
-        if ($escribeEmpresaExterna) {
-            Cache::increment('empresa_externa_index_version');
-        }
 
         return [
             'creados' => $creados,
@@ -409,7 +404,7 @@ class ExcelTalleresService
      * Inserta en bloque los registros nuevos de un destino, con el código
      * autogenerado cuando el archivo no lo trae.
      *
-     * @param  array{modelo: class-string, codigo: string, prefijo: string}  $destino
+     * @param  array{codigo: string, prefijo: string, tipo: string}  $destino
      * @param  array<int, array<string, string|null>>  $nuevos
      */
     private function insertarNuevos(array $destino, array $nuevos): void
@@ -418,7 +413,7 @@ class ExcelTalleresService
             return;
         }
 
-        $siguienteCodigo = $this->siguienteNumeroCodigo($destino['modelo'], $destino['codigo']);
+        $siguienteCodigo = $this->siguienteNumeroCodigo($destino);
         $ahora = now();
 
         foreach ($nuevos as &$datos) {
@@ -430,6 +425,7 @@ class ExcelTalleresService
                     STR_PAD_LEFT
                 );
             }
+            $datos['tipo'] = $destino['tipo'];
             $datos['created_at'] = $ahora;
             $datos['updated_at'] = $ahora;
         }
@@ -454,7 +450,7 @@ class ExcelTalleresService
         );
 
         foreach (array_chunk($filas, 500) as $bloque) {
-            $destino['modelo']::insert($bloque);
+            Tercero::insert($bloque);
         }
     }
 
@@ -464,7 +460,7 @@ class ExcelTalleresService
      * fila, no se guarda en ninguna de las tres tablas.
      *
      * @param  array<string, string|null>  $registro
-     * @param  array{modelo: class-string, codigo: string, prefijo: string}  $destino
+     * @param  array{codigo: string, prefijo: string, tipo: string}  $destino
      * @return array<string, string>
      */
     private function datosAGuardar(array $registro, array $destino): array
@@ -524,16 +520,16 @@ class ExcelTalleresService
      * Índices de emparejamiento de un destino: código, NIT y nombre comercial
      * ya normalizados, apuntando al id guardado.
      *
-     * @param  array{modelo: class-string, codigo: string, prefijo: string}  $destino
+     * @param  array{codigo: string, prefijo: string, tipo: string}  $destino
      * @return array{codigo: array<string,int>, nit: array<string,int>, nombre: array<string,int>}
      */
     private function indicesDeDestino(array $destino): array
     {
         $indices = ['codigo' => [], 'nit' => [], 'nombre' => []];
-        $modelo = $destino['modelo'];
 
         $columnas = ['id', 'nit', 'nombre_comercial', $destino['codigo']];
-        foreach ($modelo::query()->toBase()->get($columnas) as $fila) {
+        $filas = Tercero::where('tipo', $destino['tipo'])->toBase()->get($columnas);
+        foreach ($filas as $fila) {
             $this->registrarEnIndices($indices, (array) $fila, $destino, (int) $fila->id);
         }
 
@@ -544,7 +540,7 @@ class ExcelTalleresService
      * Claves normalizadas con las que se reconoce un registro.
      *
      * @param  array<string, string|null>  $datos
-     * @param  array{modelo: class-string, codigo: string, prefijo: string}  $destino
+     * @param  array{codigo: string, prefijo: string, tipo: string}  $destino
      * @return array{codigo: string, nit: string, nombre: string}
      */
     private function clavesDe(array $datos, array $destino): array
@@ -559,7 +555,7 @@ class ExcelTalleresService
     /**
      * @param  array{codigo: array<string,int>, nit: array<string,int>, nombre: array<string,int>}  $indices
      * @param  array<string, string|null>  $datos
-     * @param  array{modelo: class-string, codigo: string, prefijo: string}  $destino
+     * @param  array{codigo: string, prefijo: string, tipo: string}  $destino
      */
     private function buscarEnIndices(array $indices, array $datos, array $destino): ?int
     {
@@ -575,7 +571,7 @@ class ExcelTalleresService
     /**
      * @param  array{codigo: array<string,int>, nit: array<string,int>, nombre: array<string,int>}  $indices
      * @param  array<string, string|null>  $datos
-     * @param  array{modelo: class-string, codigo: string, prefijo: string}  $destino
+     * @param  array{codigo: string, prefijo: string, tipo: string}  $destino
      */
     private function registrarEnIndices(array &$indices, array $datos, array $destino, int $indice): void
     {
@@ -591,13 +587,18 @@ class ExcelTalleresService
      * todos los códigos existentes: ordenar por texto hacía que TAL-999
      * quedara antes que TAL-1000 y se repitieran códigos.
      *
-     * @param  class-string  $modelo
+     * @param  array{codigo: string, prefijo: string, tipo: string}  $destino
      */
-    private function siguienteNumeroCodigo(string $modelo, string $columna): int
+    private function siguienteNumeroCodigo(array $destino): int
     {
         $maximo = 0;
+        $columna = $destino['codigo'];
 
-        foreach ($modelo::query()->whereNotNull($columna)->pluck($columna) as $codigo) {
+        $codigos = Tercero::where('tipo', $destino['tipo'])
+            ->whereNotNull($columna)
+            ->pluck($columna);
+
+        foreach ($codigos as $codigo) {
             $numero = (int) preg_replace('/\D+/', '', (string) $codigo);
             if ($numero > $maximo) {
                 $maximo = $numero;

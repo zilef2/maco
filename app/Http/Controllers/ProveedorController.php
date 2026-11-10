@@ -6,7 +6,9 @@ use App\helpers\Myhelp;
 use App\Http\Requests\StoreProveedorRequest;
 use App\Http\Requests\UpdateProveedorRequest;
 use App\Jobs\ImportarProveedoresJob;
+use App\Jobs\ImportarTalleresJob;
 use App\Services\ExcelProveedoresService;
+use App\Services\ExcelTalleresService;
 use App\Services\ImportacionExcelNotificador;
 use App\Services\ProveedorService;
 use Illuminate\Http\RedirectResponse;
@@ -30,8 +32,8 @@ class ProveedorController extends Controller
         return Inertia::render('Proveedor/Index', [
             'proveedores' => $proveedores,
             'total' => $proveedores->count(),
-            'breadcrumbs' => [['label' => 'Proveedores', 'href' => route('Proveedor.index')]],
-            'title' => 'Proveedores',
+            'breadcrumbs' => [['label' => 'Proveedores y terceros', 'href' => route('Proveedor.index')]],
+            'title' => 'Proveedores y terceros',
             'perPage' => (int) $request->input('perPage', 10),
             'opcionesSelect' => $this->proveedorService->obtenerOpcionesSelect(),
         ]);
@@ -63,6 +65,74 @@ class ProveedorController extends Controller
         $this->proveedorService->eliminarMasivo((array) $request->input('id', []));
 
         return back()->with('success', __('app.label.deleted_successfully', ['name' => 'Proveedores']));
+    }
+
+    /**
+     * Carga masiva de la ficha de terceros (proveedor, taller y empresa
+     * externa) desde el mismo archivo: la columna de clasificación decide el
+     * tipo de cada fila.
+     */
+    public function uploadTercerosExcel(
+        Request $request,
+        ExcelTalleresService $excel,
+        ImportacionExcelNotificador $notificador,
+    ): RedirectResponse {
+        $request->validate([
+            'archivo' => ['required', 'file', 'max:10240', 'mimes:xlsx'],
+        ], [
+            'archivo.required' => 'Selecciona un archivo .xlsx.',
+            'archivo.file' => 'El archivo no es válido.',
+            'archivo.max' => 'El archivo supera el tamaño máximo de 10 MB.',
+            'archivo.mimes' => 'Solo se permiten archivos .xlsx.',
+        ]);
+
+        $archivo = $request->file('archivo');
+        $usuario = $request->user();
+        $nombreArchivo = $archivo->getClientOriginalName();
+        $rutaRelativa = null;
+
+        try {
+            if (strtolower($archivo->getClientOriginalExtension()) !== 'xlsx') {
+                throw new \RuntimeException('Solo se permiten archivos con extensión .xlsx.');
+            }
+
+            $problemas = $excel->escanearSeguridad($archivo->getRealPath());
+            if (!empty($problemas)) {
+                throw new \RuntimeException(implode(' | ', $problemas));
+            }
+
+            $excel->validarEncabezados($archivo->getRealPath());
+            $excel->validarDestinos($archivo->getRealPath());
+
+            $rutaRelativa = $archivo->store('imports/terceros', 'local');
+            if (!$rutaRelativa) {
+                throw new \RuntimeException('No se pudo guardar el archivo para su procesamiento.');
+            }
+
+            ImportarTalleresJob::dispatch(
+                $rutaRelativa,
+                $nombreArchivo,
+                $usuario?->email,
+                $usuario?->name,
+                $usuario?->id,
+                $request->attributes->get('importacion_excel_id'),
+            );
+
+            return back()->with(
+                'success',
+                'Archivo recibido correctamente. La importación se está procesando; '
+                . 'si alguna fila tiene errores recibirás el detalle por correo.'
+            );
+        } catch (\Throwable $e) {
+            if ($rutaRelativa) {
+                \Illuminate\Support\Facades\Storage::disk('local')->delete($rutaRelativa);
+            }
+
+            $notificador->fallo($usuario?->email, $usuario?->name, $nombreArchivo, 'terceros', $e);
+            Myhelp::EscribirEnLog($this, 'uploadTercerosExcel ERROR', $e->getMessage());
+
+            return back()->with('error', 'No se importó nada: ' . $e->getMessage());
+        }
     }
 
     public function uploadExcel(Request $request, ExcelProveedoresService $excel, ImportacionExcelNotificador $notificador): RedirectResponse
