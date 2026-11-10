@@ -772,25 +772,11 @@ class MaterialController extends Controller {
             $this->sincronizarFichaMaterial($Material, $request);
         }
         
-        // Actualizar precio de última compra si se proporciona
-        if ($request->has('last_purchase_price') && $request->filled('last_purchase_price')) {
-            $price = $request->input('last_purchase_price');
-            $date = $request->input('last_purchase_date', now()->toDateString());
-            
-            // Si ya existe un precio hoy, actualizarlo; de lo contrario, crear uno nuevo
-            $existingPrice = $Material->prices()->whereDate('fecha', $date)->first();
-            if ($existingPrice) {
-                $existingPrice->update(['precio' => $price]);
-            } else {
-                $Material->prices()->create([
-                    'precio' => $price,
-                    'fecha' => $date
-                ]);
-            }
-        }
+        // El precio de última compra y su fecha NO se tocan aquí: solo los
+        // define el flujo «Registrar compra» (registrarCompra).
 
-        // El nuevo precio también afecta el costo de las OPs abiertas que usan
-        // este material: se renueva el precio guardado y se anota el cambio.
+        // El costo de las OPs abiertas que usan este material se recalcula con
+        // el precio vigente tras la edición.
         $this->costosMateriales->recalcularPorMaterial((int) $Material->id);
 
         DB::commit();

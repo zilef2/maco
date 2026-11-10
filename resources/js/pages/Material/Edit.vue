@@ -64,6 +64,10 @@ const fichaBloqueoDetalle = computed(() => props.Materiala?.ficha_bloqueo_detall
 const camposBloqueados = ['codigo_material', 'existencia_actual'];
 const esCampoBloqueado = (campo: string) => camposBloqueados.includes(campo) && campo !== 'estado';
 
+// Campos que la edición nunca envía: el precio y la fecha de última compra solo
+// los define el formulario «Registrar compra».
+const camposFueraDeEnvio = [...camposBloqueados, 'last_purchase_price', 'last_purchase_date'];
+
 const estadoActivo = (valor: any): boolean => {
     const texto = String(valor ?? '').trim().toLowerCase();
     return texto === 'activo' || texto === '1' || texto === 'true';
@@ -128,7 +132,7 @@ watchEffect(() => {
 
 const update = () => {
     const respaldo: Record<string, any> = {};
-    camposBloqueados.forEach(campo => {
+    camposFueraDeEnvio.forEach(campo => {
         respaldo[campo] = form[campo];
         delete form[campo];
     });
@@ -141,7 +145,7 @@ const update = () => {
         },
         onError: () => null,
         onFinish: () => {
-            camposBloqueados.forEach(campo => {
+            camposFueraDeEnvio.forEach(campo => {
                 form[campo] = respaldo[campo];
             });
         },
@@ -347,34 +351,36 @@ const update = () => {
                             Precio de última compra
                         </h3>
                         <p class="text-xs text-gray-500 dark:text-gray-400 mb-4 pl-6">
-                            Modifique el precio si ha cambiado. Se registrará una nueva entrada en el histórico.
+                            Solo se puede modificar desde el formulario «Registrar compra». Aquí se muestra como referencia.
                         </p>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
                             <div>
                                 <InputLabel for="last_purchase_price" value="Precio" />
                                 <TextInput id="last_purchase_price"
                                     type="number"
-                                    class="mt-1 block w-full"
+                                    class="mt-1 block w-full bg-gray-100 dark:bg-gray-800/60 cursor-not-allowed opacity-70"
                                     v-model="form.last_purchase_price"
                                     placeholder="0.00"
                                     :error="form.errors.last_purchase_price"
                                     step="0.01"
-                                    min="0" />
+                                    min="0"
+                                    disabled />
                                 <InputError class="mt-2" :message="form.errors.last_purchase_price" />
                                 <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                                    Ingrese el precio unitario del último pedido
+                                    Se actualiza al registrar una compra
                                 </p>
                             </div>
                             <div>
                                 <InputLabel for="last_purchase_date" value="Fecha" />
                                 <TextInput id="last_purchase_date"
                                     type="date"
-                                    class="mt-1 block w-full"
+                                    class="mt-1 block w-full bg-gray-100 dark:bg-gray-800/60 cursor-not-allowed opacity-70"
                                     v-model="form.last_purchase_date"
-                                    :error="form.errors.last_purchase_date" />
+                                    :error="form.errors.last_purchase_date"
+                                    disabled />
                                 <InputError class="mt-2" :message="form.errors.last_purchase_date" />
                                 <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                                    Fecha de la última compra
+                                    La define cada registro de compra
                                 </p>
                             </div>
                         </div>

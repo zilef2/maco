@@ -7,6 +7,7 @@ import SecondaryButton from '@/components/SecondaryButton.vue';
 import TextInput from '@/components/TextInput.vue';
 import { useForm } from '@inertiajs/vue3';
 import { computed, watch } from 'vue';
+import { OPCION_OTRO, useSeleccionConOtro } from '@/composables/useSeleccionConOtro';
 
 const props = defineProps({
     show: { type: Boolean, default: false },
@@ -84,6 +85,26 @@ const camposOpcionales = [
 const opcionesDe = (campo: string): string[] => (props.opcionesSelect as any)?.[campo] ?? [];
 const opcionesEstado = computed(() => opcionesDe('estado'));
 
+const {
+    otro: plazoOtro,
+    seleccion: plazo,
+    aplicar: aplicarPlazo,
+    cargar: cargarPlazo,
+} = useSeleccionConOtro(form, 'forma_pago', () => opcionesDe('forma_pago'), 'Escribe el plazo de pago.');
+
+const {
+    otro: tipoOtro,
+    seleccion: tipo,
+    aplicar: aplicarTipo,
+    cargar: cargarTipo,
+} = useSeleccionConOtro(form, 'tipo_proveedor', () => opcionesDe('tipo_proveedor'), 'Escribe el tipo de proveedor.');
+
+const soloDigitos = (valor: string): string => valor.replace(/\D+/g, '');
+
+const setCampo = (campo: string, valor: string): void => {
+    (form as any)[campo] = valor;
+};
+
 const claseEstado = (opcion: string): string =>
     opcion === 'Activo' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-rose-600 text-white shadow-sm';
 
@@ -97,6 +118,9 @@ const closeModal = () => {
 
 const submit = () => {
     if (!props.tallera?.id) return;
+    const plazoValido = aplicarPlazo();
+    const tipoValido = aplicarTipo();
+    if (!plazoValido || !tipoValido) return;
     form.put(route('Taller.update', props.tallera.id), {
         preserveScroll: true,
         onSuccess: () => emit('close'),
@@ -117,12 +141,14 @@ watch(
         form.observaciones_direccion = taller.observaciones_direccion ?? '';
         form.correo_electronico = taller.correo_electronico ?? '';
         form.ciudad = taller.ciudad ?? '';
-        form.telefono_principal = taller.telefono_principal ?? '';
+        form.telefono_principal = soloDigitos(String(taller.telefono_principal ?? ''));
         form.tipo_proveedor = taller.tipo_proveedor ?? '';
         form.que_suministra = taller.que_suministra ?? '';
         form.persona_contacto = taller.persona_contacto ?? '';
-        form.celular_contacto = taller.celular_contacto ?? '';
+        form.celular_contacto = soloDigitos(String(taller.celular_contacto ?? ''));
         form.forma_pago = taller.forma_pago ?? '';
+        cargarTipo();
+        cargarPlazo();
         form.tiempo_entrega = taller.tiempo_entrega ?? '';
         form.estado = taller.estado ?? 'Activo';
         form.observaciones_generales = taller.observaciones_generales ?? '';
@@ -170,15 +196,20 @@ watch(
                         </button>
                     </div>
 
-                    <select
-                        v-else-if="campo === 'tipo_proveedor'"
-                        :id="campo"
-                        v-model="form[campo as keyof typeof form]"
-                        :class="inputClass"
-                    >
-                        <option value="">Seleccione un tipo</option>
-                        <option v-for="opcion in opcionesDe(campo)" :key="opcion" :value="opcion">{{ opcion }}</option>
-                    </select>
+                    <template v-else-if="campo === 'tipo_proveedor'">
+                        <select :id="campo" v-model="tipo" :class="inputClass">
+                            <option value="">Seleccione un tipo</option>
+                            <option v-for="opcion in opcionesDe(campo)" :key="opcion" :value="opcion">{{ opcion }}</option>
+                        </select>
+                        <TextInput
+                            v-if="tipo === OPCION_OTRO"
+                            id="tipo_proveedor_otro"
+                            v-model="tipoOtro"
+                            type="text"
+                            :class="inputClass"
+                            placeholder="Escribe el tipo de proveedor"
+                        />
+                    </template>
 
                     <TextInput
                         v-else
@@ -196,15 +227,44 @@ watch(
                 <div v-for="campo in camposOpcionales" :key="campo">
                     <InputLabel :for="campo" :value="etiquetas[campo]" />
 
+                    <template v-if="campo === 'forma_pago'">
+                        <select :id="campo" v-model="plazo" :class="inputClass">
+                            <option value="">Seleccione un plazo</option>
+                            <option v-for="opcion in opcionesDe(campo)" :key="opcion" :value="opcion">{{ opcion }}</option>
+                        </select>
+                        <TextInput
+                            v-if="plazo === OPCION_OTRO"
+                            id="forma_pago_otro"
+                            v-model="plazoOtro"
+                            type="text"
+                            :class="inputClass"
+                            placeholder="Escribe el plazo (Ej. Crédito 45 días)"
+                        />
+                    </template>
+
                     <select
-                        v-if="campo === 'forma_pago'"
+                        v-else-if="campo === 'ciudad'"
                         :id="campo"
                         v-model="form[campo as keyof typeof form]"
                         :class="inputClass"
                     >
-                        <option value="">Seleccione un plazo</option>
-                        <option v-for="opcion in opcionesDe(campo)" :key="opcion" :value="opcion">{{ opcion }}</option>
+                        <option value="">Seleccione una ciudad</option>
+                        <option v-for="ciudad in opcionesDe(campo)" :key="ciudad" :value="ciudad">{{ ciudad }}</option>
+                        <option v-if="form.ciudad && !opcionesDe(campo).includes(form.ciudad)" :value="form.ciudad">
+                            {{ form.ciudad }}
+                        </option>
                     </select>
+
+                    <TextInput
+                        v-else-if="campo === 'telefono_principal' || campo === 'celular_contacto'"
+                        :id="campo"
+                        :model-value="form[campo as keyof typeof form]"
+                        type="tel"
+                        inputmode="numeric"
+                        :class="inputClass"
+                        :error="form.errors[campo]"
+                        @update:model-value="(valor: string) => setCampo(campo, soloDigitos(valor))"
+                    />
 
                     <TextInput
                         v-else

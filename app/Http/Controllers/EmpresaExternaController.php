@@ -6,6 +6,7 @@ use App\Http\Requests\StoreEmpresaExternaRequest;
 use App\Http\Requests\UpdateEmpresaExternaRequest;
 use App\Models\EmpresaExterna;
 use App\Models\Proveedor;
+use App\Services\ListaDesplegableService;
 use App\helpers\Myhelp;
 use App\helpers\MyModels;
 use Illuminate\Database\Eloquent\Collection;
@@ -22,7 +23,7 @@ class EmpresaExternaController extends Controller {
 
 
     //<editor-fold desc="Construc | filtro and dependencia">
-    public function __construct() {
+    public function __construct(protected ListaDesplegableService $listas) {
 //        $this->middleware('permission:create EmpresaExterna', ['only' => ['create', 'store']]);
 //        $this->middleware('permission:read EmpresaExterna', ['only' => ['index', 'show']]);
 //        $this->middleware('permission:update EmpresaExterna', ['only' => ['edit', 'update']]);
@@ -58,6 +59,7 @@ class EmpresaExternaController extends Controller {
                 'tipo_proveedor' => Proveedor::TIPOS_PROVEEDOR,
                 'estado' => Proveedor::ESTADOS,
                 'forma_pago' => Proveedor::FORMAS_PAGO,
+                'ciudad' => $this->listas->nombresByCategoria('ciudad'),
             ],
 
         ]);

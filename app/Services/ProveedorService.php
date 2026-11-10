@@ -9,7 +9,8 @@ use Illuminate\Database\Eloquent\Collection;
 class ProveedorService
 {
     public function __construct(
-        protected ProveedorRepository $proveedorRepository
+        protected ProveedorRepository $proveedorRepository,
+        protected ?ListaDesplegableService $listas = null,
     ) {}
 
     public function listar(): Collection
@@ -60,6 +61,7 @@ class ProveedorService
             'tipo_proveedor' => Proveedor::TIPOS_PROVEEDOR,
             'estado' => Proveedor::ESTADOS,
             'forma_pago' => Proveedor::FORMAS_PAGO,
+            'ciudad' => $this->listas?->nombresByCategoria('ciudad') ?? [],
         ];
     }
 }

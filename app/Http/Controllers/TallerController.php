@@ -9,6 +9,7 @@ use App\Models\Taller;
 use App\Jobs\ImportarTalleresJob;
 use App\Services\ExcelTalleresService;
 use App\Services\ImportacionExcelNotificador;
+use App\Services\ListaDesplegableService;
 use App\helpers\Myhelp;
 use App\helpers\MyModels;
 use Illuminate\Database\Eloquent\Builder;
@@ -26,7 +27,7 @@ class TallerController extends Controller {
 
 
     //<editor-fold desc="Construc | filtro and dependencia">
-    public function __construct() {
+    public function __construct(protected ListaDesplegableService $listas) {
 //        $this->middleware('permission:create Taller', ['only' => ['create', 'store']]);
 //        $this->middleware('permission:read Taller', ['only' => ['index', 'show']]);
 //        $this->middleware('permission:update Taller', ['only' => ['edit', 'update']]);
@@ -64,6 +65,7 @@ class TallerController extends Controller {
             'tipo_proveedor' => Proveedor::TIPOS_PROVEEDOR,
             'estado' => Proveedor::ESTADOS,
             'forma_pago' => Proveedor::FORMAS_PAGO,
+            'ciudad' => $this->listas->nombresByCategoria('ciudad'),
         ];
     }
 

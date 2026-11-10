@@ -51,6 +51,17 @@ class ListaDesplegableSeeder extends Seeder
             ['nombre' => 'XXL', 'categoria' => 'Producto', 'subcategoria' => 'Opciones'],
             ['nombre' => 'Única',            'categoria' => 'Producto', 'subcategoria' => 'Opciones'],
 
+            // ciudad (ficha de terceros: proveedor, taller y empresa externa)
+            ['nombre' => 'Barranquilla', 'categoria' => 'ciudad', 'subcategoria' => 'general'],
+            ['nombre' => 'Bogotá',       'categoria' => 'ciudad', 'subcategoria' => 'general'],
+            ['nombre' => 'Bucaramanga',  'categoria' => 'ciudad', 'subcategoria' => 'general'],
+            ['nombre' => 'Cali',         'categoria' => 'ciudad', 'subcategoria' => 'general'],
+            ['nombre' => 'Cartagena',    'categoria' => 'ciudad', 'subcategoria' => 'general'],
+            ['nombre' => 'Cúcuta',       'categoria' => 'ciudad', 'subcategoria' => 'general'],
+            ['nombre' => 'Ibagué',       'categoria' => 'ciudad', 'subcategoria' => 'general'],
+            ['nombre' => 'Medellín',     'categoria' => 'ciudad', 'subcategoria' => 'general'],
+            ['nombre' => 'Pereira',      'categoria' => 'ciudad', 'subcategoria' => 'general'],
+            ['nombre' => 'Santa Marta',  'categoria' => 'ciudad', 'subcategoria' => 'general'],
         ];
 
         foreach ($opciones as $opcion) {

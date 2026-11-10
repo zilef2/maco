@@ -17,6 +17,21 @@ class ListaDesplegableService
         return $this->listaDesplegableRepository->getByCategoriaAndSubcategoria($categoria, $subcategoria);
     }
 
+    /**
+     * Nombres de una categoría, ordenados alfabéticamente y sin repetir.
+     *
+     * @return list<string>
+     */
+    public function nombresByCategoria(string $categoria): array
+    {
+        return $this->listaDesplegableRepository->getByCategoria($categoria)
+            ->sortBy(fn($item) => $item->nombre, SORT_NATURAL | SORT_FLAG_CASE)
+            ->pluck('nombre')
+            ->unique()
+            ->values()
+            ->all();
+    }
+
     public function getOptionsByCategoriaGrouped(string $categoria): array
     {
         $items = $this->listaDesplegableRepository->getByCategoria($categoria);

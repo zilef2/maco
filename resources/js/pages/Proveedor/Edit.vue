@@ -7,6 +7,7 @@ import SecondaryButton from '@/components/SecondaryButton.vue';
 import TextInput from '@/components/TextInput.vue';
 import { useForm } from '@inertiajs/vue3';
 import { computed, watch } from 'vue';
+import { OPCION_OTRO, useSeleccionConOtro } from '@/composables/useSeleccionConOtro';
 
 const props = defineProps({
     show: {
@@ -55,6 +56,47 @@ const form = useForm({
 
 const opcionesEstado = computed(() => props.opcionesSelect?.estado ?? ['Activo', 'Inactivo']);
 
+const etiquetas: Record<string, string> = {
+    nit: 'NIT',
+    nombre_comercial: 'Nombre',
+    razon_social: 'Razón social',
+    direccion: 'Dirección',
+    observaciones_direccion: 'Observaciones dirección',
+    correo_electronico: 'Correo',
+    ciudad: 'Ciudad',
+    telefono_principal: 'Teléfono',
+    tipo_proveedor: 'Tipo proveedor',
+    que_suministra: 'Qué suministra',
+    persona_contacto: 'Persona de contacto',
+    celular_contacto: 'Celular',
+    forma_pago: 'Plazo de pago',
+    tiempo_entrega: 'Tiempo habitual de entrega',
+    estado: 'Estado',
+    observaciones_generales: 'Observaciones generales',
+};
+
+const opcionesDe = (campo: string): string[] => (props.opcionesSelect as any)?.[campo] ?? [];
+
+const {
+    otro: plazoOtro,
+    seleccion: plazo,
+    aplicar: aplicarPlazo,
+    cargar: cargarPlazo,
+} = useSeleccionConOtro(form, 'forma_pago', () => opcionesDe('forma_pago'), 'Escribe el plazo de pago.');
+
+const {
+    otro: tipoOtro,
+    seleccion: tipo,
+    aplicar: aplicarTipo,
+    cargar: cargarTipo,
+} = useSeleccionConOtro(form, 'tipo_proveedor', () => opcionesDe('tipo_proveedor'), 'Escribe el tipo de proveedor.');
+
+const soloDigitos = (valor: string): string => valor.replace(/\D+/g, '');
+
+const setCampo = (campo: string, valor: string): void => {
+    (form as any)[campo] = valor;
+};
+
 const claseEstadoSeleccionado = (opcion: string): string =>
     opcion === 'Activo' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-rose-600 text-white shadow-sm';
 
@@ -90,6 +132,9 @@ const closeModal = () => {
 
 const submit = () => {
     if (!props.proveedora?.id) return;
+    const plazoValido = aplicarPlazo();
+    const tipoValido = aplicarTipo();
+    if (!plazoValido || !tipoValido) return;
     form.put(route('Proveedor.update', props.proveedora.id), {
         preserveScroll: true,
         onSuccess: () => {
@@ -111,12 +156,14 @@ watch(
             form.observaciones_direccion = props.proveedora.observaciones_direccion ?? '';
             form.correo_electronico = props.proveedora.correo_electronico ?? '';
             form.ciudad = props.proveedora.ciudad ?? '';
-            form.telefono_principal = props.proveedora.telefono_principal ?? '';
+            form.telefono_principal = soloDigitos(String(props.proveedora.telefono_principal ?? ''));
             form.tipo_proveedor = props.proveedora.tipo_proveedor ?? '';
             form.que_suministra = props.proveedora.que_suministra ?? '';
             form.persona_contacto = props.proveedora.persona_contacto ?? '';
-            form.celular_contacto = props.proveedora.celular_contacto ?? (props.proveedora.celular1 ? String(props.proveedora.celular1) : '');
+            form.celular_contacto = soloDigitos(String(props.proveedora.celular_contacto ?? (props.proveedora.celular1 ? props.proveedora.celular1 : '')));
             form.forma_pago = props.proveedora.forma_pago ?? '';
+            cargarTipo();
+            cargarPlazo();
             form.tiempo_entrega = props.proveedora.tiempo_entrega ?? '30';
             form.estado = props.proveedora.estado ?? 'Activo';
             form.observaciones_generales = props.proveedora.observaciones_generales ?? '';
@@ -141,7 +188,7 @@ watch(
             <div class="my-6 space-y-4">
                 <h3 class="text-sm font-medium text-muted-foreground mb-2">Campos obligatorios</h3>
                 <div v-for="campo in camposObligatorios" :key="campo">
-                    <InputLabel :for="campo" :value="campo.replace('_', ' ')"/>
+                    <InputLabel :for="campo" :value="etiquetas[campo]"/>
                     <TextInput
                         :id="campo"
                         v-model="form[campo]"
@@ -173,8 +220,8 @@ watch(
             <!-- Campos opcionales abajo -->
             <div class="my-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <div v-for="campo in camposOpcionales" :key="campo">
-                    <InputLabel :for="campo" :value="campo.replace('_', ' ')"/>
-                    
+                    <InputLabel :for="campo" :value="etiquetas[campo]"/>
+
                     <!-- Campo tiempo_entrega: en días -->
                     <TextInput
                         v-if="campo === 'tiempo_entrega'"
@@ -186,7 +233,7 @@ watch(
                         :placeholder="campo === 'tiempo_entrega' ? 'Ej. 30 (días)' : ''"
                         :error="form.errors[campo]"
                     />
-                    
+
                     <!-- Campo estado: selector Activo/Inactivo -->
                     <div
                         v-else-if="campo === 'estado'"
@@ -210,7 +257,65 @@ watch(
                             {{ opcion }}
                         </button>
                     </div>
-                    
+
+                    <!-- Tipo proveedor con opción "Otro" editable -->
+                    <template v-else-if="campo === 'tipo_proveedor'">
+                        <select :id="campo" v-model="tipo" :class="selectClass">
+                            <option value="">Seleccione un tipo</option>
+                            <option v-for="opcion in opcionesDe(campo)" :key="opcion" :value="opcion">{{ opcion }}</option>
+                        </select>
+                        <TextInput
+                            v-if="tipo === OPCION_OTRO"
+                            id="tipo_proveedor_otro"
+                            v-model="tipoOtro"
+                            type="text"
+                            class="mt-1 block w-full"
+                            placeholder="Escribe el tipo de proveedor"
+                        />
+                    </template>
+
+                    <!-- Plazo de pago con opción "Otro" editable -->
+                    <template v-else-if="campo === 'forma_pago'">
+                        <select :id="campo" v-model="plazo" :class="selectClass">
+                            <option value="">Seleccione un plazo</option>
+                            <option v-for="opcion in opcionesDe(campo)" :key="opcion" :value="opcion">{{ opcion }}</option>
+                        </select>
+                        <TextInput
+                            v-if="plazo === OPCION_OTRO"
+                            id="forma_pago_otro"
+                            v-model="plazoOtro"
+                            type="text"
+                            class="mt-1 block w-full"
+                            placeholder="Escribe el plazo (Ej. Crédito 45 días)"
+                        />
+                    </template>
+
+                    <!-- Ciudad seleccionable -->
+                    <select
+                        v-else-if="campo === 'ciudad'"
+                        :id="campo"
+                        v-model="form[campo]"
+                        :class="selectClass"
+                    >
+                        <option value="">Seleccione una ciudad</option>
+                        <option v-for="ciudad in opcionesDe(campo)" :key="ciudad" :value="ciudad">{{ ciudad }}</option>
+                        <option v-if="form.ciudad && !opcionesDe(campo).includes(form.ciudad)" :value="form.ciudad">
+                            {{ form.ciudad }}
+                        </option>
+                    </select>
+
+                    <!-- Teléfono y celular: solo números -->
+                    <TextInput
+                        v-else-if="campo === 'telefono_principal' || campo === 'celular_contacto'"
+                        :id="campo"
+                        :model-value="form[campo]"
+                        type="tel"
+                        inputmode="numeric"
+                        class="mt-1 block w-full"
+                        :error="form.errors[campo]"
+                        @update:model-value="(valor: string) => setCampo(campo, soloDigitos(valor))"
+                    />
+
                     <!-- Campos texto normales -->
                     <TextInput
                         v-else
@@ -218,7 +323,7 @@ watch(
                         v-model="form[campo]"
                         type="text"
                         class="mt-1 block w-full"
-                        :placeholder="campo === 'razon_social' ? 'Razón social completa' : campo === 'forma_pago' ? 'Contado, Crédito 8 días, etc.' : ''"
+                        :placeholder="campo === 'razon_social' ? 'Razón social completa' : ''"
                         :error="form.errors[campo]"
                     />
                     <InputError class="mt-1" :message="form.errors[campo]" />

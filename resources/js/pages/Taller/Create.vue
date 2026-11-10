@@ -7,6 +7,7 @@ import SecondaryButton from '@/components/SecondaryButton.vue';
 import TextInput from '@/components/TextInput.vue';
 import { useForm } from '@inertiajs/vue3';
 import { computed, reactive, watch } from 'vue';
+import { OPCION_OTRO, useSeleccionConOtro } from '@/composables/useSeleccionConOtro';
 
 const props = defineProps({
     show: { type: Boolean, default: false },
@@ -84,6 +85,26 @@ const camposOpcionales = [
 const opcionesDe = (campo: string): string[] =>
     (props.opcionesSelect as any)?.[campo] ?? [];
 
+const {
+    otro: plazoOtro,
+    seleccion: plazo,
+    aplicar: aplicarPlazo,
+    reiniciar: reiniciarPlazo,
+} = useSeleccionConOtro(form, 'forma_pago', () => opcionesDe('forma_pago'), 'Escribe el plazo de pago.');
+
+const {
+    otro: tipoOtro,
+    seleccion: tipo,
+    aplicar: aplicarTipo,
+    reiniciar: reiniciarTipo,
+} = useSeleccionConOtro(form, 'tipo_proveedor', () => opcionesDe('tipo_proveedor'), 'Escribe el tipo de proveedor.');
+
+const soloDigitos = (valor: string): string => valor.replace(/\D+/g, '');
+
+const setCampo = (campo: string, valor: string): void => {
+    (form as any)[campo] = valor;
+};
+
 const claseEstado = (opcion: string): string =>
     opcion === 'Activo' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-rose-600 text-white shadow-sm';
 
@@ -94,15 +115,22 @@ const closeModal = () => {
     emit('close');
     form.reset();
     form.clearErrors();
+    reiniciarPlazo();
+    reiniciarTipo();
 };
 
 const submit = (continuar = false) => {
+    const plazoValido = aplicarPlazo();
+    const tipoValido = aplicarTipo();
+    if (!plazoValido || !tipoValido) return;
     estado.guardarYContinuar = continuar;
     form.post(route('Taller.store'), {
         preserveScroll: true,
         onSuccess: () => {
             form.reset();
             form.clearErrors();
+            reiniciarPlazo();
+            reiniciarTipo();
             if (!continuar) emit('close');
         },
     });
@@ -114,6 +142,8 @@ watch(
         if (abierto) {
             form.reset();
             form.clearErrors();
+            reiniciarPlazo();
+            reiniciarTipo();
             // codigo_taller lo genera el modelo (TAL-001, TAL-002, ...)
             form.estado = 'Activo';
         }
@@ -160,15 +190,20 @@ const opcionesEstado = computed(() => opcionesDe('estado'));
                         </button>
                     </div>
 
-                    <select
-                        v-else-if="campo === 'tipo_proveedor'"
-                        :id="campo"
-                        v-model="form[campo as keyof typeof form]"
-                        :class="inputClass"
-                    >
-                        <option value="">Seleccione un tipo</option>
-                        <option v-for="opcion in opcionesDe(campo)" :key="opcion" :value="opcion">{{ opcion }}</option>
-                    </select>
+                    <template v-else-if="campo === 'tipo_proveedor'">
+                        <select :id="campo" v-model="tipo" :class="inputClass">
+                            <option value="">Seleccione un tipo</option>
+                            <option v-for="opcion in opcionesDe(campo)" :key="opcion" :value="opcion">{{ opcion }}</option>
+                        </select>
+                        <TextInput
+                            v-if="tipo === OPCION_OTRO"
+                            id="tipo_proveedor_otro"
+                            v-model="tipoOtro"
+                            type="text"
+                            :class="inputClass"
+                            placeholder="Escribe el tipo de proveedor"
+                        />
+                    </template>
 
                     <TextInput
                         v-else
@@ -186,15 +221,44 @@ const opcionesEstado = computed(() => opcionesDe('estado'));
                 <div v-for="campo in camposOpcionales" :key="campo">
                     <InputLabel :for="campo" :value="etiquetas[campo]" />
 
+                    <template v-if="campo === 'forma_pago'">
+                        <select :id="campo" v-model="plazo" :class="inputClass">
+                            <option value="">Seleccione un plazo</option>
+                            <option v-for="opcion in opcionesDe(campo)" :key="opcion" :value="opcion">{{ opcion }}</option>
+                        </select>
+                        <TextInput
+                            v-if="plazo === OPCION_OTRO"
+                            id="forma_pago_otro"
+                            v-model="plazoOtro"
+                            type="text"
+                            :class="inputClass"
+                            placeholder="Escribe el plazo (Ej. Crédito 45 días)"
+                        />
+                    </template>
+
                     <select
-                        v-if="campo === 'forma_pago'"
+                        v-else-if="campo === 'ciudad'"
                         :id="campo"
                         v-model="form[campo as keyof typeof form]"
                         :class="inputClass"
                     >
-                        <option value="">Seleccione un plazo</option>
-                        <option v-for="opcion in opcionesDe(campo)" :key="opcion" :value="opcion">{{ opcion }}</option>
+                        <option value="">Seleccione una ciudad</option>
+                        <option v-for="ciudad in opcionesDe(campo)" :key="ciudad" :value="ciudad">{{ ciudad }}</option>
+                        <option v-if="form.ciudad && !opcionesDe(campo).includes(form.ciudad)" :value="form.ciudad">
+                            {{ form.ciudad }}
+                        </option>
                     </select>
+
+                    <TextInput
+                        v-else-if="campo === 'telefono_principal' || campo === 'celular_contacto'"
+                        :id="campo"
+                        :model-value="form[campo as keyof typeof form]"
+                        type="tel"
+                        inputmode="numeric"
+                        :class="inputClass"
+                        :error="form.errors[campo]"
+                        @update:model-value="(valor: string) => setCampo(campo, soloDigitos(valor))"
+                    />
 
                     <TextInput
                         v-else
