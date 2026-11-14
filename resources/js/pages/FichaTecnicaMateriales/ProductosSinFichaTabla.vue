@@ -327,9 +327,6 @@ const iconoAccion =
                                 <span class="font-semibold tabular-nums text-foreground">
                                     {{ formatearPrecio(producto.precio_venta_producto) }}
                                 </span>
-                                <span class="text-[11px] tabular-nums text-muted-foreground">
-                                    Anticipado {{ formatearPrecio(producto.costo_anticipado) }}
-                                </span>
                             </div>
                         </td>
 

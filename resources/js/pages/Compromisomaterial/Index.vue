@@ -86,10 +86,10 @@ const selectAll = (event: any) => {
 const select = () => data.multipleSelect = props.fromController?.data.length === data.selectedId.length;
 
 const titulos = [
-    { order: 'material_id', label: 'material_id', type: 'foreign' },
-    { order: 'op_origen_id', label: 'op_origen_id', type: 'foreign' },
-    { order: 'op_destino_id', label: 'op_destino_id', type: 'foreign' },
-    { order: 'cantidad', label: 'cantidad', type: 'decimal' },
+    { order: 'material_id', label: 'material_id', type: 'foreign', nameid: 'material_nombre' },
+    { order: 'op_origen_id', label: 'op_origen_id', type: 'foreign', nameid: 'op_origen_nombre' },
+    { order: 'op_destino_id', label: 'op_destino_id', type: 'foreign', nameid: 'op_destino_nombre' },
+    { order: 'cantidad', label: 'cantidad', type: 'number' },
     { order: 'estado', label: 'estado', type: 'string' },
 ];
 

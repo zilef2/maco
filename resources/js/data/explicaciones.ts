@@ -255,7 +255,7 @@ export const explicaciones: Explicacion[] = [
             'porque cambio el costo',
             'parametro de costos',
         ],
-        actualizada: '2026-10-25',
+        actualizada: '2026-11-11',
         bloques: [
             {
                 tipo: 'texto',
@@ -313,6 +313,16 @@ export const explicaciones: Explicacion[] = [
                         respuesta:
                             'Sí, es el valor digitado en la ficha para cada línea. El parámetro solo decide si, al costear una OP, se usa ese precio o el promedio/último precio histórico del material; la vista previa de nueva OP y de edición usan el precio del método vigente.',
                     },
+                    {
+                        pregunta: '¿Dónde veo el histórico de precios de un material?',
+                        respuesta:
+                            'En Materiales → «Editar material», debajo de «Precio de última compra»: la lista completa de material_prices con su fecha, la marca «último» en la primera fila y el promedio de todas. En el listado de Materiales, la columna «Último precio» muestra el vigente y los anteriores con su fecha.',
+                    },
+                    {
+                        pregunta: '¿Y en el producto se ven los dos costos?',
+                        respuesta:
+                            'Sí: «Nuevo producto» y «Editar producto» muestran el coste con promedio y el coste con último precio a la vez. Los dos quedan guardados en productos.coste_produccion_promedio y productos.coste_produccion_ultimo; el que está vigente según el parámetro es el que alimenta el precio de venta y la ganancia.',
+                    },
                 ],
             },
             {
@@ -329,6 +339,7 @@ export const explicaciones: Explicacion[] = [
             'app/Http/Controllers/ParametrosController.php (actualizarCostosPromedio)',
             'tablas orden_produccion_costos_materiales, orden_produccion_costos_cambios, material_prices',
             'resources/js/pages/parametro/Index.vue y resources/js/pages/OrdenProduccion/DetalleEstadoModal.vue',
+            'resources/js/pages/Material/Edit.vue (histórico de precios) y resources/js/pages/Material/Index.vue',
         ],
     },
     {
@@ -336,46 +347,68 @@ export const explicaciones: Explicacion[] = [
         categoria: 'Producto',
         categoriaLabel: 'Productos',
         subcategoria: 'Costos',
-        titulo: 'Coste producción y ganancia en Editar producto',
+        titulo: 'Coste producción, precio venta automático y ganancia',
         resumen:
-            'En «Editar producto», el costo anticipado y el precio venta se digitan a mano; el coste producción (materiales según el parámetro de costos + procesos, por unidad) y la ganancia se muestran sin poder editarse y quedan guardados en el producto al cerrar una OP.',
+            'El coste producción se guarda con los dos métodos de precio (promedio y último precio del material) y se ve a la vez en el formulario; el precio venta es un 300% del coste vigente redondeado al millar superior y la ganancia es la diferencia. El coste vigente y el precio venta aparecen como columnas en el listado de Productos.',
         etiquetas: [
             'coste produccion',
+            'coste promedio',
+            'coste ultimo precio',
+            'precio venta automatico',
+            '300 por ciento',
+            'redondeo al millar',
             'ganancia producto',
             'costo anticipado',
-            'precio venta',
             'diferencia precio costo',
             'margen del producto',
             'costo por unidad',
         ],
-        actualizada: '2026-11-04',
+        actualizada: '2026-11-11',
         bloques: [
             {
                 tipo: 'tabla',
                 columnas: ['Campo', '¿Quién lo escribe?', 'Qué es'],
                 filas: [
-                    ['Costo anticipado', 'El usuario, a mano', 'Valor calculado manualmente; sirve para especular.'],
-                    ['Precio venta', 'El usuario, a mano', 'El valor con el que se vende al público.'],
-                    ['Coste producción', 'Nadie: se deriva solo', 'Materiales de la ficha (precio del parámetro costos_promedio × consumo estándar) + suma de los procesos, por unidad.'],
-                    ['Ganancia', 'Nadie: se deriva solo', 'Diferencia en dinero entre el precio venta y el coste producción; el porcentaje se muestra sobre el coste.'],
+                    ['Coste · promedio', 'Nadie: se deriva solo', 'Materiales de la ficha al promedio de los precios registrados del material (material_prices) × consumo estándar, + procesos, por unidad.'],
+                    ['Coste · último precio', 'Nadie: se deriva solo', 'Los mismos materiales al precio de su compra más reciente, + procesos, por unidad.'],
+                    ['Coste producción', 'Nadie: se deriva solo', 'El de los dos anteriores que esté vigente según el parámetro costos_promedio. Es el que alimenta el precio venta y la ganancia.'],
+                    ['Precio venta', 'Nadie: se deriva solo', 'Un 300% del coste vigente, redondeado hacia arriba al millar más cercano. Ya no se digita.'],
+                    ['Ganancia', 'Nadie: se deriva solo', 'Precio venta − coste vigente, en dinero y como porcentaje del coste; con la regla del 300% queda alrededor del doble del coste.'],
+                    ['Costo anticipado', 'Nadie: el campo está oculto', 'Se digitaba a mano para especular. Sigue guardado en la BD y se muestra debajo del coste en el listado.'],
                 ],
             },
             {
                 tipo: 'lista',
                 items: [
-                    'Mientras el producto no tenga una OP cerrada, el coste producción se muestra marcado como «Estimado», calculado en vivo con el método vigente del parámetro costos_promedio.',
-                    'Al cerrar una OP, cada producto de la orden guarda su coste producción (coste_produccion) con los precios de material congelados de esa OP, y su ganancia (ganancia_producto) contra el precio venta vigente.',
-                    'Desde entonces el modal muestra la marca «Última OP cerrada»: el valor es el que quedó congelado al cerrar, igual que las OPs cerradas no se recalculan.',
-                    'Si el precio venta está vacío, la ganancia se muestra como «—» porque no hay con qué compararla.',
+                    'En «Nuevo producto» y «Editar producto» se ven los dos costes a la vez, como cajas de solo lectura: el del método vigente lleva la marca «Vigente» y el otro «Referencia». Debajo van el precio venta («300% del coste») y la ganancia con su porcentaje.',
+                    'Los dos costes se guardan siempre, sin depender del parámetro: productos.coste_produccion_promedio y productos.coste_produccion_ultimo. El canónico (coste_produccion) es una copia del vigente.',
+                    'La regla del precio vive en un solo lugar del backend (CostoMaterialOpService::MULTIPLICADOR_PRECIO_VENTA, REDONDEO_PRECIO_VENTA y precioVentaAutomatico()) y los dos formularios aplican exactamente la misma cuenta, para que lo que se vea sea lo que se guarda.',
+                    'Los cinco campos se escriben al crear o editar el producto y cada vez que una OP que usa el producto recalcula su coste.',
+                    'El coste canónico de una OP usa el precio congelado en esa orden; los dos costes por método se recalculan con los precios actuales del material, porque son la referencia del producto.',
+                    'Mientras un material tenga un solo precio registrado, sus dos costes coinciden; empiezan a diferir en cuanto se registra otra compra.',
+                ],
+            },
+            {
+                tipo: 'subtitulo',
+                texto: 'En el listado de Productos',
+            },
+            {
+                tipo: 'lista',
+                items: [
+                    'La columna «Coste» muestra el coste vivo (con el método vigente del parámetro costos_promedio) y debajo el costo anticipado.',
+                    'La columna «Precio venta» muestra el precio automático y debajo la ganancia en dinero.',
+                    'Un producto sin ficha ni procesos queda con coste 0; en ese caso se conserva el precio venta histórico que tuviera guardado.',
+                    'Ordenar o filtrar por esas columnas usa exactamente el valor que se muestra en la celda.',
                 ],
             },
         ],
         fuentes: [
-            'app/Services/CostoMaterialOpService.php (costeProduccionUnitario, actualizarCosteProduccionEnCierre)',
-            'app/Http/Controllers/ProductoController.php (index: coste_produccion_vivo)',
-            'app/Http/Controllers/OrdenProduccionController.php (cambiarEstado: cierre)',
-            'tablas productos.coste_produccion y productos.ganancia_producto',
-            'resources/js/pages/Producto/Edit.vue',
+            'app/Services/CostoMaterialOpService.php (MULTIPLICADOR_PRECIO_VENTA, REDONDEO_PRECIO_VENTA, precioVentaAutomatico, costeProduccionPorMetodo, actualizarCosteProduccion)',
+            'app/Http/Controllers/ProductoController.php (sincronizarCosteProduccionSugerido, index: coste_produccion_promedio_vivo, coste_produccion_ultimo_vivo, metodo_costos)',
+            'app/Services/FichaTecnicaService.php (opcionesMateriales: costo_unitario y costo_unitario_promedio)',
+            'tablas productos.coste_produccion, coste_produccion_promedio, coste_produccion_ultimo, precio_venta_producto y ganancia_producto',
+            'tabla material_prices (histórico visible en Material/Edit.vue)',
+            'resources/js/pages/Producto/Create.vue, Edit.vue e Index.vue',
         ],
     },
     {
@@ -823,6 +856,80 @@ export const explicaciones: Explicacion[] = [
             'app/Http/Controllers/MaterialController.php (store, update y uploadExcel; el aviso por fila al insertar)',
             'resources/js/pages/Material/Create.vue y Edit.vue (las listas ya no se limpian entre sí)',
             'app/Services/PlantillasExcelService.php (columnas Color y Talla / tamaño del formato)',
+        ],
+    },
+    {
+        id: 'material-generico',
+        categoria: 'Material',
+        categoriaLabel: 'Materiales',
+        subcategoria: 'Material genérico',
+        titulo: 'El material genérico: uno por cada par categoría-base',
+        resumen:
+            'Un material genérico representa a todos los que comparten su código de categoría y su código base: no maneja talla ni color y su precio es el promedio de los precios de sus similares.',
+        etiquetas: [
+            'genérico',
+            'generico',
+            'material genérico',
+            'promedio de precios',
+            'categoria base',
+            'TEX-LFL',
+            'sin talla',
+            'sin color',
+            'botón superadmin',
+            'crear genéricos',
+        ],
+        actualizada: '2026-11-11',
+        bloques: [
+            {
+                tipo: 'texto',
+                texto:
+                    'Si existen TEX-LFL-1 a TEX-LFL-5 (Lona Florentina) y TEX-LYC-1 (Lycra), solo hacen falta dos genéricos: uno para el par TEX-LFL y otro para TEX-LYC. El genérico toma el siguiente consecutivo libre del par (por ejemplo TEX-LFL-6) y su nombre base lleva el sufijo «(Genérico)» para distinguirlo en los selects.',
+            },
+            {
+                tipo: 'lista',
+                items: [
+                    'La columna «generico» de la tabla materials marca el material; el modelo obliga a que un genérico no tenga talla ni color: limpia maneja_color, maneja_talla, maneja_otra_variante, color, talla_tamaño y borra sus variantes al guardar, venga de donde venga la escritura.',
+                    'El precio se calcula en dos pasos: primero el promedio de las filas de precio de cada similar y luego el promedio entre los similares que sí tienen precio. El resultado se guarda como una fila nueva en material_prices con la fecha de hoy.',
+                    'Si un grupo no tiene ningún similar con precio, el genérico se crea igual pero se queda sin fila de precio.',
+                    'El botón vive en Actividad → Acciones de Superadministrador, al lado de «Existencias y precios al azar», y no requiere entorno de prueba.',
+                ],
+            },
+            {
+                tipo: 'pasos',
+                items: [
+                    'Abrir Actividad (solo superadmin) y bajar hasta «Acciones de Superadministrador».',
+                    'En la tarjeta «Materiales genéricos» revisar el detalle: cuántas combinaciones hay, cuántas están sin genérico y cuántos genéricos existen.',
+                    'Pulsar «Crear los genéricos que faltan». Se pueden pulsar las veces que sea: solo crea los que faltan y, en los que ya existen, agrega una fila de precio únicamente si el promedio cambió.',
+                ],
+            },
+            {
+                tipo: 'nota',
+                tono: 'info',
+                texto:
+                    'El genérico también se puede marcar a mano con el interruptor «Genérico» del formulario de material; al activarlo se le quitan tallas y colores aunque se hayan escrito.',
+            },
+            {
+                tipo: 'subtitulo',
+                texto: 'La ficha técnica solo admite genéricos',
+            },
+            {
+                tipo: 'lista',
+                items: [
+                    'En la ficha de producto y de material procesado, el select de material lista únicamente los materiales genéricos; si una ficha antigua tiene un material específico, la fila conserva su nombre pero el servidor rechaza el guardado hasta reemplazarlo por el genérico de su par categoría-base.',
+                    'El buscador del select funciona por código o por nombre base, sin distinguir mayúsculas ni tildes (escribir «lfl» o «Florentina» encuentra lo mismo).',
+                    'Al dar Enter con el foco en el select de material se agrega otra fila y el foco vuelve al buscador, para encadenar materiales sin usar el ratón.',
+                ],
+            },
+        ],
+        fuentes: [
+            'database/migrations/2026_11_11_100000_add_generico_to_materials_table.php',
+            'app/Models/Material.php (limpiarVariantesPorGenerico en saving; sincronizarVariantes la respeta)',
+            'app/Services/MaterialesGenericosService.php (sincronizar y estadisticas)',
+            'app/Services/FichaTecnicaService.php (opcionesMateriales con bandera generico; guardar solo admite genéricos)',
+            'resources/js/pages/FichaTecnicaMateriales/EditorMateriales.vue (select filtrado, búsqueda por código/nombre, Enter agrega fila)',
+            'app/Http/Controllers/SuperadminAccionesController.php (materialesGenericos)',
+            'routes/web.php (POST /superadmin/materiales-genericos)',
+            'resources/js/pages/actividad/AccionesSuperadmin.vue (tarjeta «Materiales genéricos»)',
         ],
     },
 ];

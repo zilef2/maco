@@ -6,9 +6,10 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import type { FaltanteMaterial, SharedData } from '@/types';
 import { Bell, CheckCheck, PackageX } from 'lucide-vue-next';
 import { computed, onMounted, onUnmounted, reactive } from 'vue';
-import { router } from '@inertiajs/vue3';
+import { router, usePage } from '@inertiajs/vue3';
 
 const props = defineProps<{
     /** Filtra la campana a un tipo de notificación (ej. material_insuficiente). */
@@ -20,11 +21,38 @@ const props = defineProps<{
 interface NotificacionItem {
     id: number;
     mensaje: string;
+    detalle?: string;
     prioridad: 'alta' | 'media' | 'baja' | string;
     created_at: string;
 }
 
+const page = usePage<SharedData>();
+
 const esMaterial = computed(() => props.tipo === 'material_insuficiente');
+
+// Los faltantes son un estado, no un aviso: se recalculan contra las OP abiertas
+// (mismo origen que «Comprar faltantes») y desaparecen al cubrirse el material.
+const faltantesOp = computed<FaltanteMaterial[]>(() => page.props.faltantesOp ?? []);
+
+const numero = (valor: number | string) =>
+    Number(valor).toLocaleString('es', { maximumFractionDigits: 4 });
+
+const itemsMaterial = computed<NotificacionItem[]>(() =>
+    faltantesOp.value.map((f) => {
+        const ordenes = (f.ordenes ?? [])
+            .map((o) => `${o.numero_op} necesita ${numero(o.requerido)}`)
+            .join(' · ');
+
+        return {
+            id: f.material_id,
+            mensaje: `${f.nombre}${f.codigo ? ` (${f.codigo})` : ''}: faltan ${numero(f.faltante)} ${f.unidad ?? ''}`.trim(),
+            detalle: `${ordenes ? `${ordenes} · ` : ''}hay ${numero(f.existencia)}`,
+            prioridad: 'alta',
+            created_at: '',
+        };
+    }),
+);
+
 const query = computed(() => (props.tipo ? `?tipo=${encodeURIComponent(props.tipo)}` : ''));
 const tituloBoton = computed(() =>
     esMaterial.value ? 'Faltantes de material' : 'Notificaciones pendientes',
@@ -41,6 +69,12 @@ const state = reactive({
     quitarListener: null as null | (() => void),
 });
 
+// La campana de faltantes no lista avisos históricos: muestra las carencias
+// actuales, por eso comparte la fuente con «Comprar faltantes».
+const items = computed<NotificacionItem[]>(() =>
+    esMaterial.value ? itemsMaterial.value : state.notificaciones,
+);
+
 const formatFecha = (fecha: string) => {
     if (!fecha) return '';
     return new Date(fecha).toLocaleDateString([], {
@@ -52,6 +86,7 @@ const formatFecha = (fecha: string) => {
 };
 
 const cargarNotificaciones = async () => {
+    if (esMaterial.value) return;
     state.cargando = true;
     try {
         const response = await fetch('/notificaciones' + query.value, {
@@ -111,10 +146,14 @@ const marcarTodasLeidas = async () => {
 };
 
 onMounted(() => {
+    // Los faltantes llegan por props en cada visita de Inertia; no hay nada
+    // que sondear en el servidor para esta campana.
+    if (esMaterial.value) return;
+
     cargarNotificaciones();
     state.timer = setInterval(cargarNotificaciones, 20000);
-    // Al terminar una acción (por ejemplo crear una OP con faltantes) la
-    // campana se refresca de inmediato en vez de esperar al siguiente sondeo.
+    // Al terminar una acción la campana se refresca de inmediato en vez de
+    // esperar al siguiente sondeo.
     state.quitarListener = router.on('success', () => cargarNotificaciones());
 });
 
@@ -127,7 +166,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-    <DropdownMenu v-if="siempreVisible || state.notificaciones.length > 0">
+    <DropdownMenu v-if="siempreVisible || items.length > 0">
         <DropdownMenuTrigger :as-child="true">
             <Button
                 variant="ghost"
@@ -138,10 +177,10 @@ onUnmounted(() => {
                 <PackageX v-if="esMaterial" class="h-4 w-4" />
                 <Bell v-else class="h-4 w-4" />
                 <span
-                    v-if="state.notificaciones.length > 0"
+                    v-if="items.length > 0"
                     class="absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white shadow-xs"
                 >
-                    {{ state.notificaciones.length > 9 ? '9+' : state.notificaciones.length }}
+                    {{ items.length > 9 ? '9+' : items.length }}
                 </span>
             </Button>
         </DropdownMenuTrigger>
@@ -150,14 +189,14 @@ onUnmounted(() => {
                 <div class="flex items-center gap-2">
                     <span class="text-sm font-semibold text-foreground">{{ tituloPanel }}</span>
                     <span
-                        v-if="state.notificaciones.length > 0"
+                        v-if="items.length > 0"
                         class="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary"
                     >
-                        {{ state.notificaciones.length }}
+                        {{ items.length }}
                     </span>
                 </div>
                 <button
-                    v-if="state.notificaciones.length > 0"
+                    v-if="!esMaterial && items.length > 0"
                     @click="marcarTodasLeidas"
                     class="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
                 >
@@ -167,15 +206,16 @@ onUnmounted(() => {
             </div>
 
             <div class="max-h-80 overflow-y-auto divide-y divide-sidebar-border/40">
-                <div v-if="state.notificaciones.length === 0" class="p-6 text-center text-sm text-muted-foreground">
+                <div v-if="items.length === 0" class="p-6 text-center text-sm text-muted-foreground">
                     {{ mensajeVacio }}
                 </div>
 
                 <DropdownMenuItem
-                    v-for="notif in state.notificaciones"
+                    v-for="notif in items"
                     :key="notif.id"
-                    class="flex items-start gap-3 p-3 cursor-pointer focus:bg-muted/50 rounded-none"
-                    @click="marcarLeida(notif.id)"
+                    class="flex items-start gap-3 p-3 rounded-none focus:bg-muted/50"
+                    :class="{ 'cursor-pointer': !esMaterial }"
+                    @click="esMaterial ? undefined : marcarLeida(notif.id)"
                 >
                     <span
                         class="mt-1.5 h-2 w-2 shrink-0 rounded-full"
@@ -190,7 +230,7 @@ onUnmounted(() => {
                             {{ notif.mensaje }}
                         </p>
                         <p class="text-[10px] text-muted-foreground">
-                            {{ formatFecha(notif.created_at) }}
+                            {{ esMaterial ? notif.detalle : formatFecha(notif.created_at) }}
                         </p>
                     </div>
                 </DropdownMenuItem>

@@ -470,9 +470,9 @@ class OrdenProduccionController extends Controller {
                         ->sortBy('id')
                         ->map(fn ($p) => [
                             'nombre'        => $p->nombre,
-                            'coste_proceso' => (float) $p->coste_proceso,
+                            'coste_proceso' => (float) $p->pivot->coste_proceso,
                         ])->values()->all(),
-                    'costo_proceso_total' => round((float) $producto->procesos->sum('coste_proceso'), 2),
+                    'costo_proceso_total' => round($producto->procesos->sum(fn ($p) => (float) $p->pivot->coste_proceso), 2),
                     'ficha_materiales' => $ficha?->materiales->map(fn ($fila) => [
                         'material_id'       => $fila->material_componente_id,
                         'nombre'            => trim(($fila->material?->codigo_material ? $fila->material->codigo_material . ' — ' : '') . $fila->material?->nombre_base),

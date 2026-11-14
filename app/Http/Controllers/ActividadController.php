@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\ActividadRegistro;
 use App\Models\Material;
 use App\Services\ExistenciasMaterialesService;
+use App\Services\MaterialesGenericosService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -151,6 +152,7 @@ class ActividadController extends Controller
                 'sin_precio' => Material::doesntHave('prices')->count(),
                 'rango_existencia' => ExistenciasMaterialesService::rangoExistencia(),
                 'rango_precio' => ExistenciasMaterialesService::rangoPrecio(),
+                'genericos' => MaterialesGenericosService::estadisticas(),
             ],
             'filtro' => [
                 'dias' => $dias,

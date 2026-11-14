@@ -5,6 +5,8 @@ import TextInput from '@/components/TextInput.vue';
 import { dineroANumero, formatdinero } from '@/global.ts';
 import { Cog6ToothIcon, PlusIcon, TrashIcon } from '@heroicons/vue/24/solid';
 import { computed } from 'vue';
+import vSelect from 'vue-select';
+import 'vue-select/dist/vue-select.css';
 
 /**
  * Filas de procesos del producto. La suma de los costes de estas filas, por
@@ -14,10 +16,13 @@ const filas = defineModel<any[]>({ required: true });
 
 const props = withDefaults(
     defineProps<{
+        // Nombres de proceso disponibles: se eligen, no se digitan.
+        opciones?: string[];
         errors?: Record<string, string>;
         disabled?: boolean;
     }>(),
     {
+        opciones: () => [],
         errors: () => ({}),
         disabled: false,
     },
@@ -61,11 +66,15 @@ const errorDe = (index: number, campo: string) => props.errors?.[`procesos.${ind
                 <tbody class="divide-y divide-gray-100 dark:divide-gray-700/60">
                     <tr v-for="(fila, index) in filas" :key="index" class="align-top">
                         <td class="px-3 py-2">
-                            <TextInput
-                                class="block h-9 w-full px-2"
+                            <v-select
+                                :options="props.opciones"
                                 v-model="fila.nombre"
-                                placeholder="Nombre del proceso..."
+                                placeholder="Buscar proceso…"
                                 :aria-label="'Proceso'"
+                                :clearable="true"
+                                :taggable="false"
+                                class="block w-full"
+                                append-to-body
                                 :disabled="props.disabled"
                             />
                             <InputError class="mt-1" :message="errorDe(index, 'nombre')" />

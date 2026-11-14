@@ -57,12 +57,15 @@ class Producto extends Model
     }
 
     /**
-     * Procesos del producto con su coste. La suma de coste_proceso, multiplicada
-     * por la cantidad de cada producto, define el costo de proceso de la OP.
+     * Procesos del producto con su coste. El coste vive en el pivote
+     * (pivot.coste_proceso); la suma, multiplicada por la cantidad de cada
+     * producto, define el costo de proceso de la OP.
      */
     public function procesos()
     {
-        return $this->hasMany(Procesoop::class, 'producto_id');
+        return $this->belongsToMany(Procesoop::class, 'procesoop_producto', 'producto_id', 'procesoop_id')
+            ->withPivot('coste_proceso')
+            ->withTimestamps();
     }
 
     public static function getFillableWithTypes(): array

@@ -120,6 +120,8 @@ class MaterialController extends Controller {
         });
 
         $listasDesplegables = $this->listaDesplegableService->getOptionsByCategoriaGrouped('material');
+        // La talla de un material se elige entre las opciones de talla de Producto.
+        $opcionesProducto = $this->listaDesplegableService->getOptionsByCategoriaGrouped('producto');
         $proveedores = Proveedor::all(['id', 'nombre'])
             ->map(function ($proveedor) {
                 return [
@@ -161,6 +163,9 @@ class MaterialController extends Controller {
                 'categoria'                 => $listasDesplegables['categoria'] ?? [],
                 'modelo_diseno_acabado'     => $listasDesplegables['modelo_diseno_acabado'] ?? $listasDesplegables['variante_atributo_sugerido'] ?? $listasDesplegables['variante'] ?? [],
                 'variante_atributo_sugerido' => $listasDesplegables['modelo_diseno_acabado'] ?? $listasDesplegables['variante_atributo_sugerido'] ?? $listasDesplegables['variante'] ?? [],
+                // Color y talla son de selección única: cada uno sale de su lista.
+                'color'                     => $listasDesplegables['color'] ?? [],
+                'talla_tamano'              => $opcionesProducto['opciones'] ?? [],
                 'proveedor_habitual'        => $proveedores,
                 'materiales'                => $this->fichaTecnicaService->opcionesMateriales()['materiales'],
                 'unidad_medida'             => $this->fichaTecnicaService->opcionesMateriales()['unidad_medida'],

@@ -12,7 +12,6 @@ const props = defineProps({
     show: Boolean,
     title: String,
     item: { type: Object as () => any, default: null },
-    productosSelect: { type: Array as () => any[], default: () => [] },
     numberPermissions: Number,
 });
 
@@ -20,15 +19,11 @@ const emit = defineEmits(['close']);
 
 const form = useForm({
     nombre: '',
-    producto_id: '' as string | number,
-    coste_proceso: '' as string | number,
 });
 
 watchEffect(() => {
     if (props.show && props.item) {
         form.nombre = props.item.nombre ?? '';
-        form.producto_id = props.item.producto_id ?? '';
-        form.coste_proceso = props.item.coste_proceso ?? '';
         form.clearErrors();
     }
 });
@@ -52,54 +47,22 @@ const actualizar = () => {
             <h2 class="text-lg font-semibold text-foreground">
                 Editar {{ props.title }}
             </h2>
+            <p class="mt-1 text-xs text-muted-foreground">
+                El proceso es un nombre del catálogo. Su coste se define en cada producto.
+            </p>
             <div class="mt-6 flex flex-col gap-4">
                 <div>
-                    <InputLabel for="edit_nombre" value="Nombre" />
+                    <InputLabel for="edit_nombre" value="Nombre del proceso" />
                     <TextInput
                         id="edit_nombre"
                         type="text"
                         class="mt-1 block w-full"
                         v-model="form.nombre"
-                        placeholder="Nombre del proceso"
+                        placeholder="Ej. Capellada"
                         :error="form.errors.nombre"
-                        required
+                        autofocus
                     />
                     <InputError class="mt-1" :message="form.errors.nombre" />
-                </div>
-
-                <div>
-                    <InputLabel for="edit_producto_id" value="Producto" />
-                    <select
-                        id="edit_producto_id"
-                        v-model="form.producto_id"
-                        required
-                        class="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30"
-                    >
-                        <option value="">Seleccione un producto</option>
-                        <option
-                            v-for="p in props.productosSelect"
-                            :key="p.value"
-                            :value="p.value"
-                        >
-                            {{ p.label }}
-                        </option>
-                    </select>
-                    <InputError class="mt-1" :message="form.errors.producto_id" />
-                </div>
-
-                <div>
-                    <InputLabel for="edit_coste_proceso" value="Costo proceso" />
-                    <TextInput
-                        id="edit_coste_proceso"
-                        type="number"
-                        step="0.01"
-                        class="mt-1 block w-full"
-                        v-model="form.coste_proceso"
-                        placeholder="0.00"
-                        :error="form.errors.coste_proceso"
-                        required
-                    />
-                    <InputError class="mt-1" :message="form.errors.coste_proceso" />
                 </div>
             </div>
 
@@ -110,7 +73,7 @@ const actualizar = () => {
                 <PrimaryButton
                     type="submit"
                     :class="{ 'opacity-25': form.processing }"
-                    :disabled="form.processing"
+                    :disabled="form.processing || !form.nombre.trim()"
                 >
                     {{ form.processing ? 'Guardando…' : 'Guardar' }}
                 </PrimaryButton>

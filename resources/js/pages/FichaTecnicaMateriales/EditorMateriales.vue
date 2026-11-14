@@ -4,7 +4,7 @@ import SecondaryButton from '@/components/SecondaryButton.vue';
 import TextInput from '@/components/TextInput.vue';
 import { dineroANumero, formatdinero } from '@/global.ts';
 import { CubeIcon, PlusIcon, TrashIcon } from '@heroicons/vue/24/solid';
-import { computed } from 'vue';
+import { computed, nextTick, ref } from 'vue';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
 
@@ -35,6 +35,22 @@ const filaVacia = () => ({
     costo_asociado_teorico: 0 as string | number,
 });
 
+// Referencias a los v-select de cada fila, para devolver el foco al buscar.
+const selectsDeFila = ref<any[]>([]);
+
+const enfocarSelect = (index: number) => {
+    nextTick(() => {
+        const select = selectsDeFila.value[index];
+        if (!select) {
+            return;
+        }
+        // open es un dato del componente, no un método: se abre y se enfoca su
+        // campo de búsqueda directamente para poder teclear de una.
+        select.open = true;
+        select.searchEl?.focus();
+    });
+};
+
 const agregar = () => {
     filas.value = [...filas.value, filaVacia()];
 };
@@ -43,19 +59,67 @@ const quitar = (index: number) => {
     filas.value = filas.value.filter((_, i) => i !== index);
 };
 
+/** Enter con el foco en el select de material: agrega otra fila y la enfoca. */
+const alEnterEnMaterial = (index: number) => {
+    if (props.disabled) {
+        return;
+    }
+    filas.value = [...filas.value, filaVacia()];
+    enfocarSelect(filas.value.length - 1);
+};
+
 const materialDe = (fila: any) =>
     (props.opciones?.materiales || []).find((material: any) => String(material.id) === String(fila.material_componente_id));
 
-// El label del select busca y muestra "codigo — nombre" más las variantes del
-// material, para poder encontrar el material también por el nombre de su variante.
+// La ficha solo admite materiales genéricos: el select lista únicamente esos.
+// Una fila antigua que apunte a un material específico conserva su opción para
+// que el nombre siga visible al editar.
 const opcionesVisibles = computed<any[]>(() =>
-    (props.opciones?.materiales || []).map((material: any) => ({
-        ...material,
-        nombre_con_variants: material.variants?.length
-            ? `${material.name} · ${material.variants.join(', ')}`
-            : material.name,
-    })),
+    (props.opciones?.materiales || [])
+        .filter((material: any) => material.generico === true || material.generico === 1)
+        .map((material: any) => ({
+            ...material,
+            nombre_con_variants: material.variants?.length
+                ? `${material.name} · ${material.variants.join(', ')}`
+                : material.name,
+        })),
 );
+
+const opcionesDeFila = (fila: any): any[] => {
+    const seleccion = (props.opciones?.materiales || []).find(
+        (material: any) => String(material.id) === String(fila.material_componente_id),
+    );
+    const esGenerica = seleccion && (seleccion.generico === true || seleccion.generico === 1);
+    if (!seleccion || esGenerica) {
+        return opcionesVisibles.value;
+    }
+    return [
+        {
+            ...seleccion,
+            nombre_con_variants: seleccion.variants?.length
+                ? `${seleccion.name} · ${seleccion.variants.join(', ')}`
+                : seleccion.name,
+        },
+        ...opcionesVisibles.value,
+    ];
+};
+
+/** Quita tildes y pasa a minúsculas, para buscar "lfl" o "Florentina" igual. */
+const normalizarBusqueda = (texto: string): string =>
+    String(texto ?? '')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase();
+
+// Búsqueda por código o por nombre base, sin importar tildes ni mayúsculas.
+const filtrarOpciones = (opcion: any, busqueda: string): boolean => {
+    const texto = normalizarBusqueda(busqueda);
+    return (
+        normalizarBusqueda(opcion?.codigo_material ?? '').includes(texto) ||
+        normalizarBusqueda(opcion?.nombre_base ?? '').includes(texto) ||
+        normalizarBusqueda(opcion?.nombre_con_variants ?? '').includes(texto)
+    );
+};
 
 const alElegirMaterial = (fila: any, material: any) => {
     fila.unidad_medida = material?.unidad_inventario ?? '';
@@ -120,15 +184,18 @@ const errorDe = (index: number, campo: string) => props.errors?.[`materiales.${i
                     <tr v-for="(fila, index) in filas" :key="index" class="align-top">
                         <td class="px-3 py-2 col-span-2">
                             <v-select
-                                :options="opcionesVisibles"
+                                :ref="(el: any) => (selectsDeFila[index] = el)"
+                                :options="opcionesDeFila(fila)"
                                 label="nombre_con_variants"
                                 :reduce="(item: any) => item.id"
                                 v-model="fila.material_componente_id"
-                                :placeholder="lang().t('app.label.material')"
+                                :placeholder="lang().t('app.label.material_buscar_codigo_nombre', 'Buscar por código o nombre…')"
                                 class="block w-full"
                                 append-to-body
                                 :disabled="props.disabled"
+                                :filter-by="filtrarOpciones"
                                 @option:selected="(opt: any) => alElegirMaterial(fila, opt)"
+                                @keyup.enter="alEnterEnMaterial(index)"
                             >
                                 <template v-slot:option="opt">
                                     <div class="flex flex-col">
@@ -225,7 +292,7 @@ const errorDe = (index: number, campo: string) => props.errors?.[`materiales.${i
             class="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 bg-gray-50/60 px-3 py-2.5 dark:border-gray-700 dark:bg-gray-900/30"
         >
             <div class="flex flex-col items-start gap-1">
-                <SecondaryButton v-if="!props.disabled" type="button" class="text-xs" @click="agregar">
+                <SecondaryButton v-if="!props.disabled" type="button" class="text-xs" @click="agregar(); enfocarSelect(filas.length - 1)">
                     <PlusIcon class="mr-1 inline h-3.5 w-3.5" />
                     {{ lang().t('app.label.agregar_material') }}
                 </SecondaryButton>
@@ -234,6 +301,7 @@ const errorDe = (index: number, campo: string) => props.errors?.[`materiales.${i
                 </span>
                 <span class="text-[11px] text-gray-400 dark:text-gray-500">
                     {{ lang().t('app.label.costo_unidad_desde_material', 'La unidad y el costo unitario se toman del material.') }}
+                    · {{ lang().t('app.label.ficha_enter_agrega_fila', 'Enter agrega otra fila y vuelve al buscador.') }}
                 </span>
             </div>
 

@@ -23,3 +23,5 @@ yarn-error.log
 /.vscode
 /.zed
 .aider*
+# Playwright CLI output (may contain credentials)
+.playwright-cli/

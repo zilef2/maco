@@ -27,6 +27,24 @@ use Illuminate\Support\Collection;
  */
 class CostoMaterialOpService
 {
+    /** El precio de venta es automático: un 300% del coste de producción. */
+    public const MULTIPLICADOR_PRECIO_VENTA = 3;
+
+    /** El precio de venta se redondea siempre al millar superior. */
+    public const REDONDEO_PRECIO_VENTA = 1000;
+
+    /**
+     * Precio de venta automático a partir del coste de producción. Es la misma
+     * regla que aplican los formularios de Producto, para que lo que se ve en
+     * pantalla sea lo que queda guardado.
+     */
+    public static function precioVentaAutomatico(float $costeProduccion): float
+    {
+        $precio = $costeProduccion * self::MULTIPLICADOR_PRECIO_VENTA;
+
+        return (float) (ceil($precio / self::REDONDEO_PRECIO_VENTA) * self::REDONDEO_PRECIO_VENTA);
+    }
+
     /** Método vigente según el parámetro costos_promedio. */
     public function metodo(): int
     {
@@ -309,15 +327,7 @@ class CostoMaterialOpService
     {
         $metodo ??= $this->metodo();
 
-        if ($materiales === null) {
-            $ids = $producto->fichaTecnica
-                ->flatMap(fn ($ficha) => $ficha->materiales->pluck('material_componente_id'))
-                ->filter()
-                ->unique()
-                ->values()
-                ->all();
-            $materiales = $this->materialesConPrecios($ids);
-        }
+        $materiales ??= $this->materialesConPrecios($this->idsMaterialesFicha($producto));
 
         $costeMateriales = 0.0;
         foreach ($producto->fichaTecnica as $ficha) {
@@ -336,7 +346,41 @@ class CostoMaterialOpService
             }
         }
 
-        return round($costeMateriales + (float) $producto->procesos->sum('coste_proceso'), 2);
+        return round($costeMateriales + (float) $producto->procesos->sum(fn ($proceso) => (float) $proceso->pivot->coste_proceso), 2);
+    }
+
+    /**
+     * Materiales que aparecen en la ficha técnica del producto.
+     *
+     * @return list<int>
+     */
+    public function idsMaterialesFicha(Producto $producto): array
+    {
+        return $producto->fichaTecnica
+            ->flatMap(fn ($ficha) => $ficha->materiales->pluck('material_componente_id'))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Coste de producción unitario con los dos métodos de precio a la vez: el
+     * promedio de los precios registrados del material y su último precio. Los
+     * dos quedan guardados en el producto para poder compararlos en pantalla,
+     * sin depender de cuál esté vigente en el parámetro costos_promedio.
+     *
+     * @param  Collection<int, Material>|null  $materiales  Materiales con precios ya cargados, keyBy id.
+     * @return array{promedio: float, ultimo: float}
+     */
+    public function costeProduccionPorMetodo(Producto $producto, ?Collection $materiales = null): array
+    {
+        $materiales ??= $this->materialesConPrecios($this->idsMaterialesFicha($producto));
+
+        return [
+            'promedio' => $this->costeProduccionUnitario($producto, $materiales, Parametro::COSTOS_PROMEDIO_PROMEDIO),
+            'ultimo' => $this->costeProduccionUnitario($producto, $materiales, Parametro::COSTOS_PROMEDIO_ULTIMO),
+        ];
     }
 
     /**
@@ -353,9 +397,7 @@ class CostoMaterialOpService
 
         $productos = $this->productos($op);
         $ids = $productos
-            ->flatMap(fn (Producto $producto) => $producto->fichaTecnica
-                ->flatMap(fn ($ficha) => $ficha->materiales->pluck('material_componente_id')))
-            ->filter()
+            ->flatMap(fn (Producto $producto) => $this->idsMaterialesFicha($producto))
             ->unique()
             ->values()
             ->all();
@@ -382,12 +424,21 @@ class CostoMaterialOpService
                 }
             }
 
-            $costeProduccion = round($costeMateriales + (float) $producto->procesos->sum('coste_proceso'), 2);
-            $precioVenta = $producto->precio_venta_producto !== null ? (float) $producto->precio_venta_producto : null;
+            $costeProduccion = round($costeMateriales + (float) $producto->procesos->sum(fn ($proceso) => (float) $proceso->pivot->coste_proceso), 2);
+            // El precio de venta sigue al coste: siempre un 300% del coste de
+            // producción, también cuando la OP lo recalcula.
+            $precioVenta = self::precioVentaAutomatico($costeProduccion);
+
+            // Los dos costes por método salen de los precios actuales del
+            // material, no del snapshot de la OP: son la referencia del producto.
+            $porMetodo = $this->costeProduccionPorMetodo($producto, $materiales);
 
             $producto->forceFill([
                 'coste_produccion' => $costeProduccion,
-                'ganancia_producto' => $precioVenta !== null ? round($precioVenta - $costeProduccion, 2) : null,
+                'coste_produccion_promedio' => $porMetodo['promedio'],
+                'coste_produccion_ultimo' => $porMetodo['ultimo'],
+                'precio_venta_producto' => $precioVenta,
+                'ganancia_producto' => round($precioVenta - $costeProduccion, 2),
             ])->saveQuietly();
         }
 
@@ -613,7 +664,7 @@ class CostoMaterialOpService
                 continue;
             }
 
-            $costeProcesos = (float) $producto->procesos->sum('coste_proceso');
+            $costeProcesos = (float) $producto->procesos->sum(fn ($proceso) => (float) $proceso->pivot->coste_proceso);
             $total += $costeProcesos * $cantidad;
         }
 

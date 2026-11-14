@@ -29,6 +29,7 @@ class PurgarDatosPruebaRepository
             'mermas',
             'compromisos_reparacion',
             'compromisos_reparacions',
+            'procesoop_producto',
             'procesoops',
             'orden_produccions',
             'material_movimientos',

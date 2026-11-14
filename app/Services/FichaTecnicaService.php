@@ -26,13 +26,24 @@ class FichaTecnicaService
     ) {}
 
     /**
-     * Opciones para las líneas de material (material, unidad y costo vigente).
+     * Opciones para las líneas de material: material, unidad y sus dos costos
+     * (el último precio registrado y el promedio de todos).
+     * La ficha solo admite materiales genéricos; la bandera viaja en cada
+     * opción para que el editor filtre el select sin perder las filas antiguas
+     * que apuntan a un material específico.
      */
     public function opcionesMateriales(): array
     {
+        // Promedio de los precios registrados de cada material: es el otro
+        // método de costo, para que el formulario pueda mostrar los dos.
+        $promedios = DB::table('material_prices')
+            ->selectRaw('material_id, AVG(precio) as promedio')
+            ->groupBy('material_id')
+            ->pluck('promedio', 'material_id');
+
         $materiales = Material::with(['lastPrice', 'variants'])
             ->orderBy('nombre_base')
-            ->get(['id', 'codigo_material', 'nombre_base', 'unidad_inventario'])
+            ->get(['id', 'codigo_material', 'nombre_base', 'unidad_inventario', 'generico'])
             ->map(fn ($m) => [
                 'id'    => $m->id,
                 'value' => $m->id,
@@ -40,7 +51,9 @@ class FichaTecnicaService
                 'unidad_inventario' => $m->unidad_inventario,
                 'unidad_medida' => $m->unidad_inventario,
                 'costo_unitario' => $m->costoUnitarioActual(),
+                'costo_unitario_promedio' => round((float) ($promedios[$m->id] ?? 0), 2),
                 'precio_registrado' => $m->lastPrice !== null,
+                'generico' => (bool) $m->generico,
                 'variants' => $m->variants->map(fn ($v) => $v->nombre)->all(),
             ])->values()->all();
 
@@ -368,6 +381,20 @@ class FichaTecnicaService
             )
             ->get()
             ->keyBy('id');
+
+        // La ficha solo admite materiales genéricos (uno por par categoría-base).
+        $noGenericos = $materialesPorId
+            ->reject(fn (Material $material) => (bool) $material->generico)
+            ->map(fn (Material $material) => $material->codigo_material ?: $material->nombre_base)
+            ->values();
+
+        if ($noGenericos->isNotEmpty()) {
+            throw ValidationException::withMessages([
+                'materiales' => 'La ficha técnica solo admite materiales genéricos: '
+                    . $noGenericos->implode(', ')
+                    . '. Use el genérico de su par categoría-base (el botón «Crear los genéricos que faltan» de Actividad los agrega).',
+            ]);
+        }
 
         if (!$ficha) {
             $ficha = FichaTecnica::create(['nombre' => $nombre]);

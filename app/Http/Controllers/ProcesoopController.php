@@ -3,12 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\Procesoop;
-use App\Models\Producto;
 use App\helpers\Myhelp;
 use App\helpers\MyModels;
+use App\Services\ProcesoopService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -16,41 +15,51 @@ class ProcesoopController extends Controller {
     public array $thisAtributos;
     public string $FromController = 'Procesoop';
 
-    public function __construct() {
+    public function __construct(
+        protected ProcesoopService $procesoopService,
+    ) {
         $this->thisAtributos = (new Procesoop())->getFillable();
     }
 
     public function index(Request $request): Response {
         $numberPermissions = MyModels::getPermissionToNumber(Myhelp::EscribirEnLog($this, ' Procesoops '));
-        $procesoops = Procesoop::with('producto')
-            ->orderByDesc('updated_at')
+        // Catálogo de nombres: el coste y la asignación viven en el producto.
+        $procesoops = Procesoop::withCount('productos')
+            ->orderBy('nombre')
+            ->get();
+
+        // Vínculos proceso↔producto: cada fila es un proceso aplicado a un
+        // producto con su coste (pivot.coste_proceso).
+        $vinculos = Procesoop::with(['productos' => fn ($query) => $query->select('productos.id', 'Titulo_Shopify', 'Codigo_interno')])
+            ->orderBy('nombre')
             ->get()
-            ->map(function ($p) {
-                $p->producto_nombre = $p->producto?->Titulo_Shopify ?? '';
-                $p->producto_codigo = $p->producto?->Codigo_interno ?? '';
-                return $p;
-            });
+            ->flatMap(fn (Procesoop $procesoop) => $procesoop->productos->map(fn ($producto) => [
+                'procesoop_id'  => $procesoop->id,
+                'proceso'       => $procesoop->nombre,
+                'producto_id'   => $producto->id,
+                'producto'      => trim(($producto->Codigo_interno ? $producto->Codigo_interno . ' — ' : '') . $producto->Titulo_Shopify) ?: ('Producto #' . $producto->id),
+                'coste_proceso' => (float) $producto->pivot->coste_proceso,
+            ]))
+            ->values();
 
         return Inertia::render($this->FromController . '/Index', [
             'procesoops'        => $procesoops,
+            'vinculos'          => $vinculos,
             'total'             => $procesoops->count(),
             'breadcrumbs'       => [['label' => __('app.label.' . $this->FromController), 'href' => route($this->FromController . '.index')]],
             'title'             => __('app.label.' . $this->FromController),
             'numberPermissions' => $numberPermissions,
-            'productosSelect'   => Producto::orderBy('Titulo_Shopify')
-                ->get(['id', 'Titulo_Shopify', 'Codigo_interno'])
-                ->map(fn($p) => [
-                    'value' => $p->id,
-                    'label' => $p->Titulo_Shopify . ($p->Codigo_interno ? ' (' . $p->Codigo_interno . ')' : ''),
-                ]),
         ]);
     }
 
     public function store(Request $request): RedirectResponse {
         $permissions = Myhelp::EscribirEnLog($this, ' Begin STORE:Procesoops');
-        DB::beginTransaction();
-        $Procesoop = Procesoop::create($request->all());
-        DB::commit();
+        $datos = $request->validate([
+            'nombre' => ['required', 'string', 'max:255'],
+        ]);
+
+        $Procesoop = $this->procesoopService->crear($datos);
+
         Myhelp::EscribirEnLog($this, 'STORE:Procesoops EXITOSO', 'Procesoop id:' . $Procesoop->id . ' | ' . $Procesoop->nombre, false);
         return back()->with('success', __('app.label.created_successfully', ['name' => $Procesoop->nombre]));
     }
@@ -61,10 +70,13 @@ class ProcesoopController extends Controller {
 
     public function update(Request $request, $id): RedirectResponse {
         $permissions = Myhelp::EscribirEnLog($this, ' Begin UPDATE:Procesoops');
-        DB::beginTransaction();
+        $datos = $request->validate([
+            'nombre' => ['required', 'string', 'max:255'],
+        ]);
+
         $Procesoop = Procesoop::findOrFail($id);
-        $Procesoop->update($request->all());
-        DB::commit();
+        $this->procesoopService->actualizar($Procesoop, $datos);
+
         Myhelp::EscribirEnLog($this, 'UPDATE:Procesoops EXITOSO', 'Procesoop id:' . $Procesoop->id . ' | ' . $Procesoop->nombre, false);
         return back()->with('success', __('app.label.updated_successfully2', ['nombre' => $Procesoop->nombre]));
     }

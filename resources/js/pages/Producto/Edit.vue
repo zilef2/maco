@@ -10,7 +10,7 @@ import EditorMateriales from '@/pages/FichaTecnicaMateriales/EditorMateriales.vu
 import EditorProcesos from '@/pages/Producto/EditorProcesos.vue';
 import { MAX_TALLAS_POR_RANGO, TALLAS_ALFABETICAS, useTallasVariante } from '@/composables/useTallasVariante';
 import { dineroANumero, formatdinero } from '@/global.ts';
-import { CheckCircleIcon, ClipboardDocumentListIcon, Cog6ToothIcon, CubeIcon, DocumentTextIcon, PencilSquareIcon } from '@heroicons/vue/24/solid';
+import { CheckCircleIcon, ClipboardDocumentListIcon, Cog6ToothIcon, CubeIcon, DocumentTextIcon, PencilSquareIcon, CurrencyDollarIcon } from '@heroicons/vue/24/solid';
 import { useForm } from '@inertiajs/vue3';
 import { computed, watch, watchEffect } from 'vue';
 import vSelect from 'vue-select';
@@ -24,6 +24,8 @@ const props = withDefaults(
         titulos?: any[];
         losSelect?: any;
         numberPermissions?: number;
+        metodoCostos?: number;
+        metodoCostosLabel?: string;
     }>(),
     {
         show: false,
@@ -32,6 +34,8 @@ const props = withDefaults(
         titulos: () => [],
         losSelect: () => ({}),
         numberPermissions: 0,
+        metodoCostos: 1,
+        metodoCostosLabel: '',
     }
 );
 
@@ -62,9 +66,9 @@ const form = useForm({
     descripcion: '',
     instrucciones: '',
     costo_anticipado: '' as string | number,
-    precio_venta_producto: '' as string | number,
     materiales: [] as any[],
     procesos: [] as any[],
+    precio_venta_producto: '' as string | number,
 });
 
 const { modo, rango, tallasEscogidas, tallas, alternarTalla, rangoDemasiadoGrande, opcionesTexto, sembrar } =
@@ -80,21 +84,23 @@ watch([modo, tallas], () => {
 const fichaBloqueada = computed(() => Boolean(props.Productoa?.ficha_bloqueada));
 const fichaBloqueoDetalle = computed(() => String(props.Productoa?.ficha_bloqueo_detalle ?? ''));
 
-// Coste de producción sugerido: materiales de la ficha (precio vigente) + procesos.
-// Se recalcula en vivo con lo que hay en el formulario y se guarda al guardar
-// el producto; luego cada OP que use el producto vuelve a actualizarlo.
+// Coste de producción: los materiales de la ficha más los procesos, calculado
+// con los dos métodos de precio del material (su último precio registrado y el
+// promedio de todos). Los dos se guardan en la BD; el que manda es el que esté
+// vigente en el parámetro costos_promedio.
 const materialesOpciones = computed<any[]>(() => props.losSelect?.materiales ?? []);
 
-const costoUnitarioMaterial = (fila: any): number => {
+// Una fila antigua cuyo material ya no está en la lista conserva su costo teórico.
+const precioMaterial = (fila: any, campo: 'costo_unitario' | 'costo_unitario_promedio'): number => {
     const material = materialesOpciones.value.find(
         (opcion: any) => String(opcion.id) === String(fila.material_componente_id),
     );
-    return material ? Number(material.costo_unitario) || 0 : dineroANumero(fila.costo_asociado_teorico);
+    return material ? Number(material[campo]) || 0 : dineroANumero(fila.costo_asociado_teorico);
 };
 
-const costeProduccion = computed(() => {
+const costeCon = (campo: 'costo_unitario' | 'costo_unitario_promedio'): number => {
     const materiales = (form.materiales ?? []).reduce(
-        (suma, fila: any) => suma + dineroANumero(fila.consumo_estandar) * costoUnitarioMaterial(fila),
+        (suma, fila: any) => suma + dineroANumero(fila.consumo_estandar) * precioMaterial(fila, campo),
         0,
     );
     const procesos = (form.procesos ?? []).reduce(
@@ -102,15 +108,23 @@ const costeProduccion = computed(() => {
         0,
     );
     return Math.round((materiales + procesos) * 100) / 100;
-});
+};
 
-// Ganancia: diferencia entre el precio venta (tal como está en el formulario)
-// y el coste de producción, en dinero y como porcentaje del coste.
+const costeUltimo = computed(() => costeCon('costo_unitario'));
+const costePromedio = computed(() => costeCon('costo_unitario_promedio'));
+
+// 2 = último precio digitado del material; 1 = promedio de sus cambios de precio.
+const usaUltimoPrecio = computed(() => Number(props.metodoCostos) === 2);
+const costeProduccion = computed(() => (usaUltimoPrecio.value ? costeUltimo.value : costePromedio.value));
+
+// El precio de venta ya no se digita: es un 300% del coste de producción, redondeado al millar superior.
+const precioVentaAutomatico = computed(() => Math.ceil((costeProduccion.value * 3) / 1000) * 1000);
+
+// Ganancia: diferencia entre el precio venta automático y el coste de
+// producción, en dinero y como porcentaje del coste.
 const ganancia = computed(() => {
-    const precioTexto = String(form.precio_venta_producto ?? '').trim();
-    if (precioTexto === '') return null;
-
-    const diferencia = dineroANumero(precioTexto) - costeProduccion.value;
+    const precioBase = form.precio_venta_producto ? Number(form.precio_venta_producto) : precioVentaAutomatico.value;
+    const diferencia = precioBase - costeProduccion.value;
     return {
         valor: diferencia,
         porcentaje: costeProduccion.value > 0
@@ -118,6 +132,18 @@ const ganancia = computed(() => {
             : null,
     };
 });
+
+const precioVentaDisplay = computed(() => form.precio_venta_producto ? Number(form.precio_venta_producto) : precioVentaAutomatico.value);
+const esPrecioManual = computed(() => !!form.precio_venta_producto);
+
+// Convertir precio a formato X.990 (ej: 50000 → 49990, 121000 → 120990)
+const aproximarPrecio990 = () => {
+    const base = precioVentaAutomatico.value;
+    const miles = Math.floor(base / 1000);
+    if (miles > 0) {
+        form.precio_venta_producto = (miles - 1) * 1000 + 990;
+    }
+};
 
 const tallasProducto = computed<string[]>(() =>
     ((props.Productoa?.distribuciones_por_tallas ?? []) as any[])
@@ -150,6 +176,7 @@ const update = () => {
     form
         .transform((datos) => ({
             ...datos,
+            precio_venta_producto: datos.precio_venta_producto ? Number(datos.precio_venta_producto) : precioVentaAutomatico.value,
             // Con la ficha bloqueada no se envía nada que la modifique.
             materiales: fichaBloqueada.value
                 ? []
@@ -200,14 +227,6 @@ watchEffect(() => {
     form.descripcion = producto.descripcion ?? '';
     form.instrucciones = producto.instrucciones ?? '';
     form.costo_anticipado = producto.costo_anticipado ?? '';
-    // La columna es decimal (15000.00); MoneyInput solo admite dígitos y sin
-    // normalizar mostraría 1.500.000. Se guarda como entero para la caja.
-    form.precio_venta_producto =
-        producto.precio_venta_producto === null ||
-        producto.precio_venta_producto === undefined ||
-        producto.precio_venta_producto === ''
-            ? ''
-            : Math.round(Number(producto.precio_venta_producto));
     form.materiales = (producto.ficha_materiales ?? []).map((material: any) => ({
         material_componente_id: material.material_componente_id,
         consumo_estandar: material.consumo_estandar ?? 1,
@@ -218,6 +237,7 @@ watchEffect(() => {
         nombre: proceso.nombre ?? '',
         coste_proceso: proceso.coste_proceso ?? '',
     }));
+    form.precio_venta_producto = '';
 });
 </script>
 
@@ -419,7 +439,8 @@ watchEffect(() => {
                             </p>
                         </div>
                         <p v-else class="mt-1 mb-3 pl-6 text-xs text-gray-400 dark:text-gray-500">
-                            Opcional. Los materiales se guardan en la ficha técnica de este producto.
+                            Opcional. Solo se admiten materiales genéricos; se guardan en la ficha técnica de este
+                            producto.
                         </p>
 
                         <EditorMateriales v-model="form.materiales" :opciones="props.losSelect" :errors="form.errors"
@@ -441,7 +462,7 @@ watchEffect(() => {
                                 Bloqueado: el producto está en una OP activa.
                             </span>
                         </p>
-                        <EditorProcesos v-model="form.procesos" :errors="form.errors" :disabled="fichaBloqueada" />
+                        <EditorProcesos v-model="form.procesos" :opciones="props.losSelect?.procesos ?? []" :errors="form.errors" :disabled="fichaBloqueada" />
                         <InputError class="mt-2" :message="form.errors.procesos" />
                     </div>
 
@@ -495,7 +516,7 @@ watchEffect(() => {
                                 <InputError class="mt-2" :message="form.errors.ID_producto_Shopify" />
                             </div>
 
-                            <div>
+                            <!-- <div>
                                 <InputLabel for="costo_anticipado"
                                     :value="lang().t('app.label.costo_anticipado') || 'Costo anticipado'" />
                                 <MoneyInput id="costo_anticipado" class="mt-1 block w-full"
@@ -505,55 +526,92 @@ watchEffect(() => {
                                 <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
                                     Este valor lo calcula manualmente el usuario; sirve para especular.
                                 </p>
+                            </div> -->
+
+                            <div>
+                                <InputLabel for="coste_produccion_promedio" value="Coste producción · promedio" />
+                                <div id="coste_produccion_promedio"
+                                    class="mt-1 flex h-10 w-full items-center justify-between gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 text-sm font-semibold text-gray-700 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-200">
+                                    <span>{{ formatdinero(costePromedio) }}</span>
+                                    <span :title="props.metodoCostosLabel"
+                                        :class="usaUltimoPrecio
+                                            ? 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+                                            : 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200'"
+                                        class="rounded-full px-2 py-0.5 text-[10px] font-medium">
+                                        {{ usaUltimoPrecio ? 'Referencia' : 'Vigente' }}
+                                    </span>
+                                </div>
+                                <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                                    Materiales de la ficha al promedio de sus precios + procesos, por unidad.
+                                </p>
+                            </div>
+
+                            <div>
+                                <InputLabel for="coste_produccion_ultimo" value="Coste producción · último precio" />
+                                <div id="coste_produccion_ultimo"
+                                    class="mt-1 flex h-10 w-full items-center justify-between gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 text-sm font-semibold text-gray-700 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-200">
+                                    <span>{{ formatdinero(costeUltimo) }}</span>
+                                    <span :title="props.metodoCostosLabel"
+                                        :class="usaUltimoPrecio
+                                            ? 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200'
+                                            : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300'"
+                                        class="rounded-full px-2 py-0.5 text-[10px] font-medium">
+                                        {{ usaUltimoPrecio ? 'Vigente' : 'Referencia' }}
+                                    </span>
+                                </div>
+                                <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                                    Los mismos materiales al precio de su compra más reciente. Se recalculan con cada OP
+                                    que use el producto.
+                                </p>
                             </div>
 
                             <div>
                                 <InputLabel for="precio_venta_producto"
                                     :value="lang().t('app.label.precio_venta_producto') || 'Precio preventa'" />
-                                <MoneyInput id="precio_venta_producto" class="mt-1 block w-full"
-                                    v-model="form.precio_venta_producto" placeholder="$0"
-                                    :error="form.errors.precio_venta_producto" />
-                                <InputError class="mt-2" :message="form.errors.precio_venta_producto" />
-                                <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                                    Es el valor con el que se vende al público; también se escribe a mano.
-                                </p>
-                            </div>
-
-                            <div>
-                                <InputLabel for="coste_produccion" value="Coste producción" />
-                                <div id="coste_produccion"
+                                <div id="precio_venta_producto"
                                     class="mt-1 flex h-10 w-full items-center justify-between gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 text-sm font-semibold text-gray-700 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-200">
-                                    <span>{{ formatdinero(costeProduccion) }}</span>
-                                    <span class="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-medium text-sky-800 dark:bg-sky-900/40 dark:text-sky-200">
-                                        Sugerido
-                                    </span>
+                                    <span>{{ formatdinero(precioVentaDisplay) }}</span>
+                                    <div class="flex items-center gap-2">
+                                        <span
+                                            :class="esPrecioManual
+                                                ? 'rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200'
+                                                : 'rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200'">
+                                            {{ esPrecioManual ? 'Manual (.990)' : '300% del coste' }}
+                                        </span>
+                                        <button type="button" @click="aproximarPrecio990" v-show="!esPrecioManual"
+                                            class="p-1.5 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-200 dark:text-gray-400 dark:hover:bg-gray-800 transition-colors"
+                                            v-tooltip="lang().t('app.tooltip.aproximar_precio_990') || 'Aproximar a X.990'">
+                                            <CurrencyDollarIcon class="w-4 h-4" />
+                                        </button>
+                                    </div>
                                 </div>
                                 <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                                    Materiales de la ficha + procesos, por unidad. Se recalcula con cada OP que use el producto.
+                                    Se calcula solo: un 300% del coste vigente, redondeado al millar superior.
+                                    <span v-if="esPrecioManual" class="text-amber-600 dark:text-amber-400 ml-1">
+                                        (Convertido a formato .990)
+                                    </span>
                                 </p>
+                                <InputError class="mt-2" :message="form.errors.precio_venta_producto" />
                             </div>
 
                             <div>
                                 <InputLabel for="ganancia_producto" value="Ganancia" />
                                 <div id="ganancia_producto"
                                     class="mt-1 flex h-10 w-full items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 text-sm font-semibold dark:border-gray-700 dark:bg-gray-900/40">
-                                    <template v-if="ganancia">
-                                        <span
-                                            :class="ganancia.valor >= 0
-                                                ? 'text-emerald-600 dark:text-emerald-400'
-                                                : 'text-rose-600 dark:text-rose-400'">
-                                            {{ formatdinero(ganancia.valor) }}
-                                        </span>
-                                        <span v-if="ganancia.porcentaje !== null"
-                                            class="text-xs font-medium text-gray-500 dark:text-gray-400">
-                                            ({{ ganancia.porcentaje >= 0 ? '+' : '' }}{{ ganancia.porcentaje.toFixed(1)
-                                            }}% del coste)
-                                        </span>
-                                    </template>
-                                    <span v-else class="text-gray-400 dark:text-gray-500">—</span>
+                                    <span
+                                        :class="ganancia.valor >= 0
+                                            ? 'text-emerald-600 dark:text-emerald-400'
+                                            : 'text-rose-600 dark:text-rose-400'">
+                                        {{ formatdinero(ganancia.valor) }}
+                                    </span>
+                                    <span v-if="ganancia.porcentaje !== null"
+                                        class="text-xs font-medium text-gray-500 dark:text-gray-400">
+                                        ({{ ganancia.porcentaje >= 0 ? '+' : '' }}{{ ganancia.porcentaje.toFixed(1)
+                                        }}% del coste)
+                                    </span>
                                 </div>
                                 <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                                    Diferencia entre el precio venta y el coste de producción; se recalcula al guardar
+                                    Diferencia entre el precio venta y el coste vigente; se recalcula al guardar
                                     el producto y con cada OP que lo use.
                                 </p>
                             </div>

@@ -5,9 +5,11 @@ namespace App\Http\Controllers;
 use App\Http\Requests\DestroyBulkProductoRequest;
 use App\Models\Parametro;
 use App\Models\Producto;
+use App\Models\Procesoop;
 use App\Models\Distribucion_por_tallas;
 use App\helpers\Myhelp;
 use App\helpers\MyModels;
+use App\Services\CostoMaterialOpService;
 use App\Services\ExcelProductosService;
 use App\Services\FichaTecnicaService;
 use App\Services\ProductoService;
@@ -86,22 +88,36 @@ class ProductoController extends Controller {
                     ->map(fn ($estado, $numeroOp) => $numeroOp . ' (' . $estado . ')')
                     ->implode(', ');
 
-                // Procesos del producto: sus filas y el costo total que aporta a
-                // la OP (se multiplica por la cantidad del producto).
+                // Procesos del producto: sus filas (desde el catálogo) y el
+                // costo total que aporta a la OP (se multiplica por la cantidad
+                // del producto). El coste vive en el pivote.
                 $producto->producto_procesos = $producto->procesos
                     ->sortBy('id')
                     ->map(fn ($proceso) => [
                         'id'            => $proceso->id,
                         'nombre'        => $proceso->nombre,
-                        'coste_proceso' => (float) $proceso->coste_proceso,
+                        'coste_proceso' => (float) $proceso->pivot->coste_proceso,
                     ])->values()->all();
-                $producto->costo_proceso_total = round((float) $producto->procesos->sum('coste_proceso'), 2);
+                $producto->costo_proceso_total = round($producto->procesos->sum(
+                    fn ($proceso) => (float) $proceso->pivot->coste_proceso
+                ), 2);
 
-                // Coste de producción unitario en vivo (materiales según el
-                // parámetro + procesos): se muestra en Editar producto y, al
-                // cerrar una OP, se guarda como coste_produccion en la BD.
-                $producto->coste_produccion_vivo = $this->costoMaterialOpService
-                    ->costeProduccionUnitario($producto, $materialesCosteados, $metodoCostos);
+                // Coste de producción unitario en vivo: el canónico (el del
+                // método vigente en el parámetro) y los dos por método, que son
+                // los que se comparan en el formulario y se guardan en la BD.
+                $costesVivos = $this->costoMaterialOpService
+                    ->costeProduccionPorMetodo($producto, $materialesCosteados);
+                $producto->coste_produccion_promedio_vivo = $costesVivos['promedio'];
+                $producto->coste_produccion_ultimo_vivo = $costesVivos['ultimo'];
+                $producto->coste_produccion_vivo = $metodoCostos === Parametro::COSTOS_PROMEDIO_ULTIMO
+                    ? $costesVivos['ultimo']
+                    : $costesVivos['promedio'];
+
+                // Precio de venta automático en vivo: un 300% del coste. Es el
+                // que se guarda al editar el producto o al recalcular sus OPs.
+                $producto->precio_venta_vivo = CostoMaterialOpService::precioVentaAutomatico(
+                    $producto->coste_produccion_vivo
+                );
 
                 // Cantidad total del producto: la suma de lo planificado por talla,
                 // el mismo total que muestra el modal «Distribución por Tallas».
@@ -128,6 +144,10 @@ class ProductoController extends Controller {
         return Inertia::render($this->FromController . '/Index', [
             'productos' => $Productos->values(),
             'total' => $Productos->count(),
+            // Método de precio vigente (1 = promedio, 2 = último precio): decide
+            // cuál de los dos costes del producto es el que manda.
+            'metodo_costos' => $metodoCostos,
+            'metodo_costos_label' => $this->costoMaterialOpService->labelMetodo($metodoCostos),
             'breadcrumbs' => [['label' => __('app.label.' . $this->FromController), 'href' => route($this->FromController . '.index')]],
             'title' => __('app.label.' . $this->FromController),
             'perPage' => (int)$perPage,
@@ -140,6 +160,8 @@ class ProductoController extends Controller {
                  'Opciones'            => $listasDesplegables['opciones'] ?? [],
                  'materiales'          => $fichaOpciones['materiales'],
                  'unidad_medida'       => $fichaOpciones['unidad_medida'],
+                 // Nombres de proceso disponibles: salen del catálogo de Procesoop.
+                 'procesos'            => Procesoop::orderBy('nombre')->pluck('nombre')->all(),
              ],
             'titulos'           => Producto::getFillableWithTypes(),
 
@@ -341,7 +363,7 @@ class ProductoController extends Controller {
             }
 
             // El coste de producción parte del formulario (materiales de la ficha
-            // a último precio + procesos) y luego lo recalculan las OPs.
+            // + procesos, con los dos métodos de precio) y luego lo recalculan las OPs.
             $this->sincronizarCosteProduccionSugerido($Producto);
 
             return $Producto;
@@ -442,26 +464,30 @@ class ProductoController extends Controller {
     }
 
     /**
-     * Guarda el coste de producción sugerido desde el formulario: materiales de
-     * la ficha a último precio + procesos del producto. No es editable, pero la
-     * primera vez queda con lo que se ve al crear o editar el producto.
+     * Guarda el coste de producción que se ve en el formulario: los materiales
+     * de la ficha más los procesos del producto, calculado con los dos métodos
+     * de precio. El canónico (coste_produccion) es el del método vigente en el
+     * parámetro costos_promedio, y de él salen el precio de venta automático y
+     * la ganancia.
      */
     private function sincronizarCosteProduccionSugerido(Producto $Producto): void
     {
         $Producto->load(['fichaTecnica.materiales', 'procesos']);
 
-        $coste = $this->costoMaterialOpService->costeProduccionUnitario(
-            $Producto,
-            null,
-            Parametro::COSTOS_PROMEDIO_ULTIMO
-        );
-        $precioVenta = $Producto->precio_venta_producto !== null
-            ? (float) $Producto->precio_venta_producto
-            : null;
+        $porMetodo = $this->costoMaterialOpService->costeProduccionPorMetodo($Producto);
+        $coste = $this->costoMaterialOpService->metodo() === Parametro::COSTOS_PROMEDIO_ULTIMO
+            ? $porMetodo['ultimo']
+            : $porMetodo['promedio'];
+
+        // El precio de venta ya no se digita: es un 300% del coste de producción.
+        $precioVenta = CostoMaterialOpService::precioVentaAutomatico($coste);
 
         $Producto->forceFill([
-            'coste_produccion'  => $coste,
-            'ganancia_producto' => $precioVenta !== null ? round($precioVenta - $coste, 2) : null,
+            'coste_produccion'          => $coste,
+            'coste_produccion_promedio' => $porMetodo['promedio'],
+            'coste_produccion_ultimo'   => $porMetodo['ultimo'],
+            'precio_venta_producto'     => $precioVenta,
+            'ganancia_producto'         => round($precioVenta - $coste, 2),
         ])->saveQuietly();
     }
 
@@ -537,17 +563,26 @@ class ProductoController extends Controller {
     }
 
     /**
-     * Reemplaza los procesos del producto con las filas recibidas.
+     * Reemplaza los procesos del producto sincronizando el pivote: el proceso
+     * se reutiliza del catálogo por su nombre y el coste se guarda en el pivote.
      */
     private function sincronizarProcesos(Producto $Producto, array $procesos): void {
-        $Producto->procesos()->delete();
+        $sincronizar = [];
 
         foreach ($procesos as $fila) {
-            $Producto->procesos()->create([
-                'nombre'        => trim((string) $fila['nombre']),
+            $nombre = trim((string) ($fila['nombre'] ?? ''));
+            if ($nombre === '') {
+                continue;
+            }
+
+            $procesoop = Procesoop::firstOrCreate(['nombre' => $nombre]);
+
+            $sincronizar[$procesoop->id] = [
                 'coste_proceso' => (float) ($fila['coste_proceso'] ?? 0),
-            ]);
+            ];
         }
+
+        $Producto->procesos()->sync($sincronizar);
     }
 
     private function sincronizarDistribucionesPorTalla(Producto $Producto, array $tallas): void {

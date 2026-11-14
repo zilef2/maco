@@ -6,6 +6,7 @@ import PrimaryButton from '@/components/PrimaryButton.vue';
 import SecondaryButton from '@/components/SecondaryButton.vue';
 import TextInput from '@/components/TextInput.vue';
 import EditorMateriales from '@/pages/FichaTecnicaMateriales/EditorMateriales.vue';
+import { formatdinero } from '@/global.ts';
 import { ClipboardDocumentListIcon, SwatchIcon } from '@heroicons/vue/24/solid';
 import { useForm } from '@inertiajs/vue3';
 import { normalizarFragmentoCodigo } from '@/lib/utils';
@@ -61,6 +62,26 @@ const esMaterialProcesado = computed(() => Number(form.material_procesado) === 1
 const fichaBloqueada = computed(() => Boolean(props.Materiala?.ficha_bloqueada));
 const fichaBloqueoDetalle = computed(() => props.Materiala?.ficha_bloqueo_detalle ?? '');
 
+// Histórico de precios del material (tabla material_prices): cada compra o
+// cambio de precio anota una fila. De ahí salen el «último precio» (la primera)
+// y el «precio promedio» (la media de todas) que usan los costos.
+const historialPrecios = computed<any[]>(() =>
+    [...((props.Materiala?.prices ?? []) as any[])].sort(
+        (a, b) =>
+            String(b.fecha ?? '').localeCompare(String(a.fecha ?? '')) ||
+            Number(b.id ?? 0) - Number(a.id ?? 0),
+    ),
+);
+
+const precioPromedio = computed<number>(() => {
+    const filas = historialPrecios.value;
+    if (!filas.length) return 0;
+    const suma = filas.reduce((total, fila) => total + (Number(fila.precio) || 0), 0);
+    return Math.round((suma / filas.length) * 100) / 100;
+});
+
+const fechaCorta = (valor: any): string => String(valor ?? '').slice(0, 10);
+
 const camposBloqueados = ['codigo_material', 'existencia_actual'];
 const esCampoBloqueado = (campo: string) => camposBloqueados.includes(campo) && campo !== 'estado';
 
@@ -95,6 +116,11 @@ const toggleBoolean = (campo: string) => {
 const descripcionToggle = (campo: string, activo: boolean): string => {
     if (campo === 'material_procesado') {
         return activo ? 'Sí, este material es procesado' : 'No, este material no es procesado';
+    }
+    if (campo === 'generico') {
+        return activo
+            ? 'Sí, es genérico: no maneja talla ni color y su precio es el promedio de sus similares'
+            : 'No, es un material específico';
     }
     return activo ? 'Sí, este material lo maneja' : 'No aplica para este material';
 };
@@ -383,6 +409,63 @@ const update = () => {
                                     La define cada registro de compra
                                 </p>
                             </div>
+                        </div>
+
+                        <!-- Histórico de precios (material_prices) -->
+                        <div class="mt-5">
+                            <div class="flex flex-wrap items-center justify-between gap-2">
+                                <p class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                                    Histórico de precios
+                                    <span class="ml-1 font-medium normal-case tracking-normal text-gray-400 dark:text-gray-500">
+                                        {{ historialPrecios.length }}
+                                        {{ historialPrecios.length === 1 ? 'registro' : 'registros' }}
+                                    </span>
+                                </p>
+                                <p class="text-xs text-gray-500 dark:text-gray-400">
+                                    Promedio:
+                                    <span class="font-semibold tabular-nums text-gray-700 dark:text-gray-200">
+                                        {{ formatdinero(precioPromedio) }}
+                                    </span>
+                                </p>
+                            </div>
+                            <div
+                                class="mt-2 max-h-44 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700">
+                                <table class="w-full text-xs">
+                                    <thead
+                                        class="sticky top-0 bg-gray-50 text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                                        <tr>
+                                            <th class="px-3 py-1.5 text-left font-medium">Fecha</th>
+                                            <th class="px-3 py-1.5 text-right font-medium">Precio</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-gray-100 dark:divide-gray-800">
+                                        <tr v-for="(fila, indice) in historialPrecios" :key="fila.id ?? indice">
+                                            <td
+                                                class="px-3 py-1.5 tabular-nums text-gray-600 dark:text-gray-300">
+                                                {{ fechaCorta(fila.fecha) }}
+                                            </td>
+                                            <td
+                                                class="px-3 py-1.5 text-right font-semibold tabular-nums text-gray-800 dark:text-gray-100">
+                                                {{ formatdinero(fila.precio) }}
+                                                <span v-if="indice === 0"
+                                                    class="ml-1 rounded-full bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-800 dark:bg-sky-900/40 dark:text-sky-200">
+                                                    último
+                                                </span>
+                                            </td>
+                                        </tr>
+                                        <tr v-if="!historialPrecios.length">
+                                            <td colspan="2"
+                                                class="px-3 py-3 text-center text-gray-400 dark:text-gray-500">
+                                                Este material todavía no tiene precios registrados.
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                La primera fila es el «último precio» y la media de todas es el «precio promedio»: el
+                                parámetro «Costos de materiales en las OPs» decide cuál de los dos se usa.
+                            </p>
                         </div>
                     </div>
                 </div>

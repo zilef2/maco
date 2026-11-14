@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import Modal from '@/components/Modal.vue';
 import { router, useForm } from '@inertiajs/vue3';
-import { AlertOctagon, AlertTriangle, CheckCircle2, Loader2, ShieldAlert, Shuffle, Trash2 } from 'lucide-vue-next';
+import { AlertOctagon, AlertTriangle, CheckCircle2, Layers, Loader2, ShieldAlert, Shuffle, Trash2 } from 'lucide-vue-next';
 import { computed, reactive } from 'vue';
 
 const props = defineProps({
@@ -10,8 +10,22 @@ const props = defineProps({
         default: false,
     },
     materiales: {
-        type: Object as () => { total: number; sin_existencia: number; sin_precio: number; rango_existencia: string; rango_precio: string },
-        default: () => ({ total: 0, sin_existencia: 0, sin_precio: 0, rango_existencia: '', rango_precio: '' }),
+        type: Object as () => {
+            total: number;
+            sin_existencia: number;
+            sin_precio: number;
+            rango_existencia: string;
+            rango_precio: string;
+            genericos: { grupos: number; con_generico: number; sin_generico: number; genericos: number };
+        },
+        default: () => ({
+            total: 0,
+            sin_existencia: 0,
+            sin_precio: 0,
+            rango_existencia: '',
+            rango_precio: '',
+            genericos: { grupos: 0, con_generico: 0, sin_generico: 0, genericos: 0 },
+        }),
     },
 });
 
@@ -81,12 +95,15 @@ interface AjusteDirecto {
     procesando: string;
     ruta: () => string;
     detalle: () => string;
+    /** true cuando el ajuste solo tiene sentido en entorno de prueba. */
+    soloTest?: boolean;
 }
 
 /** Ajustes de datos de prueba: se presionan y ya, sin frase ni botón de sostén. */
 const AJUSTES: AjusteDirecto[] = [
     {
         clave: 'cero',
+        soloTest: true,
         titulo: 'Existencias en cero',
         descripcion: () => 'Pone en 0 la existencia actual de los materiales. No toca precios, variantes ni movimientos.',
         boton: 'Poner existencias en 0',
@@ -96,6 +113,7 @@ const AJUSTES: AjusteDirecto[] = [
     },
     {
         clave: 'azar',
+        soloTest: true,
         titulo: 'Existencias y precios al azar',
         descripcion: () =>
             `Da valor solo a lo que no tiene: existencia ${props.materiales.rango_existencia} a los que están en 0 y precio ${props.materiales.rango_precio} a los que no tienen ninguna fila de precio.`,
@@ -104,7 +122,20 @@ const AJUSTES: AjusteDirecto[] = [
         ruta: () => route('superadmin.materiales-al-azar'),
         detalle: () => `${numero(props.materiales.sin_existencia)} sin existencia · ${numero(props.materiales.sin_precio)} sin precio`,
     },
+    {
+        clave: 'genericos',
+        titulo: 'Materiales genéricos',
+        descripcion: () =>
+            'Crea el material genérico que falta por cada par categoría-base (no maneja talla ni color) y le pone como precio el promedio de los precios de sus similares. Se puede repetir: solo crea los que faltan y refresca el precio si cambió.',
+        boton: 'Crear los genéricos que faltan',
+        procesando: 'Creando genéricos...',
+        ruta: () => route('superadmin.materiales-genericos'),
+        detalle: () =>
+            `${numero(props.materiales.genericos?.grupos ?? 0)} combinaciones · ${numero(props.materiales.genericos?.sin_generico ?? 0)} sin genérico · ${numero(props.materiales.genericos?.genericos ?? 0)} genéricos`,
+    },
 ];
+
+const ajustesVisibles = computed(() => AJUSTES.filter((ajuste) => !ajuste.soloTest || props.esAmbienteTest));
 
 const state = reactive({
     accion: null as AccionPurgable | null,
@@ -202,7 +233,7 @@ const iniciarPresion = () => {
 </script>
 
 <template>
-    <div v-if="props.esAmbienteTest && can(['issuperadmin'])" class="mt-8">
+    <div v-if="can(['issuperadmin'])" class="mt-8">
         <div class="rounded-xl border border-red-500/30 bg-red-50/50 p-6 dark:border-red-500/20 dark:bg-red-950/20">
             <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div class="flex items-start gap-3">
@@ -213,56 +244,58 @@ const iniciarPresion = () => {
                         <div class="flex items-center gap-2">
                             <h3 class="text-foreground text-base font-semibold">Acciones de Superadministrador</h3>
                             <span
+                                v-if="props.esAmbienteTest"
                                 class="inline-flex items-center rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-xs font-semibold text-amber-600 dark:text-amber-400"
                             >
                                 APP_ENV=test
                             </span>
                         </div>
                         <p class="text-muted-foreground mt-1 text-xs">
-                            Herramientas de mantenimiento para entornos de prueba. Estas operaciones modifican datos críticos de forma irreversible.
+                            Herramientas de mantenimiento. Las operaciones en rojo modifican datos críticos de forma irreversible y solo aparecen en entorno de prueba.
                         </p>
                     </div>
                 </div>
             </div>
 
             <div class="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-                <div
-                    v-for="accion in acciones"
-                    :key="accion.clave"
-                    class="border-border bg-card flex flex-col justify-between rounded-lg border p-4 shadow-sm"
-                >
-                    <div>
-                        <div class="flex items-center gap-2 text-red-600 dark:text-red-400">
-                            <Trash2 class="h-4 w-4" />
-                            <h4 class="text-sm font-semibold">{{ accion.titulo }}</h4>
+                <template v-for="accion in acciones" :key="accion.clave">
+                    <div
+                        v-if="props.esAmbienteTest"
+                        class="border-border bg-card flex flex-col justify-between rounded-lg border p-4 shadow-sm"
+                    >
+                        <div>
+                            <div class="flex items-center gap-2 text-red-600 dark:text-red-400">
+                                <Trash2 class="h-4 w-4" />
+                                <h4 class="text-sm font-semibold">{{ accion.titulo }}</h4>
+                            </div>
+                            <p class="text-muted-foreground mt-2 text-xs leading-relaxed">
+                                {{ accion.descripcion }}
+                            </p>
+                            <p v-if="accion.clave === 'materiales'" class="text-foreground mt-2 font-mono text-xs">
+                                {{ numero(props.materiales.total) }} materiales ahora
+                            </p>
                         </div>
-                        <p class="text-muted-foreground mt-2 text-xs leading-relaxed">
-                            {{ accion.descripcion }}
-                        </p>
-                        <p v-if="accion.clave === 'materiales'" class="text-foreground mt-2 font-mono text-xs">
-                            {{ numero(props.materiales.total) }} materiales ahora
-                        </p>
+                        <div class="border-border/60 mt-4 border-t pt-3">
+                            <button
+                                type="button"
+                                @click="abrirModal(accion)"
+                                class="inline-flex w-full items-center justify-center gap-2 rounded-md bg-red-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-red-700 focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 focus-visible:outline-none"
+                            >
+                                <Trash2 class="h-3.5 w-3.5" />
+                                {{ accion.boton }}
+                            </button>
+                        </div>
                     </div>
-                    <div class="border-border/60 mt-4 border-t pt-3">
-                        <button
-                            type="button"
-                            @click="abrirModal(accion)"
-                            class="inline-flex w-full items-center justify-center gap-2 rounded-md bg-red-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-red-700 focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 focus-visible:outline-none"
-                        >
-                            <Trash2 class="h-3.5 w-3.5" />
-                            {{ accion.boton }}
-                        </button>
-                    </div>
-                </div>
+                </template>
 
                 <div
-                    v-for="ajuste in AJUSTES"
+                    v-for="ajuste in ajustesVisibles"
                     :key="ajuste.clave"
                     class="border-border bg-card flex flex-col justify-between rounded-lg border p-4 shadow-sm"
                 >
                     <div>
                         <div class="flex items-center gap-2 text-amber-600 dark:text-amber-400">
-                            <Shuffle class="h-4 w-4" />
+                            <component :is="ajuste.clave === 'genericos' ? Layers : Shuffle" class="h-4 w-4" />
                             <h4 class="text-sm font-semibold">{{ ajuste.titulo }}</h4>
                         </div>
                         <p class="text-muted-foreground mt-2 text-xs leading-relaxed">
@@ -278,7 +311,7 @@ const iniciarPresion = () => {
                             class="inline-flex w-full items-center justify-center gap-2 rounded-md bg-amber-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-amber-700 focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60"
                         >
                             <Loader2 v-if="state.procesando === ajuste.clave" class="h-3.5 w-3.5 animate-spin" />
-                            <Shuffle v-else class="h-3.5 w-3.5" />
+                            <component :is="ajuste.clave === 'genericos' ? Layers : Shuffle" v-else class="h-3.5 w-3.5" />
                             {{ state.procesando === ajuste.clave ? ajuste.procesando : ajuste.boton }}
                         </button>
                     </div>

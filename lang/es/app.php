@@ -812,6 +812,7 @@ return [
 		'variante_atributo_sugerido' => 'Modelo - diseño - acabado',
 		'proveedor_habitual' => 'Proveedor habitual',
 		'material_procesado' => 'Procesado',
+		'generico' => 'Genérico',
 		'grupotalla' => 'Grupotalla',
 		'GrupoTalla' => 'GrupoTalla',
 		'estadoopmaterial' => 'Estadoopmaterial',

@@ -48,6 +48,8 @@ const formatPrice = (price: any): string => {
     return zilef_nuber_format(price, 0, false);
 };
 
+const fechaCorta = (valor: any): string => String(valor ?? '').slice(0, 10);
+
 const props = defineProps({
     materiales: { type: Array as () => any[], default: () => [] },
     total: Number,
@@ -365,7 +367,7 @@ const paginasVisibles = computed<Array<number | '...'>>(() => {
     const actual = paginaActual.value;
     const ventana = 5;
     let inicio = Math.max(1, actual - 2);
-    let fin = Math.min(total, inicio + ventana - 1);
+    const fin = Math.min(total, inicio + ventana - 1);
     inicio = Math.max(1, fin - ventana + 1);
 
     const salida: Array<number | '...'> = [];
@@ -515,7 +517,7 @@ const columnas = [
     { key: 'estado', label: 'Estado', sortable: true, align: 'left', headerClass: 'min-w-[130px]', cellClass: 'min-w-[130px]' },
     { key: 'material_procesado', label: 'Procesado', sortable: true, align: 'left', headerClass: 'min-w-[110px]', cellClass: 'min-w-[110px]' },
     { key: 'proveedor', label: 'Proveedor', sortable: true, align: 'left', headerClass: 'hidden min-w-[140px] md:table-cell', cellClass: 'hidden min-w-[140px] md:table-cell' },
-    
+
     { key: 'color', label: 'Color', sortable: true, align: 'left', headerClass: 'hidden min-w-[130px] xl:table-cell', cellClass: 'hidden min-w-[130px] xl:table-cell' },
     { key: 'talla_tamano', label: 'Talla / tamaño', sortable: true, align: 'left', headerClass: 'hidden min-w-[130px] xl:table-cell', cellClass: 'hidden min-w-[130px] xl:table-cell' },
     { key: 'observaciones', label: 'Observaciones', sortable: false, align: 'left', headerClass: 'hidden min-w-[200px] 2xl:table-cell', cellClass: 'hidden min-w-[200px] 2xl:table-cell' },
@@ -653,6 +655,7 @@ const titulos = [
     { order: 'codigo_categoria', label: 'codigo_categoria', type: 'string' },
     { order: 'categoria', label: 'categoria', type: 'string' },
     { order: 'codigo_base', label: 'codigo_base', type: 'string' },
+    { order: 'generico', label: 'generico', type: 'boolean' },
     { order: 'nombre_base', label: 'nombre_base', type: 'string' },
     { order: 'unidad_inventario', label: 'unidad_inventario', type: 'string' },
     { order: 'existencia_actual', label: 'existencia_actual', type: 'dinero' },
@@ -670,6 +673,7 @@ const titulos = [
 </script>
 
 <template>
+
     <Head :title="props.title" />
 
     <AppLayout>
@@ -677,19 +681,14 @@ const titulos = [
             <!-- Encabezado -->
             <div class="flex flex-col gap-3">
                 <nav class="flex items-center gap-1.5 text-xs text-muted-foreground" aria-label="Ruta de navegación">
-                    <Link
-                        :href="route('dashboard')"
-                        class="rounded-sm transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    >
+                    <Link :href="route('dashboard')"
+                        class="rounded-sm transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                         Dashboard
                     </Link>
                     <template v-for="(miga, i) in (props.breadcrumbs || [])" :key="i">
                         <ChevronRightIcon class="h-3 w-3 opacity-60" />
-                        <Link
-                            v-if="miga.href"
-                            :href="miga.href"
-                            class="rounded-sm transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        >
+                        <Link v-if="miga.href" :href="miga.href"
+                            class="rounded-sm transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                             {{ miga.label }}
                         </Link>
                         <span v-else class="font-medium text-foreground">{{ miga.label }}</span>
@@ -699,15 +698,14 @@ const titulos = [
                 <div class="flex flex-wrap items-end justify-between gap-3">
                     <div class="min-w-0">
                         <h1 class="text-2xl font-semibold tracking-tight text-foreground">Materiales</h1>
-                        <p class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground" role="status" aria-live="polite">
+                        <p class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground"
+                            role="status" aria-live="polite">
                             <span class="tabular-nums">
                                 <span class="font-medium text-foreground">{{ totalFiltrado }}</span>
                                 de {{ filas.length }} materiales
                             </span>
-                            <span
-                                v-if="hayFiltros"
-                                class="inline-flex items-center gap-1 rounded-full border border-border bg-muted/60 px-2 py-0.5 text-[11px] font-medium text-foreground"
-                            >
+                            <span v-if="hayFiltros"
+                                class="inline-flex items-center gap-1 rounded-full border border-border bg-muted/60 px-2 py-0.5 text-[11px] font-medium text-foreground">
                                 <FunnelIcon class="h-3 w-3" />
                                 Filtros activos
                             </span>
@@ -715,58 +713,38 @@ const titulos = [
                     </div>
 
                     <div class="flex flex-wrap items-center gap-2">
-                        <button
-                            type="button"
-                            @click="recargar"
-                            :disabled="cargando"
-                            title="Actualizar datos"
+                        <button type="button" @click="recargar" :disabled="cargando" title="Actualizar datos"
                             aria-label="Actualizar datos"
-                            class="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50"
-                        >
+                            class="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50">
                             <ArrowPathIcon class="h-4 w-4" :class="{ 'animate-spin': cargando }" />
                         </button>
 
-                        <PrimaryButton
-                            v-if="can(['read Material'])"
-                            type="button"
+                        <PrimaryButton v-if="can(['read Material'])" type="button"
                             class="h-9 bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500 disabled:opacity-40"
-                            :disabled="!puedeHistorialMultiple"
-                            v-tooltip="data.selectedId.length > MAX_HISTORIAL_MULTIPLE
+                            :disabled="!puedeHistorialMultiple" v-tooltip="data.selectedId.length > MAX_HISTORIAL_MULTIPLE
                                 ? `Máximo ${MAX_HISTORIAL_MULTIPLE} materiales`
-                                : 'Ver historial de los materiales seleccionados'"
-                            @click="abrirHistorialMultiple"
-                        >
+                                : 'Ver historial de los materiales seleccionados'" @click="abrirHistorialMultiple">
                             <ClockIcon class="mr-1.5 h-4 w-4" />
                             Historial{{ data.selectedId.length ? ` (${data.selectedId.length})` : '' }}
                         </PrimaryButton>
 
-                        <PrimaryButton
-                            v-if="can(['issuperadmin']) && data.selectedId.length"
-                            type="button"
+                        <PrimaryButton v-if="can(['issuperadmin']) && data.selectedId.length" type="button"
                             class="h-9 bg-red-600 hover:bg-red-700 focus:ring-red-500"
                             v-tooltip="`Eliminar ${data.selectedId.length} material(es) seleccionado(s)`"
-                            @click="abrirEliminarBulk"
-                        >
+                            @click="abrirEliminarBulk">
                             <TrashIcon class="mr-1.5 h-4 w-4" />
                             Eliminar ({{ data.selectedId.length }})
                         </PrimaryButton>
 
-                        <PrimaryButton
-                            v-if="can(['update Material']) && filas.length"
-                            type="button"
-                            class="h-9 bg-sky-600 hover:bg-sky-700 focus:ring-sky-500"
-                            @click="abrirCompra(false)"
-                        >
+                        <PrimaryButton v-if="can(['update Material']) && filas.length" type="button"
+                            class="h-9 bg-sky-600 hover:bg-sky-700 focus:ring-sky-500" @click="abrirCompra(false)">
                             <ShoppingCartIcon class="mr-1.5 h-4 w-4" />
                             Registrar compra
                         </PrimaryButton>
 
-                        <PrimaryButton
-                            v-if="can(['create Material'])"
-                            type="button"
+                        <PrimaryButton v-if="can(['create Material'])" type="button"
                             class="h-9 bg-emerald-600 hover:bg-emerald-700 focus:ring-emerald-500"
-                            @click="data.importOpen = true"
-                        >
+                            @click="data.importOpen = true">
                             <ArrowUpTrayIcon class="mr-1.5 h-4 w-4" />
                             Cargar Excel
                         </PrimaryButton>
@@ -780,36 +758,35 @@ const titulos = [
             </div>
 
             <!-- Banner de previsión: materiales que no alcanzan los días configurados -->
-            <div
-                v-if="previsiónFaltantes.length > 0"
-                class="rounded-xl border border-red-400/50 bg-red-50/80 p-4 dark:bg-red-500/10"
-                role="alert"
-            >
+            <div v-if="previsiónFaltantes.length > 0"
+                class="rounded-xl border border-red-400/50 bg-red-50/80 p-4 dark:bg-red-500/10" role="alert">
                 <div class="flex items-center gap-2">
                     <ExclamationTriangleIcon class="h-5 w-5 text-red-500 dark:text-red-400" />
                     <h2 class="text-sm font-bold text-black dark:text-red-300">
-                        Previsión: {{ previsiónFaltantes.length }} material{{ previsiónFaltantes.length === 1 ? '' : 'es' }} no
+                        Previsión: {{ previsiónFaltantes.length }} material{{ previsiónFaltantes.length === 1 ? '' :
+                            'es' }} no
                         alcanza para {{ diasPrevision }} día{{ diasPrevision === 1 ? '' : 's' }}
                     </h2>
                 </div>
                 <ul class="mt-2 space-y-1.5">
-                    <li
-                        v-for="f in previsiónFaltantes"
-                        :key="f.material_id"
-                        class="flex items-start gap-2 text-xs leading-relaxed text-red-800 dark:text-red-200"
-                    >
+                    <li v-for="f in previsiónFaltantes" :key="f.material_id"
+                        class="flex items-start gap-2 text-xs leading-relaxed text-red-800 dark:text-red-200">
                         <span class="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" />
                         <span>
                             <b class="font-semibold">{{ f.codigo ? `${f.codigo} · ` : '' }}{{ f.nombre }}</b>
                             —
                             <template v-if="f.dias_restantes <= 0">
-                                gasta {{ zilef_nuber_format(f.gasto_dia, f.gasto_dia % 1 ? 2 : 0) }}{{ f.unidad ? ` ${f.unidad}` : '' }} por día,
-                                solo quedan {{ zilef_nuber_format(f.existencia, f.existencia % 1 ? 2 : 0) }}{{ f.unidad ? ` ${f.unidad}` : '' }}:
+                                gasta {{ zilef_nuber_format(f.gasto_dia, f.gasto_dia % 1 ? 2 : 0) }}{{ f.unidad ? `
+                                ${f.unidad}` : '' }} por día,
+                                solo quedan {{ zilef_nuber_format(f.existencia, f.existencia % 1 ? 2 : 0) }}{{ f.unidad
+                                    ? ` ${f.unidad}` : '' }}:
                                 <b>no alcanza ni para un día</b>
                             </template>
                             <template v-else>
-                                gasta {{ zilef_nuber_format(f.gasto_dia, f.gasto_dia % 1 ? 2 : 0) }}{{ f.unidad ? ` ${f.unidad}` : '' }} por día,
-                                hay {{ zilef_nuber_format(f.existencia, f.existencia % 1 ? 2 : 0) }}{{ f.unidad ? ` ${f.unidad}` : '' }}:
+                                gasta {{ zilef_nuber_format(f.gasto_dia, f.gasto_dia % 1 ? 2 : 0) }}{{ f.unidad ? `
+                                ${f.unidad}` : '' }} por día,
+                                hay {{ zilef_nuber_format(f.existencia, f.existencia % 1 ? 2 : 0) }}{{ f.unidad ? `
+                                ${f.unidad}` : '' }}:
                                 <b>solo queda para {{ f.dias_restantes }} día{{ f.dias_restantes === 1 ? '' : 's' }}</b>
                             </template>
                             <template v-if="f.ordenes_resultado?.length">
@@ -829,11 +806,11 @@ const titulos = [
                     {{ prevision?.ventana_dias ?? 30 }} días / {{ prevision?.ventana_dias ?? 30 }};
                 </p>
                 <p class="mt-3 border-t border-red-600/20 pt-2 text-[14px] text-red-800/80 dark:text-red-300/70">
-                    Días que alcanzan = existencia / gasto por día. 
+                    Días que alcanzan = existencia / gasto por día.
                 </p>
                 <p class="mt-3 border-t border-red-600/20 pt-2 text-[14px] text-red-800/80 dark:text-red-300/70">
-                     Se avisa cuando quedan {{ diasPrevision }} día{{ diasPrevision === 1 ? '' : 's' }} 
-                     o menos (Puedes cambiar esto en Parámetros)
+                    Se avisa cuando quedan {{ diasPrevision }} día{{ diasPrevision === 1 ? '' : 's' }}
+                    o menos (Puedes cambiar esto en Parámetros)
                 </p>
             </div>
 
@@ -843,42 +820,28 @@ const titulos = [
                 <div class="flex flex-col gap-2.5 border-b border-border p-3">
                     <div class="flex flex-wrap items-center gap-2">
                         <div class="relative min-w-[220px] flex-1">
-                            <MagnifyingGlassIcon class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                            <input
-                                v-model="busqueda"
-                                type="search"
-                                aria-label="Buscar materiales"
+                            <MagnifyingGlassIcon
+                                class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                            <input v-model="busqueda" type="search" aria-label="Buscar materiales"
                                 placeholder="Buscar código, material, categoría, proveedor…"
-                                class="h-9 w-full rounded-md border border-input bg-background pl-9 pr-9 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30"
-                            />
-                            <button
-                                v-if="busqueda"
-                                type="button"
-                                @click="busqueda = ''"
-                                aria-label="Limpiar búsqueda"
-                                class="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                            >
+                                class="h-9 w-full rounded-md border border-input bg-background pl-9 pr-9 text-sm text-foreground shadow-sm placeholder:text-muted-foreground focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30" />
+                            <button v-if="busqueda" type="button" @click="busqueda = ''" aria-label="Limpiar búsqueda"
+                                class="absolute right-2 top-1/2 -translate-y-1/2 rounded p-1 text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                                 <XMarkIcon class="h-3.5 w-3.5" />
                             </button>
                         </div>
 
-                        <div v-for="segmento in segmentosFiltros" :key="segmento.etiqueta" class="flex items-center gap-1.5">
+                        <div v-for="segmento in segmentosFiltros" :key="segmento.etiqueta"
+                            class="flex items-center gap-1.5">
                             <span class="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                                 {{ segmento.etiqueta }}
                             </span>
-                            <div
-                                class="inline-flex h-9 items-stretch overflow-hidden rounded-md border border-border bg-card shadow-sm"
-                                role="group"
-                                :aria-label="segmento.ariaLabel"
-                            >
-                                <button
-                                    v-for="opcion in segmento.opciones"
-                                    :key="opcion.value"
-                                    type="button"
+                            <div class="inline-flex h-9 items-stretch overflow-hidden rounded-md border border-border bg-card shadow-sm"
+                                role="group" :aria-label="segmento.ariaLabel">
+                                <button v-for="opcion in segmento.opciones" :key="opcion.value" type="button"
                                     @click="segmento.aplicar(opcion.value)"
                                     :aria-pressed="segmento.activo === opcion.value"
-                                    :class="segmentoClass(segmento.activo === opcion.value)"
-                                >
+                                    :class="segmentoClass(segmento.activo === opcion.value)">
                                     {{ opcion.label }}
                                     <span class="tabular-nums opacity-70">{{ opcion.count }}</span>
                                 </button>
@@ -887,58 +850,58 @@ const titulos = [
                     </div>
 
                     <div class="flex flex-wrap items-center gap-2">
-                        <select
-                            v-model="categoriaFiltro"
-                            aria-label="Filtrar por categoría"
-                            :class="[selectClass, 'max-w-[190px]']"
-                        >
+                        <select v-model="categoriaFiltro" aria-label="Filtrar por categoría"
+                            :class="[selectClass, 'max-w-[190px]']">
                             <option value="todos">Todas las categorías</option>
                             <option v-for="cat in categoriasDisponibles" :key="cat.value" :value="cat.value">
                                 {{ cat.value }} ({{ cat.count }})
                             </option>
                         </select>
 
-                        <select
-                            v-model="proveedorFiltro"
-                            aria-label="Filtrar por proveedor"
-                            :class="[selectClass, 'max-w-[190px]']"
-                        >
+                        <select v-model="proveedorFiltro" aria-label="Filtrar por proveedor"
+                            :class="[selectClass, 'max-w-[190px]']">
                             <option value="todos">Todos los proveedores</option>
                             <option v-for="prov in proveedoresDisponibles" :key="prov.id" :value="prov.id">
                                 {{ prov.nombre }}
                             </option>
                         </select>
 
-                        <select
-                            v-model="precioFiltro"
-                            aria-label="Filtrar por precio"
-                            :class="[selectClass, 'max-w-[190px]']"
-                        >
-                            <option value="todos">Todos los precios</option>
-                            <option value="con_precio">Con precio</option>
-                            <option value="sin_precio">Sin precio</option>
-                        </select>
+                        <button type="button"
+                            @click="precioFiltro = precioFiltro === 'sin_precio' ? 'todos' : 'sin_precio'"
+                            :aria-pressed="precioFiltro === 'sin_precio'" aria-label="Filtrar materiales sin precio"
+                            :class="[
+                                'inline-flex h-9 items-center gap-2 rounded-full border px-3 text-xs font-medium shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+                                precioFiltro === 'sin_precio'
+                                    ? 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700'
+                                    : 'border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground',
+                            ]">
+                            <span :class="[
+                                'relative inline-flex h-4 w-7 items-center rounded-full transition-colors',
+                                precioFiltro === 'sin_precio' ? 'bg-white/40' : 'bg-muted-foreground/30',
+                            ]">
+                                <span :class="[
+                                    'absolute h-3 w-3 rounded-full bg-white shadow transition-transform',
+                                    precioFiltro === 'sin_precio' ? 'translate-x-3.5' : 'translate-x-0.5',
+                                ]" />
+                            </span>
+                            Sin precio
+                        </button>
 
                         <!-- Banner rojo para materiales sin precio -->
-                        <div v-if="materialesSinPrecio > 0" class="inline-flex items-center gap-2 rounded-full border border-red-500/30 bg-red-50/80 px-3 py-1.5 text-xs font-medium text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+                        <div v-if="materialesSinPrecio > 0"
+                            class="inline-flex items-center gap-2 rounded-full border border-red-500/30 bg-red-50/80 px-3 py-1.5 text-xs font-medium text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
                             <ExclamationTriangleIcon class="h-4 w-4" />
                             {{ materialesSinPrecio }} materiales sin precio
-                            <button
-                                type="button"
-                                @click="precioFiltro = 'sin_precio'"
+                            <button type="button" @click="precioFiltro = 'sin_precio'"
                                 class="ml-1 rounded px-1.5 py-0.5 hover:bg-red-200 dark:hover:bg-red-500/20"
-                                title="Filtrar materiales sin precio"
-                            >
+                                title="Filtrar materiales sin precio">
                                 Filtrar
                             </button>
                         </div>
 
                         <DropdownMenu>
-                            <DropdownMenuTrigger
-                                type="button"
-                                :class="chipClass(filtrosDropdown > 0)"
-                                class="h-9 rounded-md"
-                            >
+                            <DropdownMenuTrigger type="button" :class="chipClass(filtrosDropdown > 0)"
+                                class="h-9 rounded-md">
                                 <FunnelIcon class="h-3.5 w-3.5" />
                                 Más filtros
                                 <span v-if="filtrosDropdown > 0" class="tabular-nums">{{ filtrosDropdown }}</span>
@@ -949,52 +912,54 @@ const titulos = [
                                         Unidad
                                         <select v-model="unidadFiltro" :class="selectClass">
                                             <option value="todos">Todas</option>
-                                            <option v-for="u in unidadesDisponibles" :key="u.value" :value="u.value">{{ u.value }}</option>
+                                            <option v-for="u in unidadesDisponibles" :key="u.value" :value="u.value">{{
+                                                u.value }}
+                                            </option>
                                         </select>
                                     </label>
                                     <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
                                         Variante sugerida
                                         <select v-model="varianteFiltro" :class="selectClass">
                                             <option value="todos">Todas</option>
-                                            <option v-for="v in variantesDisponibles" :key="v.value" :value="v.value">{{ v.value }}</option>
+                                            <option v-for="v in variantesDisponibles" :key="v.value" :value="v.value">{{
+                                                v.value }}
+                                            </option>
                                         </select>
                                     </label>
                                     <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
                                         Maneja color
                                         <select v-model="boolFiltros.maneja_color" :class="selectClass">
-                                            <option v-for="o in opcionesBooleano" :key="o.value" :value="o.value">{{ o.label }}</option>
+                                            <option v-for="o in opcionesBooleano" :key="o.value" :value="o.value">{{
+                                                o.label }}
+                                            </option>
                                         </select>
                                     </label>
                                     <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
                                         Maneja talla
                                         <select v-model="boolFiltros.maneja_talla" :class="selectClass">
-                                            <option v-for="o in opcionesBooleano" :key="o.value" :value="o.value">{{ o.label }}</option>
+                                            <option v-for="o in opcionesBooleano" :key="o.value" :value="o.value">{{
+                                                o.label }}
+                                            </option>
                                         </select>
                                     </label>
                                     <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
                                         Otra variante
                                         <select v-model="boolFiltros.maneja_otra_variante" :class="selectClass">
-                                            <option v-for="o in opcionesBooleano" :key="o.value" :value="o.value">{{ o.label }}</option>
+                                            <option v-for="o in opcionesBooleano" :key="o.value" :value="o.value">{{
+                                                o.label }}
+                                            </option>
                                         </select>
                                     </label>
                                 </div>
                             </DropdownMenuContent>
                         </DropdownMenu>
 
-                        <select
-                            v-model.number="porPagina"
-                            aria-label="Filas por página"
-                            :class="selectClass"
-                        >
+                        <select v-model.number="porPagina" aria-label="Filas por página" :class="selectClass">
                             <option v-for="n in [10, 25, 50, 100]" :key="n" :value="n">{{ n }} / página</option>
                         </select>
 
-                        <button
-                            v-if="hayFiltros"
-                            type="button"
-                            @click="limpiarFiltros"
-                            class="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-card px-3 text-xs font-medium text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                        >
+                        <button v-if="hayFiltros" type="button" @click="limpiarFiltros"
+                            class="inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-card px-3 text-xs font-medium text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
                             <XMarkIcon class="h-3.5 w-3.5" />
                             Limpiar
                         </button>
@@ -1008,49 +973,36 @@ const titulos = [
                         <thead>
                             <tr>
                                 <th scope="col" class="w-10 bg-muted px-2 py-2.5 text-center">
-                                    <input
-                                        type="checkbox"
-                                        :checked="todosEnPagina"
-                                        @change="toggleTodos"
+                                    <input type="checkbox" :checked="todosEnPagina" @change="toggleTodos"
                                         aria-label="Seleccionar materiales de la página"
-                                        class="rounded border-input bg-background text-primary focus:ring-2 focus:ring-ring"
-                                    />
+                                        class="rounded border-input bg-background text-primary focus:ring-2 focus:ring-ring" />
                                 </th>
 
-                                <th
-                                    v-for="col in columnas"
-                                    :key="col.key"
-                                    scope="col"
-                                    :aria-sort="col.sortable ? ariaSort(col.key) : undefined"
-                                    :class="[
+                                <th v-for="col in columnas" :key="col.key" scope="col"
+                                    :aria-sort="col.sortable ? ariaSort(col.key) : undefined" :class="[
                                         'bg-muted px-3 py-2.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground',
                                         col.align === 'right' ? 'text-right' : 'text-left',
                                         col.headerClass,
-                                    ]"
-                                >
-                                    <button
-                                        v-if="col.sortable"
-                                        type="button"
-                                        @click="ordenarPor(col.key)"
-                                        :class="[
-                                            'group/sort inline-flex items-center gap-1 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
-                                            col.align === 'right' ? 'w-full justify-end' : '',
-                                        ]"
-                                    >
+                                    ]">
+                                    <button v-if="col.sortable" type="button" @click="ordenarPor(col.key)" :class="[
+                                        'group/sort inline-flex items-center gap-1 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+                                        col.align === 'right' ? 'w-full justify-end' : '',
+                                    ]">
                                         <span>{{ col.label }}</span>
-                                        <span class="text-muted-foreground/60 transition-colors group-hover/sort:text-foreground">
+                                        <span
+                                            class="text-muted-foreground/60 transition-colors group-hover/sort:text-foreground">
                                             <ChevronUpIcon v-if="indicador(col.key) === 'asc'" class="h-3 w-3" />
-                                            <ChevronDownIcon v-else-if="indicador(col.key) === 'desc'" class="h-3 w-3" />
-                                            <ChevronUpDownIcon v-else class="h-3 w-3 opacity-0 transition-opacity group-hover/sort:opacity-100" />
+                                            <ChevronDownIcon v-else-if="indicador(col.key) === 'desc'"
+                                                class="h-3 w-3" />
+                                            <ChevronUpDownIcon v-else
+                                                class="h-3 w-3 opacity-0 transition-opacity group-hover/sort:opacity-100" />
                                         </span>
                                     </button>
                                     <span v-else>{{ col.label }}</span>
                                 </th>
 
-                                <th
-                                    scope="col"
-                                    class="sticky right-0 z-30 w-[136px] border-l border-border bg-muted px-2 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground"
-                                >
+                                <th scope="col"
+                                    class="sticky right-0 z-30 w-[136px] border-l border-border bg-muted px-2 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                                     Acciones
                                 </th>
                             </tr>
@@ -1072,11 +1024,8 @@ const titulos = [
 
                         <!-- Filas -->
                         <tbody v-else-if="visibles.length" :key="paginaActual" class="mat-page">
-                            <tr
-                                v-for="material in visibles"
-                                :key="material.id"
-                                class="group border-b border-border/60 transition-colors last:border-0"
-                                :class="[
+                            <tr v-for="material in visibles" :key="material.id"
+                                class="group border-b border-border/60 transition-colors last:border-0" :class="[
                                     procesadoSinFicha(material)
                                         ? (data.selectedId.includes(material.id)
                                             ? 'bg-orange-200 dark:bg-orange-900/70'
@@ -1084,16 +1033,12 @@ const titulos = [
                                         : (data.selectedId.includes(material.id)
                                             ? 'bg-primary/5'
                                             : 'hover:bg-muted/40'),
-                                ]"
-                            >
+                                ]">
                                 <td class="px-2 py-3 text-center align-top">
-                                    <input
-                                        type="checkbox"
-                                        :checked="data.selectedId.includes(material.id)"
+                                    <input type="checkbox" :checked="data.selectedId.includes(material.id)"
                                         @change="toggleFila(material.id)"
                                         :aria-label="`Seleccionar ${material.codigo_material || material.nombre_base}`"
-                                        class="rounded border-input bg-background text-primary focus:ring-2 focus:ring-ring"
-                                    />
+                                        class="rounded border-input bg-background text-primary focus:ring-2 focus:ring-ring" />
                                 </td>
 
                                 <!-- Código -->
@@ -1106,17 +1051,26 @@ const titulos = [
                                 <!-- Material -->
                                 <td class="px-3 py-3 align-top">
                                     <div class="flex max-w-[220px] flex-col gap-0.5">
-                                        <span class="truncate font-medium text-foreground" :title="material.nombre_base">
-                                            {{ material.nombre_base || '—' }}
+                                        <span class="flex items-center gap-1.5">
+                                            <span class="truncate font-medium text-foreground"
+                                                :title="material.nombre_base">
+                                                {{ material.nombre_base || '—' }}
+                                            </span>
+                                            <span v-if="Number(material.generico) === 1 || material.generico === true"
+                                                class="shrink-0 rounded-full border border-sky-300 bg-sky-50 px-1.5 py-px text-[10px] font-medium text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300"
+                                                title="Material genérico: no maneja talla ni color">
+                                                Genérico
+                                            </span>
                                         </span>
                                         <span class="truncate text-[11px] text-muted-foreground">
                                             {{ material.categoria || 'Sin categoría' }}
                                         </span>
                                     </div>
                                 </td>
-                                  <!-- Modelo - diseño - acabado -->
+                                <!-- Modelo - diseño - acabado -->
                                 <td class="hidden px-3 py-3 align-top xl:table-cell">
-                                    <span class="text-sm text-foreground">{{ material.modelo_diseno_acabado || material.variante_atributo_sugerido || '—' }}</span>
+                                    <span class="text-sm text-foreground">{{ material.modelo_diseno_acabado ||
+                                        material.variante_atributo_sugerido || '—' }}</span>
                                 </td>
 
                                 <!-- Último precio -->
@@ -1125,13 +1079,19 @@ const titulos = [
                                         <span class="font-semibold tabular-nums text-foreground">
                                             {{ formatPrice(material.last_purchase_price) }}
                                         </span>
-                                        <!-- Mostrar los últimos 3 precios si existen -->
-                                        <span v-if="material.recent_prices && material.recent_prices.length > 1" class="text-[10px] text-muted-foreground">
-                                            Últimos {{ material.recent_prices.length }}: 
-                                            {{ material.recent_prices.map((p: any) => formatPrice(p.precio)).join(' | ') }}
+                                        <!-- Los precios anteriores con su fecha; el histórico completo (tabla
+                                             material_prices) está en «Editar material» -->
+                                        <span v-if="material.recent_prices && material.recent_prices.length > 1"
+                                            class="flex flex-col items-end gap-0.5 text-[10px] text-muted-foreground"
+                                            title="Histórico completo en «Editar material»">
+                                            <span>Anteriores:</span>
+                                            <span v-for="(precio, indice) in material.recent_prices.slice(1)"
+                                                :key="indice" class="tabular-nums">
+                                                {{ fechaCorta(precio.fecha) }} · {{ formatPrice(precio.precio) }}
+                                            </span>
                                         </span>
                                         <span v-else class="text-[10px] text-muted-foreground">
-                                            {{ material.recent_prices && material.recent_prices.length === 1 ? 'Último registro' : 'Sin histórico' }}
+                                            {{ material.recent_prices && material.recent_prices.length === 1 ? 'Último registro' :'Sin histórico' }}
                                         </span>
                                     </div>
                                 </td>
@@ -1150,22 +1110,23 @@ const titulos = [
 
                                 <!-- Proyectado: físico + producción pendiente − compromisos -->
                                 <td class="px-3 py-3 text-right align-top">
-                                    <button
-                                        type="button"
-                                        class="group/proy flex w-full flex-col items-end gap-0.5 rounded-sm text-right focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                    <button type="button"
+                                        class="group flex w-full flex-col items-end gap-0.5 rounded-sm text-right focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                                         @click="abrirProyeccion(material)"
-                                        :title="`Físico ${zilef_nuber_format(material.existencia_actual, 2, false)} + producción pendiente ${zilef_nuber_format(material._pendiente, 2, false)} − comprometido ${zilef_nuber_format(material._comprometido, 2, false)}`"
-                                    >
+                                        :title="`Físico ${zilef_nuber_format(material.existencia_actual, 2, false)} + producción pendiente ${zilef_nuber_format(material._pendiente, 2, false)} − comprometido ${zilef_nuber_format(material._comprometido, 2, false)}`">
                                         <span
-                                            class="font-semibold tabular-nums underline-offset-2 group-hover/proy:underline"
-                                            :class="material._comprometido > 0 ? 'text-amber-700 dark:text-amber-300' : 'text-foreground'"
-                                        >
+                                            class="inline-flex items-center gap-1 font-semibold tabular-nums underline decoration-dotted underline-offset-4 group-hover:decoration-solid"
+                                            :class="material._comprometido > 0 ? 'text-amber-700 dark:text-amber-300' : 'text-foreground'">
                                             {{ zilef_nuber_format(material._proyeccion, 0, false) }}
+                                            <ChevronRightIcon class="h-3 w-3 text-muted-foreground opacity-60" />
                                         </span>
                                         <span class="text-[10px] text-muted-foreground tabular-nums">
-                                            <template v-if="material._pendiente">+{{ zilef_nuber_format(material._pendiente, 0, false) }} prod</template>
-                                            <template v-if="material._comprometido"> −{{ zilef_nuber_format(material._comprometido, 0, false) }} comp</template>
-                                            <template v-if="!material._pendiente && !material._comprometido">sin OP</template>
+                                            <template v-if="material._pendiente">+{{
+                                                zilef_nuber_format(material._pendiente, 0, false) }} prod</template>
+                                            <template v-if="material._comprometido"> −{{
+                                                zilef_nuber_format(material._comprometido, 0, false) }} comp</template>
+                                            <template v-if="!material._pendiente && !material._comprometido">sin
+                                                OP</template>
                                         </span>
                                     </button>
                                 </td>
@@ -1175,7 +1136,8 @@ const titulos = [
                                     <div class="flex flex-col items-end gap-0.5">
                                         <span class="font-semibold tabular-nums text-foreground">
                                             {{ material.gasto_diario !== null && material.gasto_diario !== undefined
-                                                ? zilef_nuber_format(material.gasto_diario, material.gasto_diario % 1 ? 2 : 0)
+                                                ? zilef_nuber_format(material.gasto_diario, material.gasto_diario % 1 ? 2 :
+                                                    0)
                                                 : '—' }}
                                         </span>
                                         <span class="text-[11px] text-muted-foreground">
@@ -1190,9 +1152,9 @@ const titulos = [
                                 <td class="px-3 py-3 align-top">
                                     <span
                                         class="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium"
-                                        :class="estiloEstado(material._estado).badge"
-                                    >
-                                        <span class="h-1.5 w-1.5 rounded-full" :class="estiloEstado(material._estado).dot"></span>
+                                        :class="estiloEstado(material._estado).badge">
+                                        <span class="h-1.5 w-1.5 rounded-full"
+                                            :class="estiloEstado(material._estado).dot"></span>
                                         {{ material._estado }}
                                     </span>
                                 </td>
@@ -1203,10 +1165,11 @@ const titulos = [
                                         class="inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-medium"
                                         :class="estaProcesado(material.material_procesado)
                                             ? 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-300'
-                                            : 'border-border bg-muted text-muted-foreground'"
-                                    >
+                                            : 'border-border bg-muted text-muted-foreground'">
                                         <!-- SVG de máquina de manufactura -->
-                                        <svg v-if="estaProcesado(material.material_procesado)" class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <svg v-if="estaProcesado(material.material_procesado)" class="h-3 w-3"
+                                            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                            stroke-linecap="round" stroke-linejoin="round">
                                             <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
                                             <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
                                             <line x1="6" y1="6" x2="6.01" y2="6"></line>
@@ -1218,10 +1181,8 @@ const titulos = [
                                             <line x1="18" y1="6" x2="18" y2="8"></line>
                                             <line x1="18" y1="18" x2="18" y2="20"></line>
                                         </svg>
-                                        <span
-                                            class="h-1.5 w-1.5 rounded-full"
-                                            :class="estaProcesado(material.material_procesado) ? 'bg-violet-500' : 'bg-muted-foreground/50'"
-                                        ></span>
+                                        <span class="h-1.5 w-1.5 rounded-full"
+                                            :class="estaProcesado(material.material_procesado) ? 'bg-violet-500' : 'bg-muted-foreground/50'"></span>
                                         {{ estaProcesado(material.material_procesado) ? 'Sí' : 'No' }}
                                     </span>
                                 </td>
@@ -1231,24 +1192,22 @@ const titulos = [
                                     <span class="text-sm text-foreground">{{ material.proveedor_nombre || '—' }}</span>
                                 </td>
 
-                              
+
 
                                 <!-- Color -->
                                 <td class="hidden px-3 py-3 align-top xl:table-cell">
-                                    <div v-if="material.variants?.filter((v: any) => v.tipo === 'color')?.length" class="flex max-w-[200px] flex-wrap items-center gap-1">
+                                    <div v-if="material.variants?.filter((v: any) => v.tipo === 'color')?.length"
+                                        class="flex max-w-[200px] flex-wrap items-center gap-1">
                                         <span
                                             v-for="variante in material.variants.filter((v: any) => v.tipo === 'color').slice(0, 3)"
                                             :key="variante.id"
-                                            class="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-medium text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300"
-                                        >
+                                            class="inline-flex items-center rounded-full border border-sky-200 bg-sky-50 px-2 py-0.5 text-[10px] font-medium text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300">
                                             {{ variante.nombre }}
                                         </span>
-                                        <span
-                                            v-if="material.variants.filter((v: any) => v.tipo === 'color').length > 3"
+                                        <span v-if="material.variants.filter((v: any) => v.tipo === 'color').length > 3"
                                             class="text-[10px] font-medium text-muted-foreground"
-                                            :title="material.variants.filter((v: any) => v.tipo === 'color').slice(3).map((v: any) => v.nombre).join(', ')"
-                                        >
-                                            +{{ material.variants.filter((v: any) => v.tipo === 'color').length - 3 }}
+                                            :title="material.variants.filter((v: any) => v.tipo === 'color').slice(3).map((v: any) => v.nombre).join(', ')">
+                                            +{{material.variants.filter((v: any) => v.tipo === 'color').length - 3}}
                                         </span>
                                     </div>
                                     <span v-else class="text-sm text-foreground">{{ material.color || '—' }}</span>
@@ -1256,40 +1215,38 @@ const titulos = [
 
                                 <!-- Talla / tamaño -->
                                 <td class="hidden px-3 py-3 align-top xl:table-cell">
-                                    <div v-if="material.variants?.filter((v: any) => v.tipo === 'variante')?.length" class="flex max-w-[200px] flex-wrap items-center gap-1">
+                                    <div v-if="material.variants?.filter((v: any) => v.tipo === 'variante')?.length"
+                                        class="flex max-w-[200px] flex-wrap items-center gap-1">
                                         <span
                                             v-for="variante in material.variants.filter((v: any) => v.tipo === 'variante').slice(0, 3)"
                                             :key="variante.id"
-                                            class="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-medium text-violet-700 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-300"
-                                        >
+                                            class="inline-flex items-center rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[10px] font-medium text-violet-700 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-300">
                                             {{ variante.nombre }}
                                         </span>
                                         <span
                                             v-if="material.variants.filter((v: any) => v.tipo === 'variante').length > 3"
                                             class="text-[10px] font-medium text-muted-foreground"
-                                            :title="material.variants.filter((v: any) => v.tipo === 'variante').slice(3).map((v: any) => v.nombre).join(', ')"
-                                        >
-                                            +{{ material.variants.filter((v: any) => v.tipo === 'variante').length - 3 }}
+                                            :title="material.variants.filter((v: any) => v.tipo === 'variante').slice(3).map((v: any) => v.nombre).join(', ')">
+                                            +{{material.variants.filter((v: any) => v.tipo === 'variante').length - 3
+                                            }}
                                         </span>
                                     </div>
-                                    <span v-else class="text-sm text-foreground">{{ material.talla_tamano || '—' }}</span>
+                                    <span v-else class="text-sm text-foreground">{{ material.talla_tamano || '—'
+                                        }}</span>
                                 </td>
 
                                 <!-- Observaciones -->
                                 <td class="hidden px-3 py-3 align-top 2xl:table-cell">
-                                    <span
-                                        v-if="material.observaciones"
+                                    <span v-if="material.observaciones"
                                         v-tooltip="{ content: material.observaciones, delay: { show: 200, hide: 100 } }"
-                                        class="block max-w-[220px] truncate text-xs text-muted-foreground"
-                                    >
+                                        class="block max-w-[220px] truncate text-xs text-muted-foreground">
                                         {{ material.observaciones }}
                                     </span>
                                     <span v-else class="text-xs text-muted-foreground">—</span>
                                 </td>
 
                                 <!-- Acciones -->
-                                <td
-                                    class="sticky right-0 z-10 w-[136px] border-l border-border/60 px-2 py-2 align-middle shadow-[-8px_0_16px_-16px_rgba(0,0,0,0.35)] transition-colors"
+                                <td class="sticky right-0 z-10 w-[136px] border-l border-border/60 px-2 py-2 align-middle shadow-[-8px_0_16px_-16px_rgba(0,0,0,0.35)] transition-colors"
                                     :class="[
                                         procesadoSinFicha(material)
                                             ? (data.selectedId.includes(material.id)
@@ -1298,45 +1255,30 @@ const titulos = [
                                             : (data.selectedId.includes(material.id)
                                                 ? 'bg-primary/5'
                                                 : 'bg-card group-hover:bg-muted/40'),
-                                    ]"
-                                >
+                                    ]">
                                     <div class="flex items-center justify-end gap-1">
-                                        <button
-                                            v-if="can(['update Material'])"
-                                            type="button"
-                                            @click="accionFila('edit', material)"
-                                            title="Editar"
+                                        <button v-if="can(['update Material'])" type="button"
+                                            @click="accionFila('edit', material)" title="Editar"
                                             :aria-label="`Editar ${material.codigo_material || material.nombre_base}`"
-                                            class="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                                        >
+                                            class="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
                                             <PencilIcon class="h-4 w-4" />
                                         </button>
-                                        <button
-                                            v-if="can(['read Material'])"
-                                            type="button"
-                                            @click="accionFila('historial', material)"
-                                            title="Ver historial"
+                                        <button v-if="can(['read Material'])" type="button"
+                                            @click="accionFila('historial', material)" title="Ver historial"
                                             :aria-label="`Ver historial de ${material.codigo_material || material.nombre_base}`"
-                                            class="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                                        >
+                                            class="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
                                             <ClockIcon class="h-4 w-4" />
                                         </button>
                                         <DropdownMenu>
-                                            <DropdownMenuTrigger
-                                                type="button"
-                                                title="Acciones"
+                                            <DropdownMenuTrigger type="button" title="Acciones"
                                                 :aria-label="`Acciones de ${material.codigo_material || material.nombre_base}`"
-                                                class="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                                            >
+                                                class="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
                                                 <EllipsisVerticalIcon class="h-4 w-4" />
                                             </DropdownMenuTrigger>
                                             <DropdownMenuContent align="end" class="w-60 p-1">
-                                                <DropdownMenuItem
-                                                    v-if="can(['delete Material'])"
-                                                    @click="accionFila('delete', material)"
-                                                    variant="destructive"
-                                                    class="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-xs font-medium"
-                                                >
+                                                <DropdownMenuItem v-if="can(['delete Material'])"
+                                                    @click="accionFila('delete', material)" variant="destructive"
+                                                    class="flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-xs font-medium">
                                                     <TrashIcon class="h-4 w-4" />
                                                     <span>Eliminar</span>
                                                 </DropdownMenuItem>
@@ -1352,12 +1294,14 @@ const titulos = [
                             <tr>
                                 <td :colspan="columnas.length + 2" class="px-6 py-16">
                                     <div class="mx-auto flex max-w-sm flex-col items-center text-center">
-                                        <div class="flex h-12 w-12 items-center justify-center rounded-full border border-border bg-muted/60">
+                                        <div
+                                            class="flex h-12 w-12 items-center justify-center rounded-full border border-border bg-muted/60">
                                             <FunnelIcon v-if="hayFiltros" class="h-5 w-5 text-muted-foreground" />
                                             <CubeIcon v-else class="h-5 w-5 text-muted-foreground" />
                                         </div>
                                         <h3 class="mt-4 text-sm font-semibold text-foreground">
-                                            {{ hayFiltros ? 'No hay materiales que coincidan' : 'Aún no hay materiales' }}
+                                            {{ hayFiltros ? 'No hay materiales que coincidan' : 'Aún no hay materiales'
+                                            }}
                                         </h3>
                                         <p class="mt-1 text-sm text-muted-foreground">
                                             {{
@@ -1366,16 +1310,13 @@ const titulos = [
                                                     : 'Crea el primer material o carga un Excel para empezar.'
                                             }}
                                         </p>
-                                        <button
-                                            v-if="hayFiltros"
-                                            type="button"
-                                            @click="limpiarFiltros"
-                                            class="mt-4 inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                                        >
+                                        <button v-if="hayFiltros" type="button" @click="limpiarFiltros"
+                                            class="mt-4 inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
                                             <XMarkIcon class="h-3.5 w-3.5" />
                                             Limpiar filtros
                                         </button>
-                                        <PrimaryButton v-else-if="can(['create Material'])" type="button" class="mt-4" @click="abrirCrear">
+                                        <PrimaryButton v-else-if="can(['create Material'])" type="button" class="mt-4"
+                                            @click="abrirCrear">
                                             <PlusIcon class="mr-1.5 h-4 w-4" />
                                             Crear el primer material
                                         </PrimaryButton>
@@ -1387,72 +1328,51 @@ const titulos = [
                 </div>
 
                 <!-- Paginación -->
-                <footer
-                    v-if="!cargando && totalFiltrado > 0"
-                    class="flex flex-wrap items-center justify-between gap-3 border-t border-border bg-card px-3 py-2.5 sm:px-4"
-                >
+                <footer v-if="!cargando && totalFiltrado > 0"
+                    class="flex flex-wrap items-center justify-between gap-3 border-t border-border bg-card px-3 py-2.5 sm:px-4">
                     <p class="text-xs text-muted-foreground" role="status" aria-live="polite">
                         Mostrando
-                        <span class="font-medium tabular-nums text-foreground">{{ rango.desde }}–{{ rango.hasta }}</span>
+                        <span class="font-medium tabular-nums text-foreground">{{ rango.desde }}–{{ rango.hasta
+                            }}</span>
                         de
                         <span class="font-medium tabular-nums text-foreground">{{ totalFiltrado }}</span>
-                        <span v-if="data.selectedId.length" class="ml-2 text-foreground">· {{ data.selectedId.length }} seleccionados</span>
+                        <span v-if="data.selectedId.length" class="ml-2 text-foreground">· {{ data.selectedId.length }}
+                            seleccionados</span>
                     </p>
 
                     <nav class="flex items-center gap-1" aria-label="Paginación">
-                        <button
-                            type="button"
-                            @click="cambiarPagina(1)"
-                            :disabled="paginaActual === 1"
+                        <button type="button" @click="cambiarPagina(1)" :disabled="paginaActual === 1"
                             aria-label="Primera página"
-                            class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40"
-                        >
+                            class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40">
                             <ChevronDoubleLeftIcon class="h-3.5 w-3.5" />
                         </button>
-                        <button
-                            type="button"
-                            @click="cambiarPagina(paginaActual - 1)"
-                            :disabled="paginaActual === 1"
+                        <button type="button" @click="cambiarPagina(paginaActual - 1)" :disabled="paginaActual === 1"
                             aria-label="Página anterior"
-                            class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40"
-                        >
+                            class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40">
                             <ChevronLeftIcon class="h-4 w-4" />
                         </button>
 
                         <template v-for="(p, i) in paginasVisibles" :key="i">
                             <span v-if="p === '...'" class="px-1 text-xs text-muted-foreground">…</span>
-                            <button
-                                v-else
-                                type="button"
-                                @click="cambiarPagina(Number(p))"
-                                :aria-current="p === paginaActual ? 'page' : undefined"
-                                :class="[
+                            <button v-else type="button" @click="cambiarPagina(Number(p))"
+                                :aria-current="p === paginaActual ? 'page' : undefined" :class="[
                                     'inline-flex h-8 min-w-8 items-center justify-center rounded-md px-2 text-xs font-medium tabular-nums transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                                     p === paginaActual
                                         ? 'bg-foreground text-background shadow-sm'
                                         : 'text-muted-foreground hover:bg-muted hover:text-foreground',
-                                ]"
-                            >
+                                ]">
                                 {{ p }}
                             </button>
                         </template>
 
-                        <button
-                            type="button"
-                            @click="cambiarPagina(paginaActual + 1)"
-                            :disabled="paginaActual === paginas"
-                            aria-label="Página siguiente"
-                            class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40"
-                        >
+                        <button type="button" @click="cambiarPagina(paginaActual + 1)"
+                            :disabled="paginaActual === paginas" aria-label="Página siguiente"
+                            class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40">
                             <ChevronRightIcon class="h-4 w-4" />
                         </button>
-                        <button
-                            type="button"
-                            @click="cambiarPagina(paginas)"
-                            :disabled="paginaActual === paginas"
+                        <button type="button" @click="cambiarPagina(paginas)" :disabled="paginaActual === paginas"
                             aria-label="Última página"
-                            class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40"
-                        >
+                            class="inline-flex h-8 w-8 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40">
                             <ChevronDoubleRightIcon class="h-3.5 w-3.5" />
                         </button>
                     </nav>
@@ -1461,76 +1381,34 @@ const titulos = [
         </div>
 
         <!-- Modales (acciones que sí hablan con el backend) -->
-        <HistorialMultiples
-            :show="data.historialMultipleOpen"
-            :materiales="data.historialMateriales"
-            @close="data.historialMultipleOpen = false"
-        />
+        <HistorialMultiples :show="data.historialMultipleOpen" :materiales="data.historialMateriales"
+            @close="data.historialMultipleOpen = false" />
 
-        <ImportarMaterialModal :show="data.importOpen" :columnas="props.columnasExcel" @close="data.importOpen = false" />
+        <ImportarMaterialModal :show="data.importOpen" :columnas="props.columnasExcel"
+            @close="data.importOpen = false" />
 
-        <RegistrarCompra
-            v-if="can(['update Material'])"
-            :show="data.compraOpen"
-            :materiales="filas"
-            :faltantes="data.compraFaltantes"
-            :faltantesOp="faltantesDeOp"
-            @close="data.compraOpen = false"
-        />
+        <RegistrarCompra v-if="can(['update Material'])" :show="data.compraOpen" :materiales="filas"
+            :faltantes="data.compraFaltantes" :faltantesOp="faltantesDeOp" @close="data.compraOpen = false" />
 
-        <Create
-            v-if="can(['create Material'])"
-            :numberPermissions="props.numberPermissions"
-            :titulos="titulos"
-            :show="data.createOpen"
-            @close="data.createOpen = false"
-            :title="props.title"
-            :losSelect="props.losSelect"
-            :materiales="props.materiales"
-        />
+        <Create v-if="can(['create Material'])" :numberPermissions="props.numberPermissions" :titulos="titulos"
+            :show="data.createOpen" @close="data.createOpen = false" :title="props.title" :losSelect="props.losSelect"
+            :materiales="props.materiales" />
 
-        <Edit
-            v-if="can(['update Material'])"
-            :titulos="titulos"
-            :numberPermissions="props.numberPermissions"
-            :show="data.editOpen"
-            @close="data.editOpen = false"
-            :Materiala="data.Materialo"
-            :title="props.title"
-            :losSelect="props.losSelect"
-        />
+        <Edit v-if="can(['update Material'])" :titulos="titulos" :numberPermissions="props.numberPermissions"
+            :show="data.editOpen" @close="data.editOpen = false" :Materiala="data.Materialo" :title="props.title"
+            :losSelect="props.losSelect" />
 
-        <Delete
-            v-if="can(['delete Material'])"
-            :numberPermissions="props.numberPermissions"
-            :show="data.deleteOpen"
-            @close="data.deleteOpen = false"
-            :Materiala="data.Materialo"
-            :title="props.title"
-        />
+        <Delete v-if="can(['delete Material'])" :numberPermissions="props.numberPermissions" :show="data.deleteOpen"
+            @close="data.deleteOpen = false" :Materiala="data.Materialo" :title="props.title" />
 
-        <DeleteBulk
-            v-if="can(['issuperadmin'])"
-            :show="data.deleteBulkOpen"
-            :materiales="data.bulkMateriales"
-            :title="props.title"
-            @close="data.deleteBulkOpen = false"
-            @eliminados="alEliminarBulk"
-        />
+        <DeleteBulk v-if="can(['issuperadmin'])" :show="data.deleteBulkOpen" :materiales="data.bulkMateriales"
+            :title="props.title" @close="data.deleteBulkOpen = false" @eliminados="alEliminarBulk" />
 
-        <HistorialMovimientos
-            v-if="can(['read Material'])"
-            :show="data.historialOpen"
-            :material="data.Materialo"
-            @close="data.historialOpen = false"
-        />
+        <HistorialMovimientos v-if="can(['read Material'])" :show="data.historialOpen" :material="data.Materialo"
+            @close="data.historialOpen = false" />
 
-        <ProyeccionMaterialModal
-            :show="data.proyeccionOpen"
-            :material="data.proyeccionMaterial"
-            :proyeccion="data.proyeccionMaterial?._proyeccionDetalle ?? null"
-            @close="data.proyeccionOpen = false"
-        />
+        <ProyeccionMaterialModal :show="data.proyeccionOpen" :material="data.proyeccionMaterial"
+            :proyeccion="data.proyeccionMaterial?._proyeccionDetalle ?? null" @close="data.proyeccionOpen = false" />
     </AppLayout>
 </template>
 
@@ -1540,6 +1418,7 @@ const titulos = [
         opacity: 0;
         transform: translateY(3px);
     }
+
     to {
         opacity: 1;
         transform: translateY(0);

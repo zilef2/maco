@@ -10,9 +10,9 @@ import EditorMateriales from '@/pages/FichaTecnicaMateriales/EditorMateriales.vu
 import EditorProcesos from '@/pages/Producto/EditorProcesos.vue';
 import { MAX_TALLAS_POR_RANGO, TALLAS_ALFABETICAS, useTallasVariante } from '@/composables/useTallasVariante';
 import { dineroANumero, formatdinero } from '@/global.ts';
-import { CheckCircleIcon, ClipboardDocumentListIcon, Cog6ToothIcon, CubeIcon, DocumentTextIcon, ShoppingBagIcon } from '@heroicons/vue/24/solid';
+import { CheckCircleIcon, ClipboardDocumentListIcon, Cog6ToothIcon, CubeIcon, DocumentTextIcon, ShoppingBagIcon, CurrencyDollarIcon } from '@heroicons/vue/24/solid';
 import { useForm } from '@inertiajs/vue3';
-import { computed, watch, watchEffect } from 'vue';
+import { computed, ref, watch, watchEffect } from 'vue';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
 
@@ -24,6 +24,9 @@ const props = withDefaults(
         titulos?: any[];
         losSelect?: any;
         numberPermissions?: number;
+        productos?: any[];
+        metodoCostos?: number;
+        metodoCostosLabel?: string;
     }>(),
     {
         show: false,
@@ -32,6 +35,9 @@ const props = withDefaults(
         titulos: () => [],
         losSelect: () => ({}),
         numberPermissions: 0,
+        productos: () => [],
+        metodoCostos: 1,
+        metodoCostosLabel: '',
     }
 );
 
@@ -48,19 +54,23 @@ const camposSelect = [
 const optionsPara = (campo: string) => props.losSelect?.[campo] ?? [];
 const faltanOpciones = computed(() => camposSelect.filter(({ campo }) => !optionsPara(campo).length));
 
-// Coste de producción sugerido: materiales de la ficha (precio vigente) + procesos.
+// Coste de producción: los materiales de la ficha más los procesos, calculado
+// con los dos métodos de precio del material (su último precio registrado y el
+// promedio de todos). Los dos se guardan en la BD; el que manda es el que esté
+// vigente en el parámetro costos_promedio.
 const materialesOpciones = computed<any[]>(() => props.losSelect?.materiales ?? []);
 
-const costoUnitarioMaterial = (fila: any): number => {
+// Una fila cuyo material no está en la lista conserva su costo teórico.
+const precioMaterial = (fila: any, campo: 'costo_unitario' | 'costo_unitario_promedio'): number => {
     const material = materialesOpciones.value.find(
         (opcion: any) => String(opcion.id) === String(fila.material_componente_id),
     );
-    return material ? Number(material.costo_unitario) || 0 : dineroANumero(fila.costo_asociado_teorico);
+    return material ? Number(material[campo]) || 0 : dineroANumero(fila.costo_asociado_teorico);
 };
 
-const costeProduccion = computed(() => {
+const costeCon = (campo: 'costo_unitario' | 'costo_unitario_promedio'): number => {
     const materiales = (form.materiales ?? []).reduce(
-        (suma, fila: any) => suma + dineroANumero(fila.consumo_estandar) * costoUnitarioMaterial(fila),
+        (suma, fila: any) => suma + dineroANumero(fila.consumo_estandar) * precioMaterial(fila, campo),
         0,
     );
     const procesos = (form.procesos ?? []).reduce(
@@ -68,7 +78,42 @@ const costeProduccion = computed(() => {
         0,
     );
     return Math.round((materiales + procesos) * 100) / 100;
+};
+
+const costeUltimo = computed(() => costeCon('costo_unitario'));
+const costePromedio = computed(() => costeCon('costo_unitario_promedio'));
+
+// 2 = último precio digitado del material; 1 = promedio de sus cambios de precio.
+const usaUltimoPrecio = computed(() => Number(props.metodoCostos) === 2);
+const costeProduccion = computed(() => (usaUltimoPrecio.value ? costeUltimo.value : costePromedio.value));
+
+// El precio de venta automático: 300% del coste, redondeado al millar superior.
+const precioVentaAutomatico = computed(() => Math.ceil((costeProduccion.value * 3) / 1000) * 1000);
+
+const precioVentaDisplay = computed(() => form.precio_venta_producto ? Number(form.precio_venta_producto) : precioVentaAutomatico.value);
+const esPrecioManual = computed(() => !!form.precio_venta_producto);
+
+// Ganancia: diferencia entre el precio venta automático y el coste de
+// producción, en dinero y como porcentaje del coste.
+const ganancia = computed(() => {
+    const precioBase = form.precio_venta_producto ? Number(form.precio_venta_producto) : precioVentaAutomatico.value;
+    const diferencia = precioBase - costeProduccion.value;
+    return {
+        valor: diferencia,
+        porcentaje: costeProduccion.value > 0
+            ? (diferencia / costeProduccion.value) * 100
+            : null,
+    };
 });
+
+// Convertir precio a formato X.990 (ej: 50000 → 49990, 121000 → 120990)
+const aproximarPrecio990 = () => {
+    const base = precioVentaAutomatico.value;
+    const miles = Math.floor(base / 1000);
+    if (miles > 0) {
+        form.precio_venta_producto = (miles - 1) * 1000 + 990;
+    }
+};
 
 const form = useForm({
     Codigo_interno: '',
@@ -84,9 +129,26 @@ const form = useForm({
     descripcion: '',
     instrucciones: '',
     costo_anticipado: '' as string | number,
-    precio_venta_producto: '' as string | number,
     materiales: [] as any[],
     procesos: [] as any[],
+    precio_venta_producto: '' as string | number,
+});
+
+// El código se asigna solo: PT-001 con el último número registrado + 1.
+// Se recuerda el último creado en esta sesión porque la lista no se recarga
+// hasta que el usuario actualice el Index.
+const ultimoCodigoCreado = ref('');
+
+const codigoAutomatico = computed(() => {
+    let maximo = 0;
+    const considerar = (codigo: unknown) => {
+        const coincidencia = /^PT-(\d+)$/i.exec(String(codigo ?? '').trim());
+        const numero = coincidencia ? Number(coincidencia[1]) : 0;
+        if (numero > maximo) maximo = numero;
+    };
+    (props.productos ?? []).forEach((producto: any) => considerar(producto?.Codigo_interno));
+    considerar(ultimoCodigoCreado.value);
+    return `PT-${String(maximo + 1).padStart(3, '0')}`;
 });
 
 const { modo, rango, tallasEscogidas, tallas, alternarTalla, rangoDemasiadoGrande, opcionesTexto, limpiar } =
@@ -119,9 +181,13 @@ const create = () => {
         form.setError('Opciones', 'Seleccione al menos una talla.');
         return;
     }
+    // El costo anticipado solo acepta dígitos.
+    form.costo_anticipado = String(form.costo_anticipado ?? '').replace(/\D/g, '');
     form
         .transform((datos) => ({
             ...datos,
+            costo_anticipado: String(datos.costo_anticipado ?? '').replace(/\D/g, ''),
+            precio_venta_producto: datos.precio_venta_producto ? Number(datos.precio_venta_producto) : precioVentaAutomatico.value,
             materiales: datos.materiales
                 .filter((fila: any) => fila.material_componente_id)
                 .map((fila: any) => ({
@@ -139,6 +205,7 @@ const create = () => {
         .post(route('Producto.store'), {
             preserveScroll: true,
             onSuccess: () => {
+                ultimoCodigoCreado.value = form.Codigo_interno;
                 emit('close');
                 form.reset();
             },
@@ -154,7 +221,6 @@ watchEffect(() => {
         limpiar();
         if ((props.numberPermissions ?? 0) > 99) {
             const valueRAn = Math.floor(Math.random() * 9 + 1)
-            form.Codigo_interno = 'PROD-' + valueRAn
             form.ID_producto_Shopify = 'SHP-' + valueRAn
             form.Categoria_original = 'Bolso manos libres'
             form.Familia_normalizada = 'Bolso'
@@ -166,15 +232,24 @@ watchEffect(() => {
             form.Observaciones = 'Observación genérica ' + valueRAn
             form.descripcion = 'Descripción genérica ' + valueRAn
             form.costo_anticipado = valueRAn * 10000
-            form.precio_venta_producto = valueRAn * 12000
         }
     }
 });
+
+// Se asigna después del reset del efecto anterior, solo al abrir el modal.
+// Así, si el listado se recarga con el modal abierto, no se borra lo digitado.
+watch(
+    () => props.show,
+    (visible) => {
+        if (visible) form.Codigo_interno = codigoAutomatico.value;
+    },
+    { immediate: true, flush: 'post' },
+);
 </script>
 
 <template>
     <section class="space-y-6">
-        <Modal :show="props.show" @close="emit('close')" :maxWidth="'xl5'">
+        <Modal :show="props.show" @close="emit('close')" :maxWidth="'xl7'">
             <form class="p-0" @submit.prevent="create">
                 <!-- Encabezado -->
                 <div
@@ -199,14 +274,26 @@ watchEffect(() => {
                             <ClipboardDocumentListIcon class="w-4 h-4 text-gray-400 dark:text-gray-500" />
                             Información principal
                         </h3>
-                        <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
+                        <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-x-6 gap-y-4">
                             <div>
                                 <InputLabel for="Codigo_interno"
                                     :value="lang().t('app.label.Codigo_interno') || 'Código interno'" />
-                                <TextInput id="Codigo_interno" type="text" class="mt-1 block w-full"
-                                    v-model="form.Codigo_interno" required placeholder="Código interno"
-                                    :error="form.errors.Codigo_interno" />
+                                <input id="Codigo_interno" type="text" readonly aria-readonly="true"
+                                    :value="form.Codigo_interno"
+                                    class="mt-1 block w-full rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-semibold tabular-nums text-gray-700 shadow-sm focus:outline-none dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-200" />
+                                <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                                    Se asigna automáticamente: último código PT registrado + 1.
+                                </p>
                                 <InputError class="mt-2" :message="form.errors.Codigo_interno" />
+                            </div>
+
+                            <div class="md:col-span-2">
+                                <InputLabel for="Titulo_Shopify"
+                                    :value="lang().t('app.label.Titulo_Shopify') || 'Título Shopify / Nombre'" />
+                                <TextInput id="Titulo_Shopify" type="text" class="mt-1 block w-full"
+                                    v-model="form.Titulo_Shopify" required placeholder="Título Shopify"
+                                    :error="form.errors.Titulo_Shopify" />
+                                <InputError class="mt-2" :message="form.errors.Titulo_Shopify" />
                             </div>
 
                             <div>
@@ -224,15 +311,6 @@ watchEffect(() => {
                             </div>
 
                             <div class="md:col-span-2">
-                                <InputLabel for="Titulo_Shopify"
-                                    :value="lang().t('app.label.Titulo_Shopify') || 'Título Shopify / Nombre'" />
-                                <TextInput id="Titulo_Shopify" type="text" class="mt-1 block w-full"
-                                    v-model="form.Titulo_Shopify" required placeholder="Título Shopify"
-                                    :error="form.errors.Titulo_Shopify" />
-                                <InputError class="mt-2" :message="form.errors.Titulo_Shopify" />
-                            </div>
-
-                            <div class="md:col-span-2">
                                 <InputLabel for="descripcion"
                                     :value="lang().t('app.label.descripcion') || 'Descripción'" />
                                 <textarea id="descripcion" rows="2"
@@ -242,12 +320,12 @@ watchEffect(() => {
                                 <InputError class="mt-2" :message="form.errors.descripcion" />
                             </div>
 
-                            <div class="md:col-span-2">
-                                <InputLabel for="instrucciones" value="Instrucciones" />
+                            <div class="md:col-span-2 xl:col-span-3">
+                                <InputLabel for="instrucciones" value="Instrucciones de ensamble" />
                                 <textarea id="instrucciones" rows="2"
                                     class="mt-1 block w-full rounded-md border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300 focus:border-indigo-500 dark:focus:border-indigo-600 focus:ring-indigo-500 dark:focus:ring-indigo-600 shadow-sm text-sm"
                                     v-model="form.instrucciones"
-                                    placeholder="Instrucciones de producción (opcional)"></textarea>
+                                    placeholder="Instrucciones de ensamble (opcional)"></textarea>
                                 <InputError class="mt-2" :message="form.errors.instrucciones" />
                             </div>
 
@@ -279,7 +357,7 @@ watchEffect(() => {
                                 <InputError class="mt-2" :message="form.errors.Control_de_variante" />
                             </div>
 
-                            <div class="md:col-span-2">
+                            <div>
                                 <InputLabel for="Opciones" :value="lang().t('app.label.Opciones') || 'Opciones'" />
 
                                 <!-- Sin talla: las opciones no aplican -->
@@ -338,6 +416,12 @@ watchEffect(() => {
                                     Seleccione primero el control de variante.
                                 </p>
 
+                                <p v-if="modo === 'numerica' || modo === 'alfabetica'"
+                                    class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                                    Las cantidades planificadas de cada talla se ajustan luego desde el botón «Tallas»
+                                    del listado.
+                                </p>
+
                                 <InputError class="mt-2" :message="form.errors.Opciones" />
                             </div>
                         </div>
@@ -351,10 +435,12 @@ watchEffect(() => {
                             Ficha técnica de materiales
                         </h3>
                         <p class="mt-1 mb-3 pl-6 text-xs text-gray-400 dark:text-gray-500">
-                            Opcional. Los materiales se guardan en la ficha técnica de este producto.
+                            Opcional. Solo se admiten materiales genéricos; se guardan en la ficha técnica de este
+                            producto.
                         </p>
                         <EditorMateriales v-model="form.materiales" :opciones="props.losSelect" :errors="form.errors" />
                         <InputError class="mt-2" :message="form.errors.materiales" />
+                        <InputError class="mt-1" :message="form.errors.productos" />
                     </div>
 
                     <!-- Procesos -->
@@ -367,7 +453,7 @@ watchEffect(() => {
                         <p class="mt-1 mb-3 pl-6 text-xs text-gray-400 dark:text-gray-500">
                             Opcional. El total de estos costes por unidad forma el costo de proceso de la OP.
                         </p>
-                        <EditorProcesos v-model="form.procesos" :errors="form.errors" />
+                        <EditorProcesos v-model="form.procesos" :opciones="props.losSelect?.procesos ?? []" :errors="form.errors" />
                         <InputError class="mt-2" :message="form.errors.procesos" />
                     </div>
 
@@ -411,7 +497,7 @@ watchEffect(() => {
                             Los siguientes campos son opcionales: puede dejarlos vacíos.
                         </p>
                         <div
-                            class="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-4 rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-4">
+                            class="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-4 gap-x-6 gap-y-4 rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-4">
                             <div>
                                 <InputLabel for="ID_producto_Shopify"
                                     :value="lang().t('app.label.ID_producto_Shopify') || 'ID Shopify'" />
@@ -421,39 +507,106 @@ watchEffect(() => {
                                 <InputError class="mt-2" :message="form.errors.ID_producto_Shopify" />
                             </div>
 
-                            <div>
+                            <!-- <div>
                                 <InputLabel for="costo_anticipado"
                                     :value="lang().t('app.label.costo_anticipado') || 'Costo anticipado'" />
                                 <MoneyInput id="costo_anticipado" class="mt-1 block w-full"
                                     v-model="form.costo_anticipado" placeholder="$0"
                                     :error="form.errors.costo_anticipado" />
+                                <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">Solo números, sin decimales.
+                                </p>
                                 <InputError class="mt-2" :message="form.errors.costo_anticipado" />
+                            </div> -->
+
+                            <div>
+                                <InputLabel for="coste_produccion_promedio" value="Coste producción · promedio" />
+                                <div id="coste_produccion_promedio"
+                                    class="mt-1 flex h-10 w-full items-center justify-between gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 text-sm font-semibold text-gray-700 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-200">
+                                    <span>{{ formatdinero(costePromedio) }}</span>
+                                    <span :title="props.metodoCostosLabel"
+                                        :class="usaUltimoPrecio
+                                            ? 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+                                            : 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200'"
+                                        class="rounded-full px-2 py-0.5 text-[10px] font-medium">
+                                        {{ usaUltimoPrecio ? 'Referencia' : 'Vigente' }}
+                                    </span>
+                                </div>
+                                <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                                    Materiales de la ficha al promedio de sus precios + procesos, por unidad.
+                                </p>
+                            </div>
+
+                            <div>
+                                <InputLabel for="coste_produccion_ultimo" value="Coste producción · último precio" />
+                                <div id="coste_produccion_ultimo"
+                                    class="mt-1 flex h-10 w-full items-center justify-between gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 text-sm font-semibold text-gray-700 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-200">
+                                    <span>{{ formatdinero(costeUltimo) }}</span>
+                                    <span :title="props.metodoCostosLabel"
+                                        :class="usaUltimoPrecio
+                                            ? 'bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200'
+                                            : 'bg-gray-200 text-gray-600 dark:bg-gray-700 dark:text-gray-300'"
+                                        class="rounded-full px-2 py-0.5 text-[10px] font-medium">
+                                        {{ usaUltimoPrecio ? 'Vigente' : 'Referencia' }}
+                                    </span>
+                                </div>
+                                <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                                    Los mismos materiales al precio de su compra más reciente. Se recalculan con cada OP
+                                    que use el producto.
+                                </p>
                             </div>
 
                             <div>
                                 <InputLabel for="precio_venta_producto"
                                     :value="lang().t('app.label.precio_venta_producto') || 'Precio preventa'" />
-                                <MoneyInput id="precio_venta_producto" class="mt-1 block w-full"
-                                    v-model="form.precio_venta_producto" placeholder="$0"
-                                    :error="form.errors.precio_venta_producto" />
+                                <div id="precio_venta_producto"
+                                    class="mt-1 flex h-10 w-full items-center justify-between gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 text-sm font-semibold text-gray-700 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-200">
+                                    <span>{{ formatdinero(precioVentaDisplay) }}</span>
+                                    <div class="flex items-center gap-2">
+                                        <span
+                                            :class="esPrecioManual
+                                                ? 'rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800 dark:bg-amber-900/40 dark:text-amber-200'
+                                                : 'rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-medium text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-200'">
+                                            {{ esPrecioManual ? 'Manual (.990)' : '300% del coste' }}
+                                        </span>
+                                        <button type="button" @click="aproximarPrecio990" v-show="!esPrecioManual"
+                                            class="p-1.5 rounded-lg text-gray-500 hover:text-gray-700 hover:bg-gray-200 dark:text-gray-400 dark:hover:bg-gray-800 transition-colors"
+                                            v-tooltip="lang().t('app.tooltip.aproximar_precio_990') || 'Aproximar a X.990'">
+                                            <CurrencyDollarIcon class="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                </div>
+                                <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
+                                    Se calcula solo: un 300% del coste vigente, redondeado al millar superior.
+                                    <span v-if="esPrecioManual" class="text-amber-600 dark:text-amber-400 ml-1">
+                                        (Convertido a formato .990)
+                                    </span>
+                                </p>
                                 <InputError class="mt-2" :message="form.errors.precio_venta_producto" />
                             </div>
 
                             <div>
-                                <InputLabel for="coste_produccion" value="Coste producción" />
-                                <div id="coste_produccion"
-                                    class="mt-1 flex h-10 w-full items-center justify-between gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 text-sm font-semibold text-gray-700 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-200">
-                                    <span>{{ formatdinero(costeProduccion) }}</span>
-                                    <span class="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-medium text-sky-800 dark:bg-sky-900/40 dark:text-sky-200">
-                                        Sugerido
+                                <InputLabel for="ganancia_producto" value="Ganancia" />
+                                <div id="ganancia_producto"
+                                    class="mt-1 flex h-10 w-full items-center gap-2 rounded-md border border-gray-200 bg-gray-50 px-3 text-sm font-semibold dark:border-gray-700 dark:bg-gray-900/40">
+                                    <span
+                                        :class="ganancia.valor >= 0
+                                            ? 'text-emerald-600 dark:text-emerald-400'
+                                            : 'text-rose-600 dark:text-rose-400'">
+                                        {{ formatdinero(ganancia.valor) }}
+                                    </span>
+                                    <span v-if="ganancia.porcentaje !== null"
+                                        class="text-xs font-medium text-gray-500 dark:text-gray-400">
+                                        ({{ ganancia.porcentaje >= 0 ? '+' : '' }}{{ ganancia.porcentaje.toFixed(1)
+                                        }}% del coste)
                                     </span>
                                 </div>
                                 <p class="mt-1 text-xs text-gray-400 dark:text-gray-500">
-                                    Materiales de la ficha + procesos, por unidad. Se recalcula con cada OP que use el producto.
+                                    Diferencia entre el precio venta y el coste vigente; se recalcula al guardar
+                                    el producto y con cada OP que lo use.
                                 </p>
                             </div>
 
-                            <div class="md:col-span-3">
+                            <div class="md:col-span-3 xl:col-span-4">
                                 <InputLabel for="Observaciones"
                                     :value="lang().t('app.label.Observaciones') || 'Observaciones'" />
                                 <textarea id="Observaciones" rows="2"
@@ -469,7 +622,7 @@ watchEffect(() => {
                 <!-- Pie -->
                 <div
                     class="px-6 py-4 border-t border-gray-200 dark:border-gray-700 flex justify-end gap-3 bg-gray-50 dark:bg-gray-800/50 rounded-b-lg">
-                    <SecondaryButton :disabled="form.processing" @click="emit('close')">
+                    <SecondaryButton :disabled="form.processing" type="button" @click="emit('close')">
                         {{ lang().t('app.button.close') }}
                     </SecondaryButton>
                     <PrimaryButton class="ml-3" :class="{ 'opacity-25': form.processing }" :disabled="form.processing"

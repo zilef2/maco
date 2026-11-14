@@ -28,6 +28,7 @@ class Material extends Model
         'codigo_categoria',
         'categoria',
         'codigo_base',
+        'generico',
         'nombre_base',
         'unidad_inventario',
         'existencia_actual',
@@ -48,7 +49,30 @@ class Material extends Model
     {
         static::saving(function (Material $material): void {
             $material->aplicarReglaDelCodigo();
+            if ($material->generico) {
+                $material->limpiarVariantesPorGenerico();
+            }
         });
+    }
+
+    /**
+     * Un material genérico no maneja talla ni color: se limpian los indicadores
+     * y se borran las variantes registradas. Se aplica en saving para que valga
+     * en cualquier ruta de escritura (formulario, servicio, tinker).
+     */
+    protected function limpiarVariantesPorGenerico(): void
+    {
+        $this->forceFill([
+            'maneja_color' => false,
+            'maneja_talla' => false,
+            'maneja_otra_variante' => false,
+            'color' => null,
+            'talla_tamano' => null,
+        ]);
+
+        if ($this->exists) {
+            $this->variants()->delete();
+        }
     }
 
     /**
@@ -237,6 +261,13 @@ class Material extends Model
      */
     public function sincronizarVariantes(array $colores = [], array $variantes = []): void
     {
+        // El genérico nunca lleva variantes: se limpian y no se vuelve a
+        // escribir (el saving ya hizo la limpieza al guardar).
+        if ($this->generico) {
+            $this->variants()->delete();
+            return;
+        }
+
         $colores = self::normalizarListaVariantes($colores);
         $variantes = self::normalizarListaVariantes($variantes);
 
@@ -357,6 +388,7 @@ class Material extends Model
     }
 
     protected static array $booleanFields = [
+        'generico',
         'maneja_color',
         'maneja_talla',
         'maneja_otra_variante',

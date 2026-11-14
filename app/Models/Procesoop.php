@@ -14,14 +14,16 @@ use Illuminate\Database\Eloquent\SoftDeletes;
     /** @use HasFactory<\Database\Factories\ProcesoopFactory> */
     use HasFactory;
     use HasFillableWithTypes;
-    protected $fillable = ['nombre', 'producto_id', 'coste_proceso'];
+    protected $fillable = ['nombre'];
 
-    protected $casts = [
-        'coste_proceso' => 'float',
-    ];
-
-    public function producto()
+    /**
+     * Catálogo de procesos: un mismo proceso se reutiliza en varios productos y
+     * el coste de ese proceso vive en el pivote, no en el catálogo.
+     */
+    public function productos()
     {
-        return $this->belongsTo(Producto::class, 'producto_id');
+        return $this->belongsToMany(Producto::class, 'procesoop_producto', 'procesoop_id', 'producto_id')
+            ->withPivot('coste_proceso')
+            ->withTimestamps();
     }
 }

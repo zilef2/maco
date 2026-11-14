@@ -112,6 +112,11 @@ const descripcionToggle = (campo: string, activo: boolean): string => {
     if (campo === 'material_procesado') {
         return activo ? 'Sí, este material es procesado' : 'No, este material no es procesado';
     }
+    if (campo === 'generico') {
+        return activo
+            ? 'Sí, es genérico: no maneja talla ni color y su precio es el promedio de sus similares'
+            : 'No, es un material específico';
+    }
     return activo ? 'Sí, este material lo maneja' : 'No aplica para este material';
 };
 

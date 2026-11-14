@@ -24,12 +24,24 @@ export interface NavGroup {
     items: NavItem[];
 }
 
+export interface FaltanteMaterial {
+    material_id: number;
+    codigo: string | null;
+    nombre: string;
+    unidad: string | null;
+    requerido: number;
+    existencia: number;
+    faltante: number;
+    ordenes: { numero_op: string; requerido: number }[];
+}
+
 export interface SharedData extends PageProps {
     name: string;
     quote: { message: string; author: string };
     auth: Auth;
     ziggy: Config & { location: string };
     sidebarOpen: boolean;
+    faltantesOp: FaltanteMaterial[];
 }
 
 export interface User {

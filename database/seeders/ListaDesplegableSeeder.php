@@ -30,6 +30,21 @@ class ListaDesplegableSeeder extends Seeder
             ['nombre' => 'Diseño / acabado',    'categoria' => 'material', 'subcategoria' => 'modelo_diseno_acabado'],
             ['nombre' => 'Tipo / espesor',      'categoria' => 'material', 'subcategoria' => 'modelo_diseno_acabado'],
             ['nombre' => 'Diseño / referencia', 'categoria' => 'material', 'subcategoria' => 'modelo_diseno_acabado'],
+            // colores del material (los seis básicos y los demás habituales)
+            ['nombre' => 'Negro',               'categoria' => 'material', 'subcategoria' => 'color'],
+            ['nombre' => 'Blanco',              'categoria' => 'material', 'subcategoria' => 'color'],
+            ['nombre' => 'Rojo',                'categoria' => 'material', 'subcategoria' => 'color'],
+            ['nombre' => 'Azul',                'categoria' => 'material', 'subcategoria' => 'color'],
+            ['nombre' => 'Verde',               'categoria' => 'material', 'subcategoria' => 'color'],
+            ['nombre' => 'Amarillo',            'categoria' => 'material', 'subcategoria' => 'color'],
+            ['nombre' => 'Beige',               'categoria' => 'material', 'subcategoria' => 'color'],
+            ['nombre' => 'Gris',                'categoria' => 'material', 'subcategoria' => 'color'],
+            ['nombre' => 'Rosado',              'categoria' => 'material', 'subcategoria' => 'color'],
+            ['nombre' => 'Café',                'categoria' => 'material', 'subcategoria' => 'color'],
+            ['nombre' => 'Hueso',               'categoria' => 'material', 'subcategoria' => 'color'],
+            ['nombre' => 'Verde pistacho',      'categoria' => 'material', 'subcategoria' => 'color'],
+            ['nombre' => 'Verde lima',          'categoria' => 'material', 'subcategoria' => 'color'],
+            ['nombre' => 'Verde oliva oscuro',  'categoria' => 'material', 'subcategoria' => 'color'],
             // producto
             ['nombre' => 'Bolso manos libres',    'categoria' => 'Producto', 'subcategoria' => 'Categoria_original'],
             ['nombre' => 'Calzador',              'categoria' => 'Producto', 'subcategoria' => 'Categoria_original'],
@@ -97,10 +112,15 @@ class ListaDesplegableSeeder extends Seeder
             ['nombre' => 'Amagá',                     'categoria' => 'municipio', 'subcategoria' => 'general'],
             ['nombre' => 'Venecia',                   'categoria' => 'municipio', 'subcategoria' => 'general'],
             ['nombre' => 'San Luis',                  'categoria' => 'municipio', 'subcategoria' => 'general'],
+
+            // proceso (nombres de los procesos de fabricación)
+            ['nombre' => 'Sublimada',     'categoria' => 'proceso', 'subcategoria' => 'general'],
+            ['nombre' => 'Mano de obra',  'categoria' => 'proceso', 'subcategoria' => 'general'],
+            ['nombre' => 'Capellar',      'categoria' => 'proceso', 'subcategoria' => 'general'],
         ];
 
         foreach ($opciones as $opcion) {
-            ListaDesplegable::create($opcion);
+            ListaDesplegable::updateOrCreate($opcion);
         }
     }
 }

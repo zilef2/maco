@@ -6,6 +6,7 @@ use App\Http\Requests\PurgarDatosPruebaRequest;
 use App\Http\Requests\PurgarMaterialesRequest;
 use App\Services\Bitacora;
 use App\Services\ExistenciasMaterialesService;
+use App\Services\MaterialesGenericosService;
 use App\Services\PurgarDatosPruebaService;
 use App\Services\PurgarMaterialesService;
 use Illuminate\Http\RedirectResponse;
@@ -16,7 +17,8 @@ class SuperadminAccionesController extends Controller
     public function __construct(
         protected PurgarDatosPruebaService $purgarService,
         protected PurgarMaterialesService $purgarMaterialesService,
-        protected ExistenciasMaterialesService $existenciasService
+        protected ExistenciasMaterialesService $existenciasService,
+        protected MaterialesGenericosService $genericosService
     ) {}
 
     public function purgarDatosPrueba(PurgarDatosPruebaRequest $request): RedirectResponse
@@ -60,6 +62,24 @@ class SuperadminAccionesController extends Controller
         );
 
         return back()->with('success', "Existencia al azar en {$conteo['existencias']} materiales y precio al azar en {$conteo['precios']}.");
+    }
+
+    /** Crea los materiales genéricos faltantes y refresca su precio promedio. */
+    public function materialesGenericos(Request $request): RedirectResponse
+    {
+        $conteo = $this->genericosService->sincronizar();
+
+        Bitacora::accion(
+            'Superadmin',
+            'materialesGenericos',
+            "{$conteo['creados']} genéricos creados, {$conteo['precios']} precios promediados"
+        );
+
+        $detalle = $conteo['precios'] > 0
+            ? " y precio promedio en {$conteo['precios']}"
+            : '';
+
+        return back()->with('success', "Se crearon {$conteo['creados']} materiales genéricos{$detalle}.");
     }
 }
 

@@ -42,6 +42,10 @@ const props = defineProps({
     numberPermissions: Number,
     losSelect: Object,
     titulos: Array,
+    // 1 = promedio de los precios del material; 2 = su último precio. Decide
+    // cuál de los dos costes del formulario es el vigente.
+    metodo_costos: { type: Number, default: 1 },
+    metodo_costos_label: { type: String, default: '' },
 });
 
 /* --------------------------------------------------------------------------
@@ -59,7 +63,7 @@ const familiaFiltro = ref('');
 const controlVarianteFiltro = ref('');
 const opcionFiltro = ref('');
 const precioPreventaFiltro = ref('');
-const precioEstimadoFiltro = ref('');
+const costeProduccionFiltro = ref('');
 const tallasFiltro = ref('');
 const cantidadFiltro = ref('');
 const fichaFiltro = ref('');
@@ -77,7 +81,8 @@ const columnas = [
     { key: 'Categoria_original', label: 'Categoría', sortable: true, align: 'left', headerClass: 'hidden min-w-[190px] lg:table-cell', cellClass: 'hidden min-w-[190px] lg:table-cell' },
     { key: 'Control_de_variante', label: 'Variante', sortable: true, align: 'left', headerClass: 'hidden min-w-[170px] xl:table-cell', cellClass: 'hidden min-w-[170px] xl:table-cell' },
     { key: 'Estado', label: 'Estado', sortable: true, align: 'left', headerClass: 'w-[110px]', cellClass: 'w-[110px]' },
-    { key: 'precio_venta_producto', label: 'Precio', sortable: true, align: 'right', headerClass: 'w-[140px]', cellClass: 'w-[140px]' },
+    { key: 'coste_produccion', label: 'Coste', sortable: true, align: 'right', headerClass: 'w-[140px]', cellClass: 'w-[140px]' },
+    { key: 'precio_venta_producto', label: 'Precio venta', sortable: true, align: 'right', headerClass: 'w-[140px]', cellClass: 'w-[140px]' },
     { key: 'tallas', label: 'Tallas', sortable: false, align: 'left', headerClass: 'hidden min-w-[150px] md:table-cell', cellClass: 'hidden min-w-[150px] md:table-cell' },
 ] as const;
 
@@ -230,6 +235,20 @@ const formatearPrecio = (valor: any, decimales = 0): string =>
 const decimalesDe = (valor: any): number =>
     Number.isFinite(Number(valor)) && Math.round(Number(valor) * 100) % 100 !== 0 ? 2 : 0;
 
+// Coste y precio de venta que se muestran. El coste vivo es el que calcula el
+// listado con el parámetro de costos vigente; sin ficha ni procesos queda en lo
+// guardado en la BD. El precio de venta es automático (300% del coste), salvo en
+// los productos que aún no tienen coste: ahí se conserva el precio histórico.
+const costeDe = (producto: any): number => {
+    const vivo = Number(producto?.coste_produccion_vivo ?? 0) || 0;
+    return vivo > 0 ? vivo : Number(producto?.coste_produccion ?? 0) || 0;
+};
+
+const precioVentaDe = (producto: any): number =>
+    costeDe(producto) > 0
+        ? Number(producto?.precio_venta_vivo ?? 0) || 0
+        : Number(producto?.precio_venta_producto ?? 0) || 0;
+
 const texto = (valor: any, fallback = '—'): string => {
     const resultado = String(valor ?? '').trim();
     return resultado !== '' ? resultado : fallback;
@@ -270,9 +289,6 @@ const tieneTallas = (producto: any): boolean => tallasDe(producto).length > 0;
 
 const tieneCantidad = (producto: any): boolean =>
     distribucionesDe(producto).some((item: any) => Number(item?.cantidad_planificada ?? 0) > 0);
-
-const tienePrecio = (valor: any): boolean =>
-    valor !== null && valor !== undefined && valor !== '' && Number(valor) > 0;
 
 // Cada fila trae lo que necesitan los filtros sin volver a recorrer la BD.
 const preparadas = computed(() =>
@@ -330,12 +346,6 @@ const opcionesEstado = computed(() => [
     { value: 'Inactivo', label: 'Inactivos', count: baseFiltrada.value.filter((p: any) => p._estado === 'Inactivo').length },
 ]);
 
-const opcionesPrecio = (campo: string) => [
-    { value: '', label: 'Todos' },
-    { value: 'con_precio', label: `Con precio (${baseFiltrada.value.filter((p: any) => tienePrecio(p[campo])).length})` },
-    { value: 'sin_precio', label: `Sin precio (${baseFiltrada.value.filter((p: any) => !tienePrecio(p[campo])).length})` },
-];
-
 const opcionesBinarias = (campo: string, textos: { con: string; sin: string }) => [
     { value: '', label: 'Todas' },
     { value: 'con', label: `${textos.con} (${baseFiltrada.value.filter((p: any) => p[campo]).length})` },
@@ -345,7 +355,18 @@ const opcionesBinarias = (campo: string, textos: { con: string; sin: string }) =
 const opcionesTallas = computed(() => opcionesBinarias('_tieneTallas', { con: 'Con tallas', sin: 'Sin tallas' }));
 const opcionesCantidad = computed(() => opcionesBinarias('_tieneCantidad', { con: 'Con cantidad', sin: 'Sin cantidad' }));
 const opcionesFicha = computed(() => opcionesBinarias('_tieneFicha', { con: 'Con ficha', sin: 'Sin ficha' }));
-const opcionesPrecioPreventa = computed(() => opcionesPrecio('precio_venta_producto'));
+// Los dos filtros de dinero cuentan sobre lo mismo que muestran las columnas.
+const opcionesPrecioPreventa = computed(() => [
+    { value: '', label: 'Todos' },
+    { value: 'con_precio', label: `Con precio (${baseFiltrada.value.filter((p: any) => precioVentaDe(p) > 0).length})` },
+    { value: 'sin_precio', label: `Sin precio (${baseFiltrada.value.filter((p: any) => precioVentaDe(p) <= 0).length})` },
+]);
+
+const opcionesCosteProduccion = computed(() => [
+    { value: '', label: 'Todos' },
+    { value: 'con_coste', label: `Con coste (${baseFiltrada.value.filter((p: any) => costeDe(p) > 0).length})` },
+    { value: 'sin_coste', label: `Sin coste (${baseFiltrada.value.filter((p: any) => costeDe(p) <= 0).length})` },
+]);
 
 const filtradas = computed(() =>
     baseFiltrada.value.filter((producto: any) => {
@@ -367,8 +388,10 @@ const filtradas = computed(() =>
         ) {
             return false;
         }
-        if (precioPreventaFiltro.value === 'con_precio' && !tienePrecio(producto.precio_venta_producto)) return false;
-        if (precioPreventaFiltro.value === 'sin_precio' && tienePrecio(producto.precio_venta_producto)) return false;
+        if (precioPreventaFiltro.value === 'con_precio' && precioVentaDe(producto) <= 0) return false;
+        if (precioPreventaFiltro.value === 'sin_precio' && precioVentaDe(producto) > 0) return false;
+        if (costeProduccionFiltro.value === 'con_coste' && costeDe(producto) <= 0) return false;
+        if (costeProduccionFiltro.value === 'sin_coste' && costeDe(producto) > 0) return false;
         if (tallasFiltro.value === 'con' && !tieneTallas(producto)) return false;
         if (tallasFiltro.value === 'sin' && tieneTallas(producto)) return false;
         if (cantidadFiltro.value === 'con' && !tieneCantidad(producto)) return false;
@@ -381,8 +404,13 @@ const filtradas = computed(() =>
 
 const collator = new Intl.Collator('es', { numeric: true, sensitivity: 'base' });
 
-const valorOrden = (producto: any, key: string): any =>
-    key === 'Estado' ? producto._estado : producto[key];
+const valorOrden = (producto: any, key: string): any => {
+    if (key === 'Estado') return producto._estado;
+    // Se ordena por lo mismo que se muestra en la celda.
+    if (key === 'coste_produccion') return costeDe(producto);
+    if (key === 'precio_venta_producto') return precioVentaDe(producto);
+    return producto[key];
+};
 
 const ordenadas = computed(() => {
     const dir = sortDir.value === 'asc' ? 1 : -1;
@@ -422,7 +450,7 @@ const filtrosAvanzados = computed(
             controlVarianteFiltro.value,
             opcionFiltro.value,
             precioPreventaFiltro.value,
-            precioEstimadoFiltro.value,
+            costeProduccionFiltro.value,
             tallasFiltro.value,
             cantidadFiltro.value,
             fichaFiltro.value,
@@ -467,7 +495,7 @@ watch(
         controlVarianteFiltro,
         opcionFiltro,
         precioPreventaFiltro,
-        precioEstimadoFiltro,
+        costeProduccionFiltro,
         tallasFiltro,
         cantidadFiltro,
         fichaFiltro,
@@ -483,7 +511,7 @@ watch(paginas, (n) => {
 });
 
 watch(
-    [busqueda, estadoFiltro, categoriaFiltro, familiaFiltro, controlVarianteFiltro, opcionFiltro, precioPreventaFiltro, precioEstimadoFiltro, tallasFiltro, cantidadFiltro, fichaFiltro, pagina],
+    [busqueda, estadoFiltro, categoriaFiltro, familiaFiltro, controlVarianteFiltro, opcionFiltro, precioPreventaFiltro, costeProduccionFiltro, tallasFiltro, cantidadFiltro, fichaFiltro, pagina],
     () => {
         seleccionados.clear();
     },
@@ -508,7 +536,7 @@ const limpiarFiltros = () => {
     controlVarianteFiltro.value = '';
     opcionFiltro.value = '';
     precioPreventaFiltro.value = '';
-    precioEstimadoFiltro.value = '';
+    costeProduccionFiltro.value = '';
     tallasFiltro.value = '';
     cantidadFiltro.value = '';
     fichaFiltro.value = '';
@@ -679,7 +707,7 @@ const recargar = () => {
                                     </label>
 
                                     <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
-                                        Precio preventa
+                                        Precio venta
                                         <select v-model="precioPreventaFiltro" :class="selectClass">
                                             <option v-for="opcion in opcionesPrecioPreventa" :key="opcion.value"
                                                 :value="opcion.value">
@@ -689,9 +717,9 @@ const recargar = () => {
                                     </label>
 
                                     <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
-                                        Precio estimado
-                                        <select v-model="precioEstimadoFiltro" :class="selectClass">
-                                            <option v-for="opcion in opcionesPrecioEstimado" :key="opcion.value"
+                                        Coste producción
+                                        <select v-model="costeProduccionFiltro" :class="selectClass">
+                                            <option v-for="opcion in opcionesCosteProduccion" :key="opcion.value"
                                                 :value="opcion.value">
                                                 {{ opcion.label }}
                                             </option>
@@ -884,10 +912,18 @@ const recargar = () => {
                                 <td class="px-3 py-3 text-right align-top">
                                     <div class="flex flex-col items-end gap-0.5">
                                         <span class="font-semibold tabular-nums text-foreground">
-                                            {{ formatearPrecio(producto.precio_venta_producto) }}
+                                            {{ formatearPrecio(costeDe(producto), decimalesDe(costeDe(producto))) }}
                                         </span>
-                                        <span class="text-[11px] tabular-nums text-muted-foreground">
-                                            Anticipado {{ formatearPrecio(producto.costo_anticipado) }}
+                                    </div>
+                                </td>
+
+                                <td class="px-3 py-3 text-right align-top">
+                                    <div class="flex flex-col items-end gap-0.5">
+                                        <span class="font-semibold tabular-nums text-foreground">
+                                            {{ formatearPrecio(precioVentaDe(producto), decimalesDe(precioVentaDe(producto))) }}
+                                        </span>
+                                        <span class="text-[11px] tabular-nums text-emerald-600 dark:text-emerald-400">
+                                            Ganancia {{ formatearPrecio(precioVentaDe(producto) - costeDe(producto), decimalesDe(precioVentaDe(producto) - costeDe(producto))) }}
                                         </span>
                                     </div>
                                 </td>
@@ -1047,11 +1083,13 @@ const recargar = () => {
 
         <Create v-if="can(['create Producto'])" :numberPermissions="props.numberPermissions" :titulos="titulos"
             :show="data.createOpen" @close="data.createOpen = false" :title="props.title"
-            :losSelect="props.losSelect" />
+            :losSelect="props.losSelect" :productos="props.productos" :metodoCostos="props.metodo_costos"
+            :metodoCostosLabel="props.metodo_costos_label" />
 
         <Edit v-if="can(['update Producto'])" :titulos="titulos" :numberPermissions="props.numberPermissions"
             :show="data.editOpen" @close="data.editOpen = false" :Productoa="data.Productoo" :title="props.title"
-            :losSelect="props.losSelect" />
+            :losSelect="props.losSelect" :metodoCostos="props.metodo_costos"
+            :metodoCostosLabel="props.metodo_costos_label" />
 
         <Delete v-if="can(['delete Producto'])" :numberPermissions="props.numberPermissions" :show="data.deleteOpen"
             @close="data.deleteOpen = false" :Productoa="data.Productoo" :title="props.title" />

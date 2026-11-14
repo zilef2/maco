@@ -26,7 +26,7 @@ const paginasVisibles = computed<Array<number | '...'>>(() => {
     const actual = paginaActual.value;
     const ventana = 5;
     let inicio = Math.max(1, actual - 2);
-    let fin = Math.min(total, inicio + ventana - 1);
+    const fin = Math.min(total, inicio + ventana - 1);
     inicio = Math.max(1, fin - ventana + 1);
 
     const salida: Array<number | '...'> = [];
