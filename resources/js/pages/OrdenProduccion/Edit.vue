@@ -137,12 +137,12 @@ const sinObjetivos = computed(() =>
     esOpMaterial.value ? materialesSel.length === 0 : productosSel.length === 0,
 );
 
-// Como en el alta: solo los productos con ficha técnica generan requerimiento
-// de materiales. Se suman los que ya están adjuntos a esta OP (pueden no tener
-// ficha) para que editar no los desprenda del kit.
+// Como en el alta: solo los productos con ficha técnica y proceso generan
+// requerimiento de materiales y costo de proceso. Se suman los que ya están
+// adjuntos a esta OP (pueden no cumplirlo) para que editar no los desprenda del kit.
 const opcionesProducto = computed(() => {
-    const conFicha = (props.losSelect?.producto_referencia_id || []).filter((p: any) => p.ficha);
-    const ids = new Set(conFicha.map((p: any) => Number(p.id)));
+    const aptos = (props.losSelect?.producto_referencia_id || []).filter((p: any) => p.ficha && (p.procesos || []).length);
+    const ids = new Set(aptos.map((p: any) => Number(p.id)));
     const adjuntos = ((op.value.productos || []) as any[])
         .filter((p) => !ids.has(Number(p.id)))
         .map((p) => ({
@@ -152,7 +152,7 @@ const opcionesProducto = computed(() => {
             distribuciones_por_tallas: [],
             costo_proceso_total: (p.procesos || []).reduce((s: number, x: any) => s + (Number(x.coste_proceso) || 0), 0),
         }));
-    return [...conFicha, ...adjuntos];
+    return [...aptos, ...adjuntos];
 });
 
 const distribucionPorProducto = (productoId: number) => distribucion.items.filter((i) => i.producto_id === productoId);
@@ -866,7 +866,7 @@ watch([() => props.show, () => op.value.id], cargarOp, { immediate: true, flush:
                     </p>
 
                     <p v-if="!planBloqueado" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                        Solo se muestran los productos que tienen ficha técnica (los demás no generan requerimiento de materiales).
+                        Solo se muestran los productos con ficha técnica y proceso asociado; los que ya están en esta OP se conservan aunque no cumplan.
                     </p>
 
                     <div v-if="productosSel.length" class="mt-3 overflow-x-auto">

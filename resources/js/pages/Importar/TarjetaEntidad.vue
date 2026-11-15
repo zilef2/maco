@@ -32,6 +32,7 @@ const props = defineProps<{
         nota: string;
         plantilla: string | null;
         hojas?: HojaExcel[];
+        avisos?: string[];
         metrica: {
             muestras?: number;
             promedio_ms?: number | null;
@@ -298,6 +299,22 @@ function subir() {
 
         <!-- Consola de carga -->
         <div class="rounded-b-xl border-t border-gray-100 bg-gray-50/60 p-4">
+            <div
+                v-if="entidad.avisos?.length"
+                class="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800"
+            >
+                <p class="text-[9px] font-semibold uppercase tracking-[0.18em] text-amber-600">
+                    Avisos de la última carga
+                </p>
+                <p
+                    v-for="aviso in entidad.avisos"
+                    :key="aviso"
+                    class="mt-1 font-medium"
+                >
+                    {{ aviso }}
+                </p>
+            </div>
+
             <div
                 v-if="estadoDe(entidad.id).error"
                 class="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700"

@@ -63,9 +63,13 @@ class ImportarExcelController extends Controller
      * masiva desde Excel. Cada tarjeta del frontend publica directamente
      * contra la ruta upload-excel de su entidad.
      */
-    public function index(): Response
+    public function index(Request $request): Response
     {
         Myhelp::EscribirEnLog($this, ' ImportarExcel ');
+
+        // Avisos de la última subida que no cancelaron la carga (por ejemplo,
+        // las filas de la ficha que llegaron sin consumo y se tomaron como 1).
+        $avisosPorEntidad = (array) $request->session()->get('avisosImportacion', []);
 
         $entidades = [
             [
@@ -90,7 +94,7 @@ class ImportarExcelController extends Controller
                 'grupo'               => 'Producción',
                 'descripcion'         => 'Receta de materiales de cada producto, una fila por material',
                 'ruta'                => route('ImportarExcel.ficha-producto'),
-                'nota'                => 'La hoja se llama "Codigos" y la fila 1 trae los títulos: "Codigo producto", "Producto", "codigo material", "Material", "consumo por par" y "unidad". Las dos columnas de nombres son solo texto de ayuda; lo que se usa son los códigos y el consumo. Cada fila es un material de la receta del producto, y todas las filas con el mismo código de producto forman una sola ficha llamada "Ficha PT-042", con el código del producto. Si ese producto ya tenía ficha, se reemplazan sus materiales por los del archivo; si la ficha compartida cubre más productos, se conservan. Antes de guardar, la subida verifica que cada código de producto exista en productos y cada código de material en materiales, y que ninguna orden de producción abierta bloquee la ficha: si falta un solo código o hay una OP activa, se rechaza el archivo completo con la lista, sin importar nada. Por eso la validación tarda unos segundos. El archivo se procesa en segundo plano y recibirás un correo con el resultado.',
+                'nota'                => 'La hoja se llama "Codigos" y la fila 1 trae los títulos: "Codigo producto", "Producto", "codigo material", "Material", "consumo por par" y "unidad". Cada fila es un material de la receta del producto, y todas las filas con el mismo código de producto forman una sola ficha llamada "Ficha PT-042", con el código del producto. Si ese producto ya tenía ficha, se reemplazan sus materiales por los del archivo; si la ficha compartida cubre más productos, se conservan. El código de material se valida por su par, sin mirar el número del final: si existe ACC-APL-0, valen ACC-APL-1, ACC-APL-7 o ACC-APL-9898, y los tres se guardan como el material genérico del par (ACC-APL-0), que es el único que admite la ficha técnica; si el par existe pero no tiene su genérico, créelo con el botón «Materiales genéricos» de Actividad. Las columnas "Producto" y "Material" sirven para ubicar el registro solo cuando la celda del código quedó vacía, y si el nombre coincide con varios registros la fila se rechaza: escriba el código. Una celda vacía en "consumo por par" se toma como 1 y las filas que pasaron por ahí quedan listadas en el aviso amarillo de esta tarjeta y en el correo del resultado. Antes de guardar, la subida verifica que cada producto y cada material existan en la app y que ninguna orden de producción abierta bloquee la ficha: si falta uno solo o hay una OP activa, se rechaza el archivo completo con la lista, sin importar nada. Por eso la validación tarda unos segundos. El archivo se procesa en segundo plano y recibirás un correo con el resultado.',
             ],
             [
                 'id'                  => 'estado_operacion',
@@ -132,7 +136,7 @@ class ImportarExcelController extends Controller
         // Las columnas y el archivo descargable salen de la misma definición,
         // así la tarjeta y el formato .xlsx nunca se contradicen. El MPP no
         // tiene formato propio: muestra las columnas de cada una de sus hojas.
-        $entidades = array_map(function (array $entidad) use ($metricas): array {
+        $entidades = array_map(function (array $entidad) use ($metricas, $avisosPorEntidad): array {
             $clave = $entidad['id'];
 
             return $entidad + [
@@ -140,6 +144,7 @@ class ImportarExcelController extends Controller
                 'columnas_opcionales' => $clave === 'mpp' ? [] : $this->plantillas->titulosOpcionales($clave),
                 'plantilla'           => $clave === 'mpp' ? null : route('ImportarExcel.plantilla', ['clave' => $clave]),
                 'metrica'             => $metricas[$clave] ?? null,
+                'avisos'              => array_values(array_map('strval', (array) ($avisosPorEntidad[$clave] ?? []))),
             ];
         }, $entidades);
 
@@ -252,11 +257,12 @@ class ImportarExcelController extends Controller
      * Carga masiva de la ficha de producto.
      *
      * A diferencia del resto de las tarjetas, aquí se valida el contenido
-     * completo del archivo en la misma petición: cada código de producto y de
-     * material tiene que existir en la app y ninguna ficha puede estar bloqueada
-     * por una OP activa. Si falta algo, el archivo se rechaza con la lista de
-     * los códigos y el usuario lo corrige antes de volver a subirlo; por eso
-     * hay que esperar unos segundos mientras se lee la hoja.
+     * completo del archivo en la misma petición: cada producto tiene que existir
+     * en la app y cada material tiene que apuntar a un par con su genérico
+     * (CAT-BAS-0), y ninguna ficha puede estar bloqueada por una OP activa. Si
+     * falta algo, el archivo se rechaza con la lista de los códigos y el usuario
+     * lo corrige antes de volver a subirlo; por eso hay que esperar unos segundos
+     * mientras se lee la hoja.
      */
     public function uploadFichaProducto(
         Request $request,
@@ -307,12 +313,19 @@ class ImportarExcelController extends Controller
 
             Myhelp::EscribirEnLog($this, 'uploadFichaProducto ENCOLADO', $nombreArchivo);
 
-            return back()->with(
-                'success',
-                'El archivo pasó la validación: ' . $validacion['fichas'] . ' ficha(s), '
-                . $validacion['materiales'] . ' material(es) en ' . $validacion['filas']
-                . ' fila(s). Las fichas se están guardando; recibirás un correo al terminar.'
-            );
+            // Lo que el archivo permitió corregir solos (consumos vacíos) se
+            // queda visible en la tarjeta mientras se procesa la cola.
+            $avisos = $validacion['avisos'];
+
+            return back()
+                ->with('avisosImportacion', ['ficha_tecnica_materiales' => $avisos])
+                ->with(
+                    'success',
+                    'El archivo pasó la validación: ' . $validacion['fichas'] . ' ficha(s), '
+                    . $validacion['materiales'] . ' material(es) en ' . $validacion['filas']
+                    . ' fila(s). ' . ($avisos === [] ? '' : implode(' ', $avisos) . ' ')
+                    . 'Las fichas se están guardando; recibirás un correo al terminar.'
+                );
         } catch (\Throwable $e) {
             if ($rutaRelativa) {
                 Storage::disk('local')->delete($rutaRelativa);

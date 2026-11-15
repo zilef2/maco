@@ -9,10 +9,12 @@ use Illuminate\Support\Facades\DB;
 /**
  * Materiales genéricos: uno por cada par código categoría + código base.
  *
- * El genérico no maneja talla ni color y su precio es el promedio de los
- * precios de sus similares (promedio por material y luego entre materiales).
- * sincronizar() se puede ejecutar las veces que sea: crea los que faltan y
- * refresca el precio de los que ya existen cuando el promedio cambió.
+ * El genérico no maneja talla ni color, se codifica con el 0 del par
+ * (COM-CAP-0) y su precio es el promedio de los precios de sus similares
+ * (promedio por material y luego entre materiales). sincronizar() se puede
+ * ejecutar las veces que sea: crea los que faltan, pone en ese código a los
+ * que lo traen de la regla antigua y refresca el precio de los existentes
+ * cuando el promedio cambió.
  */
 class MaterialesGenericosService
 {
@@ -53,7 +55,7 @@ class MaterialesGenericosService
     }
 
     /**
-     * @return array{creados: int, precios: int}
+     * @return array{creados: int, precios: int, renumerados: int}
      */
     public function sincronizar(): array
     {
@@ -77,6 +79,7 @@ class MaterialesGenericosService
 
             $creados = 0;
             $precios = 0;
+            $renumerados = 0;
 
             foreach ($grupos as $clave => $grupo) {
                 $promedio = $this->promedioSimilares($grupo);
@@ -97,6 +100,11 @@ class MaterialesGenericosService
                     $genericos->put($clave, $generico);
                     $this->registrarMovimientoCreacion($generico, 'Creación de material genérico');
                     $creados++;
+                } elseif ($generico->codigo_material !== $clave . '-0') {
+                    // Los genéricos creados con la regla antigua traen el
+                    // consecutivo del par; el saving los reescribe a CAT-BAS-0.
+                    $generico->save();
+                    $renumerados++;
                 }
 
                 if ($promedio !== null && round((float) $generico->costoUnitarioActual(), 2) !== $promedio) {
@@ -108,13 +116,13 @@ class MaterialesGenericosService
                 }
             }
 
-            if ($creados > 0 || $precios > 0) {
+            if ($creados > 0 || $precios > 0 || $renumerados > 0) {
                 // El listado de materiales se sirve desde caché: se invalida
                 // para que los genéricos nuevos (o su precio) se vean de una.
                 $this->excelMateriales->invalidarCacheListados();
             }
 
-            return ['creados' => $creados, 'precios' => $precios];
+            return ['creados' => $creados, 'precios' => $precios, 'renumerados' => $renumerados];
         });
     }
 

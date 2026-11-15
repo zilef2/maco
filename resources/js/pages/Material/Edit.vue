@@ -54,8 +54,29 @@ props.titulos.forEach((names: any) => {
 
 const camposNormales = printForm.filter((campo) => campo.type !== 'boolean');
 const camposBooleanos = printForm.filter(
-    (campo) => campo.type === 'boolean' && !['maneja_color', 'maneja_otra_variante'].includes(campo.idd),
+    (campo) => campo.type === 'boolean' && !['generico', 'maneja_color', 'maneja_otra_variante'].includes(campo.idd),
 );
+
+// Un genérico no maneja talla, color ni diseño propios y su precio lo aporta el
+// promedio de sus similares, así que estos campos se ocultan y no se envían.
+const camposOmitidosPorGenerico = [
+    'existencia_actual',
+    'modelo_diseno_acabado',
+    'color',
+    'talla_tamano',
+    'variante_atributo_sugerido',
+    'proveedor_habitual',
+];
+
+const esGenerico = computed(() => Boolean(form.generico));
+
+const camposVisibles = computed(() => camposNormales.filter(
+    (campo) => !(esGenerico.value && camposOmitidosPorGenerico.includes(campo.idd)),
+));
+
+const camposBooleanosVisibles = computed(() => camposBooleanos.filter(
+    (campo) => !(esGenerico.value && campo.idd === 'maneja_talla'),
+));
 
 const esMaterialProcesado = computed(() => Number(form.material_procesado) === 1);
 
@@ -86,8 +107,14 @@ const camposBloqueados = ['codigo_material', 'existencia_actual'];
 const esCampoBloqueado = (campo: string) => camposBloqueados.includes(campo) && campo !== 'estado';
 
 // Campos que la edición nunca envía: el precio y la fecha de última compra solo
-// los define el formulario «Registrar compra».
-const camposFueraDeEnvio = [...camposBloqueados, 'last_purchase_price', 'last_purchase_date'];
+// los define el formulario «Registrar compra». En un genérico se suman los que
+// no aplican, para no pisar lo que ya tienen guardado.
+const camposFueraDeEnvio = computed(() => Array.from(new Set([
+    ...camposBloqueados,
+    'last_purchase_price',
+    'last_purchase_date',
+    ...(esGenerico.value ? camposOmitidosPorGenerico : []),
+])));
 
 const estadoActivo = (valor: any): boolean => {
     const texto = String(valor ?? '').trim().toLowerCase();
@@ -119,8 +146,8 @@ const descripcionToggle = (campo: string, activo: boolean): string => {
     }
     if (campo === 'generico') {
         return activo
-            ? 'Sí, es genérico: no maneja talla ni color y su precio es el promedio de sus similares'
-            : 'No, es un material específico';
+            ? 'Sí, es genérico: sin talla, color, diseño, proveedor ni precio propios; se codifica con el 0 del par (COM-CAP-0) y su precio es el promedio de sus similares'
+            : 'No, es un material específico con sus variantes y su precio de compra';
     }
     return activo ? 'Sí, este material lo maneja' : 'No aplica para este material';
 };
@@ -158,7 +185,7 @@ watchEffect(() => {
 
 const update = () => {
     const respaldo: Record<string, any> = {};
-    camposFueraDeEnvio.forEach(campo => {
+    camposFueraDeEnvio.value.forEach(campo => {
         respaldo[campo] = form[campo];
         delete form[campo];
     });
@@ -171,7 +198,7 @@ const update = () => {
         },
         onError: () => null,
         onFinish: () => {
-            camposFueraDeEnvio.forEach(campo => {
+            camposFueraDeEnvio.value.forEach(campo => {
                 form[campo] = respaldo[campo];
             });
         },
@@ -205,7 +232,7 @@ const update = () => {
                             Información general
                         </h3>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
-                            <div v-for="(atributosform, indice) in camposNormales" :key="indice">
+                            <template v-for="(atributosform, indice) in camposVisibles" :key="indice">
 
                                 <!-- estado: toggle Activo/Inactivo -->
                                 <div v-if="atributosform.idd === 'estado'" class="md:col-span-2">
@@ -242,7 +269,8 @@ const update = () => {
                                         v-model="form[atributosform.idd]" disabled />
                                     <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                                         Se forma con el código de la categoría y el código base (TEX-LFI-4). Si cambias el
-                                        par, el material toma el siguiente número libre del prefijo nuevo.
+                                        par, el material toma el siguiente número libre del prefijo nuevo. Los genéricos
+                                        siempre llevan el 0: COM-CAP-0.
                                     </p>
                                     <InputError class="mt-2" :message="form.errors[atributosform.idd]" />
                                 </div>
@@ -308,12 +336,38 @@ const update = () => {
                                         :class="esCampoBloqueado(atributosform.idd) ? 'bg-gray-100 dark:bg-gray-800/60 cursor-not-allowed opacity-70' : ''" />
                                     <InputError class="mt-2" :message="form.errors[atributosform.idd]" />
                                 </div>
-                            </div>
+
+                                <!-- ¿genérico? manda sobre talla, color, diseño, proveedor y precio -->
+                                <div v-if="atributosform.idd === 'codigo_categoria'"
+                                    role="switch" tabindex="0"
+                                    :aria-checked="esGenerico"
+                                    @click="toggleBoolean('generico')"
+                                    @keydown.space.prevent="toggleBoolean('generico')"
+                                    class="md:col-span-2 flex items-center justify-between gap-4 px-4 py-3 rounded-xl border cursor-pointer transition-colors"
+                                    :class="esGenerico
+                                        ? 'border-indigo-300 dark:border-indigo-700 bg-indigo-50/70 dark:bg-indigo-900/20'
+                                        : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/40 hover:border-gray-300 dark:hover:border-gray-600'">
+                                    <div>
+                                        <span class="block text-sm font-medium text-gray-800 dark:text-gray-200">
+                                            {{ lang().t('app.label')['generico'] || 'Material genérico' }}
+                                        </span>
+                                        <span class="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                            {{ descripcionToggle('generico', esGenerico) }}
+                                        </span>
+                                        <InputError class="mt-1" :message="form.errors.generico" />
+                                    </div>
+                                    <span class="relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors duration-200"
+                                        :class="esGenerico ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-gray-600'">
+                                        <span class="inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform duration-200"
+                                            :class="esGenerico ? 'translate-x-6' : 'translate-x-1'" />
+                                    </span>
+                                </div>
+                            </template>
                         </div>
                     </div>
 
                     <!-- Atributos del material (una sola columna, toggles grandes) -->
-                    <div v-if="camposBooleanos.length">
+                    <div v-if="camposBooleanosVisibles.length">
                         <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-1.5 mb-1">
                             <SwatchIcon class="w-4 h-4 text-gray-400 dark:text-gray-500" />
                             Atributos del material
@@ -322,7 +376,7 @@ const update = () => {
                             Activa los atributos que aplican a este material.
                         </p>
                         <div class="space-y-2 max-w-2xl">
-                            <div v-for="atributosform in camposBooleanos" :key="atributosform.idd"
+                            <div v-for="atributosform in camposBooleanosVisibles" :key="atributosform.idd"
                                 role="switch" tabindex="0"
                                 :aria-checked="toggleActivo(atributosform.idd, form[atributosform.idd])"
                                 @click="toggleBoolean(atributosform.idd)"
@@ -370,6 +424,7 @@ const update = () => {
 
                     <!-- Precio de última compra -->
                     <div>
+                        <template v-if="!esGenerico">
                         <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-1.5 mb-4">
                             <span class="inline-flex h-4 w-4 items-center justify-center rounded bg-indigo-600 text-white text-[10px]">
                                 $
@@ -409,6 +464,17 @@ const update = () => {
                                     La define cada registro de compra
                                 </p>
                             </div>
+                        </div>
+                        </template>
+                        <div v-else
+                            class="rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/60 dark:bg-indigo-900/20 px-4 py-3 mb-4">
+                            <p class="text-sm font-medium text-gray-800 dark:text-gray-200">
+                                Un material genérico no registra precio ni fecha de compra propios
+                            </p>
+                            <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                                Su precio es el promedio de los precios de sus similares de la misma categoría y nombre
+                                base; lo actualiza la acción de materiales genéricos.
+                            </p>
                         </div>
 
                         <!-- Histórico de precios (material_prices) -->

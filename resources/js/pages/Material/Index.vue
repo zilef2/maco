@@ -83,6 +83,7 @@ const estadoFiltro = ref<string | 'todos'>('Activo');
 const unidadFiltro = ref<string | 'todos'>('todos');
 const varianteFiltro = ref<string | 'todos'>('todos');
 const precioFiltro = ref<string | 'sin_precio' | 'con_precio'>('todos');
+const genericoFiltro = ref(false);
 const procesadoFiltro = ref<'todos' | 'si' | 'no'>('todos');
 const enOpFiltro = ref<'todos' | 'si' | 'no'>('todos');
 const boolFiltros = reactive<Record<string, '' | '1' | '0'>>({
@@ -115,6 +116,10 @@ const estadoNormalizado = (valor: any): EstadoMaterial => {
 };
 
 const estaProcesado = (valor: any): boolean =>
+    valor === true || valor === 1 || valor === '1' || String(valor).toLowerCase() === 'true';
+
+/** Un material es genérico cuando el flag `generico` está activo. */
+const esGenerico = (valor: any): boolean =>
     valor === true || valor === 1 || valor === '1' || String(valor).toLowerCase() === 'true';
 
 const idsEnOp = computed(() => new Set(((props.materialesEnOp as any[]) ?? []).map(Number)));
@@ -295,6 +300,10 @@ const filtradas = computed(() =>
         if (precioFiltro.value === 'con_precio' && (m.last_purchase_price === null || m.last_purchase_price === undefined)) {
             return false;
         }
+        // Filtro solo genéricos
+        if (genericoFiltro.value && !esGenerico(m.generico)) {
+            return false;
+        }
         if (procesadoFiltro.value !== 'todos' && estaProcesado(m.material_procesado) !== (procesadoFiltro.value === 'si')) {
             return false;
         }
@@ -407,6 +416,7 @@ const filtrosBarra = computed(
         (categoriaFiltro.value !== 'todos' ? 1 : 0) +
         (proveedorFiltro.value !== 'todos' ? 1 : 0) +
         (precioFiltro.value !== 'todos' ? 1 : 0) +
+        (genericoFiltro.value ? 1 : 0) +
         (estadoFiltro.value !== 'Activo' ? 1 : 0) +
         (procesadoFiltro.value !== 'todos' ? 1 : 0) +
         (enOpFiltro.value !== 'todos' ? 1 : 0),
@@ -446,13 +456,14 @@ const limpiarFiltros = () => {
     unidadFiltro.value = 'todos';
     varianteFiltro.value = 'todos';
     precioFiltro.value = 'todos';
+    genericoFiltro.value = false;
     procesadoFiltro.value = 'todos';
     enOpFiltro.value = 'todos';
     Object.keys(boolFiltros).forEach((campo) => (boolFiltros[campo] = ''));
 };
 
 watch(
-    [busqueda, categoriaFiltro, proveedorFiltro, estadoFiltro, unidadFiltro, varianteFiltro, precioFiltro, procesadoFiltro, enOpFiltro, porPagina],
+    [busqueda, categoriaFiltro, proveedorFiltro, estadoFiltro, unidadFiltro, varianteFiltro, precioFiltro, genericoFiltro, procesadoFiltro, enOpFiltro, porPagina],
     () => {
         pagina.value = 1;
     },
@@ -885,6 +896,27 @@ const titulos = [
                                 ]" />
                             </span>
                             Sin precio
+                        </button>
+
+                        <button type="button"
+                            @click="genericoFiltro = !genericoFiltro"
+                            :aria-pressed="genericoFiltro" aria-label="Filtrar materiales genéricos"
+                            :class="[
+                                'inline-flex h-9 items-center gap-2 rounded-full border px-3 text-xs font-medium shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background',
+                                genericoFiltro
+                                    ? 'border-violet-600 bg-violet-600 text-white hover:bg-violet-700'
+                                    : 'border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground',
+                            ]">
+                            <span :class="[
+                                'relative inline-flex h-4 w-7 items-center rounded-full transition-colors',
+                                genericoFiltro ? 'bg-white/40' : 'bg-muted-foreground/30',
+                            ]">
+                                <span :class="[
+                                    'absolute h-3 w-3 rounded-full bg-white shadow transition-transform',
+                                    genericoFiltro ? 'translate-x-3.5' : 'translate-x-0.5',
+                                ]" />
+                            </span>
+                            Genéricos
                         </button>
 
                         <!-- Banner rojo para materiales sin precio -->

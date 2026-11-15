@@ -40,6 +40,7 @@ const props = defineProps({
         nota: string;
         plantilla: string | null;
         hojas?: HojaExcel[];
+        avisos?: string[];
         metrica: MetricaExcel | null;
     }>,
     entidadesExcel: Array as () => EntidadExcel[],

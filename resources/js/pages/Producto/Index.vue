@@ -667,98 +667,6 @@ const recargar = () => {
                             </div>
                         </div>
 
-                        <DropdownMenu>
-                            <DropdownMenuTrigger type="button" :class="[
-                                'inline-flex h-9 items-center gap-1.5 rounded-md border border-border bg-card px-3 text-xs font-medium text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background',
-                                filtrosAvanzados > 0 ? 'border-foreground/20 bg-muted' : '',
-                            ]">
-                                <FunnelIcon class="h-3.5 w-3.5" />
-                                Más filtros
-                                <span v-if="filtrosAvanzados > 0" class="tabular-nums">{{ filtrosAvanzados }}</span>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" class="max-h-[70vh] w-72 overflow-y-auto p-3">
-                                <div class="flex flex-col gap-2.5" @click.stop>
-                                    <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
-                                        Familia
-                                        <select v-model="familiaFiltro" :class="selectClass">
-                                            <option value="">Todas</option>
-                                            <option v-for="opcion in familiasDisponibles" :key="opcion.value"
-                                                :value="opcion.value">
-                                                {{ opcion.label }}
-                                            </option>
-                                        </select>
-                                    </label>
-
-                                    <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
-                                        Control de variante
-                                        <select v-model="controlVarianteFiltro" :class="selectClass">
-                                            <option value="">Todos</option>
-                                            <option v-for="opcion in controlesVarianteDisponibles" :key="opcion.value"
-                                                :value="opcion.value">
-                                                {{ opcion.label }}
-                                            </option>
-                                        </select>
-                                    </label>
-
-                                    <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
-                                        Opciones contiene
-                                        <input v-model="opcionFiltro" type="search" placeholder="Ej. S, M, L o 21-30"
-                                            :class="selectClass" />
-                                    </label>
-
-                                    <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
-                                        Precio venta
-                                        <select v-model="precioPreventaFiltro" :class="selectClass">
-                                            <option v-for="opcion in opcionesPrecioPreventa" :key="opcion.value"
-                                                :value="opcion.value">
-                                                {{ opcion.label }}
-                                            </option>
-                                        </select>
-                                    </label>
-
-                                    <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
-                                        Coste producción
-                                        <select v-model="costeProduccionFiltro" :class="selectClass">
-                                            <option v-for="opcion in opcionesCosteProduccion" :key="opcion.value"
-                                                :value="opcion.value">
-                                                {{ opcion.label }}
-                                            </option>
-                                        </select>
-                                    </label>
-
-                                    <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
-                                        Tallas
-                                        <select v-model="tallasFiltro" :class="selectClass">
-                                            <option v-for="opcion in opcionesTallas" :key="opcion.value"
-                                                :value="opcion.value">
-                                                {{ opcion.label }}
-                                            </option>
-                                        </select>
-                                    </label>
-
-                                    <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
-                                        Cantidad planificada
-                                        <select v-model="cantidadFiltro" :class="selectClass">
-                                            <option v-for="opcion in opcionesCantidad" :key="opcion.value"
-                                                :value="opcion.value">
-                                                {{ opcion.label }}
-                                            </option>
-                                        </select>
-                                    </label>
-
-                                    <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
-                                        Ficha técnica
-                                        <select v-model="fichaFiltro" :class="selectClass">
-                                            <option v-for="opcion in opcionesFicha" :key="opcion.value"
-                                                :value="opcion.value">
-                                                {{ opcion.label }}
-                                            </option>
-                                        </select>
-                                    </label>
-                                </div>
-                            </DropdownMenuContent>
-                        </DropdownMenu>
-
                         <select v-model.number="porPagina" aria-label="Registros por página" :class="selectClass">
                             <option v-for="n in [10, 25, 50, 100]" :key="n" :value="n">{{ n }} / página</option>
                         </select>
@@ -768,6 +676,81 @@ const recargar = () => {
                             <XMarkIcon class="h-3.5 w-3.5" />
                             Limpiar
                         </button>
+                    </div>
+
+                    <!-- Fila 2: filtros por columna -->
+                    <div class="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-8">
+                        <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                            Familia
+                            <select v-model="familiaFiltro" :class="[selectClass, 'w-full']">
+                                <option value="">Todas</option>
+                                <option v-for="opcion in familiasDisponibles" :key="opcion.value" :value="opcion.value">
+                                    {{ opcion.label }}
+                                </option>
+                            </select>
+                        </label>
+
+                        <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                            Control de variante
+                            <select v-model="controlVarianteFiltro" :class="[selectClass, 'w-full']">
+                                <option value="">Todos</option>
+                                <option v-for="opcion in controlesVarianteDisponibles" :key="opcion.value"
+                                    :value="opcion.value">
+                                    {{ opcion.label }}
+                                </option>
+                            </select>
+                        </label>
+
+                        <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                            Opciones contiene
+                            <input v-model="opcionFiltro" type="search" placeholder="Ej. S, M, L…"
+                                :class="[selectClass, 'w-full']" />
+                        </label>
+
+                        <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                            Precio venta
+                            <select v-model="precioPreventaFiltro" :class="[selectClass, 'w-full']">
+                                <option v-for="opcion in opcionesPrecioPreventa" :key="opcion.value" :value="opcion.value">
+                                    {{ opcion.label }}
+                                </option>
+                            </select>
+                        </label>
+
+                        <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                            Coste producción
+                            <select v-model="costeProduccionFiltro" :class="[selectClass, 'w-full']">
+                                <option v-for="opcion in opcionesCosteProduccion" :key="opcion.value" :value="opcion.value">
+                                    {{ opcion.label }}
+                                </option>
+                            </select>
+                        </label>
+
+                        <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                            Tallas
+                            <select v-model="tallasFiltro" :class="[selectClass, 'w-full']">
+                                <option v-for="opcion in opcionesTallas" :key="opcion.value" :value="opcion.value">
+                                    {{ opcion.label }}
+                                </option>
+                            </select>
+                        </label>
+
+                        <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                            Cantidad planificada
+                            <select v-model="cantidadFiltro" :class="[selectClass, 'w-full']">
+                                <option v-for="opcion in opcionesCantidad" :key="opcion.value" :value="opcion.value">
+                                    {{ opcion.label }}
+                                </option>
+                            </select>
+                        </label>
+
+                        <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                            Ficha producto
+                            <select v-model="fichaFiltro" :class="[selectClass, 'w-full']">
+                                <option v-for="opcion in opcionesFicha" :key="opcion.value" :value="opcion.value">
+                                    {{ opcion.label }}
+                                </option>
+                            </select>
+                        </label>
                     </div>
                 </div>
 

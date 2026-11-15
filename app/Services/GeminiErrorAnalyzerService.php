@@ -31,7 +31,9 @@ class GeminiErrorAnalyzerService
             . "Responde de forma muy clara, concisa y directa con exactamente estos dos puntos:\n"
             . "1. **Dónde está el error:** (indica archivo, método y número de línea exacta detectada en la traza).\n"
             . "2. **Qué parece ser:** (explica con palabras sencillas cuál es la causa más probable del problema y qué dato o condición lo detonó).\n"
-            . "No agregues saludos ni despedidas, ve directo a los puntos.";
+            . "Reglas: no menciones pantallas, vistas, paneles, módulos ni botones de uso interno o exclusivo del desarrollador "
+            . "(por ejemplo, la vista «Actividad»); describe el problema solo en términos del dato, del archivo o del proceso de importación. "
+            . "No agregues saludos ni despedidas.";
 
         try {
             $url = "{$baseUrl}/models/{$modelo}:generateContent?key={$key}";

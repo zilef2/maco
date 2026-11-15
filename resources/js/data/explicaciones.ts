@@ -865,30 +865,32 @@ export const explicaciones: Explicacion[] = [
         subcategoria: 'Material genérico',
         titulo: 'El material genérico: uno por cada par categoría-base',
         resumen:
-            'Un material genérico representa a todos los que comparten su código de categoría y su código base: no maneja talla ni color y su precio es el promedio de los precios de sus similares.',
+            'Un material genérico representa a todos los que comparten su código de categoría y su código base: se codifica con el 0 del par (COM-CAP-0), no maneja talla ni color y su precio es el promedio de los precios de sus similares.',
         etiquetas: [
             'genérico',
             'generico',
             'material genérico',
             'promedio de precios',
             'categoria base',
-            'TEX-LFL',
+            'CAT-BAS-0',
+            'TEX-LFL-0',
             'sin talla',
             'sin color',
             'botón superadmin',
             'crear genéricos',
         ],
-        actualizada: '2026-11-11',
+        actualizada: '2026-11-14',
         bloques: [
             {
                 tipo: 'texto',
                 texto:
-                    'Si existen TEX-LFL-1 a TEX-LFL-5 (Lona Florentina) y TEX-LYC-1 (Lycra), solo hacen falta dos genéricos: uno para el par TEX-LFL y otro para TEX-LYC. El genérico toma el siguiente consecutivo libre del par (por ejemplo TEX-LFL-6) y su nombre base lleva el sufijo «(Genérico)» para distinguirlo en los selects.',
+                    'Si existen TEX-LFL-1 a TEX-LFL-5 (Lona Florentina) y TEX-LYC-1 (Lycra), solo hacen falta dos genéricos: uno para el par TEX-LFL y otro para TEX-LYC. El genérico no usa el consecutivo del par: siempre lleva el 0 (TEX-LFL-0 y TEX-LYC-0), porque debe haber uno solo por categoría y nombre base. El nombre base lleva el sufijo «(Genérico)» para distinguirlo en los selects.',
             },
             {
                 tipo: 'lista',
                 items: [
                     'La columna «generico» de la tabla materials marca el material; el modelo obliga a que un genérico no tenga talla ni color: limpia maneja_color, maneja_talla, maneja_otra_variante, color, talla_tamaño y borra sus variantes al guardar, venga de donde venga la escritura.',
+                    'La misma escritura del modelo fuerza el código CAT-BAS-0 del par y rechaza un segundo genérico para ese par, así que ni el formulario, ni el Excel ni el botón pueden duplicarlo.',
                     'El precio se calcula en dos pasos: primero el promedio de las filas de precio de cada similar y luego el promedio entre los similares que sí tienen precio. El resultado se guarda como una fila nueva en material_prices con la fecha de hoy.',
                     'Si un grupo no tiene ningún similar con precio, el genérico se crea igual pero se queda sin fila de precio.',
                     'El botón vive en Actividad → Acciones de Superadministrador, al lado de «Existencias y precios al azar», y no requiere entorno de prueba.',
@@ -899,14 +901,14 @@ export const explicaciones: Explicacion[] = [
                 items: [
                     'Abrir Actividad (solo superadmin) y bajar hasta «Acciones de Superadministrador».',
                     'En la tarjeta «Materiales genéricos» revisar el detalle: cuántas combinaciones hay, cuántas están sin genérico y cuántos genéricos existen.',
-                    'Pulsar «Crear los genéricos que faltan». Se pueden pulsar las veces que sea: solo crea los que faltan y, en los que ya existen, agrega una fila de precio únicamente si el promedio cambió.',
+                    'Pulsar «Crear los genéricos que faltan». Se puede pulsar las veces que sea: crea los que faltan con su código CAT-BAS-0, renumera a ese código a los genéricos creados con la regla antigua y, en los que ya existen, agrega una fila de precio únicamente si el promedio cambió.',
                 ],
             },
             {
                 tipo: 'nota',
                 tono: 'info',
                 texto:
-                    'El genérico también se puede marcar a mano con el interruptor «Genérico» del formulario de material; al activarlo se le quitan tallas y colores aunque se hayan escrito.',
+                    'El genérico también se puede marcar a mano con el interruptor «Genérico» del formulario de material, que está al lado del código de categoría; al activarlo se le quitan tallas, colores, diseño, proveedor y precio propios, y el código pasa a ser el 0 del par.',
             },
             {
                 tipo: 'subtitulo',
@@ -923,10 +925,11 @@ export const explicaciones: Explicacion[] = [
         ],
         fuentes: [
             'database/migrations/2026_11_11_100000_add_generico_to_materials_table.php',
-            'app/Models/Material.php (limpiarVariantesPorGenerico en saving; sincronizarVariantes la respeta)',
-            'app/Services/MaterialesGenericosService.php (sincronizar y estadisticas)',
+            'app/Models/Material.php (aplicarReglaDelCodigo con el 0 del par y descartarGenericoDuplicado; limpiarVariantesPorGenerico en saving; sincronizarVariantes la respeta)',
+            'app/Services/MaterialesGenericosService.php (sincronizar crea, renumera a CAT-BAS-0 y promedia; estadisticas)',
             'app/Services/FichaTecnicaService.php (opcionesMateriales con bandera generico; guardar solo admite genéricos)',
             'resources/js/pages/FichaTecnicaMateriales/EditorMateriales.vue (select filtrado, búsqueda por código/nombre, Enter agrega fila)',
+            'resources/js/pages/Material/Create.vue y Edit.vue (interruptor «Genérico» junto al código de categoría; el código previsualizado usa el 0 del par)',
             'app/Http/Controllers/SuperadminAccionesController.php (materialesGenericos)',
             'routes/web.php (POST /superadmin/materiales-genericos)',
             'resources/js/pages/actividad/AccionesSuperadmin.vue (tarjeta «Materiales genéricos»)',

@@ -78,11 +78,47 @@ props.titulos.forEach((names: any) => {
 
 const camposNormales = printForm.filter((campo) => campo.type !== 'boolean');
 const camposBooleanos = printForm.filter(
-    (campo) => campo.type === 'boolean' && !['maneja_color', 'maneja_otra_variante'].includes(campo.idd),
+    (campo) => campo.type === 'boolean' && !['generico', 'maneja_color', 'maneja_otra_variante'].includes(campo.idd),
 );
+
+// Un genérico no tiene datos propios de variante ni de compra: se ocultan, se
+// limpian y dejan de ser obligatorios. Su precio lo aporta el promedio de sus
+// similares, así que tampoco se pide al crearlo.
+const camposOmitidosPorGenerico = [
+    'existencia_actual',
+    'modelo_diseno_acabado',
+    'color',
+    'talla_tamano',
+    'variante_atributo_sugerido',
+    'proveedor_habitual',
+];
+
+const esGenerico = computed(() => Boolean(form.generico));
+
+const camposVisibles = computed(() => camposNormales.filter(
+    (campo) => !(esGenerico.value && camposOmitidosPorGenerico.includes(campo.idd)),
+));
+
+const camposBooleanosVisibles = computed(() => camposBooleanos.filter(
+    (campo) => !(esGenerico.value && campo.idd === 'maneja_talla'),
+));
 
 const hayProveedores = computed(() => (props.losSelect?.proveedor_habitual?.length || 0) > 0);
 const esMaterialProcesado = computed(() => Number(form.material_procesado) === 1);
+
+// Un genérico no lleva proveedor habitual, así que no depende de que existan
+// proveedores registrados.
+const puedeCrear = computed(() => esGenerico.value || hayProveedores.value);
+
+watch(esGenerico, (activo) => {
+    if (!activo) return;
+    camposOmitidosPorGenerico.forEach((campo) => {
+        form[campo] = campo === 'existencia_actual' ? 0 : '';
+    });
+    form.maneja_color = false;
+    form.maneja_talla = false;
+    form.maneja_otra_variante = false;
+});
 
 const estadoActivo = (valor: any): boolean => {
     const texto = String(valor ?? '').trim().toLowerCase();
@@ -114,8 +150,8 @@ const descripcionToggle = (campo: string, activo: boolean): string => {
     }
     if (campo === 'generico') {
         return activo
-            ? 'Sí, es genérico: no maneja talla ni color y su precio es el promedio de sus similares'
-            : 'No, es un material específico';
+            ? 'Sí, es genérico: sin talla, color, diseño, proveedor ni precio propios; se codifica con el 0 del par (COM-CAP-0) y su precio es el promedio de sus similares'
+            : 'No, es un material específico con sus variantes y su precio de compra';
     }
     return activo ? 'Sí, este material lo maneja' : 'No aplica para este material';
 };
@@ -157,6 +193,13 @@ const generarCodigoMaterial = () => {
     }
 
     const prefijo = `${cat}-${base}`;
+
+    // El genérico es uno solo por par, así que siempre lleva el 0 del prefijo.
+    if (esGenerico.value) {
+        form.codigo_material = `${prefijo}-0`;
+        return;
+    }
+
     let max = 0;
     const listaMateriales = [
         ...(Array.isArray(props.materiales) ? props.materiales : []),
@@ -177,7 +220,7 @@ const generarCodigoMaterial = () => {
 };
 
 watch(
-    () => [form.categoria, form.codigo_categoria, form.nombre_base, form.codigo_base],
+    () => [form.categoria, form.codigo_categoria, form.nombre_base, form.codigo_base, form.generico],
     () => {
         generarCodigoMaterial();
     }
@@ -199,14 +242,15 @@ function ValidarVacios() {
     printForm.forEach(element => {
         if (element.type === 'boolean') return;
         if (camposIgnorados.includes(element.idd)) return;
+        if (esGenerico.value && camposOmitidosPorGenerico.includes(element.idd)) return;
 
         const valor = form[element.idd];
         if (valor === '' || valor === null || valor === undefined) {
             faltantes.push(element.idd);
         }
     });
-    // Validar precio de última compra (obligatorio)
-    if (!form.last_purchase_price || form.last_purchase_price === '' || Number(form.last_purchase_price) < 0) {
+    // Validar precio de última compra (obligatorio salvo en genéricos)
+    if (!esGenerico.value && (!form.last_purchase_price || form.last_purchase_price === '' || Number(form.last_purchase_price) < 0)) {
         faltantes.push('last_purchase_price');
     }
     state.camposFaltantes = faltantes;
@@ -276,7 +320,7 @@ watchEffect(() => {
                             Información general
                         </h3>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
-                            <div v-for="(atributosform, indice) in camposNormales" :key="indice">
+                            <template v-for="(atributosform, indice) in camposVisibles" :key="indice">
 
                                 <!-- estado: toggle Activo/Inactivo -->
                                 <div v-if="atributosform.idd === 'estado'" class="md:col-span-2">
@@ -313,7 +357,7 @@ watchEffect(() => {
                                         :model-value="form.codigo_material" disabled placeholder="Se genera automáticamente" />
                                     <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                                         Se forma con el código de la categoría y el código base, más el siguiente número
-                                        libre de esa combinación. Ejemplo: TEX-LFI-4.
+                                        libre de esa combinación (TEX-LFI-4). Los genéricos siempre llevan el 0: COM-CAP-0.
                                     </p>
                                     <InputError class="mt-2" :message="form.errors.codigo_material" />
                                 </div>
@@ -404,12 +448,38 @@ watchEffect(() => {
                                         :error="form.errors[atributosform.idd]" />
                                     <InputError class="mt-2" :message="form.errors[atributosform.idd]" />
                                 </div>
-                            </div>
+
+                                <!-- ¿genérico? manda sobre talla, color, diseño, proveedor y precio -->
+                                <div v-if="atributosform.idd === 'codigo_categoria'"
+                                    role="switch" tabindex="0"
+                                    :aria-checked="esGenerico"
+                                    @click="toggleBoolean('generico')"
+                                    @keydown.space.prevent="toggleBoolean('generico')"
+                                    class="md:col-span-2 flex items-center justify-between gap-4 px-4 py-3 rounded-xl border cursor-pointer transition-colors"
+                                    :class="esGenerico
+                                        ? 'border-indigo-300 dark:border-indigo-700 bg-indigo-50/70 dark:bg-indigo-900/20'
+                                        : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/40 hover:border-gray-300 dark:hover:border-gray-600'">
+                                    <div>
+                                        <span class="block text-sm font-medium text-gray-800 dark:text-gray-200">
+                                            {{ lang().t('app.label')['generico'] || 'Material genérico' }}
+                                        </span>
+                                        <span class="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                                            {{ descripcionToggle('generico', esGenerico) }}
+                                        </span>
+                                        <InputError class="mt-1" :message="form.errors.generico" />
+                                    </div>
+                                    <span class="relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors duration-200"
+                                        :class="esGenerico ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-gray-600'">
+                                        <span class="inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform duration-200"
+                                            :class="esGenerico ? 'translate-x-6' : 'translate-x-1'" />
+                                    </span>
+                                </div>
+                            </template>
                         </div>
                     </div>
 
                     <!-- Atributos del material (una sola columna, toggles grandes) -->
-                    <div v-if="camposBooleanos.length">
+                    <div v-if="camposBooleanosVisibles.length">
                         <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-1.5 mb-1">
                             <SwatchIcon class="w-4 h-4 text-gray-400 dark:text-gray-500" />
                             Atributos del material
@@ -418,7 +488,7 @@ watchEffect(() => {
                             Activa los atributos que aplican a este material.
                         </p>
                         <div class="space-y-2 max-w-2xl">
-                            <div v-for="atributosform in camposBooleanos" :key="atributosform.idd"
+                            <div v-for="atributosform in camposBooleanosVisibles" :key="atributosform.idd"
                                 role="switch" tabindex="0"
                                 :aria-checked="toggleActivo(atributosform.idd, form[atributosform.idd])"
                                 @click="toggleBoolean(atributosform.idd)"
@@ -460,7 +530,7 @@ watchEffect(() => {
                     </div>
 
                     <!-- Precio de última compra -->
-                    <div>
+                    <div v-if="!esGenerico">
                         <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-1.5 mb-4">
                             <span class="inline-flex h-4 w-4 items-center justify-center rounded bg-indigo-600 text-white text-[10px]">
                                 $
@@ -502,6 +572,15 @@ watchEffect(() => {
                             </div>
                         </div>
                     </div>
+                    <div v-else
+                        class="rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/60 dark:bg-indigo-900/20 px-4 py-3">
+                        <p class="text-sm font-medium text-gray-800 dark:text-gray-200">
+                            Un material genérico no registra precio ni fecha de compra
+                        </p>
+                        <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                            Su precio es el promedio de los precios de sus similares de la misma categoría y nombre base.
+                        </p>
+                    </div>
                 </div>
 
                 <!-- Pie -->
@@ -515,8 +594,8 @@ watchEffect(() => {
                         <SecondaryButton :disabled="form.processing" @click="emit('close')"> {{ lang().t('app.button.close')
                             }}
                         </SecondaryButton>
-                        <PrimaryButton class="ml-3" :class="{ 'opacity-25': form.processing || !hayProveedores }"
-                            :disabled="form.processing || !hayProveedores">
+                        <PrimaryButton class="ml-3" :class="{ 'opacity-25': form.processing || !puedeCrear }"
+                            :disabled="form.processing || !puedeCrear">
                             {{ lang().t('app.button.add') }} {{ form.processing ? '...' : '' }}
                         </PrimaryButton>
                     </div>

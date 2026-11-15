@@ -448,13 +448,14 @@ class MaterialController extends Controller {
 //        $no_nada = $request->no_nada['id'];
 //        $request->merge(['no_nada_id' => $request->no_nada['id']]);
         
-        // Validar precio de última compra (obligatorio) y, si el material se
-        // marca como procesado, las líneas de su ficha técnica.
+        // Validar precio de última compra (obligatorio salvo en genéricos) y, si
+        // el material se marca como procesado, las líneas de su ficha técnica.
         // El código del material no se digita: lo arma el modelo con el par
         // codigo_categoria + codigo_base (TEX-LFI-4).
+        $precioObligatorio = $request->boolean('generico') ? 'nullable' : 'required';
         $request->validate([
-            'last_purchase_price' => 'required|numeric|min:0',
-            'last_purchase_date' => 'required|date',
+            'last_purchase_price' => [$precioObligatorio, 'numeric', 'min:0'],
+            'last_purchase_date' => [$precioObligatorio, 'date'],
             'codigo_categoria' => 'nullable|string|regex:/^[\p{L} ]*$/u',
             'codigo_base' => 'nullable|string|regex:/^[\p{L} ]*$/u',
             'materiales' => 'nullable|array',
@@ -475,14 +476,17 @@ class MaterialController extends Controller {
         $Material->sincronizarVariantes($colores, $variantes);
         $this->registrarMovimientoCreacion($Material);
         
-        // Guardar precio de última compra
-        $price = $request->input('last_purchase_price');
-        $date = $request->input('last_purchase_date');
-        
-        $Material->prices()->create([
-            'precio' => $price,
-            'fecha' => $date
-        ]);
+        // Guardar precio de última compra. El genérico no lo recibe del
+        // formulario: su precio lo aporta el promedio de sus similares.
+        if (!$Material->generico) {
+            $price = $request->input('last_purchase_price');
+            $date = $request->input('last_purchase_date');
+
+            $Material->prices()->create([
+                'precio' => $price,
+                'fecha' => $date
+            ]);
+        }
 
         if ($Material->material_procesado) {
             $lineas = $this->lineasFichaDesdeRequest($request);

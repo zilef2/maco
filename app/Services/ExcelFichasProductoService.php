@@ -19,8 +19,13 @@ use RuntimeException;
  * producto" es productos.Codigo_interno, "codigo material" es
  * materials.codigo_material y "consumo por par" el consumo estándar. Las filas
  * que comparten código de producto forman una sola ficha; las columnas
- * "Producto" y "Material" son solo texto de ayuda y se ignoran, y la "unidad"
- * queda como referencia porque la ficha conserva la unidad del material.
+ * "Producto" y "Material" se usan para buscar el registro cuando la celda del
+ * código quedó vacía, y la "unidad" queda como referencia porque la ficha
+ * conserva la unidad del material.
+ *
+ * Las reglas aparte del código (el consecutivo no importa, la receta apunta al
+ * genérico del par y el consumo vacío vale 1) viven en
+ * {@see specialfunctions_fichaproducto}.
  *
  * Este archivo no crea productos ni materiales. `validar()` se corre en la
  * misma petición de subida y rechaza el archivo completo con la lista de los
@@ -39,8 +44,8 @@ class ExcelFichasProductoService
     /**
      * Títulos aceptados, ya en la clave que produce `clave()` (sin espacios,
      * tildes ni minúsculas), y su campo canónico. Los títulos que no están aquí
-     * se ignoran: el archivo suele traer el nombre del producto y del material
-     * junto a sus códigos.
+     * se ignoran. Las columnas de nombres son el plan B de las de códigos:
+     * solo se usan cuando la celda del código de la fila quedó vacía.
      */
     private const ALIAS_COLUMNAS = [
         'CODIGOPRODUCTO'        => 'codigo_producto',
@@ -57,6 +62,8 @@ class ExcelFichasProductoService
         'UNIDAD'                => 'unidad',
         'UNIDADMEDIDA'          => 'unidad',
         'UNIDADINVENTARIO'      => 'unidad',
+        'PRODUCTO'              => 'nombre_producto',
+        'MATERIAL'              => 'nombre_material',
     ];
 
     /** Cuántos códigos y cuántas filas se muestran en un aviso. */
@@ -65,6 +72,7 @@ class ExcelFichasProductoService
     public function __construct(
         private ExcelSecurityScanner $scanner,
         private FichaTecnicaService $fichas,
+        private specialfunctions_fichaproducto $especiales,
     ) {
     }
 
@@ -78,16 +86,17 @@ class ExcelFichasProductoService
 
     /**
      * Revisa el archivo entero antes de encolar la carga: el formato, que cada
-     * código de producto y de material exista en la app, que los consumos sean
-     * números y que ninguna ficha esté bloqueada por una OP activa.
+     * producto y cada material del archivo tengan su genérico en la app, que los
+     * consumos sean números y que ninguna ficha esté bloqueada por una OP activa.
      *
-     * @return array{filas: int, productos: int, fichas: int, materiales: int}
+     * @return array{filas: int, productos: int, fichas: int, materiales: int, avisos: string[]}
      *
      * @throws RuntimeException con todo lo que hay que corregir, junto
      */
     public function validar(string $ruta): array
     {
-        $destinos = $this->agruparPorFicha($this->gruposDesdeArchivo($ruta));
+        $lectura = $this->gruposDesdeArchivo($ruta);
+        $destinos = $this->agruparPorFicha($lectura['grupos']);
 
         $bloqueos = $this->fichas->bloqueosPorProducto();
         $bloqueados = [];
@@ -136,6 +145,7 @@ class ExcelFichasProductoService
             'productos' => $productos,
             'fichas' => count($destinos),
             'materiales' => count($materiales),
+            'avisos' => $this->avisosDeLectura($lectura['consumos_vacios']),
         ];
     }
 
@@ -144,11 +154,12 @@ class ExcelFichasProductoService
      * la que ya tenga. Una ficha puede cubrir varios productos (variantes): el
      * archivo aporta uno y el resto se conserva.
      *
-     * @return array{creados: int, actualizados: int, filas: int}
+     * @return array{creados: int, actualizados: int, filas: int, avisos: string[]}
      */
     public function importar(string $ruta): array
     {
-        $destinos = $this->agruparPorFicha($this->gruposDesdeArchivo($ruta));
+        $lectura = $this->gruposDesdeArchivo($ruta);
+        $destinos = $this->agruparPorFicha($lectura['grupos']);
 
         $creados = 0;
         $actualizados = 0;
@@ -192,6 +203,7 @@ class ExcelFichasProductoService
             'creados' => $creados,
             'actualizados' => $actualizados,
             'filas' => $filas,
+            'avisos' => $this->avisosDeLectura($lectura['consumos_vacios']),
         ];
     }
 
@@ -242,9 +254,10 @@ class ExcelFichasProductoService
     }
 
     /**
-     * Lee la hoja y devuelve una entrada por producto con sus materiales.
+     * Lee la hoja y devuelve una entrada por producto con sus materiales, más
+     * las filas que llegaron sin consumo y se tomaron como 1.
      *
-     * @return array<int, array{codigo_producto: string, producto_id: int, materiales: array<int, array<string, mixed>>}>
+     * @return array{grupos: array<int, array{codigo_producto: string, producto_id: int, materiales: array<int, array<string, mixed>>}>, consumos_vacios: int[]}
      */
     private function gruposDesdeArchivo(string $ruta): array
     {
@@ -261,6 +274,8 @@ class ExcelFichasProductoService
         $sinProducto = [];
         $sinMaterial = [];
         $grupos = [];
+        $consumosVacios = [];
+        $codigosPorProducto = [];
 
         foreach (array_slice($filas, 1) as $posicion => $fila) {
             $numeroFila = $posicion + 2; // La fila 1 son los títulos.
@@ -269,41 +284,71 @@ class ExcelFichasProductoService
             $codigoProducto = $registro['codigo_producto'];
             $codigoMaterial = $registro['codigo_material'];
 
-            if ($codigoProducto === '' && $codigoMaterial === '') {
+            if ($codigoProducto === '' && $codigoMaterial === ''
+                && $registro['nombre_producto'] === '' && $registro['nombre_material'] === '') {
                 continue;
             }
 
-            if ($codigoProducto === '') {
-                $avisos[] = "Fila {$numeroFila}: falta el código de producto.";
+            // Regla 3: con la celda del código vacía, el nombre busca el registro.
+            if ($codigoProducto === '' && $registro['nombre_producto'] === '') {
+                $avisos[] = "Fila {$numeroFila}: falta el código y el nombre de producto.";
                 continue;
             }
 
-            if ($codigoMaterial === '') {
-                $avisos[] = "Fila {$numeroFila}: falta el código de material.";
+            if ($codigoMaterial === '' && $registro['nombre_material'] === '') {
+                $avisos[] = "Fila {$numeroFila}: falta el código y el nombre de material.";
                 continue;
             }
 
             $consumo = $this->parsearConsumo($registro['consumo']);
 
             if ($consumo === null) {
-                $avisos[] = "Fila {$numeroFila}: el consumo por par debe ser un número mayor que cero"
-                    . ($registro['consumo'] === '' ? ' (la celda está vacía).' : ' (llegó "' . $registro['consumo'] . '").');
+                if ($registro['consumo'] !== '') {
+                    $avisos[] = "Fila {$numeroFila}: el consumo por par debe ser un número mayor que cero"
+                        . ' (llegó "' . $registro['consumo'] . '").';
+                    continue;
+                }
+
+                // Regla 4: vacío vale 1 y la fila queda reportada.
+                $consumo = specialfunctions_fichaproducto::CONSUMO_VACIO;
+                $consumosVacios[] = $numeroFila;
+            }
+
+            if ($codigoProducto !== '') {
+                $productoId = $this->buscar($productos, $codigoProducto, false);
+
+                if ($productoId === null) {
+                    $sinProducto[$codigoProducto] = true;
+                    continue;
+                }
+            } else {
+                $resuelto = $this->especiales->productoDesdeNombre($registro['nombre_producto']);
+                $productoId = $resuelto['producto_id'];
+
+                if ($productoId === null) {
+                    $sinProducto['"' . $registro['nombre_producto'] . '" ('
+                        . specialfunctions_fichaproducto::textoMotivo((string) $resuelto['motivo']) . ')'] = true;
+                    continue;
+                }
+
+                // El nombre no es el código: la ficha se sigue llamando por él.
+                $codigosPorProducto[$productoId] ??= (string) Producto::query()
+                    ->whereKey($productoId)
+                    ->value('Codigo_interno');
+                $codigoProducto = $codigosPorProducto[$productoId] !== ''
+                    ? $codigosPorProducto[$productoId]
+                    : $registro['nombre_producto'];
+            }
+
+            $material = $this->resolverMaterial($codigoMaterial, $registro['nombre_material'], $materiales);
+
+            if ($material['material_id'] === null) {
+                $sinMaterial[($codigoMaterial !== '' ? $codigoMaterial : '"' . $registro['nombre_material'] . '"')
+                    . ' (' . specialfunctions_fichaproducto::textoMotivo((string) $material['motivo']) . ')'] = true;
                 continue;
             }
 
-            $productoId = $this->buscar($productos, $codigoProducto, false);
-
-            if ($productoId === null) {
-                $sinProducto[$codigoProducto] = true;
-                continue;
-            }
-
-            $materialId = $this->buscar($materiales, $codigoMaterial, true);
-
-            if ($materialId === null) {
-                $sinMaterial[$codigoMaterial] = true;
-                continue;
-            }
+            $materialId = $material['material_id'];
 
             // Un material repetido para el mismo producto no duplica la línea:
             // gana la última fila, que es la corrección más reciente.
@@ -320,13 +365,13 @@ class ExcelFichasProductoService
         }
 
         if (!empty($sinProducto)) {
-            $avisos[] = 'No existen en la app estos códigos de producto: ' . $this->lista(array_keys($sinProducto))
-                . '. Cárguelos primero con la tarjeta de Productos.';
+            $avisos[] = 'No se pudo ubicar el producto de estas celdas: ' . $this->lista(array_keys($sinProducto))
+                . '. El código debe existir en la app (cárguelo con la tarjeta de Productos) y el nombre solo sirve cuando la celda del código quedó vacía.';
         }
 
         if (!empty($sinMaterial)) {
-            $avisos[] = 'No existen en la app estos códigos de material: ' . $this->lista(array_keys($sinMaterial))
-                . '. Cárguelos primero con la tarjeta de Materiales.';
+            $avisos[] = 'No se pudo ubicar el material de estas celdas: ' . $this->lista(array_keys($sinMaterial))
+                . '. El número del final no importa (ACC-APL-7 vale como ACC-APL-0), pero la receta se escribe sobre el material genérico del par, así que el par tiene que existir y tener su CAT-BAS-0; si le falta, crélo con el botón «Materiales genéricos» de Actividad.';
         }
 
         if (!empty($avisos)) {
@@ -338,7 +383,60 @@ class ExcelFichasProductoService
             throw new RuntimeException('El archivo no trae ninguna fila de receta debajo de los títulos.');
         }
 
-        return array_values($grupos);
+        return [
+            'grupos' => array_values($grupos),
+            'consumos_vacios' => $consumosVacios,
+        ];
+    }
+
+    /**
+     * Material de la fila (reglas 1, 2 y 3): el genérico del par del código, con
+     * el nombre solo si la celda del código está vacía. Los códigos antiguos que
+     * no siguen el formato se aceptan tal cual, pero tienen que ser genéricos:
+     * la ficha técnica no admite específicos.
+     *
+     * @param  array<string, int>  $materiales
+     * @return array{material_id: int|null, motivo: string|null}
+     */
+    private function resolverMaterial(string $codigo, string $nombre, array $materiales): array
+    {
+        if ($codigo === '') {
+            return $this->especiales->materialDesdeNombre($nombre);
+        }
+
+        $resuelto = $this->especiales->materialDesdeCodigo($codigo);
+
+        if ($resuelto['material_id'] !== null) {
+            return $resuelto;
+        }
+
+        if ($resuelto['motivo'] !== specialfunctions_fichaproducto::SIN_FORMATO) {
+            return $resuelto;
+        }
+
+        $exacto = $this->buscar($materiales, $codigo, true);
+
+        if ($exacto === null) {
+            return ['material_id' => null, 'motivo' => specialfunctions_fichaproducto::INEXISTENTE];
+        }
+
+        return $this->especiales->esGenerico($exacto)
+            ? ['material_id' => $exacto, 'motivo' => null]
+            : ['material_id' => null, 'motivo' => specialfunctions_fichaproducto::SIN_GENERICO];
+    }
+
+    /**
+     * Avisos que se le muestran al usuario sin cancelar la carga. Hoy solo hay
+     * uno: las filas que llegaron sin consumo.
+     *
+     * @param  int[]  $consumosVacios
+     * @return string[]
+     */
+    private function avisosDeLectura(array $consumosVacios): array
+    {
+        $reporte = specialfunctions_fichaproducto::avisoFilasSinConsumo($consumosVacios);
+
+        return $reporte === null ? [] : [$reporte];
     }
 
     /**
@@ -455,6 +553,8 @@ class ExcelFichasProductoService
         $registro = [
             'codigo_producto' => '',
             'codigo_material' => '',
+            'nombre_producto' => '',
+            'nombre_material' => '',
             'consumo' => '',
             'unidad' => '',
         ];

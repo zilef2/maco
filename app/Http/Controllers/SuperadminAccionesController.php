@@ -64,7 +64,7 @@ class SuperadminAccionesController extends Controller
         return back()->with('success', "Existencia al azar en {$conteo['existencias']} materiales y precio al azar en {$conteo['precios']}.");
     }
 
-    /** Crea los materiales genéricos faltantes y refresca su precio promedio. */
+    /** Crea los genéricos faltantes con el código CAT-BAS-0 y refresca su precio promedio. */
     public function materialesGenericos(Request $request): RedirectResponse
     {
         $conteo = $this->genericosService->sincronizar();
@@ -72,14 +72,18 @@ class SuperadminAccionesController extends Controller
         Bitacora::accion(
             'Superadmin',
             'materialesGenericos',
-            "{$conteo['creados']} genéricos creados, {$conteo['precios']} precios promediados"
+            "{$conteo['creados']} genéricos creados, {$conteo['precios']} precios promediados, {$conteo['renumerados']} renumerados a CAT-BAS-0"
         );
 
         $detalle = $conteo['precios'] > 0
             ? " y precio promedio en {$conteo['precios']}"
             : '';
 
-        return back()->with('success', "Se crearon {$conteo['creados']} materiales genéricos{$detalle}.");
+        $renumerados = $conteo['renumerados'] > 0
+            ? ". {$conteo['renumerados']} genéricos pasaron al código CAT-BAS-0"
+            : '';
+
+        return back()->with('success', "Se crearon {$conteo['creados']} materiales genéricos{$detalle}{$renumerados}.");
     }
 }
 

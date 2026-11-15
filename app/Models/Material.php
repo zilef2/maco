@@ -82,6 +82,9 @@ class Material extends Model
      *
      * Cambiar el par mueve el material al siguiente número libre del prefijo
      * nuevo; el número que deja queda disponible para otro material.
+     *
+     * El genérico es el único caso sin consecutivo: como debe haber uno solo
+     * por par, siempre lleva el 0 (COM-CAP-0) y el 1+ queda para los específicos.
      */
     public function aplicarReglaDelCodigo(): void
     {
@@ -97,11 +100,39 @@ class Material extends Model
         }
 
         $prefijo = $this->codigo_categoria . '-' . $this->codigo_base;
+
+        if ($this->generico) {
+            $this->codigo_material = $prefijo . '-0';
+            $this->descartarGenericoDuplicado($prefijo);
+
+            return;
+        }
+
         $codigo = self::normalizarCodigo($this->codigo_material);
 
         $this->codigo_material = $codigo !== null && str_starts_with($codigo, $prefijo . '-')
             ? $codigo
             : $prefijo . '-' . self::siguienteConsecutivo($prefijo);
+    }
+
+    /**
+     * El 0 del prefijo identifica al genérico del par, así que dos genéricos del
+     * mismo par serían el mismo material: se rechaza el segundo.
+     */
+    private function descartarGenericoDuplicado(string $prefijo): void
+    {
+        $existente = static::query()
+            ->where('codigo_material', $prefijo . '-0')
+            ->when($this->exists, fn ($consulta) => $consulta->where('id', '<>', $this->getKey()))
+            ->first();
+
+        if (!$existente) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'codigo_material' => "El par {$prefijo} ya tiene su genérico: {$existente->codigo_material} ({$existente->nombre_base}). Debe haber uno solo por categoría y nombre base.",
+        ]);
     }
 
     /**

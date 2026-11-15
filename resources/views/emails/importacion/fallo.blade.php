@@ -32,16 +32,29 @@
 
             @if (!empty($errorMensaje))
             <div class="rounded-xl border border-red-200 bg-red-50/70 p-5" style="background-color: #fef2f2; border: 1px solid #fecaca; border-radius: 12px; padding: 20px; margin-bottom: 24px;">
-                <div class="flex items-start gap-3">
-                    <div style="flex: 1;">
-                        <h2 class="text-xs font-bold uppercase tracking-wider text-red-800 m-0 mb-1" style="margin: 0 0 6px 0; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: #991b1b;">
-                            Error Detectado
-                        </h2>
-                        <div class="text-sm font-semibold text-red-950 font-mono leading-relaxed" style="font-size: 14px; font-weight: 600; color: #450a0a; font-family: monospace; line-height: 1.5;">
-                            {{ $errorMensaje }}
-                        </div>
-                    </div>
+                <h2 class="text-xs font-bold uppercase tracking-wider text-red-800 m-0 mb-3" style="margin: 0 0 12px 0; font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.05em; color: #991b1b;">
+                    Error Detectado
+                </h2>
+
+                @if (!empty($errorTitulo))
+                <div class="text-base font-bold text-red-950 leading-snug mb-1" style="font-size: 16px; font-weight: 800; color: #450a0a; line-height: 1.4; margin-bottom: 4px;">
+                    {{ $errorTitulo }}
                 </div>
+                @endif
+
+                @if (!empty($errorDetalle))
+                <p class="text-sm text-red-900 leading-relaxed m-0" style="margin: 0; font-size: 14px; color: #7f1d1d; line-height: 1.5;">
+                    {{ $errorDetalle }}
+                </p>
+                @endif
+
+                @if (!empty($errorLista))
+                <ul class="text-sm text-red-950" style="margin: 12px 0 0 0; padding-left: 20px; font-size: 14px; color: #450a0a; line-height: 1.6;">
+                    @foreach ($errorLista as $elemento)
+                    <li style="margin-bottom: 2px;">{{ $elemento }}</li>
+                    @endforeach
+                </ul>
+                @endif
             </div>
             @endif
 

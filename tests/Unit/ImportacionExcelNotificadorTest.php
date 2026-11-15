@@ -42,6 +42,34 @@ class ImportacionExcelNotificadorTest extends TestCase
         });
     }
 
+    public function test_fallo_estructura_el_mensaje_en_titulo_detalle_y_lista(): void
+    {
+        Mail::fake();
+
+        $geminiMock = $this->createMock(GeminiErrorAnalyzerService::class);
+        $geminiMock->method('analizarExcepcion')->willReturn(null);
+
+        $notificador = new ImportacionExcelNotificador($geminiMock);
+        $notificador->fallo(
+            'user@example.com',
+            'Superadmin',
+            'fichas.xlsx',
+            'fichas de producto',
+            new Exception(
+                'No se pudo guardar la ficha de PT-042: La ficha técnica solo admite materiales genéricos: '
+                . 'TEX-FLO-6, SUE-EVA-15, COM-CAP-1, COM-VPV-1. Use el genérico de su par categoría-base '
+                . '(el botón «Crear los genéricos que faltan» de Actividad los agrega).'
+            ),
+        );
+
+        Mail::assertSent(ImportacionFalloMailable::class, function (ImportacionFalloMailable $mail) {
+            return $mail->errorTitulo === 'No se pudo guardar la ficha de PT-042'
+                && $mail->errorLista === ['TEX-FLO-6', 'SUE-EVA-15', 'COM-CAP-1', 'COM-VPV-1']
+                && str_contains((string) $mail->errorDetalle, 'La ficha técnica solo admite materiales genéricos.')
+                && str_contains((string) $mail->errorDetalle, 'Use el genérico de su par categoría-base');
+        });
+    }
+
     public function test_exito_sends_excel_mailable_to_user(): void
     {
         Mail::fake();
