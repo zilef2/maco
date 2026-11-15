@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\OrdenProduccion;
+use App\Models\OrdenProduccionMaterialConcreto;
 
 /**
  * Costo de la recepción de calidad de una OP.
@@ -20,7 +21,10 @@ use App\Models\OrdenProduccion;
  */
 class CostoRecepcionOpService
 {
-    public function __construct(protected CostoMaterialOpService $costosMateriales) {}
+    public function __construct(
+        protected CostoMaterialOpService $costosMateriales,
+        protected MaterialConcretoOpService $concretos
+    ) {}
 
     /**
      * Costo de materiales de una unidad de cada producto de la OP.
@@ -30,13 +34,17 @@ class CostoRecepcionOpService
     public function unitarios(OrdenProduccion $op): array
     {
         $precios = $this->preciosPorMaterial($op);
+        $concretos = $this->concretos->mapaDeOrden($op);
 
         $unitarios = [];
         foreach ($this->costosMateriales->productos($op) as $producto) {
             // La ficha vigente del producto define cuánto material entra en una unidad.
             $unitarios[(int) $producto->id] = $this->costoUnitarioFicha(
                 $producto->fichaTecnica->first(),
-                $precios
+                $precios,
+                $concretos,
+                OrdenProduccionMaterialConcreto::OBJETIVO_PRODUCTO,
+                (int) $producto->id
             );
         }
 
@@ -52,12 +60,16 @@ class CostoRecepcionOpService
     public function unitariosMateriales(OrdenProduccion $op): array
     {
         $precios = $this->preciosPorMaterial($op);
+        $concretos = $this->concretos->mapaDeOrden($op);
 
         $unitarios = [];
         foreach ($this->costosMateriales->materialesObjetivo($op) as $material) {
             $unitarios[(int) $material->id] = $this->costoUnitarioFicha(
                 $material->fichaTecnica->first(),
-                $precios
+                $precios,
+                $concretos,
+                OrdenProduccionMaterialConcreto::OBJETIVO_MATERIAL,
+                (int) $material->id
             );
         }
 
@@ -65,14 +77,26 @@ class CostoRecepcionOpService
     }
 
     /**
-     * @param  array<int, float>  $precios
+     * @param  array<int, float>  $precios  Precio guardado en la OP por material.
+     * @param  array<string, array<int, array<int, int>>>  $concretos
      */
-    private function costoUnitarioFicha(mixed $ficha, array $precios): float
-    {
+    private function costoUnitarioFicha(
+        mixed $ficha,
+        array $precios,
+        array $concretos,
+        string $tipo,
+        int $objetivoId
+    ): float {
         $costo = 0.0;
 
         foreach ($ficha?->materiales ?? collect() as $fila) {
-            $materialId = (int) $fila->material_componente_id;
+            // El precio congelado de la OP está en el material concreto elegido.
+            $materialId = $this->concretos->resolver(
+                $concretos,
+                $tipo,
+                $objetivoId,
+                (int) $fila->material_componente_id
+            );
             if ($materialId > 0) {
                 $costo += (float) $fila->consumo_estandar * ($precios[$materialId] ?? 0.0);
             }

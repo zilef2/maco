@@ -17,6 +17,7 @@ use App\Services\CostoMaterialOpService;
 use App\Services\ColaMaterialesOpService;
 use App\Services\CompromisoMaterialService;
 use App\Services\ExcelMaterialesService;
+use App\Services\FaltantesOpService;
 use App\Services\MaterialBulkDeleteService;
 use App\Services\MaterialCompraPredictorService;
 use App\Services\PlantillasExcelService;
@@ -51,7 +52,8 @@ class MaterialController extends Controller {
         protected PlantillasExcelService $plantillas,
         protected ExcelMaterialesService $excelMateriales,
         protected ColaMaterialesOpService $colaMateriales,
-        protected CompromisoMaterialService $compromisos
+        protected CompromisoMaterialService $compromisos,
+        protected FaltantesOpService $faltantes
     ) {
 //        $this->middleware('permission:create Material', ['only' => ['create', 'store']]);
 //        $this->middleware('permission:read Material', ['only' => ['index', 'show']]);
@@ -137,6 +139,8 @@ class MaterialController extends Controller {
         $materialesEnOp = $this->materialesEnOrden();
         // Solo se proyectan los materiales que participan en alguna OP (o que
         // aún tienen una reserva vigente); el resto equivale a su existencia.
+        // Los genéricos quedan fuera: no almacenan inventario, su familia es la
+        // que tiene existencia, compromisos y consumo.
         $materialesProyectables = array_values(array_unique(array_merge(
             $materialesEnOp,
             Compromisomaterial::query()
@@ -146,6 +150,12 @@ class MaterialController extends Controller {
                 ->map(fn ($id) => (int) $id)
                 ->all()
         )));
+        $materialesProyectables = Material::query()
+            ->whereIn('id', $materialesProyectables)
+            ->where('generico', false)
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
 
         return Inertia::render($this->FromController . '/Index', [
             'materiales' => $Materiales,
@@ -213,6 +223,9 @@ class MaterialController extends Controller {
 
         $faltan = Material::query()
             ->where('estado', 'Activo')
+            // Un genérico no tiene existencia ni consumo: la previsión es de los
+            // materiales concretos que realmente se compran y se descuentan.
+            ->where('generico', false)
             ->get(['id', 'codigo_material', 'nombre_base', 'existencia_actual', 'unidad_inventario'])
             ->map(function (Material $material) use ($consumoTotal, $ventana) {
                 $total = round((float) ($consumoTotal[$material->id] ?? 0), 2);
@@ -378,6 +391,21 @@ class MaterialController extends Controller {
             ]);
         }
 
+        // El genérico no guarda inventario: comprarle a él dejaría la existencia
+        // en cero y el consumo repartido. La compra es del material concreto.
+        $genericos = Material::query()
+            ->whereIn('id', array_column($compras, 'material_id'))
+            ->where('generico', true)
+            ->pluck('codigo_material')
+            ->all();
+
+        if (!empty($genericos)) {
+            return back()->withErrors([
+                'materiales' => 'Los genéricos no reciben compra: ' . implode(', ', $genericos)
+                    . '. Compre el material concreto (con color o talla) de esa familia.',
+            ]);
+        }
+
         DB::beginTransaction();
         try {
             $registradas = 0;
@@ -439,6 +467,82 @@ class MaterialController extends Controller {
     public function predecirCompra(int $id): JsonResponse
     {
         return response()->json($this->compraPredictor->predecirParaMaterial($id));
+    }
+
+    /**
+     * Orden de compra: cuánto hace falta comprar de cada material para cubrir
+     * las OPs que aún no entran a taller, con el precio vigente a la vista por
+     * si hay que actualizarlo. Aquí no se registra ninguna compra.
+     */
+    public function ordenCompra(): Response {
+        return Inertia::render('Material/OrdenCompra', [
+            'orden' => $this->faltantes->ordenCompra(),
+            'breadcrumbs' => [
+                ['label' => __('app.label.' . $this->FromController), 'href' => route($this->FromController . '.index')],
+                ['label' => 'Orden de compra'],
+            ],
+            'title' => 'Orden de compra',
+        ]);
+    }
+
+    /**
+     * Los precios escritos en la orden de compra. Cada precio entra como una
+     * fila nueva de histórico con la fecha de hoy: el anterior se conserva.
+     */
+    public function guardarPreciosOrdenCompra(Request $request): RedirectResponse {
+        Myhelp::EscribirEnLog($this, ' Begin STORE:MaterialPrecioOrdenCompra');
+
+        $datos = $request->validate([
+            'materiales' => ['required', 'array', 'min:1'],
+            'materiales.*.material_id' => ['required', 'integer', 'exists:materials,id'],
+            'materiales.*.precio' => ['required', 'numeric', 'min:0.01'],
+        ]);
+
+        $filas = collect($datos['materiales'])
+            ->filter(fn ($fila) => (float) ($fila['precio'] ?? 0) > 0)
+            ->unique(fn ($fila) => (int) $fila['material_id'])
+            ->values();
+
+        if ($filas->isEmpty()) {
+            return back()->withErrors(['materiales' => 'Escribe un precio mayor que cero en al menos un material.']);
+        }
+
+        DB::beginTransaction();
+        try {
+            $hoy = now()->toDateString();
+            $actualizados = 0;
+
+            foreach ($filas as $fila) {
+                $material = Material::whereKey((int) $fila['material_id'])->first();
+                if (!$material) {
+                    continue;
+                }
+
+                $precio = round((float) $fila['precio'], 2);
+
+                // Un precio igual al vigente no es un cambio: no llena el histórico.
+                if (abs($precio - $material->costoUnitarioActual()) < 0.005) {
+                    continue;
+                }
+
+                $material->prices()->create(['precio' => $precio, 'fecha' => $hoy]);
+                $actualizados++;
+            }
+
+            DB::commit();
+            $this->invalidarCache();
+            Myhelp::EscribirEnLog($this, 'STORE:MaterialPrecioOrdenCompra EXITOSO', $actualizados . ' precio(s) de material actualizados', false);
+
+            if ($actualizados === 0) {
+                return back()->with('info', 'Ningún precio cambió: todos coincidían con el vigente.');
+            }
+
+            return back()->with('success', 'Se actualizaron ' . $actualizados . ' precio(s) de material con la fecha de hoy. '
+                . 'El total de la orden de compra quedó recalculado con esos precios.');
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            throw $e;
+        }
     }
 
     public function store(Request $request): RedirectResponse {

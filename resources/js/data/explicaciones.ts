@@ -865,7 +865,7 @@ export const explicaciones: Explicacion[] = [
         subcategoria: 'Material genérico',
         titulo: 'El material genérico: uno por cada par categoría-base',
         resumen:
-            'Un material genérico representa a todos los que comparten su código de categoría y su código base: se codifica con el 0 del par (COM-CAP-0), no maneja talla ni color y su precio es el promedio de los precios de sus similares.',
+            'Un material genérico representa a todos los que comparten su código de categoría y su código base: se codifica con el 0 del par (COM-CAP-0), no maneja talla ni color, no tiene existencia ni gasto diario y su precio es el promedio de los precios de sus similares. La ficha técnica lo usa para declarar el consumo del par, pero el material que se gasta (con su color o talla) se elige en la OP.',
         etiquetas: [
             'genérico',
             'generico',
@@ -876,6 +876,12 @@ export const explicaciones: Explicacion[] = [
             'TEX-LFL-0',
             'sin talla',
             'sin color',
+            'sin existencia',
+            'proyectado',
+            'gasto diario',
+            'material concreto',
+            'familia',
+            'color o talla en la OP',
             'botón superadmin',
             'crear genéricos',
         ],
@@ -894,6 +900,7 @@ export const explicaciones: Explicacion[] = [
                     'El precio se calcula en dos pasos: primero el promedio de las filas de precio de cada similar y luego el promedio entre los similares que sí tienen precio. El resultado se guarda como una fila nueva en material_prices con la fecha de hoy.',
                     'Si un grupo no tiene ningún similar con precio, el genérico se crea igual pero se queda sin fila de precio.',
                     'El botón vive en Actividad → Acciones de Superadministrador, al lado de «Existencias y precios al azar», y no requiere entorno de prueba.',
+                    'El genérico no almacena nada: la misma escritura del modelo deja en null su existencia actual y su gasto diario, y el recálculo del gasto diario de todos empieza limpiando los genéricos. Por eso tampoco aparece en la proyección de la tabla de Materiales, ni en la previsión de faltantes, y una compra rechazada avisa que se compre el concreto de su familia.',
                 ],
             },
             {
@@ -922,6 +929,35 @@ export const explicaciones: Explicacion[] = [
                     'Al dar Enter con el foco en el select de material se agrega otra fila y el foco vuelve al buscador, para encadenar materiales sin usar el ratón.',
                 ],
             },
+            {
+                tipo: 'subtitulo',
+                texto: 'La OP define el material concreto que se va a gastar',
+            },
+            {
+                tipo: 'texto',
+                texto:
+                    'La ficha solo dice «se gasta COM-CAP-0» y cuánto se gasta por unidad producida, porque allí solo importa el consumo del par. El color o la talla reales se deciden al registrar la orden: la tarjeta «Material concreto de la orden» lista, por cada producto o material procesado de la OP, sus líneas genéricas y obliga a elegir un material de esa misma familia (COM-CAP-1, COM-CAP-2, …). Desde ese momento todo el sistema trabaja con el concreto: el kit de proceso, los compromisos con otras OP, los faltantes, la compra, el descuento al pasar a taller y el precio congelado de la orden.',
+            },
+            {
+                tipo: 'lista',
+                items: [
+                    'Las opciones salen de los materiales activos de la misma familia (el par código_categoria-código_base) que no están marcados como genéricos; cada opción se muestra con su código y sus variantes (COM-CAP-17 · 23), que es donde vive el color o la talla.',
+                    'La elección se guarda en orden_produccion_material_concreto, una fila por objetivo (producto o material producido) y línea genérica de su ficha, así que dos productos de la misma OP pueden gastar colores distintos de la misma familia.',
+                    'El registro de la OP no se guarda sin todas las elecciones: el aviso dice qué genérico falta («Defina el material concreto (color o talla) de: COM-CAP-0 de …»). Un borrador guardado con «Terminar después» acepta la orden incompleta.',
+                    'Si la familia solo tiene un material concreto, ese se elige solo. Si no tiene ninguno, la tarjeta lo advierte: hay que crear el material con su color o talla antes de registrar la OP.',
+                    'Al editar, la elección viaja con el plan de la orden: desde «En taller» queda congelada junto con los productos y las tallas, porque el kit ya salió de bodega.',
+                    'Las OPs antiguas no tienen elección guardada: el kit y los costos siguen usando el material que estaba en la ficha y la elección se completa al editar la orden.',
+                ],
+            },
+            {
+                tipo: 'pasos',
+                items: [
+                    'Abrir Orden de producción → Crear y seleccionar el producto (o el material procesado).',
+                    'Bajar a «Material concreto de la orden» y elegir, en cada selector, el material del color o la talla que se va a usar.',
+                    'Revisar «Materiales requeridos»: el físico, el proyectado y el faltante ya corresponden al material elegido, no al genérico.',
+                    'Registrar la orden. Si falta alguna elección, el formulario devuelve el aviso con los genéricos pendientes.',
+                ],
+            },
         ],
         fuentes: [
             'database/migrations/2026_11_11_100000_add_generico_to_materials_table.php',
@@ -933,6 +969,77 @@ export const explicaciones: Explicacion[] = [
             'app/Http/Controllers/SuperadminAccionesController.php (materialesGenericos)',
             'routes/web.php (POST /superadmin/materiales-genericos)',
             'resources/js/pages/actividad/AccionesSuperadmin.vue (tarjeta «Materiales genéricos»)',
+            'database/migrations/2026_11_14_100000_generico_sin_inventario.php (existencia_actual nullable y null para los genéricos)',
+            'app/Models/Material.php (recalcularGastoDiario y recalcularGastoDiarioDeTodos devuelven null en genéricos)',
+            'app/Http/Controllers/MaterialController.php (index y prevision excluyen genéricos; registrarCompra los rechaza)',
+            'resources/js/pages/Material/Index.vue (celdas de existencia, proyectado y gasto diario muestran «no aplica»)',
+            'database/migrations/2026_11_14_110000_create_orden_produccion_material_concreto_table.php',
+            'app/Models/OrdenProduccionMaterialConcreto.php (objetivo_tipo producto|material)',
+            'app/Services/MaterialConcretoOpService.php (concretosPorFamilia, validar, guardar, mapaDeOrden, resolver, materialResuelto)',
+            'app/Http/Controllers/OrdenProduccionController.php (obtenerSelects con materiales_familias; concretosDesdeRequest en store/guardarBorrador/update; necesidadMateriales resuelve el concreto)',
+            'app/Services/CostoMaterialOpService.php y CostoRecepcionOpService.php (el snapshot de costos usa el id del concreto)',
+            'resources/js/composables/materialesConcretosOp.ts (elecciones, opcionesDe, materialDeLinea, asegurarUnicos, payload)',
+            'resources/js/pages/OrdenProduccion/Create.vue y Edit.vue (tarjeta «Material concreto de la orden»)',
+        ],
+    },
+    {
+        id: 'material-orden-de-compra',
+        categoria: 'Material',
+        categoriaLabel: 'Materiales',
+        subcategoria: 'Orden de compra',
+        titulo: 'La pantalla «Orden de compra»: cuánto falta y a cuánto está',
+        resumen:
+            'Una hoja de compra en pantalla completa que lista, por material, lo que hace falta para cubrir las OPs abiertas, con el precio vigente editable; no registra compras, solo lee la necesidad y actualiza precios.',
+        etiquetas: [
+            'orden de compra',
+            'cuánto comprar',
+            'faltantes',
+            'hoja de compra',
+            'precio del material',
+            'actualizar precio',
+            'total estimado',
+            'comprar faltantes',
+        ],
+        actualizada: '2026-11-14',
+        bloques: [
+            {
+                tipo: 'texto',
+                texto:
+                    'La lista sale de comparar el kit de cada OP abierta contra la existencia actual del material: «Hay que comprar» es exactamente lo que piden las OPs menos lo que hay en bodega, sin redondeos, sin margen de seguridad y sin días de previsión. Es la misma cuenta que alimenta el botón «Comprar faltantes» de la barra superior, presentada como hoja de compra.',
+            },
+            {
+                tipo: 'lista',
+                items: [
+                    'Entran las OPs cuyo estado aún no es «En taller», «Recibiendo», «Terminada» ni «Cerrada»; esas ya descontaron su kit del inventario.',
+                    'Una fila por material, con la suma de lo que piden todas las OPs; al expandir la fila aparece cada OP con lo que exige.',
+                    'El precio que se muestra es el vigente, o sea el de la compra más reciente del material (material_prices), con la fecha desde la que rige.',
+                    'Guardar precios crea una fila nueva de material_prices con la fecha de hoy para cada material cuyo número cambió; un precio igual al vigente no se guarda y ninguna fila anterior se borra.',
+                    'Un material sin precio se ve en ámbar y no entra al total de la orden; el botón «Sin precio» de la barra de filtros deja a la vista únicamente esos materiales.',
+                    'La orden se puede ordenar por faltante o por importe, y los materiales que todavía no tienen precio van siempre primero, porque son los únicos que dejan el total incompleto.',
+                ],
+            },
+            {
+                tipo: 'pasos',
+                items: [
+                    'Pulsar «Orden de compra» en la barra superior (aparece junto a «Comprar faltantes» mientras haya carencias en las OPs abiertas).',
+                    'Revisar o escribir los precios que cambiaron; el total del pie se recalcula mientras se escribe.',
+                    'Pulsar «Guardar precios» para dejarlos en el histórico, o «Descartar» para devolverlos al precio vigente.',
+                ],
+            },
+            {
+                tipo: 'nota',
+                tono: 'info',
+                texto:
+                    'Acá no se da ninguna entrada de inventario. Para registrar que la compra ya llegó y hacer que las OPs de la cola pasen a «Lista para taller» se usa «Comprar faltantes», que abre el formulario de compra de Materiales.',
+            },
+        ],
+        fuentes: [
+            'app/Services/FaltantesOpService.php (carencias, ordenCompra con precio vigente e importe)',
+            'app/Http/Controllers/MaterialController.php (ordenCompra, guardarPreciosOrdenCompra)',
+            'routes/web.php (GET /Material/orden-compra y POST /Material/orden-compra/precios)',
+            'resources/js/pages/Material/OrdenCompra.vue (hoja de compra full-screen)',
+            'resources/js/components/OrdenCompraButton.vue (acceso desde la barra superior)',
+            'app/Models/Material.php (costoUnitarioActual: la compra más reciente es el precio vigente)',
         ],
     },
 ];

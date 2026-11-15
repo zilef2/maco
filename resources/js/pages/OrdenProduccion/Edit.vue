@@ -13,6 +13,7 @@ import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
 import { formatDate, formatdinero } from '@/global.ts';
 import { sePuedeEditarPlan } from '@/composables/flujoEstadosOp';
+import { useMaterialesConcretos } from '@/composables/materialesConcretosOp';
 
 const props = defineProps({
     show: Boolean,
@@ -160,6 +161,36 @@ const distribucionPorProducto = (productoId: number) => distribucion.items.filte
 const totalCantidadDistribucionProducto = (productoId: number) =>
     distribucionPorProducto(productoId).reduce((acc, item) => acc + (Number(item.cantidad_planificada) || 0), 0);
 
+const productoDe = (id: number) => opcionesProducto.value.find((p: any) => Number(p.id) === Number(id));
+
+// Materiales concretos (color o talla) elegidos para las líneas genéricas de la
+// ficha. Todo lo que se muestra o se costea sale del concreto, igual que en el
+// backend al regenerar el kit de la OP.
+const concretos = useMaterialesConcretos(() => props.losSelect?.materiales_familias || {});
+
+const fichaDe = (objetivoId: number, esMaterial: boolean) =>
+    (esMaterial ? materialDe(objetivoId) : productoDe(objetivoId))?.ficha_materiales || [];
+
+const objetivosGenericos = computed(() =>
+    [
+        ...productosSel.map((p) => ({ id: p.id, nombre: p.nombre, esMaterial: false })),
+        ...materialesSel.map((m) => ({ id: m.id, nombre: m.nombre, esMaterial: true })),
+    ]
+        .map((objetivo) => ({
+            ...objetivo,
+            lineas: (fichaDe(objetivo.id, objetivo.esMaterial) as any[]).filter((linea) => linea.generico),
+        }))
+        .filter((objetivo) => objetivo.lineas.length),
+);
+
+watch(objetivosGenericos, () => concretos.asegurarUnicos(objetivosGenericos.value), { deep: true });
+
+const faltanConcretos = computed(() =>
+    objetivosGenericos.value.some((objetivo) =>
+        objetivo.lineas.some((linea: any) => !concretos.concretoDe(objetivo.id, linea)),
+    ),
+);
+
 const consumoPropioDelMaterial = (m: any): any => {
     const propioId = Number(op.value.id) || null;
     if (!propioId) return null;
@@ -208,8 +239,9 @@ const resumenMateriales = computed(() => {
         }
     >();
 
-    const sumarFicha = (ficha: any[], cantidad: number) => {
-        (ficha || []).forEach((m: any) => {
+    const sumarFicha = (objetivoId: number, ficha: any[], cantidad: number) => {
+        (ficha || []).forEach((linea: any) => {
+            const m: any = concretos.materialDeLinea(objetivoId, linea);
             const actual = mapa.get(m.material_id) ?? {
                 material_id: m.material_id,
                 nombre: m.nombre,
@@ -230,13 +262,11 @@ const resumenMateriales = computed(() => {
     };
 
     productosSel.forEach((p) => {
-        const opcion: any = opcionesProducto.value.find((o: any) => o.id === p.id);
-        sumarFicha(opcion?.ficha_materiales, totalCantidadDistribucionProducto(p.id));
+        sumarFicha(p.id, productoDe(p.id)?.ficha_materiales, totalCantidadDistribucionProducto(p.id));
     });
 
     materialesSel.forEach((m) => {
-        const opcion: any = materialDe(m.id);
-        sumarFicha(opcion?.ficha_materiales, Number(m.cantidad) || 0);
+        sumarFicha(m.id, materialDe(m.id)?.ficha_materiales, Number(m.cantidad) || 0);
     });
 
     return Array.from(mapa.values()).sort(
@@ -253,20 +283,19 @@ const precioMaterial = (m: any) =>
         : Number(m.costo_asociado_teorico) || 0;
 
 const costoFichas = computed(() => {
-    const costoDeFicha = (ficha: any[]) =>
-        (ficha || []).reduce(
-            (suma: number, m: any) => suma + (Number(m.consumo_estandar) || 0) * precioMaterial(m),
-            0,
-        );
+    const costoDeFicha = (objetivoId: number, ficha: any[]) =>
+        (ficha || []).reduce((suma: number, linea: any) => {
+            const m: any = concretos.materialDeLinea(objetivoId, linea);
+
+            return suma + (Number(m.consumo_estandar) || 0) * precioMaterial(m);
+        }, 0);
 
     const costoProductos = productosSel.reduce((total, p) => {
-        const opcion: any = opcionesProducto.value.find((o: any) => o.id === p.id);
-        return total + costoDeFicha(opcion?.ficha_materiales) * totalCantidadDistribucionProducto(p.id);
+        return total + costoDeFicha(p.id, productoDe(p.id)?.ficha_materiales) * totalCantidadDistribucionProducto(p.id);
     }, 0);
 
     const costoMateriales = materialesSel.reduce((total, m) => {
-        const opcion: any = materialDe(m.id);
-        return total + costoDeFicha(opcion?.ficha_materiales) * (Number(m.cantidad) || 0);
+        return total + costoDeFicha(m.id, materialDe(m.id)?.ficha_materiales) * (Number(m.cantidad) || 0);
     }, 0);
 
     return costoProductos + costoMateriales;
@@ -300,6 +329,7 @@ const form = useForm({
     productos_cantidad: {} as Record<number, number>,
     materiales: [] as number[],
     materiales_cantidad: {} as Record<number, number>,
+    materiales_concretos: {} as Record<number, Record<number, number>>,
 });
 
 // El formulario muestra el número, el tipo y la fecha aunque estén bloqueados,
@@ -315,6 +345,7 @@ const CAMPOS_DEL_PLAN = [
     'productos_cantidad',
     'materiales',
     'materiales_cantidad',
+    'materiales_concretos',
     'distribucion_tallas',
     'grupo_tallas',
 ];
@@ -404,6 +435,7 @@ const sincronizarProductos = (ids: number[]) => {
     for (let i = productosSel.length - 1; i >= 0; i--) {
         if (!ids.includes(productosSel[i].id)) {
             quitarTallasDeProducto(productosSel[i].id);
+            concretos.olvidar(productosSel[i].id);
             productosSel.splice(i, 1);
         }
     }
@@ -427,6 +459,7 @@ const sincronizarMateriales = (ids: number[]) => {
 
     for (let i = materialesSel.length - 1; i >= 0; i--) {
         if (!ids.includes(materialesSel[i].id)) {
+            concretos.olvidar(materialesSel[i].id);
             materialesSel.splice(i, 1);
         }
     }
@@ -460,10 +493,16 @@ const closeModal = () => {
     materialesSel.length = 0;
     materialesSelIds.value = [];
     esOpMaterial.value = false;
+    concretos.cargar(null);
 };
 
 const prepararPayload = () => {
     form.grupo_tallas = grupoTallas.value;
+    form.materiales_concretos = concretos.payload(
+        esOpMaterial.value
+            ? materialesSel.map((m) => m.id)
+            : productosSel.map((p) => p.id),
+    );
 
     if (esOpMaterial.value) {
         form.productos = [];
@@ -510,6 +549,7 @@ const cargarOp = () => {
     productosSel.length = 0;
     materialesSel.length = 0;
     distribucion.items = [];
+    concretos.cargar((registro.materiales_concretos ?? null) as any);
 
     form.numero_op = registro.numero_op ?? '';
     form.cantidad_planificada = registro.cantidad_planificada != null ? String(registro.cantidad_planificada) : '';
@@ -951,6 +991,66 @@ watch([() => props.show, () => op.value.id], cargarOp, { immediate: true, flush:
 
                     <InputError class="mt-2" :message="form.errors.productos" />
                     <InputError class="mt-1" :message="form.errors.cantidad_planificada" />
+                </div>
+
+                <!-- Material concreto (color o talla) de cada línea genérica -->
+                <div
+                    v-if="objetivosGenericos.length"
+                    class="mt-6 rounded-lg border border-sky-200 bg-sky-50/40 p-4 dark:border-sky-900/60 dark:bg-sky-950/20"
+                >
+                    <h3 class="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                        Material concreto de la orden
+                        <span v-if="planBloqueado" class="font-normal text-gray-500 dark:text-gray-400">(congelado por el estado)</span>
+                    </h3>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        La ficha declara el material genérico de la familia (COM-CAP-0); aquí está el material con el color o la talla que
+                        esta OP va a gastar. El inventario, el faltante y el costo se calculan con él.
+                    </p>
+
+                    <div class="mt-3 space-y-4">
+                        <div
+                            v-for="objetivo in objetivosGenericos"
+                            :key="`${objetivo.esMaterial ? 'm' : 'p'}-${objetivo.id}`"
+                            class="rounded-md border border-sky-200 bg-white p-3 dark:border-sky-900/50 dark:bg-gray-900/40"
+                        >
+                            <p class="text-xs font-semibold tracking-wide text-gray-600 uppercase dark:text-gray-300">
+                                {{ objetivo.nombre }}
+                            </p>
+                            <div class="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                                <div v-for="linea in objetivo.lineas" :key="linea.material_id">
+                                    <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300">
+                                        {{ linea.nombre }}
+                                        <span class="text-gray-400 dark:text-gray-500">
+                                            · {{ Number(linea.consumo_estandar) || 0 }} {{ linea.unidad_medida || 'u' }} por unidad
+                                        </span>
+                                    </label>
+                                    <v-select
+                                        v-if="concretos.opcionesDe(linea).length"
+                                        class="block w-full"
+                                        :options="concretos.opcionesDe(linea)"
+                                        label="name"
+                                        :reduce="(item: any) => item.id"
+                                        :model-value="concretos.elecciones[objetivo.id]?.[linea.material_id] ?? null"
+                                        :disabled="planBloqueado"
+                                        @update:model-value="concretos.elegir(objetivo.id, linea.material_id, $event)"
+                                        placeholder="Elegir material..."
+                                    />
+                                    <p
+                                        v-else
+                                        class="rounded-md border border-amber-300 bg-amber-50 px-2 py-1.5 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-900/30 dark:text-amber-200"
+                                    >
+                                        No hay materiales concretos de la familia {{ linea.familia }}. Crea el material con su color o
+                                        talla antes de guardar la OP.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <p v-if="faltanConcretos && !planBloqueado" class="mt-2 text-xs font-medium text-amber-700 dark:text-amber-400">
+                        Faltan materiales concretos por elegir; sin ellos la orden no se puede guardar.
+                    </p>
+                    <InputError class="mt-2" :message="form.errors.materiales_concretos" />
                 </div>
 
                 <!-- Materiales requeridos según la ficha de los objetivos -->

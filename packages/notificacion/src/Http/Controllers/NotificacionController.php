@@ -31,8 +31,13 @@ class NotificacionController extends Controller
     public function index(Request $request)
     {
         $usuarioId = $request->user()?->id;
+        $tipoSolicitado = $request->query('tipo');
 
-        $notificaciones = $this->manager->noLeidas($usuarioId, $this->filtro($request))->take(10);
+        if ($tipoSolicitado) {
+            $notificaciones = $this->manager->noLeidas($usuarioId, $this->filtro($request))->take(10);
+        } else {
+            $notificaciones = $this->manager->noLeidasExcluyendo($usuarioId, array_values(self::FILTROS))->take(10);
+        }
 
         return response()->json([
             'notificaciones' => $notificaciones->map(function ($n) {
@@ -56,7 +61,13 @@ class NotificacionController extends Controller
 
     public function marcarTodas(Request $request)
     {
-        $this->manager->marcarTodas($request->user()?->id, $this->filtro($request));
+        $tipoSolicitado = $request->query('tipo');
+
+        if ($tipoSolicitado) {
+            $this->manager->marcarTodas($request->user()?->id, $this->filtro($request));
+        } else {
+            $this->manager->marcarTodasExcluyendo($request->user()?->id, array_values(self::FILTROS));
+        }
 
         return response()->json(['success' => true]);
     }

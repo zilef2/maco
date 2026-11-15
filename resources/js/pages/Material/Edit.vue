@@ -146,7 +146,7 @@ const descripcionToggle = (campo: string, activo: boolean): string => {
     }
     if (campo === 'generico') {
         return activo
-            ? 'Sí, es genérico: sin talla, color, diseño, proveedor ni precio propios; se codifica con el 0 del par (COM-CAP-0) y su precio es el promedio de sus similares'
+            ? 'Sí, es genérico: sin talla, color, diseño, proveedor, existencia ni gasto diario propios; se codifica con el 0 del par (COM-CAP-0), su precio es el promedio de sus similares y la OP elige el material concreto de su familia'
             : 'No, es un material específico con sus variantes y su precio de compra';
     }
     return activo ? 'Sí, este material lo maneja' : 'No aplica para este material';

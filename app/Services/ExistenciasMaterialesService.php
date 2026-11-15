@@ -35,8 +35,10 @@ class ExistenciasMaterialesService
 
     public function ponerEnCero(): int
     {
+        // Los genéricos no llevan inventario: se dejan fuera para no escribirle
+        // un 0 a la columna que la migración dejó en null.
         return $this->ejecutar(
-            'UPDATE materials SET existencia_actual = 0 WHERE existencia_actual <> 0'
+            'UPDATE materials SET existencia_actual = 0 WHERE existencia_actual <> 0 AND generico = 0'
         );
     }
 
@@ -51,7 +53,8 @@ class ExistenciasMaterialesService
         $existencias = $this->ejecutar(
             'UPDATE materials
                 SET existencia_actual = ROUND(? + RAND() * ?, 0)
-              WHERE existencia_actual = 0',
+              WHERE existencia_actual = 0
+                AND generico = 0',
             [self::EXISTENCIA_MINIMA, self::EXISTENCIA_ALEATORIA]
         );
 

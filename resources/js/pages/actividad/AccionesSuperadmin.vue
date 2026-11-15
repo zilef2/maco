@@ -126,7 +126,7 @@ const AJUSTES: AjusteDirecto[] = [
         clave: 'genericos',
         titulo: 'Materiales genéricos',
         descripcion: () =>
-            'Crea el material genérico que falta por cada par categoría-base (no maneja talla ni color), lo codifica con el 0 del par (COM-CAP-0) y le pone como precio el promedio de los precios de sus similares. Se puede repetir: solo crea los que faltan, renumera a CAT-BAS-0 a los que traen el consecutivo viejo y refresca el precio si cambió.',
+            'Crea el material genérico que falta por cada par categoría-base, lo codifica con el 0 del par (COM-CAP-0) y le pone como precio el promedio de los precios de sus similares. El genérico no maneja talla ni color y tampoco inventario: queda sin existencia, sin gasto diario y sin previsión, y la OP es quien elige el material concreto de su familia que se va a gastar. Se puede repetir: solo crea los que faltan, renumera a CAT-BAS-0 a los que traen el consecutivo viejo y refresca el precio si cambió.',
         boton: 'Crear los genéricos que faltan',
         procesando: 'Creando genéricos...',
         ruta: () => route('superadmin.materiales-genericos'),

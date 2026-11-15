@@ -87,9 +87,12 @@ Route::middleware('auth', 'verified')->group(function () {
 	Route::post("/Proveedor/upload-terceros-excel", [\App\Http\Controllers\ProveedorController::class, 'uploadTercerosExcel'])->name('Proveedor.upload-terceros-excel');
 	Route::resource("/Distribucion_por_tallas", \App\Http\Controllers\Distribucion_por_tallasController::class);
 	Route::get("/Material/plantilla-excel", [\App\Http\Controllers\MaterialController::class, 'descargarPlantillaExcel'])->name('Material.plantilla-excel');
+	// Antes del resource: /Material/{material} se lo llevaría el show.
+	Route::get("/Material/orden-compra", [\App\Http\Controllers\MaterialController::class, 'ordenCompra'])->name('Material.orden-compra');
 	Route::resource("/Material", \App\Http\Controllers\MaterialController::class);
 	Route::post("/Material/upload-excel", [\App\Http\Controllers\MaterialController::class, 'uploadExcel'])->name('Material.upload-excel');
 	Route::post("/Material/compra", [\App\Http\Controllers\MaterialController::class, 'registrarCompra'])->name('Material.compra');
+	Route::post("/Material/orden-compra/precios", [\App\Http\Controllers\MaterialController::class, 'guardarPreciosOrdenCompra'])->name('Material.orden-compra.precios');
 	Route::get('/Material/{id}/predecir-compra', [\App\Http\Controllers\MaterialController::class, 'predecirCompra'])->name('Material.predecir-compra');
 	Route::post("/Material/dependencias-bulk", [\App\Http\Controllers\MaterialController::class, 'dependenciasBulk'])->name('Material.dependencias-bulk');
 	Route::post("/Material/destroy-bulk", [\App\Http\Controllers\MaterialController::class, 'destroyBulk'])->name('Material.destroy-bulk');

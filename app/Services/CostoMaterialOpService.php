@@ -7,6 +7,7 @@ use App\Models\Material;
 use App\Models\OrdenProduccion;
 use App\Models\OrdenProduccionCostoCambio;
 use App\Models\OrdenProduccionCostoMaterial;
+use App\Models\OrdenProduccionMaterialConcreto;
 use App\Models\Parametro;
 use App\Models\Producto;
 use Illuminate\Support\Facades\Cache;
@@ -32,6 +33,10 @@ class CostoMaterialOpService
 
     /** El precio de venta se redondea siempre al millar superior. */
     public const REDONDEO_PRECIO_VENTA = 1000;
+
+    public function __construct(private MaterialConcretoOpService $concretos)
+    {
+    }
 
     /**
      * Precio de venta automático a partir del coste de producción. Es la misma
@@ -196,6 +201,10 @@ class CostoMaterialOpService
         $cantidadesMateriales = $this->cantidadesPorMaterial($op);
         $unidades = $this->unidadesPorMaterial($op);
 
+        // El precio se toma del material concreto que la OP eligió para cada
+        // línea genérica de la ficha, no del genérico de la familia.
+        $concretos = $this->concretos->mapaDeOrden($op);
+
         // Consumo agregado por material: consumo_estandar de la ficha × unidades
         // del producto o material procesado que produce la OP.
         $necesidad = [];
@@ -211,7 +220,12 @@ class CostoMaterialOpService
             }
 
             foreach ($ficha->materiales as $fila) {
-                $materialId = (int) $fila->material_componente_id;
+                $materialId = $this->concretos->resolver(
+                    $concretos,
+                    OrdenProduccionMaterialConcreto::OBJETIVO_PRODUCTO,
+                    (int) $producto->id,
+                    (int) $fila->material_componente_id
+                );
                 if ($materialId <= 0) {
                     continue;
                 }
@@ -233,7 +247,12 @@ class CostoMaterialOpService
             }
 
             foreach ($ficha->materiales as $fila) {
-                $materialId = (int) $fila->material_componente_id;
+                $materialId = $this->concretos->resolver(
+                    $concretos,
+                    OrdenProduccionMaterialConcreto::OBJETIVO_MATERIAL,
+                    (int) $materialObjetivo->id,
+                    (int) $fila->material_componente_id
+                );
                 if ($materialId <= 0) {
                     continue;
                 }
@@ -275,11 +294,17 @@ class CostoMaterialOpService
     private function unidadesPorMaterial(OrdenProduccion $op): array
     {
         $unidades = [];
+        $concretos = $this->concretos->mapaDeOrden($op);
 
         foreach ($this->productos($op) as $producto) {
             foreach ($producto->fichaTecnica as $ficha) {
                 foreach ($ficha->materiales as $fila) {
-                    $materialId = (int) $fila->material_componente_id;
+                    $materialId = $this->concretos->resolver(
+                        $concretos,
+                        OrdenProduccionMaterialConcreto::OBJETIVO_PRODUCTO,
+                        (int) $producto->id,
+                        (int) $fila->material_componente_id
+                    );
                     if ($materialId > 0 && !isset($unidades[$materialId])) {
                         $unidades[$materialId] = $fila->unidad_medida ?: 'u';
                     }
@@ -290,7 +315,12 @@ class CostoMaterialOpService
         foreach ($this->materialesObjetivo($op) as $materialObjetivo) {
             foreach ($materialObjetivo->fichaTecnica as $ficha) {
                 foreach ($ficha->materiales as $fila) {
-                    $materialId = (int) $fila->material_componente_id;
+                    $materialId = $this->concretos->resolver(
+                        $concretos,
+                        OrdenProduccionMaterialConcreto::OBJETIVO_MATERIAL,
+                        (int) $materialObjetivo->id,
+                        (int) $fila->material_componente_id
+                    );
                     if ($materialId > 0 && !isset($unidades[$materialId])) {
                         $unidades[$materialId] = $fila->unidad_medida ?: 'u';
                     }
@@ -394,10 +424,14 @@ class CostoMaterialOpService
     {
         $metodo = $this->metodo();
         $preciosCongelados = $op->costosMateriales()->get()->keyBy('material_id');
+        $concretos = $this->concretos->mapaDeOrden($op);
 
         $productos = $this->productos($op);
         $ids = $productos
             ->flatMap(fn (Producto $producto) => $this->idsMaterialesFicha($producto))
+            // Los concretos elegidos en la OP también llevan precio: son los que
+            // realmente se pagan en el coste de esta orden.
+            ->merge($this->concretos->idsDelMapa($concretos))
             ->unique()
             ->values()
             ->all();
@@ -407,7 +441,12 @@ class CostoMaterialOpService
             $costeMateriales = 0.0;
             foreach ($producto->fichaTecnica as $ficha) {
                 foreach ($ficha->materiales as $fila) {
-                    $materialId = (int) $fila->material_componente_id;
+                    $materialId = $this->concretos->resolver(
+                        $concretos,
+                        OrdenProduccionMaterialConcreto::OBJETIVO_PRODUCTO,
+                        (int) $producto->id,
+                        (int) $fila->material_componente_id
+                    );
                     if ($materialId <= 0) {
                         continue;
                     }

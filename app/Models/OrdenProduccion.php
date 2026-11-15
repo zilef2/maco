@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 use Illuminate\Database\Eloquent\SoftDeletes;
 
@@ -71,9 +72,17 @@ use Illuminate\Database\Eloquent\SoftDeletes;
             ->withTimestamps();
     }
 
-    public function taller()
+    /**
+     * Material concreto elegido en esta OP para cada línea genérica de la
+     * ficha del producto o del material procesado que se produce.
+     */
+    public function concretosMateriales(): HasMany
     {
-        return $this->belongsTo(Tercero::class, 'taller_id')
+        return $this->hasMany(OrdenProduccionMaterialConcreto::class, 'orden_produccion_id');
+    }
+
+    public function taller()
+    {        return $this->belongsTo(Tercero::class, 'taller_id')
             ->where('proveedores_maco.tipo', 'Taller');
     }
 

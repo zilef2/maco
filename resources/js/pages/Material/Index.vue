@@ -144,14 +144,20 @@ const proyeccionDe = (m: any): any => proyeccionPorId.value[String(m?.id)] ?? nu
 const preparadas = computed(() =>
     filas.value.map((m: any) => {
         const proyeccion = proyeccionDe(m);
+        // El genérico es el referente de la familia: no almacena existencia,
+        // no se proyecta y no consume, así que sus tres columnas quedan vacías.
+        const gen = esGenerico(m.generico);
 
         return {
             ...m,
+            _esGenerico: gen,
             _estado: estadoNormalizado(m.estado),
-            _proyeccion: Number(proyeccion?.proyectado ?? m.existencia_actual ?? 0),
-            _pendiente: Number(proyeccion?.pendiente ?? 0),
-            _comprometido: Number(proyeccion?.comprometido ?? 0),
-            _proyeccionDetalle: proyeccion,
+            existencia_actual: gen ? null : m.existencia_actual,
+            gasto_diario: gen ? null : m.gasto_diario,
+            _proyeccion: gen ? null : Number(proyeccion?.proyectado ?? m.existencia_actual ?? 0),
+            _pendiente: gen ? null : Number(proyeccion?.pendiente ?? 0),
+            _comprometido: gen ? null : Number(proyeccion?.comprometido ?? 0),
+            _proyeccionDetalle: gen ? null : proyeccion,
             _busqueda: normalizar(
                 [
                     m.codigo_material,
@@ -331,7 +337,7 @@ const valorOrden = (m: any, key: string): any => {
         case 'last_purchase_price':
             return m.last_purchase_price ?? -1; // Poner los sin precio al final
         case 'proyeccion':
-            return Number(m._proyeccion ?? 0);
+            return m._proyeccion === null ? null : Number(m._proyeccion);
         default:
             return m[key];
     }
@@ -1090,7 +1096,7 @@ const titulos = [
                                             </span>
                                             <span v-if="Number(material.generico) === 1 || material.generico === true"
                                                 class="shrink-0 rounded-full border border-sky-300 bg-sky-50 px-1.5 py-px text-[10px] font-medium text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300"
-                                                title="Material genérico: no maneja talla ni color">
+                                                title="Material genérico: representa a la familia categoría-base; no maneja talla, color ni inventario propio">
                                                 Genérico
                                             </span>
                                         </span>
@@ -1130,7 +1136,12 @@ const titulos = [
 
                                 <!-- Existencia -->
                                 <td class="px-3 py-3 text-right align-top">
-                                    <div class="flex flex-col items-end gap-0.5">
+                                    <div v-if="material._esGenerico" class="flex flex-col items-end gap-0.5"
+                                        title="El genérico no almacena inventario: la existencia está en los materiales concretos de su familia.">
+                                        <span class="text-foreground">—</span>
+                                        <span class="text-[11px] text-muted-foreground">no aplica</span>
+                                    </div>
+                                    <div v-else class="flex flex-col items-end gap-0.5">
                                         <span class="font-semibold tabular-nums text-foreground">
                                             {{ zilef_nuber_format(material.existencia_actual, 0, false) }}
                                         </span>
@@ -1142,7 +1153,12 @@ const titulos = [
 
                                 <!-- Proyectado: físico + producción pendiente − compromisos -->
                                 <td class="px-3 py-3 text-right align-top">
-                                    <button type="button"
+                                    <div v-if="material._esGenerico" class="flex flex-col items-end gap-0.5"
+                                        title="El genérico no se reserva ni se produce: las OPs consumen el material concreto que se eligió al registrarlas.">
+                                        <span class="text-foreground">—</span>
+                                        <span class="text-[11px] text-muted-foreground">no aplica</span>
+                                    </div>
+                                    <button v-else type="button"
                                         class="group flex w-full flex-col items-end gap-0.5 rounded-sm text-right focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
                                         @click="abrirProyeccion(material)"
                                         :title="`Físico ${zilef_nuber_format(material.existencia_actual, 2, false)} + producción pendiente ${zilef_nuber_format(material._pendiente, 2, false)} − comprometido ${zilef_nuber_format(material._comprometido, 2, false)}`">
@@ -1165,7 +1181,12 @@ const titulos = [
 
                                 <!-- Gasto diario -->
                                 <td class="px-3 py-3 text-right align-top">
-                                    <div class="flex flex-col items-end gap-0.5">
+                                    <div v-if="material._esGenerico" class="flex flex-col items-end gap-0.5"
+                                        title="El consumo se registra a nombre del material concreto, no del genérico.">
+                                        <span class="text-foreground">—</span>
+                                        <span class="text-[11px] text-muted-foreground">no aplica</span>
+                                    </div>
+                                    <div v-else class="flex flex-col items-end gap-0.5">
                                         <span class="font-semibold tabular-nums text-foreground">
                                             {{ material.gasto_diario !== null && material.gasto_diario !== undefined
                                                 ? zilef_nuber_format(material.gasto_diario, material.gasto_diario % 1 ? 2 :

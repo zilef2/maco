@@ -4,7 +4,9 @@ namespace App\Services;
 
 use App\Models\KitProceso;
 use App\Models\Material;
+use App\Models\MaterialPrice;
 use App\Models\OrdenProduccion;
+use App\Models\Proveedor;
 use Illuminate\Database\Eloquent\Collection;
 
 /**
@@ -18,6 +20,95 @@ class FaltantesOpService
      * @return list<array<string, mixed>>
      */
     public function listar(): array
+    {
+        return $this->porFaltante($this->carencias());
+    }
+
+    /**
+     * Orden de compra: las carencias con el precio vigente y el importe de
+     * cubrir cada una, que es lo que se necesita para saber cuánto gastar.
+     *
+     * @return array{filas: list<array<string, mixed>>, materiales: int, ordenes: int, total_estimado: float, sin_precio: int}
+     */
+    public function ordenCompra(): array
+    {
+        $filas = $this->porFaltante($this->carencias());
+
+        if (empty($filas)) {
+            return [
+                'filas' => [],
+                'materiales' => 0,
+                'ordenes' => 0,
+                'total_estimado' => 0.0,
+                'sin_precio' => 0,
+            ];
+        }
+
+        $ids = array_column($filas, 'material_id');
+
+        // El precio vigente es la compra más reciente del material.
+        $precios = MaterialPrice::query()
+            ->whereIn('material_id', $ids)
+            ->orderByDesc('fecha')
+            ->orderByDesc('id')
+            ->get(['material_id', 'precio', 'fecha'])
+            ->unique('material_id')
+            ->keyBy('material_id');
+
+        $proveedorIdPorMaterial = Material::query()
+            ->whereIn('id', $ids)
+            ->pluck('proveedor_habitual', 'id')
+            ->filter()
+            ->all();
+
+        $nombres = Proveedor::query()
+            ->whereIn('id', array_values($proveedorIdPorMaterial))
+            ->pluck('nombre', 'id');
+
+        $filas = array_map(function (array $fila) use ($precios, $nombres, $proveedorIdPorMaterial) {
+            $precio = $precios[$fila['material_id']] ?? null;
+            $valor = $precio === null ? null : round((float) $precio->precio, 2);
+
+            $fila['precio'] = $valor;
+            $fila['precio_fecha'] = $precio === null ? null : substr((string) $precio->fecha, 0, 10);
+            $proveedorId = $proveedorIdPorMaterial[$fila['material_id']] ?? null;
+            $fila['proveedor'] = $proveedorId === null ? null : ($nombres[$proveedorId] ?? null);
+            $fila['importe'] = $valor === null ? null : round($fila['faltante'] * $valor, 2);
+
+            return $fila;
+        }, $filas);
+
+        $ordenes = [];
+        foreach ($filas as $fila) {
+            foreach ($fila['ordenes'] as $op) {
+                $ordenes[$op['numero_op']] = true;
+            }
+        }
+
+        return [
+            'filas' => $filas,
+            'materiales' => count($filas),
+            'ordenes' => count($ordenes),
+            'total_estimado' => round(array_sum(array_filter(array_column($filas, 'importe'))), 2),
+            'sin_precio' => count(array_filter($filas, fn (array $fila) => $fila['precio'] === null)),
+        ];
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $filas
+     * @return list<array<string, mixed>>
+     */
+    private function porFaltante(array $filas): array
+    {
+        usort($filas, fn (array $a, array $b) => $b['faltante'] <=> $a['faltante']);
+
+        return $filas;
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function carencias(): array
     {
         $estadosSurtidos = ['En taller', 'Recibiendo', 'Terminada', 'Cerrada'];
 
@@ -77,7 +168,6 @@ class FaltantesOpService
                 ];
             })
             ->filter()
-            ->sortByDesc('faltante')
             ->values()
             ->all();
     }

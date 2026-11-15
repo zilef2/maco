@@ -2,6 +2,7 @@
 import Breadcrumbs from '@/components/Breadcrumbs.vue';
 import ComprarFaltantesButton from '@/components/ComprarFaltantesButton.vue';
 import NotificationBell from '@/components/NotificationBell.vue';
+import OrdenCompraButton from '@/components/OrdenCompraButton.vue';
 import { Button } from '@/components/ui/button';
 import {
     DropdownMenu,
@@ -67,6 +68,7 @@ const { top, visitar, limpiar } = useMostVisited();
             </template>
         </div>
         <div class="flex shrink-0 items-center gap-2">
+            <OrdenCompraButton />
             <ComprarFaltantesButton />
             <NotificationBell />
             <NotificationBell tipo="material_insuficiente" siempre-visible />

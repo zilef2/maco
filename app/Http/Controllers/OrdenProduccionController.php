@@ -9,6 +9,7 @@ use App\Models\GrupoTalla;
 use App\Models\KitProceso;
 use App\Models\Material;
 use App\Models\OrdenProduccion;
+use App\Models\OrdenProduccionMaterialConcreto;
 use App\Models\Parametro;
 use App\Models\User;
 use App\Models\EstadoOperacion;
@@ -23,6 +24,7 @@ use App\Services\ColaMaterialesOpService;
 use App\Services\CompromisoMaterialService;
 use App\Services\CostoMaterialOpService;
 use App\Services\CostoRecepcionOpService;
+use App\Services\MaterialConcretoOpService;
 use App\Services\MermaRecepcionService;
 use App\Traits\MaterialMovimientoTrait;
 use App\helpers\Myhelp;
@@ -50,7 +52,8 @@ class OrdenProduccionController extends Controller {
         protected CostoRecepcionOpService $costosRecepcion,
         protected MermaRecepcionService $mermasRecepcion,
         protected ColaMaterialesOpService $colaMateriales,
-        protected CompromisoMaterialService $compromisos
+        protected CompromisoMaterialService $compromisos,
+        protected MaterialConcretoOpService $concretos
     ) {
         $this->thisAtributos = (new OrdenProduccion())->getFillable();
     }
@@ -82,7 +85,7 @@ class OrdenProduccionController extends Controller {
     }
 
     private function obtenerListadoOrdenes(): Collection {
-        $claveListado = 'op_index_v13_' . $this->versionCache();
+        $claveListado = 'op_index_v14_' . $this->versionCache();
         return Cache::remember($claveListado, now()->addMinutes(10), function () {
             $posiciones = $this->colaMateriales->posiciones();
 
@@ -96,7 +99,7 @@ class OrdenProduccionController extends Controller {
             $proyeccion = $this->compromisos->proyeccionPorMaterial($materialesKit);
 
             return OrdenProduccion::query()
-                ->with(['productoReferencia.fichaTecnica.materiales', 'taller', 'empresaExterna', 'estadoOp', 'responsable', 'distribucionesPorTallas.producto', 'distribucionesPorTallas.material', 'productos.fichaTecnica.materiales', 'productos.procesos', 'materiales.fichaTecnica.materiales', 'recepcionesCalidad.materialReferencia', 'compromisosReparacion.materialReferencia', 'kitProcesos.material', 'cierres', 'costosMateriales.material', 'costosCambios.material', 'costosCambios.usuario'])
+                ->with(['productoReferencia.fichaTecnica.materiales', 'taller', 'empresaExterna', 'estadoOp', 'responsable', 'distribucionesPorTallas.producto', 'distribucionesPorTallas.material', 'productos.fichaTecnica.materiales', 'productos.procesos', 'materiales.fichaTecnica.materiales', 'recepcionesCalidad.materialReferencia', 'compromisosReparacion.materialReferencia', 'kitProcesos.material', 'cierres', 'costosMateriales.material', 'costosCambios.material', 'costosCambios.usuario', 'concretosMateriales'])
                 ->orderByDesc('updated_at')
                 ->get()
                 ->map(function ($op) use ($posiciones, $proyeccion) {
@@ -154,6 +157,19 @@ class OrdenProduccionController extends Controller {
                     );
 
                     $productosPorMaterial = [];
+
+                    // Material concreto (color o talla) que la OP eligió por cada
+                    // línea genérica de la ficha: el kit se arma con él, así que
+                    // el detalle debe atribuirse al mismo material.
+                    $concretos = $this->concretos->mapaDeOrden($op);
+                    $eleccionesPlanas = [];
+                    foreach ($concretos as $porObjetivo) {
+                        foreach ($porObjetivo as $objetivoId => $porGenerico) {
+                            $eleccionesPlanas[(int) $objetivoId] = $porGenerico;
+                        }
+                    }
+                    $op->materiales_concretos = $eleccionesPlanas;
+
                     foreach ($op->productos as $productoKit) {
                         $ficha = $productoKit->fichaTecnica->first();
                         if (!$ficha) {
@@ -162,7 +178,12 @@ class OrdenProduccionController extends Controller {
 
                         $nombreKit = $nombreProducto($productoKit) ?: ('Producto #' . $productoKit->id);
                         foreach ($ficha->materiales as $filaMaterial) {
-                            $materialId = $filaMaterial->material_componente_id;
+                            $materialId = $this->concretos->resolver(
+                                $concretos,
+                                OrdenProduccionMaterialConcreto::OBJETIVO_PRODUCTO,
+                                (int) $productoKit->id,
+                                (int) $filaMaterial->material_componente_id
+                            );
                             if (!$materialId) {
                                 continue;
                             }
@@ -179,7 +200,12 @@ class OrdenProduccionController extends Controller {
 
                         $nombreKit = $nombreMaterial($materialKit) ?: ('Material #' . $materialKit->id);
                         foreach ($ficha->materiales as $filaMaterial) {
-                            $materialId = $filaMaterial->material_componente_id;
+                            $materialId = $this->concretos->resolver(
+                                $concretos,
+                                OrdenProduccionMaterialConcreto::OBJETIVO_MATERIAL,
+                                (int) $materialKit->id,
+                                (int) $filaMaterial->material_componente_id
+                            );
                             if (!$materialId) {
                                 continue;
                             }
@@ -483,6 +509,10 @@ class OrdenProduccionController extends Controller {
                         'precio_unitario'   => (float) ($preciosPorMaterial[$fila->material_componente_id] ?? 0),
                         'metodo_costos'     => $metodoCostos,
                         'existencia_actual' => (float) ($fila->material?->existencia_actual ?? 0),
+                        // La línea genérica obliga a elegir, en la OP, un material
+                        // concreto de su familia (el color o la talla reales).
+                        'generico'          => (bool) ($fila->material?->generico ?? false),
+                        'familia'           => MaterialConcretoOpService::familiaDe($fila->material),
                     ])->values()->all() ?? [],
                 ];
             });
@@ -514,12 +544,17 @@ class OrdenProduccionController extends Controller {
                         'precio_unitario'   => (float) ($preciosPorMaterial[$fila->material_componente_id] ?? 0),
                         'metodo_costos'     => $metodoCostos,
                         'existencia_actual' => (float) ($fila->material?->existencia_actual ?? 0),
+                        // También en la receta del material procesado: la OP elige
+                        // el material concreto de la familia del genérico.
+                        'generico'          => (bool) ($fila->material?->generico ?? false),
+                        'familia'           => MaterialConcretoOpService::familiaDe($fila->material),
                     ])->values()->all() ?? [],
                 ];
             })->values()->all();
 
-        // Proyección de los componentes de las fichas: la vista previa de la
-        // OP debe comparar contra físico + producción pendiente − compromisos.
+        // Familias (par categoría-base) de los componentes genéricos de las
+        // fichas: en la OP se elige, por cada familia, el material concreto que
+        // realmente se consume (COM-CAP-17 con su variante, color o talla).
         $materialesComponente = $productos
             ->flatMap(fn ($producto) => collect($producto['ficha_materiales'])->pluck('material_id'))
             ->merge(collect($materialesProcesados)->flatMap(
@@ -530,7 +565,60 @@ class OrdenProduccionController extends Controller {
             ->values()
             ->all();
 
-        $proyeccionFichas = $this->compromisos->proyeccionPorMaterial($materialesComponente);
+        $genericosComponente = Material::query()
+            ->whereIn('id', $materialesComponente)
+            ->where('generico', true)
+            ->get(['id', 'codigo_categoria', 'codigo_base'])
+            ->mapWithKeys(fn (Material $material) => [
+                (int) $material->id => MaterialConcretoOpService::familiaDe($material),
+            ]);
+
+        $familiasNecesarias = $genericosComponente
+            ->filter(fn (string $familia) => $familia !== '' && $familia !== '-')
+            ->unique()
+            ->values()
+            ->all();
+
+        $opcionesFamilias = $this->concretos
+            ->concretosDeFamilias($familiasNecesarias)
+            ->map(function ($grupo, string $familia) use ($preciosPorMaterial, $metodoCostos) {
+                return $grupo->map(function (Material $material) use ($familia, $preciosPorMaterial, $metodoCostos) {
+                    $nombre = $this->concretos->nombreConcreto($material);
+
+                    return [
+                        'id'                => (int) $material->id,
+                        'value'             => (int) $material->id,
+                        'name'              => $nombre,
+                        'label'             => $nombre,
+                        'title'             => $nombre,
+                        'codigo_material'   => $material->codigo_material,
+                        'nombre_base'       => $material->nombre_base,
+                        'familia'           => $familia,
+                        'unidad_inventario' => $material->unidad_inventario ?: 'u',
+                        'existencia_actual' => (float) ($material->existencia_actual ?? 0),
+                        'precio_unitario'   => (float) ($preciosPorMaterial[$material->id] ?? 0),
+                        'metodo_costos'     => $metodoCostos,
+                    ];
+                })->values()->all();
+            })
+            ->all();
+
+        $idsFamilias = collect($opcionesFamilias)
+            ->flatten(1)
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        // Proyección de los componentes de las fichas: la vista previa de la
+        // OP debe comparar contra físico + producción pendiente − compromisos.
+        // Se incluyen los concretos de las familias porque la vista previa se
+        // calcula con el material que al final se escoge.
+        $materialesProyectados = array_values(array_unique(array_merge(
+            $materialesComponente,
+            $idsFamilias
+        )));
+
+        $proyeccionFichas = $this->compromisos->proyeccionPorMaterial($materialesProyectados);
 
         $enriquecerFicha = function (array $filas) use ($proyeccionFichas): array {
             return array_map(function (array $fila) use ($proyeccionFichas) {
@@ -548,6 +636,19 @@ class OrdenProduccionController extends Controller {
             }, $filas);
         };
 
+        $enriquecerConcreto = function (array $fila) use ($proyeccionFichas): array {
+            $proyeccion = $proyeccionFichas[(int) $fila['id']] ?? null;
+
+            return $fila + [
+                'fisico'       => round((float) ($proyeccion['fisico'] ?? $fila['existencia_actual']), 4),
+                'pendiente'    => round((float) ($proyeccion['pendiente'] ?? 0), 4),
+                'comprometido' => round((float) ($proyeccion['comprometido'] ?? 0), 4),
+                'proyectado'   => round((float) ($proyeccion['proyectado'] ?? $fila['existencia_actual']), 4),
+                'productores'  => $proyeccion['productores'] ?? [],
+                'consumidores' => $proyeccion['consumidores'] ?? [],
+            ];
+        };
+
         $productos = $productos->map(function ($producto) use ($enriquecerFicha) {
             $producto['ficha_materiales'] = $enriquecerFicha($producto['ficha_materiales']);
 
@@ -562,6 +663,13 @@ class OrdenProduccionController extends Controller {
             })
             ->values()
             ->all();
+
+        // Cada familia lleva sus materiales concretos ya proyectados, para que
+        // el selector de la OP muestre existencia y faltante de lo que se escoge.
+        $opcionesFamilias = array_map(
+            fn (array $opciones) => array_map($enriquecerConcreto, $opciones),
+            $opcionesFamilias
+        );
 
         $siguienteNumeroOp = (int) str_replace('OP-', '', OrdenProduccion::siguienteNumeroOp());
 
@@ -641,6 +749,9 @@ class OrdenProduccionController extends Controller {
             'producto_referencia_id' => $productos,
             'producto_id'            => $productos,
             'materiales_procesados'  => $materialesProcesados,
+            // Materiales concretos de cada familia genérica: la OP elige aquí el
+            // que tiene el color o la talla que se va a consumir.
+            'materiales_familias'    => $opcionesFamilias,
             'taller_id'              => $talleres,
             'tipo'                   => [
                 ['id' => 'taller', 'value' => 'taller', 'name' => 'Taller', 'label' => 'Taller', 'title' => 'Taller'],
@@ -729,12 +840,37 @@ class OrdenProduccionController extends Controller {
             ->all();
     }
 
+    /**
+     * Valida el material concreto (color o talla) elegido en la OP para cada
+     * línea genérica de la ficha de sus productos y materiales a producir. Se
+     * comprueba antes de abrir la transacción para no dejar media OP creada.
+     *
+     * @param  list<int>  $productoIds
+     * @param  list<int>  $materialIds
+     * @return array<string, array<int, array<int, int>>>
+     */
+    private function concretosDesdeRequest(Request $request, array $productoIds, array $materialIds, bool $exigir): array
+    {
+        return $this->concretos->validar(
+            $productoIds,
+            $materialIds,
+            (array) $request->input('materiales_concretos', []),
+            $exigir
+        );
+    }
+
     public function store(StoreOrdenProduccionRequest $request): RedirectResponse {
         $permissions = Myhelp::EscribirEnLog($this, ' Begin STORE:OrdenProduccions');
-        DB::beginTransaction();
 
         $materialesPivot = $this->materialesPivotDesdeRequest($request);
         $esModoMaterial = !empty($materialesPivot);
+        $productosOp = $esModoMaterial ? [] : array_map('intval', (array) $request->input('productos', []));
+
+        // Ninguna línea genérica de la ficha puede entrar a producción sin su
+        // material concreto: se comprueba antes de crear la OP.
+        $concretos = $this->concretosDesdeRequest($request, $productosOp, array_keys($materialesPivot), true);
+
+        DB::beginTransaction();
 
         // El costo de proceso no se digita: se deriva de los procesos de los
         // productos al recalcular los costos de la OP.
@@ -777,9 +913,10 @@ class OrdenProduccionController extends Controller {
             );
         }
 
-        $productosOp = $esModoMaterial ? [] : array_map('intval', (array) $request->input('productos', []));
         $OrdenProduccion->productos()->sync($productosOp);
         $OrdenProduccion->materiales()->sync($materialesPivot);
+
+        $this->concretos->guardar((int) $OrdenProduccion->id, $concretos);
 
         if ($esModoMaterial) {
             $this->sincronizarDistribucionMateriales($OrdenProduccion, $materialesPivot);
@@ -794,7 +931,8 @@ class OrdenProduccionController extends Controller {
             (int) ($data['cantidad_planificada'] ?? 0),
             array_map('floatval', (array) $request->input('productos_cantidad', [])),
             array_keys($materialesPivot),
-            $cantidadesMateriales
+            $cantidadesMateriales,
+            $concretos
         );
         $avisoFaltantes = null;
         if (!empty($faltantes)) {
@@ -829,7 +967,8 @@ class OrdenProduccionController extends Controller {
             (int) ($data['cantidad_planificada'] ?? 0),
             array_map('floatval', (array) $request->input('productos_cantidad', [])),
             array_keys($materialesPivot),
-            $cantidadesMateriales
+            $cantidadesMateriales,
+            $concretos
         );
 
         $this->guardarCostosMateriales($OrdenProduccion);
@@ -883,6 +1022,9 @@ class OrdenProduccionController extends Controller {
             'distribucion_tallas.*.id' => ['nullable', 'integer'],
             'distribucion_tallas.*.talla' => ['nullable', 'string', 'max:255'],
             'distribucion_tallas.*.cantidad_planificada' => ['nullable', 'numeric', 'min:0'],
+            'materiales_concretos' => ['nullable', 'array'],
+            'materiales_concretos.*' => ['nullable', 'array'],
+            'materiales_concretos.*.*' => ['nullable', 'integer', 'min:1'],
         ]);
 
         DB::beginTransaction();
@@ -953,6 +1095,18 @@ class OrdenProduccionController extends Controller {
             $this->sincronizarDistribucionMateriales($OrdenProduccion, $materialesPivot);
         }
 
+        // Un borrador puede quedar incompleto a propósito: se aceptan las
+        // elecciones válidas sin exigir que estén todas.
+        $concretos = $this->concretosDesdeRequest($request, $productosOp, array_keys($materialesPivot), false);
+
+        if ($request->has('productos') || $request->has('materiales')) {
+            $this->concretos->guardar((int) $OrdenProduccion->id, $concretos);
+        } else {
+            // El guardado parcial no trajo objetivos: se conservan las
+            // elecciones ya registradas para que el kit no pierda el concreto.
+            $concretos = $this->concretos->mapaDeOrden($OrdenProduccion);
+        }
+
         $cantidadesMateriales = array_map(fn ($fila) => (float) $fila['cantidad'], $materialesPivot);
         $this->sincronizarKitProceso(
             $OrdenProduccion,
@@ -960,7 +1114,8 @@ class OrdenProduccionController extends Controller {
             (int) ($data['cantidad_planificada'] ?? 0),
             array_map('floatval', (array) $request->input('productos_cantidad', [])),
             array_keys($materialesPivot),
-            $cantidadesMateriales
+            $cantidadesMateriales,
+            $concretos
         );
 
         $this->guardarCostosMateriales($OrdenProduccion);
@@ -998,6 +1153,9 @@ class OrdenProduccionController extends Controller {
             'materiales.*' => ['integer', 'exists:materials,id'],
             'materiales_cantidad' => ['nullable', 'array'],
             'materiales_cantidad.*' => ['integer', 'min:1'],
+            'materiales_concretos' => ['nullable', 'array'],
+            'materiales_concretos.*' => ['nullable', 'array'],
+            'materiales_concretos.*.*' => ['nullable', 'integer', 'min:1'],
         ]);
 
         $OrdenProduccion = OrdenProduccion::findOrFail($id)->load('estadoOp');
@@ -1096,6 +1254,23 @@ class OrdenProduccionController extends Controller {
             $OrdenProduccion->productos()->sync($productosOp);
         }
 
+        // Al editar se vuelve a exigir el material concreto de cada línea
+        // genérica: sin él, el kit, los compromisos y los costos no saben de qué
+        // color o talla se va a gastar la OP.
+        if ($request->has('materiales_concretos')) {
+            try {
+                $concretos = $this->concretosDesdeRequest($request, $productosOp, array_keys($materialesPivot), true);
+            } catch (ValidationException $e) {
+                DB::rollBack();
+
+                throw $e;
+            }
+
+            $this->concretos->guardar((int) $OrdenProduccion->id, $concretos);
+        } else {
+            $concretos = $this->concretos->mapaDeOrden($OrdenProduccion);
+        }
+
         if ($tieneMaterialesEnviados || $esModoMaterial) {
             $OrdenProduccion->materiales()->sync($materialesPivot);
         }
@@ -1114,7 +1289,8 @@ class OrdenProduccionController extends Controller {
             (int) ($data['cantidad_planificada'] ?? $OrdenProduccion->cantidad_planificada ?? 0),
             array_map('floatval', (array) $request->input('productos_cantidad', [])),
             array_keys($materialesPivot),
-            $cantidadesMateriales
+            $cantidadesMateriales,
+            $concretos
         );
 
         $this->guardarCostosMateriales($OrdenProduccion);
@@ -1142,6 +1318,7 @@ class OrdenProduccionController extends Controller {
             'productoReferencia.procesos',
             'distribucionesPorTallas',
             'costosMateriales',
+            'concretosMateriales',
         ]);
 
         if ($recargada) {
@@ -1157,8 +1334,12 @@ class OrdenProduccionController extends Controller {
      * del producto o material procesado. Si no viene el mapa de cantidades por
      * objetivo se usa la cantidad planificada total de la OP.
      *
+     * Cada línea genérica de la ficha se resuelve contra el material concreto
+     * (color o talla) elegido en la OP, que es el que realmente se consume.
+     *
      * @param  array<int, float>  $cantidadesPorProducto
      * @param  array<int, float>  $cantidadesPorMaterial
+     * @param  array<string, array<int, array<int, int>>>  $concretos
      * @return array<int, array{nombre:string, unidad:string, necesita:float, hay:float}>
      */
     private function necesidadMateriales(
@@ -1166,11 +1347,14 @@ class OrdenProduccionController extends Controller {
         int $cantidadPlanificada,
         array $cantidadesPorProducto = [],
         array $materialIds = [],
-        array $cantidadesPorMaterial = []
+        array $cantidadesPorMaterial = [],
+        array $concretos = []
     ): array {
         if (empty($productoIds) && empty($materialIds)) {
             return [];
         }
+
+        $materialesConcretos = $this->concretos->materialesDelMapa($concretos);
 
         $necesidad = [];
         $productos = Producto::with('fichaTecnica.materiales.material')
@@ -1180,6 +1364,7 @@ class OrdenProduccionController extends Controller {
         $objetivos = collect();
         foreach ($productos as $producto) {
             $objetivos->push([
+                'tipo' => OrdenProduccionMaterialConcreto::OBJETIVO_PRODUCTO,
                 'id' => (int) $producto->id,
                 'cantidad' => array_key_exists($producto->id, $cantidadesPorProducto)
                     ? (float) $cantidadesPorProducto[$producto->id]
@@ -1195,6 +1380,7 @@ class OrdenProduccionController extends Controller {
 
             foreach ($materiales as $material) {
                 $objetivos->push([
+                    'tipo' => OrdenProduccionMaterialConcreto::OBJETIVO_MATERIAL,
                     'id' => (int) $material->id,
                     'cantidad' => array_key_exists($material->id, $cantidadesPorMaterial)
                         ? (float) $cantidadesPorMaterial[$material->id]
@@ -1210,16 +1396,25 @@ class OrdenProduccionController extends Controller {
             }
 
             foreach ($objetivo['ficha']->materiales as $fila) {
-                $id = $fila->material_componente_id;
-                if (!$id) {
+                $materialDeFicha = $fila->material;
+                if (!$materialDeFicha) {
                     continue;
                 }
+
+                $material = $this->concretos->materialResuelto(
+                    $concretos,
+                    $materialesConcretos,
+                    $objetivo['tipo'],
+                    (int) $objetivo['id'],
+                    $materialDeFicha
+                );
+                $id = (int) $material->id;
                 if (!isset($necesidad[$id])) {
                     $necesidad[$id] = [
-                        'nombre'   => trim(($fila->material?->codigo_material ? $fila->material->codigo_material . ' — ' : '') . $fila->material?->nombre_base),
-                        'unidad'   => $fila->unidad_medida ?: ($fila->material?->unidad_inventario ?: 'u'),
+                        'nombre'   => trim(($material->codigo_material ? $material->codigo_material . ' — ' : '') . $material->nombre_base),
+                        'unidad'   => $fila->unidad_medida ?: ($material->unidad_inventario ?: 'u'),
                         'necesita' => 0,
-                        'hay'      => (float) ($fila->material?->existencia_actual ?? 0),
+                        'hay'      => (float) ($material->existencia_actual ?? 0),
                     ];
                 }
                 $necesidad[$id]['necesita'] += (float) $fila->consumo_estandar * $objetivo['cantidad'];
@@ -1237,14 +1432,16 @@ class OrdenProduccionController extends Controller {
         int $cantidadPlanificada,
         array $cantidadesPorProducto = [],
         array $materialIds = [],
-        array $cantidadesPorMaterial = []
+        array $cantidadesPorMaterial = [],
+        array $concretos = []
     ): array {
         return collect($this->necesidadMateriales(
             $productoIds,
             $cantidadPlanificada,
             $cantidadesPorProducto,
             $materialIds,
-            $cantidadesPorMaterial
+            $cantidadesPorMaterial,
+            $concretos
         ))
             ->map(fn ($fila) => $fila + ['faltante' => max(0, $fila['necesita'] - $fila['hay'])])
             ->filter(fn ($fila) => $fila['faltante'] > 0)
@@ -1263,7 +1460,8 @@ class OrdenProduccionController extends Controller {
         int $cantidadPlanificada,
         array $cantidadesPorProducto = [],
         array $materialIds = [],
-        array $cantidadesPorMaterial = []
+        array $cantidadesPorMaterial = [],
+        array $concretos = []
     ): void {
         if (empty($productoIds) && empty($materialIds)) {
             return;
@@ -1274,7 +1472,8 @@ class OrdenProduccionController extends Controller {
             $cantidadPlanificada,
             $cantidadesPorProducto,
             $materialIds,
-            $cantidadesPorMaterial
+            $cantidadesPorMaterial,
+            $concretos
         );
         if (empty($necesidad)) {
             return;

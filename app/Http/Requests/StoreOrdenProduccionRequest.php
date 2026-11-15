@@ -32,6 +32,10 @@ class StoreOrdenProduccionRequest extends FormRequest
             'materiales.*' => ['integer', 'exists:materials,id'],
             'materiales_cantidad' => ['nullable', 'array'],
             'materiales_cantidad.*' => ['integer', 'min:1'],
+            // [producto o material de la OP][material genérico de la ficha] = material concreto.
+            'materiales_concretos' => ['nullable', 'array'],
+            'materiales_concretos.*' => ['nullable', 'array'],
+            'materiales_concretos.*.*' => ['nullable', 'integer', 'min:1'],
             'cantidad_planificada' => ['required', 'numeric', 'gt:0'],
             'costo_proceso' => ['nullable', 'numeric', 'min:0'],
             'fecha_prevista_envio_taller' => ['nullable', 'date'],

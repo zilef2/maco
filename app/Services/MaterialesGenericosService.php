@@ -15,6 +15,11 @@ use Illuminate\Support\Facades\DB;
  * ejecutar las veces que sea: crea los que faltan, pone en ese código a los
  * que lo traen de la regla antigua y refresca el precio de los existentes
  * cuando el promedio cambió.
+ *
+ * El genérico tampoco maneja inventario: existencia_actual y gasto_diario se
+ * guardan null, no entra en la proyección ni en la previsión y su compra se
+ * rechaza. Lo que se gasta es un material concreto de su familia, y quien lo
+ * decide es la OP a través de MaterialConcretoOpService.
  */
 class MaterialesGenericosService
 {

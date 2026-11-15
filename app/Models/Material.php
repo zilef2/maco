@@ -56,8 +56,10 @@ class Material extends Model
     }
 
     /**
-     * Un material genérico no maneja talla ni color: se limpian los indicadores
-     * y se borran las variantes registradas. Se aplica en saving para que valga
+     * El genérico es un referente de familia, no un artículo almacenado: no
+     * maneja talla ni color (se limpian los indicadores y las variantes) y
+     * tampoco tiene inventario propio (existencia y gasto diario viven en los
+     * materiales concretos del mismo par). Se aplica en saving para que valga
      * en cualquier ruta de escritura (formulario, servicio, tinker).
      */
     protected function limpiarVariantesPorGenerico(): void
@@ -68,6 +70,8 @@ class Material extends Model
             'maneja_otra_variante' => false,
             'color' => null,
             'talla_tamano' => null,
+            'existencia_actual' => null,
+            'gasto_diario' => null,
         ]);
 
         if ($this->exists) {
@@ -432,9 +436,23 @@ class Material extends Model
      * El gasto diario = total de salidas a taller de las OPs en los últimos
      * $ventanaDias días ÷ $ventanaDias (misma lógica que la previsión de existencias).
      * Devuelve el valor calculado o null si no hay consumo en la ventana.
+     * Un genérico siempre devuelve null: su salida nunca existirá, el consumo es
+     * del material concreto que se eligió en la OP.
      */
     public function recalcularGastoDiario(int $ventanaDias = 30): ?float
     {
+        if ($this->generico) {
+            static::whereKey($this->getKey())->toBase()->update([
+                'gasto_diario'                => null,
+                'gasto_diario_actualizado_en' => now(),
+            ]);
+
+            $this->gasto_diario = null;
+            $this->gasto_diario_actualizado_en = now();
+
+            return null;
+        }
+
         $total = MaterialMovimiento::query()
             ->where('material_id', $this->id)
             ->where('tipo_movimiento', 'salida')
@@ -474,15 +492,22 @@ class Material extends Model
     }
 
     /**
-     * Recalcula el gasto_diario de todos los materiales activos.
+     * Recalcula el gasto_diario de todos los materiales activos. Los genéricos
+     * se limpian una sola vez: su consumo pertenece a los materiales concretos.
      * Devuelve ['actualizados' => int, 'sin_consumo' => int].
      */
     public static function recalcularGastoDiarioDeTodos(int $ventanaDias = 30): array
     {
+        static::query()
+            ->where('generico', true)
+            ->whereNotNull('gasto_diario')
+            ->toBase()
+            ->update(['gasto_diario' => null]);
+
         $actualizados = 0;
         $sinConsumo = 0;
 
-        foreach (self::where('estado', 'Activo')->cursor() as $material) {
+        foreach (self::where('estado', 'Activo')->where('generico', false)->cursor() as $material) {
             if ($material->recalcularGastoDiario($ventanaDias) !== null) {
                 $actualizados++;
             } else {

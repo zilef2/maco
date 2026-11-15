@@ -71,6 +71,27 @@ class NotificacionesManager
         });
     }
 
+    public function noLeidasExcluyendo(?int $userId = null, array $excluirMensajes = []): \Illuminate\Support\Collection
+    {
+        return $this->vigentes(DB::table($this->table)
+            ->where('leida', false)
+            ->when($userId, function ($query, $userId) {
+                return $query->where(function ($q) use ($userId) {
+                    $q->where('user_id', $userId)
+                      ->orWhereNull('user_id');
+                });
+            })
+            ->when($excluirMensajes, function ($query, $excluirMensajes) {
+                foreach ($excluirMensajes as $fragmento) {
+                    $query->where('mensaje', 'not like', '%' . $fragmento . '%');
+                }
+                return $query;
+            }))
+            ->orderByRaw("CASE WHEN prioridad = 'alta' THEN 1 WHEN prioridad = 'media' THEN 2 ELSE 3 END")
+            ->orderByDesc('created_at')
+            ->get();
+    }
+
     public function noLeidas(?int $userId = null, ?string $mensajeContiene = null): \Illuminate\Support\Collection
     {
         return $this->vigentes(DB::table($this->table)
@@ -93,6 +114,25 @@ class NotificacionesManager
     {
         return (bool) DB::table($this->table)
             ->where('id', $id)
+            ->update(['leida' => true]);
+    }
+
+    public function marcarTodasExcluyendo(?int $userId = null, array $excluirMensajes = []): bool
+    {
+        return (bool) $this->vigentes(DB::table($this->table)
+            ->where('leida', false)
+            ->when($userId, function ($query, $userId) {
+                return $query->where(function ($q) use ($userId) {
+                    $q->where('user_id', $userId)
+                      ->orWhereNull('user_id');
+                });
+            })
+            ->when($excluirMensajes, function ($query, $excluirMensajes) {
+                foreach ($excluirMensajes as $fragmento) {
+                    $query->where('mensaje', 'not like', '%' . $fragmento . '%');
+                }
+                return $query;
+            }))
             ->update(['leida' => true]);
     }
 
