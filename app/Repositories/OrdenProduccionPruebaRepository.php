@@ -114,7 +114,7 @@ class OrdenProduccionPruebaRepository
 
                 $this->calcularCostos($op);
 
-                $creadas[] = $op;
+                $creadas[] = $op->fresh() ?? $op;
             }
 
             return $creadas;
@@ -218,19 +218,23 @@ class OrdenProduccionPruebaRepository
      */
     private function resolverConcretos(Producto $producto): array
     {
+        $ficha = $producto->fichaTecnica->first();
+
+        if (! $ficha) {
+            return [];
+        }
+
         $familias = [];
 
-        foreach ($producto->fichaTecnica as $ficha) {
-            foreach ($ficha->materiales as $linea) {
-                $material = $linea->material;
-                if (!$material?->generico) {
-                    continue;
-                }
+        foreach ($ficha->materiales as $linea) {
+            $material = $linea->material;
+            if (! $material?->generico) {
+                continue;
+            }
 
-                $familia = MaterialConcretoOpService::familiaDe($material);
-                if ($familia !== '' && $familia !== '-') {
-                    $familias[$familia] = true;
-                }
+            $familia = MaterialConcretoOpService::familiaDe($material);
+            if ($familia !== '' && $familia !== '-') {
+                $familias[$familia] = true;
             }
         }
 
@@ -241,25 +245,23 @@ class OrdenProduccionPruebaRepository
         $opciones = $this->concretos->concretosDeFamilias(array_keys($familias));
         $mapa = [];
 
-        foreach ($producto->fichaTecnica as $ficha) {
-            foreach ($ficha->materiales as $linea) {
-                $material = $linea->material;
-                if (!$material?->generico) {
-                    continue;
-                }
-
-                $concreto = $opciones
-                    ->get(MaterialConcretoOpService::familiaDe($material))
-                    ?->sortByDesc('existencia_actual')
-                    ->first();
-
-                if (!$concreto) {
-                    continue;
-                }
-
-                $mapa[OrdenProduccionMaterialConcreto::OBJETIVO_PRODUCTO][$producto->id][$material->id]
-                    = (int) $concreto->id;
+        foreach ($ficha->materiales as $linea) {
+            $material = $linea->material;
+            if (! $material?->generico) {
+                continue;
             }
+
+            $concreto = $opciones
+                ->get(MaterialConcretoOpService::familiaDe($material))
+                ?->sortByDesc('existencia_actual')
+                ->first();
+
+            if (! $concreto) {
+                continue;
+            }
+
+            $mapa[OrdenProduccionMaterialConcreto::OBJETIVO_PRODUCTO][$producto->id][$material->id]
+                = (int) $concreto->id;
         }
 
         return $mapa;
@@ -274,35 +276,39 @@ class OrdenProduccionPruebaRepository
      */
     private function crearKitProceso(OrdenProduccion $op, Producto $producto, int $cantidad, array $concretos): void
     {
+        $ficha = $producto->fichaTecnica->first();
+
+        if (! $ficha) {
+            return;
+        }
+
         $materialesConcretos = $this->concretos->materialesDelMapa($concretos);
         $necesidad = [];
 
-        foreach ($producto->fichaTecnica as $ficha) {
-            foreach ($ficha->materiales as $linea) {
-                $materialDeFicha = $linea->material;
-                if (!$materialDeFicha) {
-                    continue;
-                }
-
-                $material = $this->concretos->materialResuelto(
-                    $concretos,
-                    $materialesConcretos,
-                    OrdenProduccionMaterialConcreto::OBJETIVO_PRODUCTO,
-                    (int) $producto->id,
-                    $materialDeFicha
-                );
-
-                $materialId = (int) $material->id;
-                if (!isset($necesidad[$materialId])) {
-                    $necesidad[$materialId] = [
-                        'unidad' => $linea->unidad_medida ?: ($material->unidad_inventario ?: 'u'),
-                        'requerida' => 0.0,
-                        'disponible' => (float) ($material->existencia_actual ?? 0),
-                    ];
-                }
-
-                $necesidad[$materialId]['requerida'] += (float) $linea->consumo_estandar * $cantidad;
+        foreach ($ficha->materiales as $linea) {
+            $materialDeFicha = $linea->material;
+            if (! $materialDeFicha) {
+                continue;
             }
+
+            $material = $this->concretos->materialResuelto(
+                $concretos,
+                $materialesConcretos,
+                OrdenProduccionMaterialConcreto::OBJETIVO_PRODUCTO,
+                (int) $producto->id,
+                $materialDeFicha
+            );
+
+            $materialId = (int) $material->id;
+            if (! isset($necesidad[$materialId])) {
+                $necesidad[$materialId] = [
+                    'unidad' => $linea->unidad_medida ?: ($material->unidad_inventario ?: 'u'),
+                    'requerida' => 0.0,
+                    'disponible' => (float) ($material->existencia_actual ?? 0),
+                ];
+            }
+
+            $necesidad[$materialId]['requerida'] += (float) $linea->consumo_estandar * $cantidad;
         }
 
         foreach ($necesidad as $materialId => $fila) {
@@ -337,7 +343,7 @@ class OrdenProduccionPruebaRepository
             'estadoOp',
         ]);
 
-        if (!$recargada) {
+        if (! $recargada) {
             return;
         }
 

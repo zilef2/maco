@@ -352,7 +352,7 @@ const iniciarPresion = () => {
                             <h4 class="text-sm font-semibold">Reiniciar Órdenes de Producción</h4>
                         </div>
                         <p class="text-muted-foreground mt-2 text-xs leading-relaxed">
-                            Borra todas las OP existentes y genera 2 OP nuevas en el estado que elijas.
+                            Borra todas las OP existentes y genera 2 OP nuevas con su producto, distribución por tallas, materiales de la ficha y procesos, en el estado que elijas.
                         </p>
                         <div class="mt-3">
                             <label class="text-foreground block text-xs font-medium">Estado inicial:</label>

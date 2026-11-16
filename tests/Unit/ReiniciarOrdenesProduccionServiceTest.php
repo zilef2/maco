@@ -2,12 +2,11 @@
 
 namespace Tests\Unit;
 
-use App\Models\EstadoOperacion;
 use App\Models\OrdenProduccion;
 use App\Repositories\OrdenProduccionPruebaRepository;
 use App\Services\ReiniciarOrdenesProduccionService;
 use Mockery;
-use PHPUnit\Framework\TestCase;
+use Tests\TestCase;
 
 class ReiniciarOrdenesProduccionServiceTest extends TestCase
 {

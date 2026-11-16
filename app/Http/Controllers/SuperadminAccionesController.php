@@ -27,6 +27,7 @@ class SuperadminAccionesController extends Controller
     public function purgarDatosPrueba(PurgarDatosPruebaRequest $request): RedirectResponse
     {
         $this->purgarService->ejecutar();
+
         return back()->with('success', 'Registros de prueba eliminados correctamente.');
     }
 
@@ -93,9 +94,8 @@ class SuperadminAccionesController extends Controller
     {
         $this->reiniciarOpService->ejecutar((int) $request->validated('estado_op_id'));
 
-        Bitacora::accion('Superadmin', 'reiniciarOrdenesProduccion', 'Se borraron todas las OP y se generaron 2 nuevas.');
+        Bitacora::accion('Superadmin', 'reiniciarOrdenesProduccion', 'Se borraron todas las OP y se generaron 2 nuevas con producto, materiales y procesos.');
 
-        return back()->with('success', 'Se borraron todas las OP y se crearon 2 nuevas en el estado seleccionado.');
+        return back()->with('success', 'Se borraron todas las OP y se crearon 2 nuevas con producto, materiales y procesos en el estado seleccionado.');
     }
 }
-
