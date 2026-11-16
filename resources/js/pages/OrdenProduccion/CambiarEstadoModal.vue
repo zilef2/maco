@@ -40,6 +40,18 @@ const estadoActual = computed(() =>
     (props.estados || []).find((e: any) => Number(e.id) === Number(props.op?.estado_op_id))
 );
 
+const asignacionTaller = computed(() => {
+    const op = props.op as any;
+    if (!op) return null;
+    const esExterna = op.tipo === 'externa';
+    const nombre = op.taller_nombre || op.empresa_externa_nombre || op.taller?.nombre || op.empresa_externa?.nombre;
+    if (!nombre) return null;
+    return {
+        tipo: esExterna ? 'Empresa externa' : 'Taller',
+        nombre: String(nombre),
+    };
+});
+
 const opcionesPermitidas = computed(() => {
     const permitidos: number[] = estadoActual.value?.permitidos || [];
     return (props.estados || []).filter((e: any) => permitidos.includes(e.id));
@@ -737,10 +749,24 @@ const posicionarScrollRecepcion = async () => {
                 </h2>
 
                 <div class="mt-4 rounded-md border border-gray-200 dark:border-gray-700 p-3">
-                    <p class="text-sm text-gray-500 dark:text-gray-400">Estado actual</p>
-                    <p class="text-base font-semibold text-gray-900 dark:text-gray-100">
-                        {{ estadoActual?.name || 'Sin estado' }}
-                    </p>
+                    <div class="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                            <p class="text-sm text-gray-500 dark:text-gray-400">Estado actual</p>
+                            <p class="text-base font-semibold text-gray-900 dark:text-gray-100">
+                                {{ estadoActual?.name || 'Sin estado' }}
+                            </p>
+                        </div>
+
+                        <div class="text-left sm:text-right">
+                            <p class="text-sm text-gray-500 dark:text-gray-400">
+                                {{ asignacionTaller?.tipo ?? 'Taller / Empresa externa' }}
+                            </p>
+                            <p class="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                                {{ asignacionTaller?.nombre ?? 'Sin asignar' }}
+                            </p>
+                        </div>
+                    </div>
+
                     <p v-if="estadoActual?.regla_clave" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                         {{ estadoActual.regla_clave }}
                     </p>

@@ -92,10 +92,19 @@ class SuperadminAccionesController extends Controller
 
     public function reiniciarOrdenesProduccion(ReiniciarOrdenesProduccionRequest $request): RedirectResponse
     {
-        $this->reiniciarOpService->ejecutar((int) $request->validated('estado_op_id'));
+        $cantidad = max(1, (int) ($request->validated('cantidad') ?? 2));
+        $borrarExistentes = (bool) $request->boolean('borrar_existentes');
 
-        Bitacora::accion('Superadmin', 'reiniciarOrdenesProduccion', 'Se borraron todas las OP y se generaron 2 nuevas con producto, materiales y procesos.');
+        $this->reiniciarOpService->ejecutar((int) $request->validated('estado_op_id'), $cantidad, $borrarExistentes);
 
-        return back()->with('success', 'Se borraron todas las OP y se crearon 2 nuevas con producto, materiales y procesos en el estado seleccionado.');
+        $mensaje = $borrarExistentes
+            ? "Se borraron todas las OP y se generaron {$cantidad} nuevas con producto, materiales y procesos."
+            : "Se generaron {$cantidad} OP nuevas adicionales con producto, materiales y procesos.";
+
+        Bitacora::accion('Superadmin', 'reiniciarOrdenesProduccion', $mensaje);
+
+        return back()->with('success', $borrarExistentes
+            ? "Se borraron todas las OP y se crearon {$cantidad} nuevas con producto, materiales y procesos en el estado seleccionado."
+            : "Se crearon {$cantidad} OP nuevas adicionales con producto, materiales y procesos en el estado seleccionado.");
     }
 }

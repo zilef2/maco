@@ -150,11 +150,30 @@ const state = reactive({
     intervaloId: null as number | null,
     duracionTotalMs: 3000,
     estadoSeleccionadoId: props.estadosOp?.find((e) => e.nombre.toLowerCase() === 'recibiendo')?.id ?? props.estadosOp?.[0]?.id ?? 6,
+    cantidadOps: 2,
+    borrarExistentes: true,
     reiniciandoOps: false,
+});
+
+/** Máximo de OPs de prueba que se pueden generar de una vez. */
+const MAX_OPS = 10;
+
+const cantidadModelo = computed({
+    get: () => state.cantidadOps,
+    set: (valor: number | string) => {
+        const numero = Math.floor(Number(valor));
+        if (Number.isNaN(numero)) {
+            state.cantidadOps = 1;
+            return;
+        }
+        state.cantidadOps = Math.min(MAX_OPS, Math.max(1, numero));
+    },
 });
 
 const reiniciarOpsForm = useForm({
     estado_op_id: props.estadosOp?.find((e) => e.nombre.toLowerCase() === 'recibiendo')?.id ?? props.estadosOp?.[0]?.id ?? 6,
+    cantidad: 2,
+    borrar_existentes: true,
 });
 
 const ejecutarReinicioOps = () => {
@@ -163,6 +182,8 @@ const ejecutarReinicioOps = () => {
     }
     state.reiniciandoOps = true;
     reiniciarOpsForm.estado_op_id = state.estadoSeleccionadoId;
+    reiniciarOpsForm.cantidad = state.cantidadOps;
+    reiniciarOpsForm.borrar_existentes = state.borrarExistentes;
     reiniciarOpsForm.post(route('superadmin.reiniciar-ops'), {
         preserveScroll: true,
         onFinish: () => {
@@ -352,19 +373,42 @@ const iniciarPresion = () => {
                             <h4 class="text-sm font-semibold">Reiniciar Órdenes de Producción</h4>
                         </div>
                         <p class="text-muted-foreground mt-2 text-xs leading-relaxed">
-                            Borra todas las OP existentes y genera 2 OP nuevas con su producto, distribución por tallas, materiales de la ficha y procesos, en el estado que elijas.
+                            {{ state.borrarExistentes
+                                ? 'Borra todas las OP existentes y genera las OP nuevas que indiques, con su producto, distribución por tallas, materiales de la ficha y procesos, en el estado que elijas.'
+                                : 'Mantén las OP existentes y genera OP nuevas adicionales, con su producto, distribución por tallas, materiales de la ficha y procesos, en el estado que elijas.' }}
                         </p>
-                        <div class="mt-3">
-                            <label class="text-foreground block text-xs font-medium">Estado inicial:</label>
-                            <select
-                                v-model="state.estadoSeleccionadoId"
-                                class="border-input bg-background text-foreground mt-1 block w-full rounded-md border px-2.5 py-1.5 text-xs shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:outline-none"
-                            >
-                                <option v-for="estado in props.estadosOp" :key="estado.id" :value="estado.id">
-                                    {{ estado.nombre }}
-                                </option>
-                            </select>
+                        <div class="mt-3 grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="text-foreground block text-xs font-medium">Estado inicial:</label>
+                                <select
+                                    v-model="state.estadoSeleccionadoId"
+                                    class="border-input bg-background text-foreground mt-1 block w-full rounded-md border px-2.5 py-1.5 text-xs shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                                >
+                                    <option v-for="estado in props.estadosOp" :key="estado.id" :value="estado.id">
+                                        {{ estado.nombre }}
+                                    </option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-foreground block text-xs font-medium">Cantidad de OP:</label>
+                                <input
+                                    v-model.number="cantidadModelo"
+                                    type="number"
+                                    min="1"
+                                    :max="MAX_OPS"
+                                    step="1"
+                                    class="border-input bg-background text-foreground mt-1 block w-full rounded-md border px-2.5 py-1.5 text-xs shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                                />
+                            </div>
                         </div>
+                        <label class="mt-3 flex cursor-pointer items-center gap-2">
+                            <input
+                                v-model="state.borrarExistentes"
+                                type="checkbox"
+                                class="text-indigo-600 focus:ring-indigo-500 border-input bg-background h-3.5 w-3.5 rounded"
+                            />
+                            <span class="text-foreground text-xs">Borrar OP existentes antes de generar</span>
+                        </label>
                     </div>
                     <div class="border-border/60 mt-4 border-t pt-3">
                         <button
@@ -375,7 +419,7 @@ const iniciarPresion = () => {
                         >
                             <Loader2 v-if="state.reiniciandoOps || reiniciarOpsForm.processing" class="h-3.5 w-3.5 animate-spin" />
                             <RefreshCw v-else class="h-3.5 w-3.5" />
-                            {{ state.reiniciandoOps || reiniciarOpsForm.processing ? 'Reiniciando OPs...' : 'Borrar y generar 2 OP' }}
+                            {{ state.reiniciandoOps || reiniciarOpsForm.processing ? 'Reiniciando OPs...' : `${state.borrarExistentes ? 'Borrar y generar' : 'Generar'} ${state.cantidadOps} OP${state.cantidadOps === 1 ? '' : 's'}` }}
                         </button>
                     </div>
                 </div>

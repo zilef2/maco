@@ -11,10 +11,14 @@ class ReiniciarOrdenesProduccionService
         protected OrdenProduccionPruebaRepository $repository
     ) {}
 
-    public function ejecutar(int $estadoOpId): array
+    public function ejecutar(int $estadoOpId, int $cantidad = 2, bool $borrarExistentes = true): array
     {
-        $this->repository->vaciarOrdenesProduccion();
-        $creadas = $this->repository->generarOrdenes($estadoOpId, 2);
+        $cantidad = max(1, $cantidad);
+
+        if ($borrarExistentes) {
+            $this->repository->vaciarOrdenesProduccion();
+        }
+        $creadas = $this->repository->generarOrdenes($estadoOpId, $cantidad);
         Cache::flush();
 
         return $creadas;

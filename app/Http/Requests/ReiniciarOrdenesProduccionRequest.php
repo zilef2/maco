@@ -16,6 +16,8 @@ class ReiniciarOrdenesProduccionRequest extends FormRequest
     {
         return [
             'estado_op_id' => ['required', 'integer', 'exists:estado_operacions,id'],
+            'cantidad' => ['nullable', 'integer', 'min:1', 'max:10'],
+            'borrar_existentes' => ['nullable', 'boolean'],
         ];
     }
 }
