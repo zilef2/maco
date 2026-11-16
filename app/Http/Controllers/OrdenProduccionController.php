@@ -975,22 +975,63 @@ class OrdenProduccionController extends Controller {
 
         $this->compromisos->sincronizar($OrdenProduccion);
 
+        // «Pasar a lista para taller» desde el formulario de la OP: rige la misma
+        // regla que cambiarEstado, así que la orden solo sale de Preparación si su
+        // kit ya se cubre con la existencia actual de cada material concreto.
+        $salto = $request->boolean('pasar_a_lista') ? $this->saltarALista($OrdenProduccion) : null;
+
         DB::commit();
         $this->invalidarCache();
         $identificador = $OrdenProduccion->numero_op ?? $OrdenProduccion->id;
         Myhelp::EscribirEnLog($this, 'STORE:OrdenProduccions EXITOSO', 'OrdenProduccion id:' . $OrdenProduccion->id . ' | ' . $identificador, false);
-        $respuesta = back()->with('success', __('app.label.created_successfully', ['name' => $identificador]));
+        $respuesta = back()->with('success', __('app.label.created_successfully', ['name' => $identificador])
+            . ($salto && $salto['estado'] ? ' y quedó en «Lista para taller».' : ''));
 
         // Además de la campana, el aviso se muestra de inmediato al terminar
         // de crear la OP: si hay faltantes y solo se guarda la notificación,
         // el usuario no lo nota hasta que abre la campana.
-        if ($avisoFaltantes) {
-            $respuesta->with('warning', 'Material insuficiente en ' . $identificador . ': ' . collect($faltantes)
+        $advertencia = $avisoFaltantes
+            ? 'Material insuficiente en ' . $identificador . ': ' . collect($faltantes)
                 ->map(fn ($f) => $f['nombre'] . ' (faltan ' . round($f['faltante'], 2) . ')')
-                ->implode(' · ') . '. Revisa el resumen de materiales faltantes.');
+                ->implode(' · ') . '. Revisa el resumen de materiales faltantes.'
+            : '';
+
+        if ($salto && !$salto['estado']) {
+            $advertencia .= ($advertencia !== '' ? ' — ' : '')
+                . 'No se pasó a «Lista para taller»: la orden queda en Preparación hasta completar el kit — '
+                . collect($salto['faltantes'])->map(fn ($f) => $f['nombre'] . ' (faltan ' . round($f['faltante'], 2) . ' ' . $f['unidad'] . ')')->implode(' · ')
+                . '.';
+        }
+
+        if ($advertencia !== '') {
+            $respuesta->with('warning', $advertencia);
         }
 
         return $respuesta;
+    }
+
+    /**
+     * Salto a «Lista para taller» pedido desde el formulario: es la misma
+     * comprobación que exige cambiarEstado, así que una OP recién registrada no
+     * puede quedar en un estado al que luego no podría llegar a mano.
+     *
+     * @return array{estado: int|null, faltantes: list<array{nombre: string, faltante: float, unidad: string}>}
+     */
+    private function saltarALista(OrdenProduccion $op): array
+    {
+        $faltantes = $this->colaMateriales->faltantes($op);
+
+        if (!empty($faltantes)) {
+            return ['estado' => null, 'faltantes' => $faltantes];
+        }
+
+        $estadoId = EstadoOperacion::where('nombre', ColaMaterialesOpService::ESTADO_LISTA)->value('id');
+
+        if ($estadoId) {
+            $op->forceFill(['estado_op_id' => $estadoId])->save();
+        }
+
+        return ['estado' => $estadoId, 'faltantes' => []];
     }
 
     /**
@@ -1297,11 +1338,24 @@ class OrdenProduccionController extends Controller {
 
         $this->compromisos->sincronizar($OrdenProduccion);
 
+        // Al continuar un borrador desde el formulario de crear, el botón
+        // «Pasar a lista para taller» también aplica.
+        $salto = $request->boolean('pasar_a_lista') ? $this->saltarALista($OrdenProduccion) : null;
+
         DB::commit();
         $this->invalidarCache();
         $identificador = $OrdenProduccion->numero_op ?? $OrdenProduccion->id;
         Myhelp::EscribirEnLog($this, 'UPDATE:OrdenProduccions EXITOSO', 'OrdenProduccion id:' . $OrdenProduccion->id . ' | ' . $identificador, false);
-        return back()->with('success', __('app.label.updated_successfully2', ['nombre' => $identificador]));
+        $respuesta = back()->with('success', __('app.label.updated_successfully2', ['nombre' => $identificador])
+            . ($salto && $salto['estado'] ? ' y quedó en «Lista para taller».' : ''));
+
+        if ($salto && !$salto['estado']) {
+            $respuesta->with('warning', 'No se pasó a «Lista para taller»: la orden queda en Preparación hasta completar el kit — '
+                . collect($salto['faltantes'])->map(fn ($f) => $f['nombre'] . ' (faltan ' . round($f['faltante'], 2) . ' ' . $f['unidad'] . ')')->implode(' · ')
+                . '.');
+        }
+
+        return $respuesta;
     }
 
     /**
@@ -1809,6 +1863,11 @@ class OrdenProduccionController extends Controller {
      * esperada. Permite al usuario guardar lo que lleva hasta el momento y
      * terminarlo después. Si queda al menos un producto recibido (en el estado
      * que sea), la OP pasa a «Recibiendo».
+     *
+     * El avance también mueve el inventario: solo los pares aprobados entran al
+     * objetivo de la OP. Los pares en reparación y los no recuperables no
+     * alteran existencias. Al ser por diferencia, volver a guardar el avance (o
+     * cerrar la recepción después) no duplica lo ya ingresado.
      */
     public function guardarRecepcionBorrador(Request $request, $id): RedirectResponse {
         $datos = $request->validate([
@@ -1839,6 +1898,9 @@ class OrdenProduccionController extends Controller {
         $guardadas = 0;
         $paresRecibidos = 0;
         $filasCompromiso = [];
+        // Filas normalizadas para mover el inventario con lo aprobado, igual
+        // que el cambio de estado definitivo.
+        $filasRecepcion = [];
         foreach ($datos['recepciones'] ?? [] as $fila) {
             $distribucion = $distribuciones->get((int) ($fila['distribucion_id'] ?? 0));
             if (!$distribucion) {
@@ -1900,6 +1962,13 @@ class OrdenProduccionController extends Controller {
                 'fecha_compromiso'       => $fechaCompromiso,
             ];
 
+            $filasRecepcion[] = [
+                'distribucion_id'         => (int) $distribucion->id,
+                'cantidad_aprobada'       => $aprobada,
+                'cantidad_en_reparacion'  => $reparacion,
+                'cantidad_no_recuperable' => $noRecuperable,
+            ];
+
             $guardadas++;
         }
 
@@ -1929,6 +1998,16 @@ class OrdenProduccionController extends Controller {
             }
         }
 
+        // Lo aprobado en el avance ya es inventario: entra al objetivo de la OP
+        // (producto o material procesado) en cuanto la recepción está activa.
+        // Los pares en reparación y los no recuperables no tocan existencias.
+        $productosIncrementados = 0;
+        if (($estadoActualNombre === 'Recibiendo' || $pasoARecibiendo) && !empty($filasRecepcion)) {
+            $productosIncrementados = DB::transaction(
+                fn () => $this->incrementarProductos($orden, $filasRecepcion)
+            );
+        }
+
         $this->compromisos->sincronizar($orden);
 
         $this->invalidarCache();
@@ -1939,6 +2018,10 @@ class OrdenProduccionController extends Controller {
         $mensaje = 'Avance de recepción guardado. Los valores se conservarán al terminar.';
         if ($mermasRegistradas > 0) {
             $mensaje .= ' ' . $mermasRegistradas . ' par(es) no recuperable(s) quedaron registrados como merma.';
+        }
+        if ($productosIncrementados > 0) {
+            $mensaje .= ' Se incrementó el inventario de ' . $productosIncrementados
+                . ' objetivo(s) aprobados por la OP.';
         }
         if ($pasoARecibiendo) {
             $mensaje .= ' La OP pasó a «Recibiendo».';
@@ -2449,9 +2532,16 @@ class OrdenProduccionController extends Controller {
                 if ($distribucion) {
                     $datos = [
                         'talla' => $talla['talla'] ?? $distribucion->talla,
-                        'cantidad_recibida_buena' => $aEnteroONulo($talla['cantidad_recibida_buena'] ?? null),
-                        'cantidad_pendiente_reparacion' => $aEnteroONulo($talla['cantidad_pendiente_reparacion'] ?? null),
                     ];
+                    // Las cantidades de recepción solo se tocan cuando el
+                    // formulario las envía: editar la OP no puede borrar lo ya
+                    // recibido en una talla que comparte con otra OP.
+                    if (array_key_exists('cantidad_recibida_buena', $talla)) {
+                        $datos['cantidad_recibida_buena'] = $aEnteroONulo($talla['cantidad_recibida_buena']);
+                    }
+                    if (array_key_exists('cantidad_pendiente_reparacion', $talla)) {
+                        $datos['cantidad_pendiente_reparacion'] = $aEnteroONulo($talla['cantidad_pendiente_reparacion']);
+                    }
                     if ($conPlanificada && array_key_exists('cantidad_planificada', $talla)) {
                         $datos['cantidad_planificada'] = (int) ($talla['cantidad_planificada'] ?? 0);
                     }
@@ -2463,10 +2553,11 @@ class OrdenProduccionController extends Controller {
                     }
                     $recibidaAnterior = (int) ($distribucion->cantidad_recibida_buena ?? 0);
                     $distribucion->update($datos);
+                    $this->vincularTallaAlProducto($distribucion);
                     $this->registrarMovimientoDeTallaEditada(
                         $distribucion,
                         $recibidaAnterior,
-                        (int) ($datos['cantidad_recibida_buena'] ?? 0),
+                        (int) ($distribucion->cantidad_recibida_buena ?? 0),
                         $orden
                     );
                     $conservados[] = $distribucion->id;
@@ -2485,6 +2576,7 @@ class OrdenProduccionController extends Controller {
                 'cantidad_recibida_buena' => $aEnteroONulo($talla['cantidad_recibida_buena'] ?? null),
                 'cantidad_pendiente_reparacion' => $aEnteroONulo($talla['cantidad_pendiente_reparacion'] ?? null),
             ]);
+            $this->vincularTallaAlProducto($nueva);
             $this->registrarMovimientoDeTallaEditada(
                 $nueva,
                 0,
@@ -2495,6 +2587,19 @@ class OrdenProduccionController extends Controller {
         }
         $orden->distribucionesPorTallas()->sync($conservados);
         return $conservados;
+    }
+
+    /**
+     * La talla de una OP también es la talla de su producto: se enlaza en
+     * distribucion_producto para que la página del producto y su modal de
+     * tallas la muestren y las próximas OPs reutilicen la misma fila.
+     */
+    private function vincularTallaAlProducto(Distribucion_por_tallas $distribucion): void {
+        if (empty($distribucion->producto_id) || !empty($distribucion->material_id)) {
+            return;
+        }
+
+        $distribucion->productos()->syncWithoutDetaching([(int) $distribucion->producto_id]);
     }
 
     /**

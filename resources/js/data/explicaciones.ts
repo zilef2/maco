@@ -119,7 +119,7 @@ export const explicaciones: Explicacion[] = [
             'registrar compra',
             'promoción automática',
         ],
-        actualizada: '2026-11-06',
+        actualizada: '2026-11-15',
         bloques: [
             {
                 tipo: 'texto',
@@ -133,6 +133,7 @@ export const explicaciones: Explicacion[] = [
             {
                 tipo: 'lista',
                 items: [
+                    'Botón «Pasar a lista para taller» al crear la OP: registra la orden y la deja directamente en ese estado, sin pasar por Preparación. Solo se habilita cuando la existencia actual de cada material del kit alcanza para la cantidad producida; con faltantes el botón queda deshabilitado y el aviso de abajo dice cuánto falta de cada uno.',
                     'Sugerencia al elegir «Esperando materiales»: si el kit ya está completo, el modal ofrece pasar directamente a «Lista para taller» en lugar de entrar a la cola.',
                     'Promoción automática al registrar una compra en Materiales: se recorre la cola de la más antigua a la más nueva y cada OP cuyo kit quede completo pasa sola a «Lista para taller».',
                     'Manualmente, solo con el kit completo: si falta algún material, el cambio se rechaza y el detalle dice cuánto falta de cada uno.',
@@ -164,6 +165,8 @@ export const explicaciones: Explicacion[] = [
             'app/Services/ColaMaterialesOpService.php',
             'app/Http/Controllers/MaterialController.php (registrarCompra)',
             'app/Http/Controllers/OrdenProduccionController.php (cambiarEstado, descontarMaterialesTaller)',
+            'app/Http/Controllers/OrdenProduccionController.php (saltarALista, llamada desde store y update con pasar_a_lista)',
+            'resources/js/pages/OrdenProduccion/Create.vue (botón «Pasar a lista para taller»)',
             'resources/js/pages/OrdenProduccion/CambiarEstadoModal.vue',
             'database/migrations/2026_11_06_000000_reestructura_estados_op.php',
         ],
@@ -989,18 +992,22 @@ export const explicaciones: Explicacion[] = [
         subcategoria: 'Orden de compra',
         titulo: 'La pantalla «Orden de compra»: cuánto falta y a cuánto está',
         resumen:
-            'Una hoja de compra en pantalla completa que lista, por material, lo que hace falta para cubrir las OPs abiertas, con el precio vigente editable; no registra compras, solo lee la necesidad y actualiza precios.',
+            'Una hoja de compra en pantalla completa que lista, por material, lo que hace falta para cubrir las OPs abiertas. Se puede ver como lista de marcas para el local o como detalle con el precio vigente editable; no registra compras, solo lee la necesidad, actualiza precios y deja imprimir.',
         etiquetas: [
             'orden de compra',
             'cuánto comprar',
             'faltantes',
             'hoja de compra',
+            'lista de compras',
+            'marcar',
+            'imprimir',
+            'pdf',
             'precio del material',
             'actualizar precio',
             'total estimado',
             'comprar faltantes',
         ],
-        actualizada: '2026-11-14',
+        actualizada: '2026-11-15',
         bloques: [
             {
                 tipo: 'texto',
@@ -1015,7 +1022,10 @@ export const explicaciones: Explicacion[] = [
                     'El precio que se muestra es el vigente, o sea el de la compra más reciente del material (material_prices), con la fecha desde la que rige.',
                     'Guardar precios crea una fila nueva de material_prices con la fecha de hoy para cada material cuyo número cambió; un precio igual al vigente no se guarda y ninguna fila anterior se borra.',
                     'Un material sin precio se ve en ámbar y no entra al total de la orden; el botón «Sin precio» de la barra de filtros deja a la vista únicamente esos materiales.',
-                    'La orden se puede ordenar por faltante o por importe, y los materiales que todavía no tienen precio van siempre primero, porque son los únicos que dejan el total incompleto.',
+                    'La orden se puede ordenar por faltante o por importe, y en «Detalle» los materiales que todavía no tienen precio van siempre primero, porque son los únicos que dejan el total incompleto.',
+                    'La pantalla tiene dos organizaciones. «Lista» es la hoja de compra: un casillero por material con el nombre, la categoría, la cantidad y el código en gris, sin precios. «Detalle» es la tabla con bodega, precio e importe. La elección queda guardada en el dispositivo.',
+                    'En «Lista», tocar la fila marca el material como ya conseguido: el casillero se llena, el nombre se tacha y la fila baja al final de su categoría. Las marcas son locales (se guardan en el navegador de quien compra), no van a la base ni se comparten con otros equipos; «Limpiar marcas» las borra todas.',
+                    '«Imprimir / PDF» abre en otra pestaña /Material/orden-compra/imprimir: la misma orden, agrupada por categoría y con un casillero vacío por material, sin barra lateral ni menús. Ahí se puede activar «Con precios» para que entren el precio vigente, el importe y el total estimado.',
                 ],
             },
             {
@@ -1024,6 +1034,7 @@ export const explicaciones: Explicacion[] = [
                     'Pulsar «Orden de compra» en la barra superior (aparece junto a «Comprar faltantes» mientras haya carencias en las OPs abiertas).',
                     'Revisar o escribir los precios que cambiaron; el total del pie se recalcula mientras se escribe.',
                     'Pulsar «Guardar precios» para dejarlos en el histórico, o «Descartar» para devolverlos al precio vigente.',
+                    'Para comprar en el local: dejar la pantalla en «Lista» e ir tocando cada material a medida que se consigue, o imprimir la versión en papel desde «Imprimir / PDF».',
                 ],
             },
             {
@@ -1036,8 +1047,9 @@ export const explicaciones: Explicacion[] = [
         fuentes: [
             'app/Services/FaltantesOpService.php (carencias, ordenCompra con precio vigente e importe)',
             'app/Http/Controllers/MaterialController.php (ordenCompra, guardarPreciosOrdenCompra)',
-            'routes/web.php (GET /Material/orden-compra y POST /Material/orden-compra/precios)',
-            'resources/js/pages/Material/OrdenCompra.vue (hoja de compra full-screen)',
+            'routes/web.php (GET /Material/orden-compra, GET /Material/orden-compra/imprimir y POST /Material/orden-compra/precios)',
+            'resources/js/pages/Material/OrdenCompra.vue (hoja de compra full-screen, modos Lista y Detalle)',
+            'resources/js/pages/Material/OrdenCompraImprimible.vue (versión para papel o PDF)',
             'resources/js/components/OrdenCompraButton.vue (acceso desde la barra superior)',
             'app/Models/Material.php (costoUnitarioActual: la compra más reciente es el precio vigente)',
         ],

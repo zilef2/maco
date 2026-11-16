@@ -32,6 +32,7 @@ Route::middleware(['auth', 'verified', 'role:superadmin'])->group(function () {
 	Route::post('/superadmin/existencias-cero', [\App\Http\Controllers\SuperadminAccionesController::class, 'ceroExistencias'])->name('superadmin.existencias-cero');
 	Route::post('/superadmin/materiales-al-azar', [\App\Http\Controllers\SuperadminAccionesController::class, 'rellenarMateriales'])->name('superadmin.materiales-al-azar');
 	Route::post('/superadmin/materiales-genericos', [\App\Http\Controllers\SuperadminAccionesController::class, 'materialesGenericos'])->name('superadmin.materiales-genericos');
+	Route::post('/superadmin/reiniciar-ops', [\App\Http\Controllers\SuperadminAccionesController::class, 'reiniciarOrdenesProduccion'])->name('superadmin.reiniciar-ops');
 });
 
 Route::middleware('auth', 'verified')->group(function () {
@@ -63,6 +64,8 @@ Route::middleware('auth', 'verified')->group(function () {
 	Route::post("/Producto/destroy-bulk", [\App\Http\Controllers\ProductoController::class, 'destroyBulk'])->name('Producto.destroy-bulk');
 	Route::put("/Producto/{id}/distribucion", [\App\Http\Controllers\ProductoController::class, 'syncDistribucion'])->name('Producto.distribucion');
 	Route::get("/Producto/{id}/tallas-history", [\App\Http\Controllers\ProductoController::class, 'tallasHistory'])->name('Producto.tallas-history');
+	// Venta de productos terminados (descuenta la existencia recibida por talla).
+	Route::post("/Venta", [\App\Http\Controllers\VentaController::class, 'store'])->name('Venta.store');
 	
 	Route::resource("/Talla", \App\Http\Controllers\TallaController::class);
 	Route::resource("/OrdenProduccion", \App\Http\Controllers\OrdenProduccionController::class);
@@ -89,6 +92,7 @@ Route::middleware('auth', 'verified')->group(function () {
 	Route::get("/Material/plantilla-excel", [\App\Http\Controllers\MaterialController::class, 'descargarPlantillaExcel'])->name('Material.plantilla-excel');
 	// Antes del resource: /Material/{material} se lo llevaría el show.
 	Route::get("/Material/orden-compra", [\App\Http\Controllers\MaterialController::class, 'ordenCompra'])->name('Material.orden-compra');
+	Route::get("/Material/orden-compra/imprimir", [\App\Http\Controllers\MaterialController::class, 'ordenCompraImprimible'])->name('Material.orden-compra.imprimir');
 	Route::resource("/Material", \App\Http\Controllers\MaterialController::class);
 	Route::post("/Material/upload-excel", [\App\Http\Controllers\MaterialController::class, 'uploadExcel'])->name('Material.upload-excel');
 	Route::post("/Material/compra", [\App\Http\Controllers\MaterialController::class, 'registrarCompra'])->name('Material.compra');

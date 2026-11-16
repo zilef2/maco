@@ -9,6 +9,7 @@ import { computed, reactive, ref, watch } from 'vue';
 import {
     ArrowPathIcon,
     ArrowUpTrayIcon,
+    BanknotesIcon,
     ChevronDownIcon,
     ChevronRightIcon,
     ChevronUpDownIcon,
@@ -27,6 +28,7 @@ import {
 import Create from '@/pages/Producto/Create.vue';
 import Edit from '@/pages/Producto/Edit.vue';
 import Delete from '@/pages/Producto/Delete.vue';
+import VentaProductos from '@/pages/Producto/VentaProductos.vue';
 import ImportarProductoModal from '@/pages/Producto/ImportarProductoModal.vue';
 import DistribucionTallas from '@/pages/Producto/DistribucionTallas.vue';
 import ModalDependenciasProducto from '@/pages/Producto/ModalDependenciasProducto.vue';
@@ -56,21 +58,32 @@ const props = defineProps({
 
 const filas = computed<any[]>(() => props.productos ?? []);
 
-const busqueda = ref('');
-const estadoFiltro = ref('Activo');
-const categoriaFiltro = ref('');
-const familiaFiltro = ref('');
-const controlVarianteFiltro = ref('');
-const opcionFiltro = ref('');
-const precioPreventaFiltro = ref('');
-const costeProduccionFiltro = ref('');
-const tallasFiltro = ref('');
-const cantidadFiltro = ref('');
-const fichaFiltro = ref('');
+const obtenerFiltrosGuardados = () => {
+    try {
+        const raw = localStorage.getItem('filtros_producto');
+        return raw ? JSON.parse(raw) : null;
+    } catch {
+        return null;
+    }
+};
 
-const sortKey = ref('updated_at');
-const sortDir = ref<'asc' | 'desc'>('desc');
-const porPagina = ref<number>(props.perPage ?? 10);
+const filtrosGuardados = typeof window !== 'undefined' ? obtenerFiltrosGuardados() : null;
+
+const busqueda = ref(filtrosGuardados?.busqueda ?? '');
+const estadoFiltro = ref(filtrosGuardados?.estadoFiltro ?? 'Activo');
+const categoriaFiltro = ref(filtrosGuardados?.categoriaFiltro ?? '');
+const familiaFiltro = ref(filtrosGuardados?.familiaFiltro ?? '');
+const controlVarianteFiltro = ref(filtrosGuardados?.controlVarianteFiltro ?? '');
+const opcionFiltro = ref(filtrosGuardados?.opcionFiltro ?? '');
+const precioPreventaFiltro = ref(filtrosGuardados?.precioPreventaFiltro ?? '');
+const costeProduccionFiltro = ref(filtrosGuardados?.costeProduccionFiltro ?? '');
+const tallasFiltro = ref(filtrosGuardados?.tallasFiltro ?? '');
+const cantidadFiltro = ref(filtrosGuardados?.cantidadFiltro ?? '');
+const fichaFiltro = ref(filtrosGuardados?.fichaFiltro ?? '');
+
+const sortKey = ref(filtrosGuardados?.sortKey ?? 'updated_at');
+const sortDir = ref<'asc' | 'desc'>(filtrosGuardados?.sortDir ?? 'desc');
+const porPagina = ref<number>(filtrosGuardados?.porPagina ?? (props.perPage ?? 10));
 const pagina = ref(1);
 const cargando = ref(false);
 
@@ -106,6 +119,7 @@ const data = reactive({
     createOpen: false,
     editOpen: false,
     deleteOpen: false,
+    ventaOpen: false,
     importOpen: false,
     distribucionOpen: false,
     distribucionProducto: null as any,
@@ -266,18 +280,20 @@ const tallasDe = (producto: any): string[] => {
     );
 };
 
-// Desglose que valida la columna Cantidad: «S 10 · M 5».
+// Desglose que valida la columna Cantidad: existencia recibida por talla.
 const detalleTallasDe = (producto: any): string => {
     const lista = producto?.distribuciones_por_tallas ?? producto?.distribucionesPorTallas ?? [];
     if (!Array.isArray(lista)) return '';
-    return lista
-        .map((item: any) => {
-            const talla = String(item?.talla ?? '').trim();
-            const cantidad = Number(item?.cantidad_planificada ?? 0);
-            return talla === '' || Number.isNaN(cantidad) ? '' : `${talla} ${cantidad}`;
-        })
-        .filter(Boolean)
-        .join(' · ');
+
+    const porTalla = new Map<string, number>();
+    lista.forEach((item: any) => {
+        const talla = String(item?.talla ?? '').trim();
+        const cantidad = Number(item?.cantidad_recibida_buena ?? 0);
+        if (talla === '' || !Number.isFinite(cantidad) || cantidad <= 0) return;
+        porTalla.set(talla, (porTalla.get(talla) ?? 0) + cantidad);
+    });
+
+    return Array.from(porTalla, ([talla, cantidad]) => `${talla} ${cantidad}`).join(' · ');
 };
 
 const distribucionesDe = (producto: any): any[] => {
@@ -288,7 +304,7 @@ const distribucionesDe = (producto: any): any[] => {
 const tieneTallas = (producto: any): boolean => tallasDe(producto).length > 0;
 
 const tieneCantidad = (producto: any): boolean =>
-    distribucionesDe(producto).some((item: any) => Number(item?.cantidad_planificada ?? 0) > 0);
+    distribucionesDe(producto).some((item: any) => Number(item?.cantidad_recibida_buena ?? 0) > 0);
 
 // Cada fila trae lo que necesitan los filtros sin volver a recorrer la BD.
 const preparadas = computed(() =>
@@ -486,6 +502,30 @@ const indicador = (key: string) => (sortKey.value === key ? sortDir.value : null
 const ariaSort = (key: string): 'ascending' | 'descending' | 'none' =>
     sortKey.value !== key ? 'none' : sortDir.value === 'asc' ? 'ascending' : 'descending';
 
+const guardarFiltrosStorage = () => {
+    try {
+        localStorage.setItem(
+            'filtros_producto',
+            JSON.stringify({
+                busqueda: busqueda.value,
+                estadoFiltro: estadoFiltro.value,
+                categoriaFiltro: categoriaFiltro.value,
+                familiaFiltro: familiaFiltro.value,
+                controlVarianteFiltro: controlVarianteFiltro.value,
+                opcionFiltro: opcionFiltro.value,
+                precioPreventaFiltro: precioPreventaFiltro.value,
+                costeProduccionFiltro: costeProduccionFiltro.value,
+                tallasFiltro: tallasFiltro.value,
+                cantidadFiltro: cantidadFiltro.value,
+                fichaFiltro: fichaFiltro.value,
+                sortKey: sortKey.value,
+                sortDir: sortDir.value,
+                porPagina: porPagina.value,
+            }),
+        );
+    } catch {}
+};
+
 watch(
     [
         busqueda,
@@ -500,9 +540,12 @@ watch(
         cantidadFiltro,
         fichaFiltro,
         porPagina,
+        sortKey,
+        sortDir,
     ],
     () => {
         pagina.value = 1;
+        guardarFiltrosStorage();
     },
 );
 
@@ -540,6 +583,7 @@ const limpiarFiltros = () => {
     tallasFiltro.value = '';
     cantidadFiltro.value = '';
     fichaFiltro.value = '';
+    guardarFiltrosStorage();
 };
 
 const rutaIndex = new URL(String(route('Producto.index')), window.location.origin).pathname;
@@ -613,6 +657,13 @@ const recargar = () => {
                             class="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50">
                             <ArrowPathIcon class="h-4 w-4" :class="{ 'animate-spin': cargando }" />
                         </button>
+
+                        <PrimaryButton v-if="can(['create Venta', 'create Producto'])" type="button"
+                            class="h-9 bg-sky-600 hover:bg-sky-700 focus:ring-sky-500"
+                            @click="data.ventaOpen = true">
+                            <BanknotesIcon class="mr-1.5 h-4 w-4" />
+                            Vender productos
+                        </PrimaryButton>
 
                         <PrimaryButton v-if="can(['create Producto'])" type="button"
                             class="h-9 bg-emerald-600 hover:bg-emerald-700 focus:ring-emerald-500"
@@ -1063,6 +1114,9 @@ const recargar = () => {
         </Teleport>
 
         <ImportarProductoModal :show="data.importOpen" @close="data.importOpen = false" />
+
+        <VentaProductos v-if="can(['create Venta', 'create Producto'])" :show="data.ventaOpen"
+            :productos="props.productos" @close="data.ventaOpen = false" @saved="recargar" />
 
         <Create v-if="can(['create Producto'])" :numberPermissions="props.numberPermissions" :titulos="titulos"
             :show="data.createOpen" @close="data.createOpen = false" :title="props.title"

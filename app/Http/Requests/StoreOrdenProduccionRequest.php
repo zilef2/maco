@@ -45,6 +45,9 @@ class StoreOrdenProduccionRequest extends FormRequest
             'estado_op_material_id' => ['nullable', 'integer', 'exists:estado_op_materials,id'],
             'externa' => ['nullable', 'boolean'],
             'observaciones' => ['nullable', 'string'],
+            // El botón «Pasar a lista para taller» del formulario pide salir de
+            // Preparación al registrar; solo se cumple si el kit está completo.
+            'pasar_a_lista' => ['nullable', 'boolean'],
         ];
     }
 

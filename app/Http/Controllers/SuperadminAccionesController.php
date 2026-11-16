@@ -4,11 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\PurgarDatosPruebaRequest;
 use App\Http\Requests\PurgarMaterialesRequest;
+use App\Http\Requests\ReiniciarOrdenesProduccionRequest;
 use App\Services\Bitacora;
 use App\Services\ExistenciasMaterialesService;
 use App\Services\MaterialesGenericosService;
 use App\Services\PurgarDatosPruebaService;
 use App\Services\PurgarMaterialesService;
+use App\Services\ReiniciarOrdenesProduccionService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
@@ -18,7 +20,8 @@ class SuperadminAccionesController extends Controller
         protected PurgarDatosPruebaService $purgarService,
         protected PurgarMaterialesService $purgarMaterialesService,
         protected ExistenciasMaterialesService $existenciasService,
-        protected MaterialesGenericosService $genericosService
+        protected MaterialesGenericosService $genericosService,
+        protected ReiniciarOrdenesProduccionService $reiniciarOpService
     ) {}
 
     public function purgarDatosPrueba(PurgarDatosPruebaRequest $request): RedirectResponse
@@ -84,6 +87,15 @@ class SuperadminAccionesController extends Controller
             : '';
 
         return back()->with('success', "Se crearon {$conteo['creados']} materiales genéricos{$detalle}{$renumerados}.");
+    }
+
+    public function reiniciarOrdenesProduccion(ReiniciarOrdenesProduccionRequest $request): RedirectResponse
+    {
+        $this->reiniciarOpService->ejecutar((int) $request->validated('estado_op_id'));
+
+        Bitacora::accion('Superadmin', 'reiniciarOrdenesProduccion', 'Se borraron todas las OP y se generaron 2 nuevas.');
+
+        return back()->with('success', 'Se borraron todas las OP y se crearon 2 nuevas en el estado seleccionado.');
     }
 }
 

@@ -119,9 +119,9 @@ class ProductoController extends Controller {
                     $producto->coste_produccion_vivo
                 );
 
-                // Cantidad total del producto: la suma de lo planificado por talla,
-                // el mismo total que muestra el modal «Distribución por Tallas».
-                $producto->cantidad = (int) $producto->distribucionesPorTallas->sum('cantidad_planificada');
+                // Cantidad total del producto: unidades en existencia, la suma de
+                // lo recibido por talla. Las ventas la descuentan.
+                $producto->cantidad = (int) $producto->distribucionesPorTallas->sum('cantidad_recibida_buena');
 
                 // OPs que ya usan estas tallas: el modal solo las muestra y avisa
                 // dónde se cambian.
@@ -262,12 +262,12 @@ class ProductoController extends Controller {
         if ($cantidad === 'con') {
             $Productos->whereHas(
                 'distribucionesPorTallas',
-                fn ($query) => $query->where('cantidad_planificada', '>', 0)
+                fn ($query) => $query->where('cantidad_recibida_buena', '>', 0)
             );
         } elseif ($cantidad === 'sin') {
             $Productos->whereDoesntHave(
                 'distribucionesPorTallas',
-                fn ($query) => $query->where('cantidad_planificada', '>', 0)
+                fn ($query) => $query->where('cantidad_recibida_buena', '>', 0)
             );
         }
 

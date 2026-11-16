@@ -137,6 +137,7 @@ class MaterialController extends Controller {
             });
 
         $materialesEnOp = $this->materialesEnOrden();
+        $ordenesAbiertas = $this->ordenesAbiertas();
         // Solo se proyectan los materiales que participan en alguna OP (o que
         // aún tienen una reserva vigente); el resto equivale a su existencia.
         // Los genéricos quedan fuera: no almacenan inventario, su familia es la
@@ -161,7 +162,9 @@ class MaterialController extends Controller {
             'materiales' => $Materiales,
             'total' => $Materiales->count(),
             'prevision' => $this->prevision(),
-            'materialesEnOp' => $materialesEnOp,
+            // Filtro por OP del listado: las abiertas y, por material, en cuáles.
+            'ordenesAbiertas' => $ordenesAbiertas['ordenes'],
+            'opPorMaterial' => $ordenesAbiertas['materiales'],
             // Inventario proyectado: físico + producción pendiente − compromisos.
             'proyeccionMateriales' => $this->compromisos->proyeccionPorMaterial($materialesProyectables),
             'breadcrumbs' => [['label' => __('app.label.' . $this->FromController), 'href' => route($this->FromController . '.index')]],
@@ -316,7 +319,7 @@ class MaterialController extends Controller {
     /**
      * Materiales que participan en alguna orden de producción: por el kit de un
      * proceso, por el detalle de materiales de la OP o como origen de un
-     * proceso externo. Alimenta el filtro "En una OP" del listado.
+     * proceso externo. Solo se usan para saber qué materiales conviene proyectar.
      *
      * @return list<int>
      */
@@ -333,6 +336,74 @@ class MaterialController extends Controller {
         sort($ids);
 
         return $ids;
+    }
+
+    /**
+     * Las órdenes de producción que todavía no se cerraron y los materiales que
+     * cada una exige, por los mismos tres caminos de materialesEnOrden().
+     * Alimenta el filtro por OP del listado: saber que un material «está en una
+     * OP» dice poco, lo útil es elegir en cuál.
+     *
+     * @return array{ordenes: list<array<string, mixed>>, materiales: array<string, list<int>>}
+     */
+    private function ordenesAbiertas(): array {
+        $ordenes = OrdenProduccion::query()
+            ->with([
+                'estadoOp:id,nombre',
+                'productoReferencia:id,Titulo_Shopify,Codigo_interno',
+            ])
+            ->get(['id', 'numero_op', 'producto_referencia_id', 'estado_op_id'])
+            ->reject(fn (OrdenProduccion $op) => $op->estadoOp?->nombre === 'Cerrada')
+            ->keyBy('id');
+
+        if ($ordenes->isEmpty()) {
+            return ['ordenes' => [], 'materiales' => []];
+        }
+
+        $pares = collect([
+            KitProceso::query()
+                ->whereIn('orden_produccion_id', $ordenes->keys())
+                ->get(['orden_produccion_id', 'material_id']),
+            DB::table('orden_produccion_material')
+                ->whereIn('orden_produccion_id', $ordenes->keys())
+                ->get(['orden_produccion_id', 'material_id']),
+            DB::table('proceso_externos')
+                ->whereIn('orden_produccion_id', $ordenes->keys())
+                ->get(['orden_produccion_id', 'material_origen_id as material_id']),
+        ])
+            ->flatten()
+            ->filter(fn ($par) => !is_null($par->material_id));
+
+        // Sets por material y por OP: un material puede servir a varias OP y la
+        // lista no puede repetir filas (kit y detalle suelen coincidir).
+        $porMaterial = [];
+        $porOp = [];
+        foreach ($pares as $par) {
+            $porMaterial[(int) $par->material_id][(int) $par->orden_produccion_id] = true;
+            $porOp[(int) $par->orden_produccion_id][(int) $par->material_id] = true;
+        }
+
+        ksort($porMaterial);
+        $porMaterial = array_map(function (array $ops): array {
+            $ids = array_keys($ops);
+            sort($ids);
+
+            return $ids;
+        }, $porMaterial);
+
+        $ordenes = $ordenes->map(fn (OrdenProduccion $op): array => [
+            'id' => (int) $op->id,
+            'numero_op' => $op->numero_op ?: ('OP #' . $op->id),
+            'estado' => $op->estadoOp?->nombre,
+            'producto' => $op->productoReferencia?->Titulo_Shopify
+                ?: $op->productoReferencia?->Codigo_interno,
+            'materiales' => count($porOp[(int) $op->id] ?? []),
+        ])
+            ->sortBy(fn (array $op): int => (int) preg_replace('/\D/', '', (string) $op['numero_op']))
+            ->values()
+            ->all();
+
+        return ['ordenes' => $ordenes, 'materiales' => $porMaterial];
     }
 
 	public function losSelect(string $modelClass, string $label, string $displayField = 'nombre'): array {
@@ -482,6 +553,17 @@ class MaterialController extends Controller {
                 ['label' => 'Orden de compra'],
             ],
             'title' => 'Orden de compra',
+        ]);
+    }
+
+    /**
+     * La misma orden en versión imprimible: sin barra lateral ni chrome de la
+     * aplicación, agrupada por categoría y con casilleros para marcar en el
+     * local. El precio solo aparece si quien imprime lo pide.
+     */
+    public function ordenCompraImprimible(): Response {
+        return Inertia::render('Material/OrdenCompraImprimible', [
+            'orden' => $this->faltantes->ordenCompra(),
         ]);
     }
 

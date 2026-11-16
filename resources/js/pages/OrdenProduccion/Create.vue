@@ -290,6 +290,29 @@ const productosSinFicha = computed(() =>
 
 const hayFaltantes = computed(() => resumenMateriales.value.some((m) => m.necesita > m.proyectado));
 
+// El salto a «Lista para taller» se mide contra la existencia actual del
+// material concreto, que es exactamente lo que comprueba el servidor al cambiar
+// el estado de la orden; el proyectado no cuenta porque aún no es bodega.
+const sinExistenciaParaLista = computed(() => resumenMateriales.value.filter((m) => m.necesita - m.fisico > 0.00005));
+
+const puedePasarALista = computed(
+    () => !sinObjetivos.value && !faltanConcretos.value && sinExistenciaParaLista.value.length === 0,
+);
+
+const motivoNoPasarALista = computed(() => {
+    if (sinObjetivos.value) return 'Selecciona el producto o el material procesado de la orden.';
+    if (faltanConcretos.value) return 'Faltan materiales concretos por elegir.';
+    if (!sinExistenciaParaLista.value.length) return '';
+
+    return (
+        'La existencia actual no alcanza para: ' +
+        sinExistenciaParaLista.value
+            .map((m) => `${m.nombre} (faltan ${Number((m.necesita - m.fisico).toFixed(2))}${m.unidad ? ' ' + m.unidad : ''})`)
+            .join(' · ') +
+        '.'
+    );
+});
+
 const form = useForm({
     id: null as number | null,
     numero_op: '',
@@ -308,6 +331,7 @@ const form = useForm({
     materiales: [] as number[],
     materiales_cantidad: {} as Record<number, number>,
     materiales_concretos: {} as Record<number, Record<number, number>>,
+    pasar_a_lista: 0,
 });
 
 // Modo "continuar borrador": form.id guarda el id de la OP en Borrador a actualizar.
@@ -518,7 +542,13 @@ const prepararPayload = () => {
         }));
 };
 
-const create = () => {
+const create = (evento?: Event) => {
+    // Los dos botones de envío compiten por el mismo formulario: el salto a
+    // «Lista para taller» solo se pide cuando el botón fue el que envió, así
+    // que Enter o el botón normal no arrastran la bandera de un clic anterior.
+    const submitter = (evento as SubmitEvent | null)?.submitter as HTMLElement | null;
+    form.pasar_a_lista = submitter?.dataset?.lista === '1' ? 1 : 0;
+
     prepararPayload();
     const onSuccess = () => closeModal();
     const onError = () => null;
@@ -533,6 +563,7 @@ const create = () => {
 
 // Guarda la orden con los datos actuales como Borrador y la deja recuperable.
 const terminarDespues = () => {
+    form.pasar_a_lista = 0;
     prepararPayload();
     form.post(route('OrdenProduccion.borrador'), {
         preserveScroll: true,
@@ -1282,6 +1313,15 @@ watch(
                         >
                             Terminar después
                         </button>
+                        <button
+                            type="submit"
+                            data-lista="1"
+                            :disabled="form.processing || !puedePasarALista"
+                            :title="motivoNoPasarALista || 'Registra la orden y la deja en «Lista para taller»'"
+                            class="ml-3 inline-flex items-center rounded-md border border-emerald-400 bg-emerald-50 px-4 py-2 text-xs font-semibold uppercase tracking-widest text-emerald-700 transition hover:bg-emerald-100 focus:ring-2 focus:ring-emerald-400 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-500/60 dark:bg-emerald-500/10 dark:text-emerald-300 dark:hover:bg-emerald-500/20"
+                        >
+                            Pasar a lista para taller {{ form.processing ? '...' : '' }}
+                        </button>
                         <PrimaryButton
                             class="ml-3"
                             :class="{ 'opacity-25': form.processing || sinObjetivos }"
@@ -1291,6 +1331,10 @@ watch(
                             {{ form.id ? 'Guardar' : lang().t('app.button.add') }} {{ form.processing ? '...' : '' }}
                         </PrimaryButton>
                     </div>
+                    <p v-if="motivoNoPasarALista" class="mt-2 text-xs font-medium text-gray-500 dark:text-gray-400">
+                        «Pasar a lista para taller» se habilita cuando la existencia actual de los materiales cubre el kit de la
+                        orden. {{ motivoNoPasarALista }}
+                    </p>
                 </div>
             </form>
         </Modal>

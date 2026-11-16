@@ -611,6 +611,33 @@ const guardar = () => {
         });
 };
 
+const decrementar = (fila: any, campo: string) => {
+    const actual = numeroONulo(fila[campo]) ?? 0;
+    fila[campo] = Math.max(0, actual - 1);
+};
+
+const incrementar = (fila: any, campo: string) => {
+    const actual = numeroONulo(fila[campo]) ?? 0;
+    fila[campo] = actual + 1;
+};
+
+const aprobarFila = (fila: any) => {
+    fila.cantidad_aprobada = Number(fila.esperada) || 0;
+    fila.cantidad_en_reparacion = null;
+    fila.cantidad_no_recuperable = null;
+};
+
+const aprobarTodas = () => {
+    for (const fila of form.recepciones) {
+        aprobarFila(fila);
+    }
+};
+
+const esFilaAprobadaCompleta = (fila: any): boolean =>
+    Number(fila.cantidad_aprobada) === Number(fila.esperada)
+    && (numeroONulo(fila.cantidad_en_reparacion) ?? 0) === 0
+    && (numeroONulo(fila.cantidad_no_recuperable) ?? 0) === 0;
+
 const enfocarFilaRecepcion = (indice: number) => {
     const input = document.getElementById(`recepcion-aprobada-${indice}`) as HTMLInputElement | null;
     input?.focus();
@@ -979,6 +1006,11 @@ const posicionarScrollRecepcion = async () => {
                             La suma de las tres debe ser igual a la cantidad esperada de cada talla.
                             Todos los pares en reparación comparten una sola fecha de compromiso pendiente.
                         </p>
+                        <p class="mt-1 text-xs text-indigo-800/80 dark:text-indigo-200/80">
+                            Al guardar el avance, solo los pares aprobados suman al inventario del producto
+                            o material de la OP. Los pares en reparación y los no recuperables no alteran
+                            las existencias.
+                        </p>
                         <p
                             v-if="seCierraAutomatica"
                             class="mt-2 inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300"
@@ -1028,15 +1060,28 @@ const posicionarScrollRecepcion = async () => {
 
                     <div class="mt-3 overflow-hidden rounded-lg border border-gray-200 dark:border-gray-700">
                         <div class="overflow-x-auto">
-                            <table class="w-full min-w-[840px] text-sm">
+                            <table class="w-full min-w-[960px] text-sm">
                                 <thead>
                                     <tr class="border-b border-gray-200 bg-gray-50 text-left text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-400">
                                         <th scope="col" class="px-3 py-2 font-semibold">Producto</th>
-                                        <th scope="col" class="w-24 px-3 py-2 font-semibold">Talla</th>
+                                        <th scope="col" class="w-20 px-3 py-2 font-semibold">Talla</th>
                                         <th scope="col" class="w-20 px-3 py-2 text-right font-semibold">Esperada</th>
-                                        <th scope="col" class="w-24 px-3 py-2 font-semibold">Aprobada</th>
-                                        <th scope="col" class="w-24 px-3 py-2 font-semibold">En reparación</th>
-                                        <th scope="col" class="w-24 px-3 py-2 font-semibold">No recuperable</th>
+                                        <th scope="col" class="w-48 px-3 py-2 font-semibold">
+                                            <div class="flex items-center justify-between gap-2">
+                                                <span>Aprobada</span>
+                                                <button
+                                                    v-if="form.recepciones.length"
+                                                    type="button"
+                                                    @click="aprobarTodas"
+                                                    class="inline-flex items-center rounded border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 hover:bg-emerald-600 hover:text-white dark:border-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 dark:hover:bg-emerald-600 dark:hover:text-white transition-colors"
+                                                    title="Aprobar todo lo esperado en todas las tallas"
+                                                >
+                                                    OK a todas
+                                                </button>
+                                            </div>
+                                        </th>
+                                        <th scope="col" class="w-36 px-3 py-2 font-semibold">En reparación</th>
+                                        <th scope="col" class="w-36 px-3 py-2 font-semibold">No recuperable</th>
                                         <th scope="col" class="w-20 px-3 py-2 text-right font-semibold">Recibida</th>
                                     </tr>
                                 </thead>
@@ -1058,32 +1103,118 @@ const posicionarScrollRecepcion = async () => {
                                             {{ fila.esperada }}
                                         </td>
                                         <td class="px-3 py-2">
-                                            <TextInput
-                                                :id="`recepcion-aprobada-${indice}`"
-                                                type="number" min="0" step="1" placeholder="0"
-                                                class="block h-9 w-20 px-2 text-right tabular-nums"
-                                                v-model="fila.cantidad_aprobada"
-                                                @keydown.enter.prevent="manejarEnterRecepcion(indice)"
-                                                :aria-label="`Cantidad aprobada talla ${fila.talla}`"
-                                            />
+                                            <div class="flex items-center gap-1.5">
+                                                <div class="inline-flex items-center rounded-lg border border-gray-300 bg-white shadow-sm focus-within:border-emerald-500 focus-within:ring-1 focus-within:ring-emerald-500 dark:border-gray-600 dark:bg-gray-800">
+                                                    <button
+                                                        type="button"
+                                                        @click="decrementar(fila, 'cantidad_aprobada')"
+                                                        :disabled="(numeroONulo(fila.cantidad_aprobada) ?? 0) <= 0"
+                                                        class="inline-flex h-8 w-7 items-center justify-center rounded-l-lg text-gray-500 hover:bg-gray-100 hover:text-gray-800 disabled:opacity-30 disabled:hover:bg-transparent dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200 transition-colors"
+                                                        title="Restar 1"
+                                                        aria-label="Restar 1 a aprobada"
+                                                    >
+                                                        <span class="text-base font-bold leading-none select-none">−</span>
+                                                    </button>
+                                                    <input
+                                                        :id="`recepcion-aprobada-${indice}`"
+                                                        type="number"
+                                                        min="0"
+                                                        step="1"
+                                                        placeholder="0"
+                                                        class="h-8 w-12 border-0 bg-transparent p-0 text-center text-sm font-semibold tabular-nums text-gray-900 focus:outline-none focus:ring-0 dark:text-gray-100 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                        v-model="fila.cantidad_aprobada"
+                                                        @keydown.enter.prevent="manejarEnterRecepcion(indice)"
+                                                        :aria-label="`Cantidad aprobada talla ${fila.talla}`"
+                                                    />
+                                                    <button
+                                                        type="button"
+                                                        @click="incrementar(fila, 'cantidad_aprobada')"
+                                                        class="inline-flex h-8 w-7 items-center justify-center rounded-r-lg text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-100 transition-colors"
+                                                        title="Sumar 1"
+                                                        aria-label="Sumar 1 a aprobada"
+                                                    >
+                                                        <span class="text-base font-bold leading-none select-none">+</span>
+                                                    </button>
+                                                </div>
+                                                <button
+                                                    type="button"
+                                                    @click="aprobarFila(fila)"
+                                                    class="inline-flex h-8 items-center justify-center rounded-lg border px-2.5 text-xs font-bold shadow-sm transition-colors"
+                                                    :class="esFilaAprobadaCompleta(fila)
+                                                        ? 'border-emerald-600 bg-emerald-600 text-white dark:border-emerald-500 dark:bg-emerald-600'
+                                                        : 'border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/50'"
+                                                    title="Poner en aprobada los productos esperados"
+                                                    :aria-label="`Poner en aprobada los esperados para talla ${fila.talla}`"
+                                                >
+                                                    OK
+                                                </button>
+                                            </div>
                                         </td>
                                         <td class="px-3 py-2">
-                                            <TextInput
-                                                type="number" min="0" step="1" placeholder="0"
-                                                class="block h-9 w-20 px-2 text-right tabular-nums"
-                                                v-model="fila.cantidad_en_reparacion"
-                                                @keydown.enter.prevent="manejarEnterRecepcion(indice)"
-                                                :aria-label="`Cantidad en reparación talla ${fila.talla}`"
-                                            />
+                                            <div class="inline-flex items-center rounded-lg border border-gray-300 bg-white shadow-sm focus-within:border-amber-500 focus-within:ring-1 focus-within:ring-amber-500 dark:border-gray-600 dark:bg-gray-800">
+                                                <button
+                                                    type="button"
+                                                    @click="decrementar(fila, 'cantidad_en_reparacion')"
+                                                    :disabled="(numeroONulo(fila.cantidad_en_reparacion) ?? 0) <= 0"
+                                                    class="inline-flex h-8 w-7 items-center justify-center rounded-l-lg text-gray-500 hover:bg-gray-100 hover:text-gray-800 disabled:opacity-30 disabled:hover:bg-transparent dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200 transition-colors"
+                                                    title="Restar 1"
+                                                    aria-label="Restar 1 a en reparación"
+                                                >
+                                                    <span class="text-base font-bold leading-none select-none">−</span>
+                                                </button>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    step="1"
+                                                    placeholder="0"
+                                                    class="h-8 w-12 border-0 bg-transparent p-0 text-center text-sm font-semibold tabular-nums text-gray-900 focus:outline-none focus:ring-0 dark:text-gray-100 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                    v-model="fila.cantidad_en_reparacion"
+                                                    @keydown.enter.prevent="manejarEnterRecepcion(indice)"
+                                                    :aria-label="`Cantidad en reparación talla ${fila.talla}`"
+                                                />
+                                                <button
+                                                    type="button"
+                                                    @click="incrementar(fila, 'cantidad_en_reparacion')"
+                                                    class="inline-flex h-8 w-7 items-center justify-center rounded-r-lg text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-100 transition-colors"
+                                                    title="Sumar 1"
+                                                    aria-label="Sumar 1 a en reparación"
+                                                >
+                                                    <span class="text-base font-bold leading-none select-none">+</span>
+                                                </button>
+                                            </div>
                                         </td>
                                         <td class="px-3 py-2">
-                                            <TextInput
-                                                type="number" min="0" step="1" placeholder="0"
-                                                class="block h-9 w-20 px-2 text-right tabular-nums"
-                                                v-model="fila.cantidad_no_recuperable"
-                                                @keydown.enter.prevent="manejarEnterRecepcion(indice)"
-                                                :aria-label="`Cantidad no recuperable talla ${fila.talla}`"
-                                            />
+                                            <div class="inline-flex items-center rounded-lg border border-gray-300 bg-white shadow-sm focus-within:border-rose-500 focus-within:ring-1 focus-within:ring-rose-500 dark:border-gray-600 dark:bg-gray-800">
+                                                <button
+                                                    type="button"
+                                                    @click="decrementar(fila, 'cantidad_no_recuperable')"
+                                                    :disabled="(numeroONulo(fila.cantidad_no_recuperable) ?? 0) <= 0"
+                                                    class="inline-flex h-8 w-7 items-center justify-center rounded-l-lg text-gray-500 hover:bg-gray-100 hover:text-gray-800 disabled:opacity-30 disabled:hover:bg-transparent dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-200 transition-colors"
+                                                    title="Restar 1"
+                                                    aria-label="Restar 1 a no recuperable"
+                                                >
+                                                    <span class="text-base font-bold leading-none select-none">−</span>
+                                                </button>
+                                                <input
+                                                    type="number"
+                                                    min="0"
+                                                    step="1"
+                                                    placeholder="0"
+                                                    class="h-8 w-12 border-0 bg-transparent p-0 text-center text-sm font-semibold tabular-nums text-gray-900 focus:outline-none focus:ring-0 dark:text-gray-100 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                                    v-model="fila.cantidad_no_recuperable"
+                                                    @keydown.enter.prevent="manejarEnterRecepcion(indice)"
+                                                    :aria-label="`Cantidad no recuperable talla ${fila.talla}`"
+                                                />
+                                                <button
+                                                    type="button"
+                                                    @click="incrementar(fila, 'cantidad_no_recuperable')"
+                                                    class="inline-flex h-8 w-7 items-center justify-center rounded-r-lg text-gray-500 hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-100 transition-colors"
+                                                    title="Sumar 1"
+                                                    aria-label="Sumar 1 a no recuperable"
+                                                >
+                                                    <span class="text-base font-bold leading-none select-none">+</span>
+                                                </button>
+                                            </div>
                                         </td>
                                         <td class="px-3 py-2 text-right">
                                             <span

@@ -62,8 +62,10 @@ const props = defineProps({
     columnasExcel: { type: Array as () => any[], default: () => [] },
     prevision: { type: Object as () => any, default: () => null },
     faltantesOp: { type: Array as () => any[], default: () => [] },
-    /** ids de los materiales que participan en alguna OP. */
-    materialesEnOp: { type: Array as () => number[], default: () => [] },
+    /** Órdenes de producción que todavía no se cerraron. */
+    ordenesAbiertas: { type: Array as () => any[], default: () => [] },
+    /** Por material, las OP abiertas que lo exigen. */
+    opPorMaterial: { type: Object as () => Record<string, number[]>, default: () => ({}) },
     /** Inventario proyectado por material: físico + producción pendiente − compromisos. */
     proyeccionMateriales: { type: Object as () => Record<string, any>, default: () => ({}) },
 });
@@ -76,24 +78,35 @@ const props = defineProps({
 
 const filas = computed<any[]>(() => (props.materiales as any[]) ?? []);
 
-const busqueda = ref('');
-const categoriaFiltro = ref<string | 'todos'>('todos');
-const proveedorFiltro = ref<number | 'todos'>('todos');
-const estadoFiltro = ref<string | 'todos'>('Activo');
-const unidadFiltro = ref<string | 'todos'>('todos');
-const varianteFiltro = ref<string | 'todos'>('todos');
-const precioFiltro = ref<string | 'sin_precio' | 'con_precio'>('todos');
-const genericoFiltro = ref(false);
-const procesadoFiltro = ref<'todos' | 'si' | 'no'>('todos');
-const enOpFiltro = ref<'todos' | 'si' | 'no'>('todos');
+const obtenerFiltrosGuardados = () => {
+    try {
+        const raw = localStorage.getItem('filtros_material');
+        return raw ? JSON.parse(raw) : null;
+    } catch {
+        return null;
+    }
+};
+
+const filtrosGuardados = typeof window !== 'undefined' ? obtenerFiltrosGuardados() : null;
+
+const busqueda = ref(filtrosGuardados?.busqueda ?? '');
+const categoriaFiltro = ref<string | 'todos'>(filtrosGuardados?.categoriaFiltro ?? 'todos');
+const proveedorFiltro = ref<number | 'todos'>(filtrosGuardados?.proveedorFiltro ?? 'todos');
+const estadoFiltro = ref<string | 'todos'>(filtrosGuardados?.estadoFiltro ?? 'Activo');
+const unidadFiltro = ref<string | 'todos'>(filtrosGuardados?.unidadFiltro ?? 'todos');
+const varianteFiltro = ref<string | 'todos'>(filtrosGuardados?.varianteFiltro ?? 'todos');
+const precioFiltro = ref<string | 'sin_precio' | 'con_precio'>(filtrosGuardados?.precioFiltro ?? 'todos');
+const genericoFiltro = ref(Boolean(filtrosGuardados?.genericoFiltro ?? false));
+const procesadoFiltro = ref<'todos' | 'si' | 'no'>(filtrosGuardados?.procesadoFiltro ?? 'todos');
+const opFiltro = ref(filtrosGuardados?.opFiltro ?? 'todos');
 const boolFiltros = reactive<Record<string, '' | '1' | '0'>>({
-    maneja_color: '',
-    maneja_talla: '',
-    maneja_otra_variante: '',
+    maneja_color: filtrosGuardados?.boolFiltros?.maneja_color ?? '',
+    maneja_talla: filtrosGuardados?.boolFiltros?.maneja_talla ?? '',
+    maneja_otra_variante: filtrosGuardados?.boolFiltros?.maneja_otra_variante ?? '',
 });
-const sortKey = ref('updated_at');
-const sortDir = ref<'asc' | 'desc'>('desc');
-const porPagina = ref<number>(props.perPage ?? 10);
+const sortKey = ref(filtrosGuardados?.sortKey ?? 'updated_at');
+const sortDir = ref<'asc' | 'desc'>(filtrosGuardados?.sortDir ?? 'desc');
+const porPagina = ref<number>(filtrosGuardados?.porPagina ?? (props.perPage ?? 10));
 const pagina = ref(1);
 
 const normalizar = (valor: any): string =>
@@ -122,8 +135,9 @@ const estaProcesado = (valor: any): boolean =>
 const esGenerico = (valor: any): boolean =>
     valor === true || valor === 1 || valor === '1' || String(valor).toLowerCase() === 'true';
 
-const idsEnOp = computed(() => new Set(((props.materialesEnOp as any[]) ?? []).map(Number)));
-const estaEnOp = (m: any): boolean => idsEnOp.value.has(Number(m?.id));
+/** En qué OPs abiertas trabaja este material. */
+const opsDe = (m: any): number[] => ((props.opPorMaterial as any)?.[String(m?.id)] ?? []) as number[];
+const enOpAbierta = (m: any): boolean => opsDe(m).length > 0;
 
 const tieneFichaTecnica = (m: any): boolean => {
     if (Number(m?.ficha_id ?? 0) > 0) return true;
@@ -267,14 +281,35 @@ const segmentosFiltros = computed(() => [
         opciones: opcionesSiNo('Procesados', 'No procesados', (m: any) => estaProcesado(m.material_procesado)),
         aplicar: (valor: string) => { procesadoFiltro.value = valor as any; },
     },
-    {
-        etiqueta: 'En una OP',
-        ariaLabel: 'Filtrar materiales por si participan en una orden de producción',
-        activo: enOpFiltro.value,
-        opciones: opcionesSiNo('En una OP', 'Sin OP', estaEnOp),
-        aplicar: (valor: string) => { enOpFiltro.value = valor as any; },
-    },
 ]);
+
+/** Cuántos materiales de lo ya filtrado exige cada OP abierta. */
+const conteoOp = computed(() => {
+    const porOp: Record<number, number> = {};
+    let abiertas = 0;
+
+    baseFiltrada.value.forEach((m: any) => {
+        const ops = opsDe(m);
+        if (!ops.length) return;
+
+        abiertas++;
+        ops.forEach((id) => {
+            porOp[id] = (porOp[id] ?? 0) + 1;
+        });
+    });
+
+    return { porOp, abiertas, total: baseFiltrada.value.length };
+});
+
+const ordenesAbiertas = computed<any[]>(() => (props.ordenesAbiertas as any[]) ?? []);
+
+const datoOp = (id: number): any =>
+    ordenesAbiertas.value.find((op: any) => Number(op.id) === id) ?? null;
+
+const numeroDeOp = (id: number): string => String(datoOp(id)?.numero_op ?? `OP #${id}`);
+
+/** Con el filtro de OP usado, cada fila aclara en cuáles trabaja. */
+const mostrarOps = computed(() => opFiltro.value !== 'todos');
 
 const proveedoresDisponibles = computed(() => {
     const mapa = new Map<number, string>();
@@ -313,7 +348,13 @@ const filtradas = computed(() =>
         if (procesadoFiltro.value !== 'todos' && estaProcesado(m.material_procesado) !== (procesadoFiltro.value === 'si')) {
             return false;
         }
-        if (enOpFiltro.value !== 'todos' && estaEnOp(m) !== (enOpFiltro.value === 'si')) {
+        if (opFiltro.value === 'abierta' && !enOpAbierta(m)) {
+            return false;
+        }
+        if (opFiltro.value === 'sin' && enOpAbierta(m)) {
+            return false;
+        }
+        if (opFiltro.value.startsWith('op:') && !opsDe(m).includes(Number(opFiltro.value.slice(3)))) {
             return false;
         }
         for (const campo of Object.keys(boolFiltros)) {
@@ -425,7 +466,7 @@ const filtrosBarra = computed(
         (genericoFiltro.value ? 1 : 0) +
         (estadoFiltro.value !== 'Activo' ? 1 : 0) +
         (procesadoFiltro.value !== 'todos' ? 1 : 0) +
-        (enOpFiltro.value !== 'todos' ? 1 : 0),
+        (opFiltro.value !== 'todos' ? 1 : 0),
 );
 
 const filtrosDropdown = computed(
@@ -454,6 +495,30 @@ const previsiónFaltantes = computed<any[]>(() =>
 // Carencias de las OP abiertas: las que pueden comprarse en un solo paso.
 const faltantesDeOp = computed<any[]>(() => (props.faltantesOp as any[]) ?? []);
 
+const guardarFiltrosStorage = () => {
+    try {
+        localStorage.setItem(
+            'filtros_material',
+            JSON.stringify({
+                busqueda: busqueda.value,
+                categoriaFiltro: categoriaFiltro.value,
+                proveedorFiltro: proveedorFiltro.value,
+                estadoFiltro: estadoFiltro.value,
+                unidadFiltro: unidadFiltro.value,
+                varianteFiltro: varianteFiltro.value,
+                precioFiltro: precioFiltro.value,
+                genericoFiltro: genericoFiltro.value,
+                procesadoFiltro: procesadoFiltro.value,
+                opFiltro: opFiltro.value,
+                boolFiltros: { ...boolFiltros },
+                sortKey: sortKey.value,
+                sortDir: sortDir.value,
+                porPagina: porPagina.value,
+            }),
+        );
+    } catch {}
+};
+
 const limpiarFiltros = () => {
     busqueda.value = '';
     categoriaFiltro.value = 'todos';
@@ -464,18 +529,35 @@ const limpiarFiltros = () => {
     precioFiltro.value = 'todos';
     genericoFiltro.value = false;
     procesadoFiltro.value = 'todos';
-    enOpFiltro.value = 'todos';
+    opFiltro.value = 'todos';
     Object.keys(boolFiltros).forEach((campo) => (boolFiltros[campo] = ''));
+    guardarFiltrosStorage();
 };
 
 watch(
-    [busqueda, categoriaFiltro, proveedorFiltro, estadoFiltro, unidadFiltro, varianteFiltro, precioFiltro, genericoFiltro, procesadoFiltro, enOpFiltro, porPagina],
+    [
+        busqueda,
+        categoriaFiltro,
+        proveedorFiltro,
+        estadoFiltro,
+        unidadFiltro,
+        varianteFiltro,
+        precioFiltro,
+        genericoFiltro,
+        procesadoFiltro,
+        opFiltro,
+        porPagina,
+        sortKey,
+        sortDir,
+    ],
     () => {
         pagina.value = 1;
+        guardarFiltrosStorage();
     },
 );
 watch(boolFiltros, () => {
     pagina.value = 1;
+    guardarFiltrosStorage();
 });
 
 watch(paginas, (n) => {
@@ -663,7 +745,7 @@ router.on('finish', () => {
 });
 
 const recargar = () => {
-    router.reload({ only: ['materiales', 'total', 'losSelect', 'prevision', 'faltantesOp', 'materialesEnOp', 'proyeccionMateriales'], preserveScroll: true });
+    router.reload({ only: ['materiales', 'total', 'losSelect', 'prevision', 'faltantesOp', 'ordenesAbiertas', 'opPorMaterial', 'proyeccionMateriales'], preserveScroll: true });
 };
 
 /* Títulos para los modales de crear/editar (mismo contrato de antes). */
@@ -867,6 +949,23 @@ const titulos = [
                     </div>
 
                     <div class="flex flex-wrap items-center gap-2">
+                        <select v-model="opFiltro" aria-label="Filtrar materiales por orden de producción"
+                            :class="[selectClass, 'max-w-[280px]']">
+                            <option value="todos">Sin filtro por OP</option>
+                            <option value="abierta">
+                                En al menos 1 OP abierta ({{ conteoOp.abiertas }})
+                            </option>
+                            <option value="sin">
+                                Sin OP abierta ({{ conteoOp.total - conteoOp.abiertas }})
+                            </option>
+                            <optgroup v-if="ordenesAbiertas.length" label="Una OP concreta">
+                                <option v-for="op in ordenesAbiertas" :key="op.id" :value="`op:${op.id}`">
+                                    {{ op.numero_op }}{{ op.producto ? ` · ${op.producto}` : '' }}
+                                    · {{ op.estado }} ({{ conteoOp.porOp[op.id] ?? 0 }})
+                                </option>
+                            </optgroup>
+                        </select>
+
                         <select v-model="categoriaFiltro" aria-label="Filtrar por categoría"
                             :class="[selectClass, 'max-w-[190px]']">
                             <option value="todos">Todas las categorías</option>
@@ -955,7 +1054,7 @@ const titulos = [
                                             </option>
                                         </select>
                                     </label>
-                                    <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
+                                    <!-- <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
                                         Variante sugerida
                                         <select v-model="varianteFiltro" :class="selectClass">
                                             <option value="todos">Todas</option>
@@ -963,7 +1062,7 @@ const titulos = [
                                                 v.value }}
                                             </option>
                                         </select>
-                                    </label>
+                                    </label> -->
                                     <label class="flex flex-col gap-1 text-xs font-medium text-muted-foreground">
                                         Maneja color
                                         <select v-model="boolFiltros.maneja_color" :class="selectClass">
@@ -1102,6 +1201,14 @@ const titulos = [
                                         </span>
                                         <span class="truncate text-[11px] text-muted-foreground">
                                             {{ material.categoria || 'Sin categoría' }}
+                                        </span>
+                                        <span v-if="mostrarOps && opsDe(material).length"
+                                            class="flex flex-wrap gap-1">
+                                            <span v-for="id in opsDe(material)" :key="id"
+                                                :title="`${numeroDeOp(id)} · ${datoOp(id)?.estado ?? ''}`"
+                                                class="rounded-full border border-border bg-muted px-1.5 py-px text-[10px] font-medium tabular-nums text-muted-foreground">
+                                                {{ numeroDeOp(id) }}
+                                            </span>
                                         </span>
                                     </div>
                                 </td>

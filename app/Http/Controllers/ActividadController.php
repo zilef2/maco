@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\ActividadRegistro;
+use App\Models\EstadoOperacion;
 use App\Models\Material;
 use App\Services\ExistenciasMaterialesService;
 use App\Services\MaterialesGenericosService;
@@ -95,6 +96,7 @@ class ActividadController extends Controller
         'purgarMateriales' => 'Borró todos los materiales',
         'ceroExistencias' => 'Puso en cero las existencias',
         'rellenarMateriales' => 'Rellenó existencias y precios al azar',
+        'reiniciarOrdenesProduccion' => 'Reinició las OP de prueba',
         'cierre' => 'Cerró la pestaña',
         'oculta' => 'Dejó la pestaña',
         'visible' => 'Volvió a la pestaña',
@@ -146,6 +148,7 @@ class ActividadController extends Controller
             'esAmbienteTest' => config('app.env') === 'test' || app()->environment('test'),
             // Los botones de mantenimiento de materiales dicen sobre cuántos filas
             // van a actuar y con qué rango de valores antes de que se presionen.
+            'estadosOp' => EstadoOperacion::select(['id', 'nombre'])->orderBy('id')->get(),
             'materiales' => [
                 'total' => Material::count(),
                 'sin_existencia' => Material::where('existencia_actual', 0)->count(),

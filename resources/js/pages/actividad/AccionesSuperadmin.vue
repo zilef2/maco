@@ -1,13 +1,17 @@
 <script setup lang="ts">
 import Modal from '@/components/Modal.vue';
 import { router, useForm } from '@inertiajs/vue3';
-import { AlertOctagon, AlertTriangle, CheckCircle2, Layers, Loader2, ShieldAlert, Shuffle, Trash2 } from 'lucide-vue-next';
+import { AlertOctagon, AlertTriangle, CheckCircle2, Layers, Loader2, RefreshCw, ShieldAlert, Shuffle, Trash2 } from 'lucide-vue-next';
 import { computed, reactive } from 'vue';
 
 const props = defineProps({
     esAmbienteTest: {
         type: Boolean,
         default: false,
+    },
+    estadosOp: {
+        type: Array as () => { id: number; nombre: string }[],
+        default: () => [],
     },
     materiales: {
         type: Object as () => {
@@ -145,7 +149,27 @@ const state = reactive({
     presionando: false,
     intervaloId: null as number | null,
     duracionTotalMs: 3000,
+    estadoSeleccionadoId: props.estadosOp?.find((e) => e.nombre.toLowerCase() === 'recibiendo')?.id ?? props.estadosOp?.[0]?.id ?? 6,
+    reiniciandoOps: false,
 });
+
+const reiniciarOpsForm = useForm({
+    estado_op_id: props.estadosOp?.find((e) => e.nombre.toLowerCase() === 'recibiendo')?.id ?? props.estadosOp?.[0]?.id ?? 6,
+});
+
+const ejecutarReinicioOps = () => {
+    if (state.reiniciandoOps) {
+        return;
+    }
+    state.reiniciandoOps = true;
+    reiniciarOpsForm.estado_op_id = state.estadoSeleccionadoId;
+    reiniciarOpsForm.post(route('superadmin.reiniciar-ops'), {
+        preserveScroll: true,
+        onFinish: () => {
+            state.reiniciandoOps = false;
+        },
+    });
+};
 
 const form = useForm({
     confirmacion: '',
@@ -313,6 +337,45 @@ const iniciarPresion = () => {
                             <Loader2 v-if="state.procesando === ajuste.clave" class="h-3.5 w-3.5 animate-spin" />
                             <component :is="ajuste.clave === 'genericos' ? Layers : Shuffle" v-else class="h-3.5 w-3.5" />
                             {{ state.procesando === ajuste.clave ? ajuste.procesando : ajuste.boton }}
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Tarjeta para reiniciar OPs -->
+                <div
+                    v-if="props.esAmbienteTest"
+                    class="border-border bg-card flex flex-col justify-between rounded-lg border p-4 shadow-sm"
+                >
+                    <div>
+                        <div class="flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
+                            <RefreshCw class="h-4 w-4" />
+                            <h4 class="text-sm font-semibold">Reiniciar Órdenes de Producción</h4>
+                        </div>
+                        <p class="text-muted-foreground mt-2 text-xs leading-relaxed">
+                            Borra todas las OP existentes y genera 2 OP nuevas en el estado que elijas.
+                        </p>
+                        <div class="mt-3">
+                            <label class="text-foreground block text-xs font-medium">Estado inicial:</label>
+                            <select
+                                v-model="state.estadoSeleccionadoId"
+                                class="border-input bg-background text-foreground mt-1 block w-full rounded-md border px-2.5 py-1.5 text-xs shadow-sm focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 focus:outline-none"
+                            >
+                                <option v-for="estado in props.estadosOp" :key="estado.id" :value="estado.id">
+                                    {{ estado.nombre }}
+                                </option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="border-border/60 mt-4 border-t pt-3">
+                        <button
+                            type="button"
+                            :disabled="state.reiniciandoOps || reiniciarOpsForm.processing"
+                            @click="ejecutarReinicioOps"
+                            class="inline-flex w-full items-center justify-center gap-2 rounded-md bg-indigo-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                            <Loader2 v-if="state.reiniciandoOps || reiniciarOpsForm.processing" class="h-3.5 w-3.5 animate-spin" />
+                            <RefreshCw v-else class="h-3.5 w-3.5" />
+                            {{ state.reiniciandoOps || reiniciarOpsForm.processing ? 'Reiniciando OPs...' : 'Borrar y generar 2 OP' }}
                         </button>
                     </div>
                 </div>

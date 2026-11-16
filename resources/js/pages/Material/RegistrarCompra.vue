@@ -9,6 +9,7 @@ import { useForm } from '@inertiajs/vue3';
 import { computed, reactive, watch } from 'vue';
 import vSelect from 'vue-select';
 import 'vue-select/dist/vue-select.css';
+import { PlusIcon, ArrowUturnLeftIcon } from '@heroicons/vue/24/outline';
 
 const props = defineProps({
     show: {
@@ -32,7 +33,7 @@ const props = defineProps({
 
 const emit = defineEmits(['close']);
 
-const filaVacia = (): any => ({ material_id: '', cantidad: '', precio: '', precio_texto: '', faltante: null });
+const filaVacia = (): any => ({ material_id: '', cantidad: '', cantidadOriginal: null, precio: '', precio_texto: '', faltante: null });
 
 const state = reactive({
     errorLocal: '',
@@ -62,6 +63,14 @@ const unidad = (materialId: any): string =>
 
 const existenciaActual = (materialId: any): number =>
     Number(materialSeleccionado(materialId)?.existencia_actual ?? 0);
+
+/** Consumo diario del material, para escalar la cantidad a comprar. */
+const gastoDiario = (materialId: any): number => {
+    const mat = materialSeleccionado(materialId);
+    if (!mat || mat.gasto_diario === null || mat.gasto_diario === undefined) return 0;
+
+    return Number(mat.gasto_diario) || 0;
+};
 
 const existenciaResultante = (fila: any): number =>
     existenciaActual(fila.material_id) + Math.max(0, Number(fila.cantidad) || 0);
@@ -255,6 +264,33 @@ const aplicarSugerencia = (fila: any) => {
     }
 };
 
+/**
+ * Aumenta la cantidad a comprar en un día de gasto diario del material. Útil
+ * para comprar un stock de seguridad sin calcularlo a mano.
+ */
+const aumentarCantidad = (fila: any) => {
+    const actual = Number(fila.cantidad) || 0;
+    const diario = gastoDiario(fila.material_id);
+
+    if (diario > 0) {
+        fila.cantidad = String(Math.round((actual + diario) * 100) / 100);
+    } else if (fila.cantidad === '' || fila.cantidad === null) {
+        fila.cantidad = '1';
+    } else {
+        fila.cantidad = String(actual + 1);
+    }
+};
+
+/**
+ * Vuelve la cantidad al valor original con el que llegó el modal (la carencia
+ * de las OPs o la última compra sugerida). No afecta a materiales nuevos.
+ */
+const restaurarCantidadOriginal = (fila: any) => {
+    if (fila.cantidadOriginal !== null && fila.cantidadOriginal !== undefined) {
+        fila.cantidad = String(fila.cantidadOriginal);
+    }
+};
+
 const filasValidas = computed(() =>
     form.materiales.filter(
         (fila: any) => fila.material_id && Number(fila.cantidad) > 0 && Number(fila.precio) > 0
@@ -325,7 +361,8 @@ const totalCompra = computed(() =>
 
 /**
  * En el modo faltantes la cantidad no se pregunta: es la carencia exacta que
- * piden las órdenes de producción abiertas.
+ * piden las órdenes de producción abiertas. Se guarda la cantidad original
+ * para poder restaurarla después de escalarla con el botón de gasto diario.
  */
 const rellenarFaltantes = () => {
     const filas = (props.faltantesOp ?? []).map((faltante: any) => {
@@ -334,6 +371,7 @@ const rellenarFaltantes = () => {
         return {
             material_id: Number(faltante.material_id),
             cantidad: String(faltante.faltante),
+            cantidadOriginal: Number(faltante.faltante),
             precio: precio ?? '',
             precio_texto: precio !== null ? formatearPrecio(precio) : '',
             faltante,
@@ -467,7 +505,7 @@ const guardar = () => {
                                             @option:selected="(opt: any) => alCambiarMaterial(fila, opt)"
                                         />
                                     </td>
-                                    <td class="px-3 py-2 align-top">
+<td class="px-3 py-2 align-top">
                                         <div class="flex items-center gap-1.5">
                                             <TextInput
                                                 type="number"
@@ -481,6 +519,32 @@ const guardar = () => {
                                             <span class="w-10 shrink-0 text-xs text-gray-500 dark:text-gray-400">
                                                 {{ unidad(fila.material_id) || '—' }}
                                             </span>
+                                        </div>
+
+                                        <!-- Botones para escalar la cantidad con el gasto diario -->
+                                        <div v-if="fila.faltante" class="mt-1 flex items-center gap-1">
+                                            <button
+                                                type="button"
+                                                title="Aumentar en un día de gasto diario"
+                                                :aria-label="`Aumentar cantidad de ${fila.faltante?.codigo || fila.faltante?.nombre || ''}`"
+                                                class="inline-flex h-6 items-center gap-1 rounded border border-border bg-card px-1.5 text-[11px] font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                                @click="aumentarCantidad(fila)"
+                                            >
+                                                <PlusIcon class="h-3.5 w-3.5" />
+                                                <span v-if="gastoDiario(fila.material_id)">{{ zilef_nuber_format(gastoDiario(fila.material_id), 0) }}/día</span>
+                                                <span v-else>+1</span>
+                                            </button>
+                                            <button
+                                                v-if="fila.cantidadOriginal !== null && fila.cantidadOriginal !== undefined && Number(fila.cantidad) !== Number(fila.cantidadOriginal)"
+                                                type="button"
+                                                title="Volver a la cantidad necesaria"
+                                                :aria-label="`Restaurar cantidad original de ${fila.faltante?.codigo || fila.faltante?.nombre || ''}`"
+                                                class="inline-flex h-6 items-center gap-1 rounded border border-border bg-card px-1.5 text-[11px] font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                                @click="restaurarCantidadOriginal(fila)"
+                                            >
+                                                <ArrowUturnLeftIcon class="h-3.5 w-3.5" />
+                                                <span>Volver</span>
+                                            </button>
                                         </div>
 
                                         <div

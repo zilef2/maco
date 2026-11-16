@@ -375,6 +375,152 @@ class OrdenProduccionInventarioTest extends TestCase
     }
 
     /**
+     * «Guardar avance» mueve el inventario igual que el guardado definitivo:
+     * solo lo aprobado entra al objetivo de la OP. Los pares en reparación y
+     * los no recuperables no alteran existencias.
+     */
+    public function test_guardar_avance_suma_al_inventario_solo_lo_aprobado(): void
+    {
+        $c = $this->contexto('En taller');
+
+        $this->actingAs($c['user'])->put(route('OrdenProduccion.recepcionBorrador', $c['op']->id), [
+            'recepciones' => [[
+                'distribucion_id' => $c['distribucion']->id,
+                'cantidad_aprobada' => 1,
+                'cantidad_en_reparacion' => 1,
+                'cantidad_no_recuperable' => 1,
+            ]],
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame($c['estados']['Recibiendo']->id, (int) $c['op']->fresh()->estado_op_id);
+
+        // De los 3 pares recibidos solo 1 está aprobado: el inventario sube 1.
+        $this->assertSame(1.0, (float) $c['producido']->fresh()->existencia_actual);
+        $this->assertSame(1, (int) $c['distribucion']->fresh()->cantidad_recibida_buena);
+    }
+
+    /**
+     * Repetir el avance no duplica lo ya ingresado: la diferencia contra lo que
+     * esta misma OP metió deja el inventario en lo aprobado y, al completar la
+     * recepción, el total final es el mismo.
+     */
+    public function test_guardar_avance_repetido_no_duplica_el_inventario(): void
+    {
+        $c = $this->contexto('En taller');
+
+        $avance = fn (int $aprobada, int $reparacion) => $this->actingAs($c['user'])
+            ->put(route('OrdenProduccion.recepcionBorrador', $c['op']->id), [
+                'recepciones' => [[
+                    'distribucion_id' => $c['distribucion']->id,
+                    'cantidad_aprobada' => $aprobada,
+                    'cantidad_en_reparacion' => $reparacion,
+                    'cantidad_no_recuperable' => 0,
+                ]],
+            ])->assertSessionHasNoErrors();
+
+        $avance(2, 1);
+        $this->assertSame(2.0, (float) $c['producido']->fresh()->existencia_actual);
+
+        $avance(2, 1);
+        $this->assertSame(2.0, (float) $c['producido']->fresh()->existencia_actual);
+
+        $this->actingAs($c['user'])->put(route('OrdenProduccion.cambiarEstado', $c['op']->id), [
+            'estado_op_id' => $c['estados']['Recibiendo']->id,
+            'recepciones' => [[
+                'distribucion_id' => $c['distribucion']->id,
+                'cantidad_aprobada' => 3,
+                'cantidad_en_reparacion' => 0,
+                'cantidad_no_recuperable' => 0,
+            ]],
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame($c['estados']['Cerrada']->id, (int) $c['op']->fresh()->estado_op_id);
+        $this->assertSame(3.0, (float) $c['producido']->fresh()->existencia_actual);
+    }
+
+    /**
+     * En un producto, el avance suma por talla solo lo aprobado: la talla con
+     * pares en reparación o no recuperables no mueve su cantidad recibida.
+     */
+    public function test_guardar_avance_de_un_producto_solo_suma_las_tallas_aprobadas(): void
+    {
+        $c = $this->contextoProducto();
+
+        $this->actingAs($c['user'])->put(route('OrdenProduccion.recepcionBorrador', $c['op']->id), [
+            'recepciones' => [
+                ['distribucion_id' => $c['tallaS']->id, 'cantidad_aprobada' => 1, 'cantidad_en_reparacion' => 1, 'cantidad_no_recuperable' => 0],
+                ['distribucion_id' => $c['tallaM']->id, 'cantidad_aprobada' => 0, 'cantidad_en_reparacion' => 0, 'cantidad_no_recuperable' => 2],
+            ],
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame(1, (int) $c['tallaS']->fresh()->cantidad_recibida_buena);
+        $this->assertSame(0, (int) $c['tallaM']->fresh()->cantidad_recibida_buena);
+
+        $this->assertSame(1, ProductoMovimiento::unidadesDeOrden($c['producto']->id, 'S', $c['op']->id));
+        $this->assertSame(0, ProductoMovimiento::unidadesDeOrden($c['producto']->id, 'M', $c['op']->id));
+    }
+
+    /**
+     * El editor de tallas de la OP reenvía las filas sin cantidades de
+     * recepción: guardar la OP no puede borrar lo que ya entró al inventario.
+     */
+    public function test_editar_las_tallas_de_la_op_no_borra_lo_recibido(): void
+    {
+        $c = $this->contextoProducto();
+
+        $this->actingAs($c['user'])->put(route('OrdenProduccion.cambiarEstado', $c['op']->id), [
+            'estado_op_id' => $c['estados']['Recibiendo']->id,
+            'fecha_compromiso' => '2026-11-20',
+            'recepciones' => [
+                ['distribucion_id' => $c['tallaS']->id, 'cantidad_aprobada' => 2, 'cantidad_en_reparacion' => 0, 'cantidad_no_recuperable' => 0],
+                ['distribucion_id' => $c['tallaM']->id, 'cantidad_aprobada' => 1, 'cantidad_en_reparacion' => 1, 'cantidad_no_recuperable' => 0],
+            ],
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame(2, (int) $c['tallaS']->fresh()->cantidad_recibida_buena);
+        $this->assertSame(1, (int) $c['tallaM']->fresh()->cantidad_recibida_buena);
+
+        $this->actingAs($c['user'])->put(route('OrdenProduccion.distribucion', $c['op']->id), [
+            'distribucion_tallas' => [
+                ['id' => $c['tallaS']->id, 'talla' => 'S', 'cantidad_planificada' => 2],
+                ['id' => $c['tallaM']->id, 'talla' => 'M', 'cantidad_planificada' => 2],
+            ],
+        ])->assertSessionHasNoErrors();
+
+        $this->assertSame(2, (int) $c['tallaS']->fresh()->cantidad_recibida_buena);
+        $this->assertSame(1, (int) $c['tallaM']->fresh()->cantidad_recibida_buena);
+
+        // Tampoco se inventaron movimientos correctivos al editar la talla.
+        $this->assertSame(1, ProductoMovimiento::where('talla', 'S')->count());
+    }
+
+    /**
+     * La talla que se crea desde la OP queda enlazada al producto, para que su
+     * página y su modal de tallas la vean y las próximas OPs la reutilicen.
+     */
+    public function test_crear_una_talla_en_la_op_la_enlaza_al_producto(): void
+    {
+        $c = $this->contextoProducto();
+
+        $this->assertSame(2, $c['producto']->distribucionesPorTallas()->count());
+
+        $this->actingAs($c['user'])->put(route('OrdenProduccion.distribucion', $c['op']->id), [
+            'distribucion_tallas' => [
+                ['id' => $c['tallaS']->id, 'talla' => 'S', 'cantidad_planificada' => 2],
+                ['id' => $c['tallaM']->id, 'talla' => 'M', 'cantidad_planificada' => 2],
+                ['producto_id' => $c['producto']->id, 'talla' => 'L', 'cantidad_planificada' => 1],
+            ],
+        ])->assertSessionHasNoErrors();
+
+        $tallas = $c['producto']->distribucionesPorTallas()
+            ->orderBy('talla')
+            ->pluck('talla')
+            ->all();
+
+        $this->assertSame(['L', 'M', 'S'], $tallas);
+    }
+
+    /**
      * OP de un material procesado: consume `cantidad x consumo` del componente
      * y produce `cantidad` del material objetivo.
      *

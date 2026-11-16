@@ -146,7 +146,7 @@ class FaltantesOpService
 
         return Material::query()
             ->whereIn('id', $requerido->keys())
-            ->get(['id', 'codigo_material', 'nombre_base', 'existencia_actual', 'unidad_inventario'])
+            ->get(['id', 'codigo_material', 'codigo_categoria', 'categoria', 'nombre_base', 'existencia_actual', 'unidad_inventario'])
             ->map(function (Material $material) use ($requerido) {
                 $dato = $requerido[$material->id];
                 $existencia = round((float) $material->existencia_actual, 4);
@@ -160,6 +160,8 @@ class FaltantesOpService
                     'material_id' => $material->id,
                     'codigo' => $material->codigo_material,
                     'nombre' => $material->nombre_base,
+                    'categoria' => $material->categoria,
+                    'codigo_categoria' => $material->codigo_categoria,
                     'unidad' => $material->unidad_inventario ?: $dato['unidad'],
                     'requerido' => $dato['total'],
                     'existencia' => $existencia,
