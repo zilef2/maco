@@ -39,6 +39,18 @@ class MermaController extends Controller
 
     private function mermas(): array
     {
+        // Totales de la OP completa (todas sus tallas), para que el detalle no
+        // confunda la cifra de una sola talla con lo que produjo la OP entera.
+        $totalesPorOp = RecepcionCalidad::query()
+            ->selectRaw('orden_produccion_id')
+            ->selectRaw('SUM(cantidad_esperada) AS esperada')
+            ->selectRaw('SUM(cantidad_aprobada) AS aprobada')
+            ->selectRaw('SUM(cantidad_en_reparacion) AS en_reparacion')
+            ->selectRaw('SUM(cantidad_no_recuperable) AS no_recuperable')
+            ->groupBy('orden_produccion_id')
+            ->get()
+            ->keyBy('orden_produccion_id');
+
         return Merma::with([
             'ordenProduccion.estadoOp:id,nombre',
             'ordenProduccion.taller:id,nombre,nombre_comercial',
@@ -50,9 +62,10 @@ class MermaController extends Controller
         ])
             ->orderByDesc('fecha_registro')
             ->get()
-            ->map(function (Merma $merma) {
+            ->map(function (Merma $merma) use ($totalesPorOp) {
                 $recepcion = $merma->recepcionCalidad;
                 $fecha = $merma->fecha_registro;
+                $totalesOp = $totalesPorOp->get($merma->orden_produccion_id);
 
                 $orden = $merma->ordenProduccion;
                 $taller = $orden?->taller;
@@ -83,6 +96,10 @@ class MermaController extends Controller
                     'esperada' => $recepcion ? (int) $recepcion->cantidad_esperada : null,
                     'aprobada' => $recepcion ? (int) $recepcion->cantidad_aprobada : null,
                     'en_reparacion' => $recepcion ? (int) $recepcion->cantidad_en_reparacion : null,
+                    'esperada_op' => $totalesOp ? (int) $totalesOp->esperada : null,
+                    'aprobada_op' => $totalesOp ? (int) $totalesOp->aprobada : null,
+                    'en_reparacion_op' => $totalesOp ? (int) $totalesOp->en_reparacion : null,
+                    'no_recuperable_op' => $totalesOp ? (int) $totalesOp->no_recuperable : null,
                 ];
             })
             ->all();

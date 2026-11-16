@@ -52,6 +52,8 @@ const PALABRAS_ES: Record<string, string> = {
     ensamble: 'Ensamble',
     merma: 'Merma',
     mermas: 'Mermas',
+    venta: 'Ventas',
+    ventas: 'Ventas',
     pago: 'Pago',
     pagos: 'Pagos',
     desarrollo: 'Desarrollo',

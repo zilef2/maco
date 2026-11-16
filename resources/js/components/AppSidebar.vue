@@ -30,6 +30,7 @@ import {
     ShieldCheck,
     Layers,
     Settings,
+    ShoppingCart,
 } from 'lucide-vue-next';
 import AppLogoMini from './AppLogoMini.vue';
 
@@ -56,6 +57,16 @@ const navGroups: NavGroup[] = [
                 title: 'OrdenProduccion',
                 href: '/OrdenProduccion',
                 icon: ClipboardList,
+            },
+        ],
+    },
+    {
+        label: 'Ventas',
+        items: [
+            {
+                title: 'Ventas',
+                href: '/Venta',
+                icon: ShoppingCart,
             },
         ],
     },

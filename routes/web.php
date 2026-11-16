@@ -65,6 +65,7 @@ Route::middleware('auth', 'verified')->group(function () {
 	Route::put("/Producto/{id}/distribucion", [\App\Http\Controllers\ProductoController::class, 'syncDistribucion'])->name('Producto.distribucion');
 	Route::get("/Producto/{id}/tallas-history", [\App\Http\Controllers\ProductoController::class, 'tallasHistory'])->name('Producto.tallas-history');
 	// Venta de productos terminados (descuenta la existencia recibida por talla).
+	Route::get("/Venta", [\App\Http\Controllers\VentaController::class, 'index'])->name('Venta.index');
 	Route::post("/Venta", [\App\Http\Controllers\VentaController::class, 'store'])->name('Venta.store');
 	
 	Route::resource("/Talla", \App\Http\Controllers\TallaController::class);

@@ -14,12 +14,25 @@ const emit = defineEmits(['close', 'ver-orden']);
 
 const merma = computed(() => props.merma ?? {});
 
-const cifras = computed(() => [
+/** Cifras de la talla que originó esta merma. */
+const cifrasTalla = computed(() => [
     { etiqueta: 'Esperada', valor: merma.value.esperada, tono: 'text-foreground' },
     { etiqueta: 'Aprobada', valor: merma.value.aprobada, tono: 'text-emerald-600 dark:text-emerald-400' },
     { etiqueta: 'En reparación', valor: merma.value.en_reparacion, tono: 'text-amber-600 dark:text-amber-400' },
     { etiqueta: 'No recuperable', valor: merma.value.cantidad, tono: 'text-red-600 dark:text-red-400' },
 ]);
+
+/** Cifras de la OP completa: suman todas sus tallas, no solo la de la merma. */
+const cifrasOp = computed(() => [
+    { etiqueta: 'Esperada', valor: merma.value.esperada_op, tono: 'text-foreground' },
+    { etiqueta: 'Aprobada', valor: merma.value.aprobada_op, tono: 'text-emerald-600 dark:text-emerald-400' },
+    { etiqueta: 'En reparación', valor: merma.value.en_reparacion_op, tono: 'text-amber-600 dark:text-amber-400' },
+    { etiqueta: 'No recuperable', valor: merma.value.no_recuperable_op, tono: 'text-red-600 dark:text-red-400' },
+]);
+
+const hayTotalesOp = computed(() =>
+    cifrasOp.value.some((cifra) => cifra.valor !== null && cifra.valor !== undefined),
+);
 
 const dinero = (valor: any): string =>
     valor === null || valor === undefined || valor === ''
@@ -28,10 +41,19 @@ const dinero = (valor: any): string =>
 
 const cantidad = (valor: any): string => (valor === null || valor === undefined ? '—' : zilef_nuber_format(valor, 0, false));
 
+const formatearPorcentaje = (valor: number): string =>
+    `${valor.toLocaleString('es-CO', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
+
 const porcentaje = computed(() => {
     const esperada = Number(merma.value.esperada) || 0;
     if (esperada <= 0) return '—';
-    return `${((Number(merma.value.cantidad) || 0) / esperada) * 100}%`;
+    return formatearPorcentaje(((Number(merma.value.cantidad) || 0) / esperada) * 100);
+});
+
+const porcentajeOp = computed(() => {
+    const esperada = Number(merma.value.esperada_op) || 0;
+    if (esperada <= 0) return '—';
+    return formatearPorcentaje(((Number(merma.value.no_recuperable_op) || 0) / esperada) * 100);
 });
 
 const texto = (valor: any): string => String(valor ?? '').trim() || '—';
@@ -63,25 +85,57 @@ const fecha = computed(() => (merma.value.fecha_registro ? formatDate(merma.valu
                     </span>
                 </div>
 
-                <div class="mt-5 grid gap-2 sm:grid-cols-4">
-                    <div
-                        v-for="cifra in cifras"
-                        :key="cifra.etiqueta"
-                        class="rounded-lg border border-border bg-card p-3 shadow-sm"
-                    >
-                        <p class="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-                            {{ cifra.etiqueta }}
-                        </p>
-                        <p class="mt-1 text-xl font-semibold tabular-nums" :class="cifra.tono">
-                            {{ cantidad(cifra.valor) }}
-                        </p>
-                    </div>
-                </div>
+                <section v-if="hayTotalesOp" class="mt-5">
+                    <h3 class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Total de la {{ texto(merma.numero_op) }}
+                    </h3>
 
-                <p class="mt-2 text-xs text-muted-foreground">
-                    La recepción de la OP dejó {{ porcentaje }} de esa talla como pérdida. El resto de la talla no se
-                    pierde: lo aprobado entra a inventario y lo que está en reparación sigue pendiente.
-                </p>
+                    <div class="mt-2 grid gap-2 sm:grid-cols-4">
+                        <div
+                            v-for="cifra in cifrasOp"
+                            :key="`op-${cifra.etiqueta}`"
+                            class="rounded-lg border border-border bg-card p-3 shadow-sm"
+                        >
+                            <p class="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                                {{ cifra.etiqueta }}
+                            </p>
+                            <p class="mt-1 text-xl font-semibold tabular-nums" :class="cifra.tono">
+                                {{ cantidad(cifra.valor) }}
+                            </p>
+                        </div>
+                    </div>
+
+                    <p class="mt-2 text-xs text-muted-foreground">
+                        Suma de todas las tallas de la {{ texto(merma.numero_op) }}: la OP perdió
+                        <span class="font-medium text-foreground">{{ porcentajeOp }}</span> de lo esperado.
+                    </p>
+                </section>
+
+                <section class="mt-5">
+                    <h3 class="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                        Talla {{ texto(merma.talla) }}
+                    </h3>
+
+                    <div class="mt-2 grid gap-2 sm:grid-cols-4">
+                        <div
+                            v-for="cifra in cifrasTalla"
+                            :key="`talla-${cifra.etiqueta}`"
+                            class="rounded-lg border border-border bg-card p-3 shadow-sm"
+                        >
+                            <p class="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                                {{ cifra.etiqueta }}
+                            </p>
+                            <p class="mt-1 text-xl font-semibold tabular-nums" :class="cifra.tono">
+                                {{ cantidad(cifra.valor) }}
+                            </p>
+                        </div>
+                    </div>
+
+                    <p class="mt-2 text-xs text-muted-foreground">
+                        Esta talla dejó {{ porcentaje }} de sus pares como pérdida. El resto no se pierde: lo
+                        aprobado entra a inventario y lo que está en reparación sigue pendiente.
+                    </p>
+                </section>
 
                 <dl class="mt-5 grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
                     <div class="flex flex-col gap-0.5">

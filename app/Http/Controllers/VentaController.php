@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\helpers\Myhelp;
+use App\helpers\MyModels;
 use App\Models\Distribucion_por_tallas;
 use App\Models\Producto;
 use App\Models\ProductoMovimiento;
@@ -11,9 +12,59 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Inertia\Inertia;
+use Inertia\Response;
 
 class VentaController extends Controller
 {
+    /**
+     * Historial de ventas: cada fila de la página es una línea vendida
+     * (producto y talla), con la venta a la que pertenece.
+     */
+    public function index(): Response
+    {
+        $numberPermissions = MyModels::getPermissionToNumber(Myhelp::EscribirEnLog($this, ' Ventas '));
+
+        $ventas = Venta::query()
+            ->with([
+                'detalles.producto:id,Codigo_interno,Titulo_Shopify',
+                'user:id,name',
+            ])
+            ->orderByDesc('fecha')
+            ->orderByDesc('id')
+            ->get()
+            ->map(fn (Venta $venta) => [
+                'id' => $venta->id,
+                'fecha' => $venta->fecha?->format('Y-m-d'),
+                'forma_pago' => $venta->forma_pago,
+                'forma_pago_detalle' => $venta->forma_pago_detalle,
+                'subtotal' => (float) $venta->subtotal,
+                'descuento_monto' => (float) $venta->descuento_monto,
+                'impuesto_monto' => (float) $venta->impuesto_monto,
+                'total' => (float) $venta->total,
+                'observaciones' => $venta->observaciones,
+                'registrado_por' => $venta->user?->name,
+                'detalles' => $venta->detalles->map(fn ($detalle) => [
+                    'id' => $detalle->id,
+                    'producto_id' => $detalle->producto_id,
+                    'codigo' => $detalle->producto?->Codigo_interno,
+                    'titulo' => $detalle->producto?->Titulo_Shopify,
+                    'talla' => $detalle->talla,
+                    'cantidad' => (int) $detalle->cantidad,
+                    'precio_unitario' => (float) $detalle->precio_unitario,
+                    'total' => (float) $detalle->total,
+                ])->values()->all(),
+            ])
+            ->all();
+
+        return Inertia::render('Venta/Index', [
+            'ventas' => $ventas,
+            'breadcrumbs' => [['label' => __('app.label.Venta'), 'href' => route('Venta.index')]],
+            'title' => __('app.label.Venta'),
+            'numberPermissions' => $numberPermissions,
+        ]);
+    }
+
     /**
      * Registra la venta de uno o varios productos terminados.
      *

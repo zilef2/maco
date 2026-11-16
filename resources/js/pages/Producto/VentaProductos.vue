@@ -110,6 +110,21 @@ const vendidoEnOtrasFilas = (indice: number, fila: any): number =>
 const disponibleParaFila = (fila: any, indice: number): number =>
     Math.max(0, disponibleDe(fila.producto_id, String(fila.talla ?? '')) - vendidoEnOtrasFilas(indice, fila));
 
+/** Impide digitar una cantidad mayor a la existencia libre de la talla. */
+const limitarCantidad = (fila: any, indice: number, evento: Event) => {
+    if (!fila.talla) return;
+
+    const input = evento.target as HTMLInputElement;
+    const entero = Math.floor(Number(input.value));
+    if (!Number.isFinite(entero)) return;
+
+    const disponible = disponibleParaFila(fila, indice);
+    if (entero > disponible) {
+        fila.cantidad = String(disponible);
+        input.value = String(disponible);
+    }
+};
+
 const numero = (valor: any): number => {
     const limpio = String(valor ?? '').replace(/[^\d.-]/g, '');
     const convertido = Number(limpio);
@@ -123,6 +138,30 @@ const importeFila = (fila: any): number => {
     const precio = numero(fila.precio_unitario);
     return cantidad > 0 && precio > 0 ? redondear(cantidad * precio) : 0;
 };
+
+const cantidadFila = (fila: any): number => Math.max(0, Math.floor(numero(fila.cantidad)));
+
+const totalVendidos = computed(() =>
+    form.detalles.reduce((suma: number, fila: any) => suma + cantidadFila(fila), 0)
+);
+
+// Suma de lo que quedará en cada talla, igual al «Quedarán» de cada fila.
+const totalDisponibleRestante = computed(() =>
+    form.detalles.reduce(
+        (suma: number, fila: any, indice: number) =>
+            fila.talla ? suma + Math.max(0, disponibleParaFila(fila, indice) - cantidadFila(fila)) : suma,
+        0
+    )
+);
+
+const totalPreciosUnitarios = computed(() =>
+    redondear(
+        form.detalles.reduce(
+            (suma: number, fila: any) => suma + Math.max(0, numero(fila.precio_unitario)),
+            0
+        )
+    )
+);
 
 const subtotal = computed(() =>
     redondear(form.detalles.reduce((suma: number, fila: any) => suma + importeFila(fila), 0))
@@ -208,6 +247,43 @@ const alCambiarProducto = (fila: any) => {
 
 const agregarFila = () => {
     form.detalles.push(filaVacia());
+};
+
+const ultimaFila = computed<any | null>(() =>
+    form.detalles.length ? form.detalles[form.detalles.length - 1] : null
+);
+
+/** Otra talla del mismo producto con existencia libre para duplicar la fila. */
+const tallaDuplicable = computed<TallaDisponible | null>(() => {
+    const fila = ultimaFila.value;
+    if (!fila || !fila.producto_id || !String(fila.talla ?? '').trim()) return null;
+
+    const indice = form.detalles.length - 1;
+    return (
+        tallasDe(fila.producto_id).find(
+            (opcion) =>
+                opcion.talla !== String(fila.talla) &&
+                disponibleParaFila({ ...fila, talla: opcion.talla }, indice) > 0
+        ) ?? null
+    );
+});
+
+/** Repite el producto de la última fila en otra talla, con la misma cantidad. */
+const duplicarUltimaFila = () => {
+    const fila = ultimaFila.value;
+    const opcion = tallaDuplicable.value;
+    if (!fila || !opcion) return;
+
+    const indice = form.detalles.length - 1;
+    const disponible = disponibleParaFila({ ...fila, talla: opcion.talla }, indice);
+    const cantidad = Math.floor(numero(fila.cantidad));
+
+    form.detalles.push({
+        producto_id: fila.producto_id,
+        talla: opcion.talla,
+        cantidad: cantidad > 0 ? String(Math.min(cantidad, disponible)) : '',
+        precio_unitario: fila.precio_unitario,
+    });
 };
 
 const quitarFila = (indice: number) => {
@@ -369,6 +445,7 @@ const guardar = () => {
                                                 :max="disponibleParaFila(fila, indice) || undefined"
                                                 class="block h-9 w-full px-2 text-right tabular-nums"
                                                 v-model="fila.cantidad" placeholder="0"
+                                                @input="limitarCantidad(fila, indice, $event)"
                                                 :aria-label="`Cantidad vendida ${indice + 1}`" />
                                         </td>
                                         <td class="px-3 py-2 text-right align-top">
@@ -410,7 +487,16 @@ const guardar = () => {
                                         <td class="px-3 py-2 text-right text-sm font-bold tabular-nums text-gray-900 dark:text-gray-100">
                                             {{ formatearMonto(subtotal) }}
                                         </td>
-                                        <td></td>
+                                        <td class="px-3 py-2 text-right">
+                                            <SecondaryButton type="button" class="whitespace-nowrap"
+                                                :disabled="!tallaDuplicable"
+                                                :title="tallaDuplicable
+                                                    ? 'Agrega el producto de la última fila con otra talla y la misma cantidad.'
+                                                    : 'El producto de la última fila no tiene otra talla con existencia.'"
+                                                @click="duplicarUltimaFila">
+                                                + Otra talla
+                                            </SecondaryButton>
+                                        </td>
                                     </tr>
                                 </tfoot>
                             </table>
@@ -493,6 +579,18 @@ const guardar = () => {
 
                     <div class="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-900/40">
                         <dl class="ml-auto max-w-sm space-y-1 text-sm">
+                            <div class="flex justify-between tabular-nums">
+                                <dt class="text-gray-500 dark:text-gray-400">Unidades vendidas</dt>
+                                <dd class="font-medium text-gray-800 dark:text-gray-200">{{ totalVendidos }}</dd>
+                            </div>
+                            <div class="flex justify-between tabular-nums">
+                                <dt class="text-gray-500 dark:text-gray-400">Existencia restante</dt>
+                                <dd class="font-medium text-gray-800 dark:text-gray-200">{{ totalDisponibleRestante }}</dd>
+                            </div>
+                            <div class="flex justify-between border-b border-gray-200 pb-1 tabular-nums dark:border-gray-700">
+                                <dt class="text-gray-500 dark:text-gray-400">Suma de precios unitarios</dt>
+                                <dd class="font-medium text-gray-800 dark:text-gray-200">{{ formatearMonto(totalPreciosUnitarios) }}</dd>
+                            </div>
                             <div class="flex justify-between tabular-nums">
                                 <dt class="text-gray-500 dark:text-gray-400">Subtotal</dt>
                                 <dd class="text-gray-800 dark:text-gray-200">{{ formatearMonto(subtotal) }}</dd>
