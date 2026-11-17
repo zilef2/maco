@@ -118,7 +118,7 @@ const closeModal = () => {
 
 <template>
     <section class="space-y-6">
-        <Modal :show="props.show" @close="closeModal" :maxWidth="'lg'">
+        <Modal :show="props.show" @close="closeModal" :maxWidth="'xl3'">
             <div class="p-6">
                 <div class="flex items-center justify-between border-b pb-3 dark:border-gray-700">
                     <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100">
@@ -127,7 +127,8 @@ const closeModal = () => {
                             — {{ props.productoLabel }}
                         </span>
                     </h3>
-                    <button type="button" @click="closeModal" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
+                    <button type="button" @click="closeModal"
+                        class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
                         ✕
                     </button>
                 </div>
@@ -141,16 +142,14 @@ const closeModal = () => {
                     Sin tallas registradas.
                 </div>
 
-                <div v-else class="mt-4 max-h-64 overflow-y-auto space-y-2">
-                    <div class="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                <div v-else class="mt-4 max-h-[1000px] overflow-y-auto space-y-2">
+                    <div
+                        class="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
                         <span class="flex-1">Talla</span>
                         <span class="w-32 text-right">Cantidad</span>
                     </div>
-                    <div
-                        v-for="(fila, index) in filas"
-                        :key="fila.id ?? `talla-${index}`"
-                        class="flex items-center gap-2 border-b pb-2 dark:border-gray-700"
-                    >
+                    <div v-for="(fila, index) in filas" :key="fila.id ?? `talla-${index}`"
+                        class="flex items-center gap-2 border-b px-2 py-2 odd:bg-white even:bg-gray-100 dark:border-gray-700 dark:odd:bg-gray-900 dark:even:bg-gray-800/60">
                         <div class="flex-1">
                             <InputLabel :for="`talla-${index}`" value="Talla" class="sr-only" />
                             <p :id="`talla-${index}`" class="text-sm font-medium text-gray-900 dark:text-gray-100">
@@ -159,7 +158,8 @@ const closeModal = () => {
                         </div>
                         <div class="w-32">
                             <InputLabel :for="`planificada-${index}`" value="Cantidad" class="sr-only" />
-                            <p :id="`planificada-${index}`" class="text-right text-sm tabular-nums text-gray-900 dark:text-gray-100">
+                            <p :id="`planificada-${index}`"
+                                class="text-right text-sm tabular-nums text-gray-900 dark:text-gray-100">
                                 {{ fila.cantidad_planificada }}
                             </p>
                         </div>
@@ -175,11 +175,8 @@ const closeModal = () => {
 
                 <!-- Historial de cambios -->
                 <div class="mt-6 border-t pt-4 dark:border-gray-700">
-                    <button
-                        type="button"
-                        @click="toggleHistorial"
-                        class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 transition"
-                    >
+                    <button type="button" @click="toggleHistorial"
+                        class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100 transition">
                         <ClockIcon class="w-4 h-4" />
                         <span>Historial de cambios</span>
                         <ChevronDownIcon v-if="mostrarHistorial" class="w-4 h-4" />
@@ -190,38 +187,42 @@ const closeModal = () => {
                         <div v-if="cargandoHistorial" class="text-sm text-gray-500 dark:text-gray-400 py-4 text-center">
                             Cargando historial...
                         </div>
-                        <div v-else-if="Object.keys(historial).length === 0" class="text-sm text-gray-500 dark:text-gray-400 py-4 text-center">
+                        <div v-else-if="Object.keys(historial).length === 0"
+                            class="text-sm text-gray-500 dark:text-gray-400 py-4 text-center">
                             Sin cambios registrados.
                         </div>
                         <div v-else class="max-h-64 overflow-y-auto space-y-4">
                             <div v-for="(cambios, fecha) in historial" :key="fecha" class="space-y-2">
-                                <h4 class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide sticky top-0 bg-white dark:bg-gray-800 py-1">
+                                <h4
+                                    class="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide sticky top-0 bg-white dark:bg-gray-800 py-1">
                                     {{ formatearFecha(fecha) }}
                                 </h4>
-                                <div
-                                    v-for="cambio in cambios"
-                                    :key="cambio.id"
-                                    class="flex items-start gap-2 p-2 rounded-lg bg-gray-50 dark:bg-gray-700/50"
-                                >
+                                <div v-for="cambio in cambios" :key="cambio.id"
+                                    class="flex items-start gap-2 p-2 rounded-lg bg-gray-50 dark:bg-gray-700/50">
                                     <div class="flex-1 min-w-0">
                                         <div class="flex items-center gap-2 flex-wrap">
                                             <span class="font-semibold text-sm text-gray-900 dark:text-gray-100">
                                                 Talla {{ cambio.talla }}
                                             </span>
-                                            <span class="text-xs px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300">
+                                            <span
+                                                class="text-xs px-2 py-0.5 rounded-full bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300">
                                                 {{ cambio.cantidad_planificada }} uds
                                             </span>
                                             <span :class="['text-xs font-medium', accionColor(cambio.accion)]">
                                                 {{ accionEtiqueta(cambio.accion) }}
                                             </span>
                                         </div>
-                                        <div v-if="cambio.datos_anteriores || cambio.datos_nuevos" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                        <div v-if="cambio.datos_anteriores || cambio.datos_nuevos"
+                                            class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                                             <span v-if="cambio.datos_anteriores">
-                                                Antes: {{ cambio.datos_anteriores.talla }} {{ cambio.datos_anteriores.cantidad_planificada }} uds
+                                                Antes: {{ cambio.datos_anteriores.talla }} {{
+                                                cambio.datos_anteriores.cantidad_planificada }} uds
                                             </span>
-                                            <span v-if="cambio.datos_anteriores && cambio.datos_nuevos" class="mx-1">→</span>
+                                            <span v-if="cambio.datos_anteriores && cambio.datos_nuevos"
+                                                class="mx-1">→</span>
                                             <span v-if="cambio.datos_nuevos">
-                                                Ahora: {{ cambio.datos_nuevos.talla }} {{ cambio.datos_nuevos.cantidad_planificada }} uds
+                                                Ahora: {{ cambio.datos_nuevos.talla }} {{
+                                                cambio.datos_nuevos.cantidad_planificada }} uds
                                             </span>
                                         </div>
                                         <div class="mt-1 text-xs text-gray-400 dark:text-gray-500">
@@ -236,12 +237,10 @@ const closeModal = () => {
                 </div>
 
                 <!-- Resumen de las OPs que usan estas tallas -->
-                <p
-                    class="mt-4 rounded-md border px-3 py-2 text-xs"
+                <p class="mt-4 rounded-md border px-3 py-2 text-xs"
                     :class="ordenes.length
                         ? 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-300'
-                        : 'border-gray-200 bg-gray-50 text-gray-600 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-400'"
-                >
+                        : 'border-gray-200 bg-gray-50 text-gray-600 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-400'">
                     {{ avisoOrdenes }}
                 </p>
 

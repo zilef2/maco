@@ -572,9 +572,17 @@ const destinoEsRecibiendo = computed(() =>
         : estadoActual.value?.name === 'Recibiendo'
 );
 
+const esEstadoRecibiendo = computed(() =>
+    destinoEsRecibiendo.value
+);
+
 // Los pares que se van a reparación comparten una sola fecha de compromiso.
 const filasConReparacion = computed(() =>
     form.recepciones.filter((fila: any) => (numeroONulo(fila.cantidad_en_reparacion) ?? 0) > 0)
+);
+
+const hayReparacion = computed(() =>
+    form.recepciones.some((fila: any) => (numeroONulo(fila.cantidad_en_reparacion) ?? 0) > 0)
 );
 
 const faltaFechaCompromiso = computed(() =>
@@ -642,6 +650,50 @@ const aprobarFila = (fila: any) => {
 const aprobarTodas = () => {
     for (const fila of form.recepciones) {
         aprobarFila(fila);
+    }
+};
+
+const pasarReparacionAAprobadoFila = (fila: any) => {
+    if (numeroONulo(fila.cantidad_en_reparacion) ?? 0 > 0) {
+        const anterioEnReparacion = numeroONulo(fila.cantidad_en_reparacion) ?? 0;
+        const anteriorAprobado = numeroONulo(fila.cantidad_aprobada) ?? 0;
+        
+        fila.cantidad_aprobada = anteriorAprobado + anterioEnReparacion;
+        fila.cantidad_en_reparacion = null;
+    }
+};
+
+const pasarReparacionAAprobadoTodas = () => {
+    for (const fila of form.recepciones) {
+        if ((numeroONulo(fila.cantidad_en_reparacion) ?? 0) > 0) {
+            const anterioEnReparacion = numeroONulo(fila.cantidad_en_reparacion) ?? 0;
+            const anteriorAprobado = numeroONulo(fila.cantidad_aprobada) ?? 0;
+            
+            fila.cantidad_aprobada = anteriorAprobado + anterioEnReparacion;
+            fila.cantidad_en_reparacion = null;
+        }
+    }
+};
+
+const pasarReparacionANoRecuperableFila = (fila: any) => {
+    if (numeroONulo(fila.cantidad_en_reparacion) ?? 0 > 0) {
+        const anterioEnReparacion = numeroONulo(fila.cantidad_en_reparacion) ?? 0;
+        const anteriorNoRecuperable = numeroONulo(fila.cantidad_no_recuperable) ?? 0;
+        
+        fila.cantidad_no_recuperable = anteriorNoRecuperable + anterioEnReparacion;
+        fila.cantidad_en_reparacion = null;
+    }
+};
+
+const pasarReparacionANoRecuperableTodas = () => {
+    for (const fila of form.recepciones) {
+        if ((numeroONulo(fila.cantidad_en_reparacion) ?? 0) > 0) {
+            const anterioEnReparacion = numeroONulo(fila.cantidad_en_reparacion) ?? 0;
+            const anteriorNoRecuperable = numeroONulo(fila.cantidad_no_recuperable) ?? 0;
+            
+            fila.cantidad_no_recuperable = anteriorNoRecuperable + anterioEnReparacion;
+            fila.cantidad_en_reparacion = null;
+        }
     }
 };
 
@@ -1052,6 +1104,82 @@ const posicionarScrollRecepcion = async () => {
                         </p>
                     </div>
 
+                    <!-- Botones de conversión: reparación → aprobado/no recuperable -->
+                    <div
+                        v-if="esEstadoRecibiendo && hayReparacion"
+                        class="mt-4 rounded-xl border border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50/50 px-3 py-2 shadow-sm dark:border-amber-900/50 dark:from-amber-950/30 dark:to-orange-950/20"
+                    >
+                        <div class="flex items-center gap-2">
+                            <!-- Botón: reparación → aprobado (uno por uno) -->
+                                <div class="flex items-center gap-1.5">
+                                    <button
+                                        v-for="(fila, idx) in form.recepciones"
+                                        :key="'btn-apr-fila-'+idx"
+                                        v-if="(fila.cantidad_en_reparacion ?? 0) > 0"
+                                        type="button"
+                                        @click="pasarReparacionAAprobadoFila(fila)"
+                                        class="group relative inline-flex items-center justify-center rounded-lg border border-emerald-300 bg-white px-2 py-1 text-xs font-bold text-emerald-700 shadow-sm transition-all hover:bg-emerald-50 hover:border-emerald-500 active:scale-95 dark:border-emerald-800 dark:bg-gray-800 dark:text-emerald-300 dark:hover:bg-emerald-950/50 dark:hover:border-emerald-700"
+                                        title="Fila → Aprobado"
+                                    >
+                                        <svg class="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                                        </svg>
+                                    </button>
+                                </div>
+                                
+                                <!-- Botón: reparación → aprobado (todo) -->
+                                <div class="relative">
+                                    <button
+                                        v-if="hayReparacion"
+                                        type="button"
+                                        @click="pasarReparacionAAprobadoTodas()"
+                                        class="group inline-flex items-center justify-center rounded-lg border border-emerald-600 bg-emerald-600 px-2 py-1 text-xs font-bold text-white shadow-sm transition-all hover:bg-emerald-700 hover:shadow-emerald-500/30 active:scale-95 dark:bg-emerald-600 dark:hover:bg-emerald-700 dark:shadow-emerald-900/30"
+                                        title="Todas → Aprobado"
+                                    >
+                                        <svg class="h-4 w-4 transition-transform group-hover:scale-110" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 12l7 7m0 0l-7 7m7-7H3" transform="translate(0, -7)" />
+                                        </svg>
+                                    </button>
+                                </div>
+                                
+                                <div class="h-6 w-px bg-amber-300/50 dark:bg-amber-700/50"></div>
+                                
+                                <!-- Botón: reparación → no recuperable (uno por uno) -->
+                                <div class="flex items-center gap-1.5">
+                                    <button
+                                        v-for="(fila, idx) in form.recepciones"
+                                        :key="'btn-norec-fila-'+idx"
+                                        v-if="(fila.cantidad_en_reparacion ?? 0) > 0"
+                                        type="button"
+                                        @click="pasarReparacionANoRecuperableFila(fila)"
+                                        class="group relative inline-flex items-center justify-center rounded-lg border border-rose-300 bg-white px-2 py-1 text-xs font-bold text-rose-700 shadow-sm transition-all hover:bg-rose-50 hover:border-rose-500 active:scale-95 dark:border-rose-800 dark:bg-gray-800 dark:text-rose-300 dark:hover:bg-rose-950/50 dark:hover:border-rose-700"
+                                        title="Fila → No Rec."
+                                    >
+                                        <svg class="h-3.5 w-3.5 transition-transform group-hover:-translate-x-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                                        </svg>
+                                    </button>
+                                </div>
+                                
+                                <!-- Botón: reparación → no recuperable (todo) -->
+                                <div class="relative">
+                                    <button
+                                        v-if="hayReparacion"
+                                        type="button"
+                                        @click="pasarReparacionANoRecuperableTodas()"
+                                        class="group inline-flex items-center justify-center rounded-lg border border-rose-600 bg-rose-600 px-2 py-1 text-xs font-bold text-white shadow-sm transition-all hover:bg-rose-700 hover:shadow-rose-500/30 active:scale-95 dark:bg-rose-600 dark:hover:bg-rose-700 dark:shadow-rose-900/30"
+                                        title="Todas → No Rec."
+                                    >
+                                        <svg class="h-4 w-4 transition-transform group-hover:scale-110" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 12l7 7m0 0l-7 7m7-7H3" transform="translate(0, -7)" />
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
                     <div class="mt-3 grid gap-3 sm:grid-cols-2 sm:items-end xl:grid-cols-[minmax(0,220px)_minmax(0,240px)_1fr]">
                         <div>
                             <InputLabel for="fecha_recepcion" value="Fecha de recepción *" />
@@ -1115,9 +1243,6 @@ const posicionarScrollRecepcion = async () => {
                                     <tr
                                         v-for="(fila, indice) in form.recepciones"
                                         :key="fila.distribucion_id ?? indice"
-                                        :class="filaErrorAnimada === claveFilaRecepcion(fila, indice)
-                                            ? 'fila-recibida-error'
-                                            : ''"
                                     >
                                         <td class="px-3 py-2 text-sm text-gray-700 dark:text-gray-300">
                                             {{ fila.producto_nombre || '—' }}
@@ -1408,48 +1533,6 @@ const posicionarScrollRecepcion = async () => {
 </template>
 
 <style scoped>
-@keyframes fila-recibida-error {
-    0%,
-    25% {
-        background-color: var(--fila-error-bg);
-    }
-    100% {
-        background-color: transparent;
-    }
-}
-
-.fila-recibida-error {
-    --fila-error-bg: rgb(252 165 165);
-    animation: fila-recibida-error 4s linear;
-}
-
-:global(.dark) .fila-recibida-error {
-    --fila-error-bg: rgb(153 27 27 / 0.6);
-}
-
-@keyframes suma-recibida-pop {
-    0% {
-        transform: scale(1);
-    }
-    35% {
-        transform: scale(1.45);
-        color: rgb(225 29 72);
-    }
-    65% {
-        transform: scale(1.45);
-        color: rgb(225 29 72);
-    }
-    100% {
-        transform: scale(1);
-    }
-}
-
-.suma-recibida-pop {
-    animation: suma-recibida-pop 620ms ease-out;
-    transform-origin: right center;
-    will-change: transform;
-}
-
 @media (prefers-reduced-motion: reduce) {
     .suma-recibida-pop {
         animation: none;
