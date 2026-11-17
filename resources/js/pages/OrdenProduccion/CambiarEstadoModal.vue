@@ -641,10 +641,14 @@ const incrementar = (fila: any, campo: string) => {
     fila[campo] = actual + 1;
 };
 
+// «OK» aprueba solo lo que todavía no tiene asignación: lo ya digitado en
+// reparación o no recuperable se respeta, porque esas unidades ya tienen
+// dictamen y solo cambian con sus propios botones.
 const aprobarFila = (fila: any) => {
-    fila.cantidad_aprobada = Number(fila.esperada) || 0;
-    fila.cantidad_en_reparacion = null;
-    fila.cantidad_no_recuperable = null;
+    const yaClasificado = (numeroONulo(fila.cantidad_en_reparacion) ?? 0)
+        + (numeroONulo(fila.cantidad_no_recuperable) ?? 0);
+
+    fila.cantidad_aprobada = Math.max(0, (Number(fila.esperada) || 0) - yaClasificado);
 };
 
 const aprobarTodas = () => {
@@ -697,10 +701,8 @@ const pasarReparacionANoRecuperableTodas = () => {
     }
 };
 
-const esFilaAprobadaCompleta = (fila: any): boolean =>
-    Number(fila.cantidad_aprobada) === Number(fila.esperada)
-    && (numeroONulo(fila.cantidad_en_reparacion) ?? 0) === 0
-    && (numeroONulo(fila.cantidad_no_recuperable) ?? 0) === 0;
+// El botón OK ya hizo su trabajo cuando la fila no tiene unidades sin clasificar.
+const filaTodaClasificada = (fila: any): boolean => sumaFila(fila) >= Number(fila.esperada);
 
 const enfocarFilaRecepcion = (indice: number) => {
     const input = document.getElementById(`recepcion-aprobada-${indice}`) as HTMLInputElement | null;
@@ -1228,7 +1230,7 @@ const posicionarScrollRecepcion = async () => {
                                                     type="button"
                                                     @click="aprobarTodas"
                                                     class="inline-flex items-center rounded border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 hover:bg-emerald-600 hover:text-white dark:border-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 dark:hover:bg-emerald-600 dark:hover:text-white transition-colors"
-                                                    title="Aprobar todo lo esperado en todas las tallas"
+                                                    title="Aprobar, en todas las tallas, lo que aún no tiene asignación"
                                                 >
                                                     OK a todas
                                                 </button>
@@ -1291,11 +1293,11 @@ const posicionarScrollRecepcion = async () => {
                                                     type="button"
                                                     @click="aprobarFila(fila)"
                                                     class="inline-flex h-8 items-center justify-center rounded-lg border px-2.5 text-xs font-bold shadow-sm transition-colors"
-                                                    :class="esFilaAprobadaCompleta(fila)
+                                                    :class="filaTodaClasificada(fila)
                                                         ? 'border-emerald-600 bg-emerald-600 text-white dark:border-emerald-500 dark:bg-emerald-600'
                                                         : 'border-emerald-300 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:border-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/50'"
-                                                    title="Poner en aprobada los productos esperados"
-                                                    :aria-label="`Poner en aprobada los esperados para talla ${fila.talla}`"
+                                                    title="Poner en aprobada lo que falta por clasificar en esta talla"
+                                                    :aria-label="`Aprobar lo sin asignar de la talla ${fila.talla}`"
                                                 >
                                                     OK
                                                 </button>

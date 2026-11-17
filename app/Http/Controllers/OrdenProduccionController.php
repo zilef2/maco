@@ -890,7 +890,10 @@ class OrdenProduccionController extends Controller {
         $data['estado_op_material_id'] = ($data['estado_op_material_id'] ?? '') === '' ? null : $data['estado_op_material_id'];
         $data = $this->normalizarTipo($data);
 
-        $data['estado_op_id'] = EstadoOperacion::where('nombre', 'Preparación')->value('id');
+        // «Guardar» registra la orden ya en la cola de «Esperando materiales», así
+        // que su turno (esperando_materiales_desde) se fija en el mismo instante.
+        $data['estado_op_id'] = EstadoOperacion::where('nombre', ColaMaterialesOpService::ESTADO_ESPERA)->value('id');
+        $data['esperando_materiales_desde'] = now();
 
         // El número de OP se calcula siempre en el servidor a partir del mayor
         // registrado (+1) para impedir que dos OP compartan el mismo código.
@@ -975,8 +978,8 @@ class OrdenProduccionController extends Controller {
 
         $this->compromisos->sincronizar($OrdenProduccion);
 
-        // «Pasar a lista para taller» desde el formulario de la OP: rige la misma
-        // regla que cambiarEstado, así que la orden solo sale de Preparación si su
+        // El botón verde de «Lista para taller» del formulario: rige la misma
+        // regla que cambiarEstado, así que la orden solo sale de la cola si su
         // kit ya se cubre con la existencia actual de cada material concreto.
         $salto = $request->boolean('pasar_a_lista') ? $this->saltarALista($OrdenProduccion) : null;
 
@@ -985,7 +988,9 @@ class OrdenProduccionController extends Controller {
         $identificador = $OrdenProduccion->numero_op ?? $OrdenProduccion->id;
         Myhelp::EscribirEnLog($this, 'STORE:OrdenProduccions EXITOSO', 'OrdenProduccion id:' . $OrdenProduccion->id . ' | ' . $identificador, false);
         $respuesta = back()->with('success', __('app.label.created_successfully', ['name' => $identificador])
-            . ($salto && $salto['estado'] ? ' y quedó en «Lista para taller».' : ''));
+            . ($salto && $salto['estado']
+                ? ' y quedó en «Lista para taller».'
+                : ' y quedó en la cola de «Esperando materiales».'));
 
         // Además de la campana, el aviso se muestra de inmediato al terminar
         // de crear la OP: si hay faltantes y solo se guarda la notificación,
@@ -998,7 +1003,7 @@ class OrdenProduccionController extends Controller {
 
         if ($salto && !$salto['estado']) {
             $advertencia .= ($advertencia !== '' ? ' — ' : '')
-                . 'No se pasó a «Lista para taller»: la orden queda en Preparación hasta completar el kit — '
+                . 'No se pasó a «Lista para taller»: la orden sigue en la cola de «Esperando materiales» hasta completar el kit — '
                 . collect($salto['faltantes'])->map(fn ($f) => $f['nombre'] . ' (faltan ' . round($f['faltante'], 2) . ' ' . $f['unidad'] . ')')->implode(' · ')
                 . '.';
         }
@@ -1028,7 +1033,12 @@ class OrdenProduccionController extends Controller {
         $estadoId = EstadoOperacion::where('nombre', ColaMaterialesOpService::ESTADO_LISTA)->value('id');
 
         if ($estadoId) {
-            $op->forceFill(['estado_op_id' => $estadoId])->save();
+            // Salir de la cola limpia el turno: si la OP regresa a «Esperando
+            // materiales» más adelante, empieza una espera nueva.
+            $op->forceFill([
+                'estado_op_id'              => $estadoId,
+                'esperando_materiales_desde' => null,
+            ])->save();
         }
 
         return ['estado' => $estadoId, 'faltantes' => []];
@@ -1274,10 +1284,12 @@ class OrdenProduccionController extends Controller {
         $OrdenProduccion->forceFill($data);
         $OrdenProduccion->save();
 
-        // Al continuar un borrador guardado con "Terminar después", la orden pasa a Preparación
+        // Al continuar un borrador guardado con "Terminar después", la orden entra
+        // directo a la cola de «Esperando materiales», igual que al registrarla.
         if ($eraBorrador) {
             $OrdenProduccion->forceFill([
-                'estado_op_id' => EstadoOperacion::where('nombre', 'Preparación')->value('id'),
+                'estado_op_id'              => EstadoOperacion::where('nombre', ColaMaterialesOpService::ESTADO_ESPERA)->value('id'),
+                'esperando_materiales_desde' => $OrdenProduccion->esperando_materiales_desde ?: now(),
             ])->save();
         }
 
@@ -1338,8 +1350,8 @@ class OrdenProduccionController extends Controller {
 
         $this->compromisos->sincronizar($OrdenProduccion);
 
-        // Al continuar un borrador desde el formulario de crear, el botón
-        // «Pasar a lista para taller» también aplica.
+        // Al continuar un borrador desde el formulario de crear, el botón verde
+        // de «Lista para taller» también aplica.
         $salto = $request->boolean('pasar_a_lista') ? $this->saltarALista($OrdenProduccion) : null;
 
         DB::commit();
@@ -1347,10 +1359,12 @@ class OrdenProduccionController extends Controller {
         $identificador = $OrdenProduccion->numero_op ?? $OrdenProduccion->id;
         Myhelp::EscribirEnLog($this, 'UPDATE:OrdenProduccions EXITOSO', 'OrdenProduccion id:' . $OrdenProduccion->id . ' | ' . $identificador, false);
         $respuesta = back()->with('success', __('app.label.updated_successfully2', ['nombre' => $identificador])
-            . ($salto && $salto['estado'] ? ' y quedó en «Lista para taller».' : ''));
+            . ($salto && $salto['estado']
+                ? ' y quedó en «Lista para taller».'
+                : ($eraBorrador ? ' y quedó en la cola de «Esperando materiales».' : '')));
 
         if ($salto && !$salto['estado']) {
-            $respuesta->with('warning', 'No se pasó a «Lista para taller»: la orden queda en Preparación hasta completar el kit — '
+            $respuesta->with('warning', 'No se pasó a «Lista para taller»: la orden sigue en la cola de «Esperando materiales» hasta completar el kit — '
                 . collect($salto['faltantes'])->map(fn ($f) => $f['nombre'] . ' (faltan ' . round($f['faltante'], 2) . ' ' . $f['unidad'] . ')')->implode(' · ')
                 . '.');
         }

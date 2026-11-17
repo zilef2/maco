@@ -858,10 +858,10 @@ const titulos = [
 
             <!-- Banner de previsión: materiales que no alcanzan los días configurados -->
             <div v-if="previsiónFaltantes.length > 0"
-                class="rounded-xl border border-red-400/50 bg-red-50/80 p-4 dark:bg-red-500/10" role="alert">
+                class="rounded-xl border border-amber-400/50 bg-amber-50/80 p-4 dark:bg-amber-500/10" role="alert">
                 <div class="flex items-center gap-2">
-                    <ExclamationTriangleIcon class="h-5 w-5 text-red-500 dark:text-red-400" />
-                    <h2 class="text-sm font-bold text-black dark:text-red-300">
+                    <ExclamationTriangleIcon class="h-5 w-5 text-amber-500 dark:text-amber-400" />
+                    <h2 class="text-sm font-bold text-black dark:text-amber-300">
                         Previsión: {{ previsiónFaltantes.length }} material{{ previsiónFaltantes.length === 1 ? '' :
                             'es' }} no
                         alcanza para {{ diasPrevision }} día{{ diasPrevision === 1 ? '' : 's' }}

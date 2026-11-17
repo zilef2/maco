@@ -299,6 +299,36 @@ const puedePasarALista = computed(
     () => !sinObjetivos.value && !faltanConcretos.value && sinExistenciaParaLista.value.length === 0,
 );
 
+// El botón «Guardar» se bloquea mientras falte algo obligatorio: objetivo de la
+// orden, materiales concretos de la ficha, taller/empresa externa según el tipo
+// o una cantidad planificada mayor que cero.
+const tallerRequerido = computed(() => form.tipo !== 'externa' && !form.taller_id);
+const empresaExternaRequerida = computed(() => form.tipo === 'externa' && !form.empresa_externa_id);
+const cantidadInvalida = computed(() => {
+    if (modoObjetivo.value === 'material') {
+        return materialesSel.some((m) => !(Number(m.cantidad) > 0));
+    }
+    return totalTallas.value <= 0;
+});
+
+const puedeGuardar = computed(
+    () =>
+        !sinObjetivos.value &&
+        !faltanConcretos.value &&
+        !tallerRequerido.value &&
+        !empresaExternaRequerida.value &&
+        !cantidadInvalida.value,
+);
+
+const motivoNoGuardar = computed(() => {
+    if (sinObjetivos.value) return 'Selecciona el producto o el material procesado de la orden.';
+    if (faltanConcretos.value) return 'Faltan materiales concretos por elegir.';
+    if (tallerRequerido.value) return 'Selecciona el taller de la orden.';
+    if (empresaExternaRequerida.value) return 'Selecciona la empresa externa de la orden.';
+    if (cantidadInvalida.value) return 'La cantidad planificada debe ser mayor que cero.';
+    return '';
+});
+
 const motivoNoPasarALista = computed(() => {
     if (sinObjetivos.value) return 'Selecciona el producto o el material procesado de la orden.';
     if (faltanConcretos.value) return 'Faltan materiales concretos por elegir.';
@@ -553,7 +583,7 @@ const create = (evento?: Event) => {
     const onSuccess = () => closeModal();
     const onError = () => null;
     // Si venimos de un borrador ("Terminar después"), se actualiza en vez de crear;
-    // el backend mueve la OP de Borrador a Preparación.
+    // en ambos casos el registro queda en la cola de «Esperando materiales».
     if (form.id) {
         form.put(route('OrdenProduccion.update', form.id), { preserveScroll: true, onSuccess, onError });
     } else {
@@ -1313,6 +1343,15 @@ watch(
                         >
                             Terminar después
                         </button>
+                        <PrimaryButton
+                            class="ml-3 order-last"
+                            :class="{ 'opacity-25': form.processing || !puedeGuardar }"
+                            :disabled="form.processing || !puedeGuardar"
+                            type="submit"
+                            :title="motivoNoGuardar || 'Registra la orden y la deja en la cola de «Esperando materiales»'"
+                        >
+                            {{ form.id ? 'Guardar' : lang().t('app.button.add') }} {{ form.processing ? '...' : '' }}
+                        </PrimaryButton>
                         <button
                             type="submit"
                             data-lista="1"
@@ -1320,20 +1359,14 @@ watch(
                             :title="motivoNoPasarALista || 'Registra la orden y la deja en «Lista para taller»'"
                             class="ml-3 inline-flex items-center rounded-md border border-emerald-400 bg-emerald-50 px-4 py-2 text-xs font-semibold uppercase tracking-widest text-emerald-700 transition hover:bg-emerald-100 focus:ring-2 focus:ring-emerald-400 focus:ring-offset-2 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-500/60 dark:bg-emerald-500/10 dark:text-emerald-300 dark:hover:bg-emerald-500/20"
                         >
-                            Pasar a lista para taller {{ form.processing ? '...' : '' }}
+                            Lista para taller {{ form.processing ? '...' : '' }}
                         </button>
-                        <PrimaryButton
-                            class="ml-3"
-                            :class="{ 'opacity-25': form.processing || sinObjetivos }"
-                            :disabled="form.processing || sinObjetivos"
-                            type="submit"
-                        >
-                            {{ form.id ? 'Guardar' : lang().t('app.button.add') }} {{ form.processing ? '...' : '' }}
-                        </PrimaryButton>
                     </div>
-                    <p v-if="motivoNoPasarALista" class="mt-2 text-xs font-medium text-gray-500 dark:text-gray-400">
-                        «Pasar a lista para taller» se habilita cuando la existencia actual de los materiales cubre el kit de la
-                        orden. {{ motivoNoPasarALista }}
+                    <p class="mt-2 text-xs font-medium text-gray-500 dark:text-gray-400">
+                        <template v-if="motivoNoGuardar"> «Guardar» se habilita cuando completes lo que falta: {{ motivoNoGuardar }}</template>
+                        <template v-else> «Guardar» deja la orden en la cola de «Esperando materiales».</template>
+                        <template v-if="motivoNoPasarALista"> «Lista para taller» se habilita cuando la existencia actual
+                            cubre el kit de la orden: {{ motivoNoPasarALista }}</template>
                     </p>
                 </div>
             </form>

@@ -27,8 +27,35 @@ const open = useVModel(props, 'open', emits, {
   passive: (props.open === undefined) as false,
 }) as Ref<boolean>
 
+// El estado se recuerda en localStorage: si el usuario minimizó la barra,
+// vuelve minimizada en cada cambio de página o recarga. La cookie se sigue
+// escribiendo para no romper cualquier lectura que dependa de ella.
+const STORAGE_KEY = 'sidebar:open'
+
+const leerEstadoGuardado = (): boolean | null => {
+  try {
+    const guardado = window.localStorage.getItem(STORAGE_KEY);
+    if (guardado === '1') return true;
+    if (guardado === '0') return false;
+  } catch {
+    // Sin acceso a localStorage (modo privado, etc.): se usa el valor por defecto.
+  }
+  return null;
+};
+
+const estadoInicial = leerEstadoGuardado();
+if (estadoInicial !== null) {
+  open.value = estadoInicial;
+}
+
 function setOpen(value: boolean) {
   open.value = value // emits('update:open', value)
+
+  try {
+    window.localStorage.setItem(STORAGE_KEY, value ? '1' : '0');
+  } catch {
+    // Sin localStorage disponible, el estado simplemente no persiste.
+  }
 
   // This sets the cookie to keep the sidebar state.
   document.cookie = `${SIDEBAR_COOKIE_NAME}=${open.value}; path=/; max-age=${SIDEBAR_COOKIE_MAX_AGE}`

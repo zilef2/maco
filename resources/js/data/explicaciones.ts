@@ -66,12 +66,13 @@ export const explicaciones: Explicacion[] = [
             'cerrada',
             'máquina de estados',
         ],
-        actualizada: '2026-11-06',
+        actualizada: '2026-11-17',
         bloques: [
             {
                 tipo: 'pasos',
                 items: [
                     'Borrador → Preparación → Esperando materiales → Lista para taller → En taller → Recibiendo → Cerrada.',
+                    'Al registrar la OP con «Guardar» no pasa por Preparación: entra directo a la cola de «Esperando materiales» con su turno. Con el material completo existe el atajo «Lista para taller».',
                     'Antes de «En taller» el plan está abierto (productos, tallas, taller, fecha de envío). Después se congela.',
                     'Cada OP tiene un solo estado: ya no hay estados simultáneos ni estado de «Procesos externos».',
                     'La OP se cierra sola cuando la recepción queda completa y no hay pares en reparación.',
@@ -118,8 +119,10 @@ export const explicaciones: Explicacion[] = [
             'kit completo',
             'registrar compra',
             'promoción automática',
+            'guardar op',
+            'turno de la cola',
         ],
-        actualizada: '2026-11-15',
+        actualizada: '2026-11-17',
         bloques: [
             {
                 tipo: 'texto',
@@ -128,15 +131,25 @@ export const explicaciones: Explicacion[] = [
             },
             {
                 tipo: 'subtitulo',
+                texto: 'Cómo entra una OP a la cola',
+            },
+            {
+                tipo: 'lista',
+                items: [
+                    'Al registrar la OP con «Guardar» (y al continuar un borrador con «Guardar»): la orden queda en «Esperando materiales» y recibe su turno en ese instante.',
+                    'Manualmente, eligiendo «Esperando materiales» en el modal de estado: si el kit ya está completo, el mismo modal ofrece saltar a «Lista para taller».',
+                ],
+            },
+            {
+                tipo: 'subtitulo',
                 texto: 'Cómo se llega a «Lista para taller»',
             },
             {
                 tipo: 'lista',
                 items: [
-                    'Botón «Pasar a lista para taller» al crear la OP: registra la orden y la deja directamente en ese estado, sin pasar por Preparación. Solo se habilita cuando la existencia actual de cada material del kit alcanza para la cantidad producida; con faltantes el botón queda deshabilitado y el aviso de abajo dice cuánto falta de cada uno.',
-                    'Sugerencia al elegir «Esperando materiales»: si el kit ya está completo, el modal ofrece pasar directamente a «Lista para taller» en lugar de entrar a la cola.',
+                    'Botón «Lista para taller» al crear la OP: registra la orden y la deja directamente en ese estado, sin hacer turno en la cola. Solo se habilita cuando la existencia actual de cada material del kit alcanza para la cantidad producida; con faltantes el botón queda deshabilitado y el aviso de abajo dice cuánto falta de cada uno.',
+                    'Si la orden ya está en la cola: «Lista para taller» se puede pedir desde el modal de estado, con la misma comprobación. Si falta algún material el cambio se rechaza y el detalle dice cuánto falta de cada uno.',
                     'Promoción automática al registrar una compra en Materiales: se recorre la cola de la más antigua a la más nueva y cada OP cuyo kit quede completo pasa sola a «Lista para taller».',
-                    'Manualmente, solo con el kit completo: si falta algún material, el cambio se rechaza y el detalle dice cuánto falta de cada uno.',
                 ],
             },
             {
@@ -165,8 +178,9 @@ export const explicaciones: Explicacion[] = [
             'app/Services/ColaMaterialesOpService.php',
             'app/Http/Controllers/MaterialController.php (registrarCompra)',
             'app/Http/Controllers/OrdenProduccionController.php (cambiarEstado, descontarMaterialesTaller)',
+            'app/Http/Controllers/OrdenProduccionController.php (store y update: registran la OP en la cola con esperando_materiales_desde)',
             'app/Http/Controllers/OrdenProduccionController.php (saltarALista, llamada desde store y update con pasar_a_lista)',
-            'resources/js/pages/OrdenProduccion/Create.vue (botón «Pasar a lista para taller»)',
+            'resources/js/pages/OrdenProduccion/Create.vue (botones «Guardar» y «Lista para taller»)',
             'resources/js/pages/OrdenProduccion/CambiarEstadoModal.vue',
             'database/migrations/2026_11_06_000000_reestructura_estados_op.php',
         ],
@@ -186,8 +200,10 @@ export const explicaciones: Explicacion[] = [
             'compromiso de reparación',
             'no recuperable',
             'merma',
+            'boton ok',
+            'ok a todas',
         ],
-        actualizada: '2026-10-23',
+        actualizada: '2026-11-17',
         bloques: [
             {
                 tipo: 'lista',
@@ -196,6 +212,7 @@ export const explicaciones: Explicacion[] = [
                     'En reparación: vuelve al taller; se registra una fecha de compromiso pendiente con avisos (2 días antes y el mismo día).',
                     'No recuperable: sale de la cuenta y genera un registro de merma.',
                     'La suma de las tres debe igualar la cantidad esperada de la talla.',
+                    'El botón «OK» de una talla —y «OK a todas»— aprueba solo las unidades que aún no tienen asignación: 10 aprobadas + 10 no recuperables + 5 sin clasificar pasan a 15 aprobadas y 10 no recuperables. Lo ya digitado en «En reparación» o «No recuperable» se mueve únicamente con sus botones.',
                 ],
             },
             {

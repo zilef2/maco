@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Cache;
  */
 class ColaMaterialesOpService
 {
+    public const ESTADO_PREPARACION = 'Preparación';
     public const ESTADO_ESPERA = 'Esperando materiales';
     public const ESTADO_LISTA = 'Lista para taller';
 
@@ -63,17 +64,26 @@ class ColaMaterialesOpService
      * La cola en orden de llegada. Las OP sin fecha registrada (anteriores a la
      * cola) van al final, desempatadas por id.
      *
+     * Con $incluirPreparacion también entran las OP de «Preparación»: revisarlas
+     * al terminar una compra permite promovidas sin que hayan pasado por la
+     * cola, siempre detrás de las que ya estaban esperando materiales.
+     *
      * @return Collection<int, OrdenProduccion>
      */
-    public function cola(bool $bloquear = false): Collection
+    public function cola(bool $bloquear = false, bool $incluirPreparacion = false): Collection
     {
-        $estadoId = EstadoOperacion::where('nombre', self::ESTADO_ESPERA)->value('id');
-        if (!$estadoId) {
+        $nombresEstados = [self::ESTADO_ESPERA];
+        if ($incluirPreparacion) {
+            $nombresEstados[] = self::ESTADO_PREPARACION;
+        }
+
+        $estadosIds = EstadoOperacion::whereIn('nombre', $nombresEstados)->pluck('id');
+        if ($estadosIds->isEmpty()) {
             return new Collection();
         }
 
         $query = OrdenProduccion::query()
-            ->where('estado_op_id', $estadoId)
+            ->whereIn('estado_op_id', $estadosIds->all())
             ->orderByRaw('esperando_materiales_desde IS NULL')
             ->orderBy('esperando_materiales_desde')
             ->orderBy('id');
@@ -104,6 +114,10 @@ class ColaMaterialesOpService
      * nocionalmente, así que dos OP no quedan «listas» peleando por el mismo
      * material: el descuento real ocurre al entrar a «En taller».
      *
+     * Se revisan también las OP en «Preparación», pero detrás de las que ya
+     * estaban en la cola de «Esperando materiales»: la cola es FIFO y conserva
+     * la prioridad por orden de llegada.
+     *
      * Devuelve las OP promovidas para poder contarlas en el mensaje de éxito.
      *
      * @return list<array{id: int, numero_op: string}>
@@ -115,7 +129,7 @@ class ColaMaterialesOpService
             return [];
         }
 
-        $cola = $this->cola(bloquear: true);
+        $cola = $this->cola(bloquear: true, incluirPreparacion: true);
         if ($cola->isEmpty()) {
             return [];
         }
