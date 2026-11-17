@@ -359,6 +359,26 @@ class CostoMaterialOpService
 
         $materiales ??= $this->materialesConPrecios($this->idsMaterialesFicha($producto));
 
+        return round(
+            $this->costeMaterialesUnitario($producto, $materiales, $metodo)
+            + (float) $producto->procesos->sum(fn ($proceso) => (float) $proceso->pivot->coste_proceso),
+            2
+        );
+    }
+
+    /**
+     * Coste de los materiales de la ficha (precio del método × consumo
+     * estándar), sin los procesos. Se usa cuando el coste de proceso ya se
+     * conoce por otra vía, por ejemplo en las migraciones.
+     *
+     * @param  Collection<int, Material>|null  $materiales  Materiales con precios ya cargados, keyBy id.
+     */
+    public function costeMaterialesUnitario(Producto $producto, ?Collection $materiales = null, ?int $metodo = null): float
+    {
+        $metodo ??= $this->metodo();
+
+        $materiales ??= $this->materialesConPrecios($this->idsMaterialesFicha($producto));
+
         $costeMateriales = 0.0;
         foreach ($producto->fichaTecnica as $ficha) {
             foreach ($ficha->materiales as $fila) {
@@ -376,7 +396,7 @@ class CostoMaterialOpService
             }
         }
 
-        return round($costeMateriales + (float) $producto->procesos->sum(fn ($proceso) => (float) $proceso->pivot->coste_proceso), 2);
+        return $costeMateriales;
     }
 
     /**

@@ -391,9 +391,9 @@ class ExcelFichasProductoService
 
     /**
      * Material de la fila (reglas 1, 2 y 3): el genérico del par del código, con
-     * el nombre solo si la celda del código está vacía. Los códigos antiguos que
-     * no siguen el formato se aceptan tal cual, pero tienen que ser genéricos:
-     * la ficha técnica no admite específicos.
+     * el nombre solo si la celda del código está vacía. El consecutivo se busca
+     * sin ceros a la izquierda (COM-SES-039 vale como COM-SES-39) y el material
+     * tiene que ser genérico: la ficha técnica no admite específicos.
      *
      * @param  array<string, int>  $materiales
      * @return array{material_id: int|null, motivo: string|null}
@@ -404,20 +404,23 @@ class ExcelFichasProductoService
             return $this->especiales->materialDesdeNombre($nombre);
         }
 
-        $resuelto = $this->especiales->materialDesdeCodigo($codigo);
+        // El Excel suele traer el consecutivo con ceros (COM-SES-039) y en la app
+        // el código vive sin ellas (COM-SES-39): se busca por la forma canónica.
+        $canonico = Material::normalizarCodigo($codigo) ?? $codigo;
+        $resuelto = $this->especiales->materialDesdeCodigo($canonico);
 
         if ($resuelto['material_id'] !== null) {
             return $resuelto;
         }
 
-        if ($resuelto['motivo'] !== specialfunctions_fichaproducto::SIN_FORMATO) {
-            return $resuelto;
-        }
-
-        $exacto = $this->buscar($materiales, $codigo, true);
+        // Aunque el par no tenga genérico, el código puede apuntar directo a uno
+        // que no sigue el formato CAT-BAS-0.
+        $exacto = $this->buscar($materiales, $canonico, true);
 
         if ($exacto === null) {
-            return ['material_id' => null, 'motivo' => specialfunctions_fichaproducto::INEXISTENTE];
+            return $resuelto['motivo'] === specialfunctions_fichaproducto::SIN_FORMATO
+                ? ['material_id' => null, 'motivo' => specialfunctions_fichaproducto::INEXISTENTE]
+                : $resuelto;
         }
 
         return $this->especiales->esGenerico($exacto)
