@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import Modal from '@/components/Modal.vue';
 import { router, useForm } from '@inertiajs/vue3';
-import { AlertOctagon, AlertTriangle, CheckCircle2, Layers, Loader2, RefreshCw, ShieldAlert, Shuffle, Trash2 } from 'lucide-vue-next';
+import { AlertOctagon, AlertTriangle, CheckCircle2, Loader2, RefreshCw, ShieldAlert, Shuffle, Trash2 } from 'lucide-vue-next';
 import { computed, reactive } from 'vue';
 
 const props = defineProps({
@@ -20,7 +20,6 @@ const props = defineProps({
             sin_precio: number;
             rango_existencia: string;
             rango_precio: string;
-            genericos: { grupos: number; con_generico: number; sin_generico: number; genericos: number };
         },
         default: () => ({
             total: 0,
@@ -28,7 +27,6 @@ const props = defineProps({
             sin_precio: 0,
             rango_existencia: '',
             rango_precio: '',
-            genericos: { grupos: 0, con_generico: 0, sin_generico: 0, genericos: 0 },
         }),
     },
 });
@@ -125,17 +123,6 @@ const AJUSTES: AjusteDirecto[] = [
         procesando: 'Rellenando...',
         ruta: () => route('superadmin.materiales-al-azar'),
         detalle: () => `${numero(props.materiales.sin_existencia)} sin existencia · ${numero(props.materiales.sin_precio)} sin precio`,
-    },
-    {
-        clave: 'genericos',
-        titulo: 'Materiales genéricos',
-        descripcion: () =>
-            'Crea el material genérico que falta por cada par categoría-base, lo codifica con el 0 del par (COM-CAP-0) y le pone como precio el promedio de los precios de sus similares. El genérico no maneja talla ni color y tampoco inventario: queda sin existencia, sin gasto diario y sin previsión, y la OP es quien elige el material concreto de su familia que se va a gastar. Se puede repetir: solo crea los que faltan, renumera a CAT-BAS-0 a los que traen el consecutivo viejo y refresca el precio si cambió.',
-        boton: 'Crear los genéricos que faltan',
-        procesando: 'Creando genéricos...',
-        ruta: () => route('superadmin.materiales-genericos'),
-        detalle: () =>
-            `${numero(props.materiales.genericos?.grupos ?? 0)} combinaciones · ${numero(props.materiales.genericos?.sin_generico ?? 0)} sin genérico · ${numero(props.materiales.genericos?.genericos ?? 0)} genéricos`,
     },
 ];
 
@@ -340,7 +327,7 @@ const iniciarPresion = () => {
                 >
                     <div>
                         <div class="flex items-center gap-2 text-amber-600 dark:text-amber-400">
-                            <component :is="ajuste.clave === 'genericos' ? Layers : Shuffle" class="h-4 w-4" />
+                            <Shuffle class="h-4 w-4" />
                             <h4 class="text-sm font-semibold">{{ ajuste.titulo }}</h4>
                         </div>
                         <p class="text-muted-foreground mt-2 text-xs leading-relaxed">
@@ -356,7 +343,7 @@ const iniciarPresion = () => {
                             class="inline-flex w-full items-center justify-center gap-2 rounded-md bg-amber-600 px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-amber-700 focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-60"
                         >
                             <Loader2 v-if="state.procesando === ajuste.clave" class="h-3.5 w-3.5 animate-spin" />
-                            <component :is="ajuste.clave === 'genericos' ? Layers : Shuffle" v-else class="h-3.5 w-3.5" />
+                            <Shuffle v-else class="h-3.5 w-3.5" />
                             {{ state.procesando === ajuste.clave ? ajuste.procesando : ajuste.boton }}
                         </button>
                     </div>

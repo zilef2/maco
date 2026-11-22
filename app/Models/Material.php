@@ -124,6 +124,14 @@ class Material extends Model
 
         $prefijo = $this->codigo_categoria . '-' . $this->codigo_base;
         $codigo = self::normalizarCodigo($this->codigo_material);
+
+        if (self::tieneNumeroEnCero($codigo)) {
+            throw ValidationException::withMessages([
+                'codigo_material' => "El código {$codigo} usa el número 0: la familia y el hijo empiezan en 1"
+                    . " ({$prefijo}-001 y {$prefijo}-001-01).",
+            ]);
+        }
+
         $delPar = $codigo !== null && str_starts_with($codigo, $prefijo . '-');
 
         if ($this->generico) {
@@ -236,6 +244,26 @@ class Material extends Model
     public static function esCodigoHijo(?string $codigo): bool
     {
         return $codigo !== null && $codigo !== '' && preg_match(self::PATRON_HIJO, $codigo) === 1;
+    }
+
+    /**
+     * Si algún número del código vale 0: la familia 0 (COM-CAP-000) y el hijo 0
+     * (COM-CAP-055-00) no existen. El relleno con ceros sí vale, COM-CAP-001 es
+     * la familia uno.
+     */
+    public static function tieneNumeroEnCero(?string $codigo): bool
+    {
+        if ($codigo === null || preg_match(self::PATRON_CODIGO, $codigo) !== 1) {
+            return false;
+        }
+
+        foreach (array_slice(explode('-', $codigo), 2) as $numero) {
+            if ((int) $numero === 0) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

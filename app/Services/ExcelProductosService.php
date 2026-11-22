@@ -2,7 +2,9 @@
 
 namespace App\Services;
 
+use App\Models\Distribucion_por_tallas;
 use App\Models\Producto;
+use App\Models\ProductoMovimiento;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -15,7 +17,9 @@ use RuntimeException;
  *
  * La fila 1 trae los títulos y las siguientes los datos. Un producto se
  * actualiza cuando ya existe con el mismo Codigo_interno y, si no, se crea con
- * las columnas que el archivo no llenó vacías.
+ * las columnas que el archivo no llenó vacías. La excepción es Cantidad: esa
+ * columna es el stock del producto, así que reemplaza lo que haya y una celda
+ * vacía lo deja en cero.
  */
 class ExcelProductosService
 {
@@ -47,6 +51,11 @@ class ExcelProductosService
         'preciopredicho'     => 'costo_anticipado',
         'costoanticipado'    => 'costo_anticipado',
         'preciopreventa'     => 'precio_venta_producto',
+        'cantidad'           => 'cantidad',
+        'existencia'         => 'cantidad',
+        'existenciaactual'   => 'cantidad',
+        'unidades'           => 'cantidad',
+        'stock'              => 'cantidad',
     ];
 
     /**
@@ -162,6 +171,21 @@ class ExcelProductosService
                 continue;
             }
 
+            // Regla del archivo: la columna Cantidad es el stock del producto,
+            // así que una celda vacía lo deja en cero, no lo conserva.
+            $cantidadTexto = trim(strip_tags((string) ($registro['cantidad'] ?? '')));
+            $cantidad = 0;
+
+            if ($cantidadTexto !== '') {
+                if (!is_numeric($cantidadTexto) || (float) $cantidadTexto < 0) {
+                    $errores[] = "Fila {$filaExcel}: la cantidad debe ser un número mayor o igual que cero"
+                        . ' (llegó "' . $cantidadTexto . '").';
+                    continue;
+                }
+
+                $cantidad = (int) round((float) $cantidadTexto);
+            }
+
             $registros[] = [
                 'Codigo_interno'        => $codigo,
                 'Titulo_Shopify'        => $titulo,
@@ -175,6 +199,7 @@ class ExcelProductosService
                 'descripcion'           => mb_substr(strip_tags((string) ($registro['descripcion'] ?? '')), 0, 5000),
                 'costo_anticipado'      => $entero($registro['costo_anticipado'] ?? null),
                 'precio_venta_producto' => $entero($registro['precio_venta_producto'] ?? null),
+                'cantidad'              => $cantidad,
             ];
         }
 
@@ -192,22 +217,29 @@ class ExcelProductosService
 
     /**
      * Inserta los productos nuevos y actualiza los existentes (se empareja por
-     * Codigo_interno).
+     * Codigo_interno). La columna Cantidad no es un campo del producto: es su
+     * stock, que se escribe en las filas por talla.
      *
      * @param  array<int, array<string, mixed>>  $registros
+     * @param  int|null  $usuarioId  En la cola no hay sesión y los movimientos
+     *                               de inventario necesitan quién los causó.
      * @return array{creados: int, actualizados: int}
      */
-    public function importar(array $registros): array
+    public function importar(array $registros, ?int $usuarioId = null): array
     {
         $creados = 0;
         $actualizados = 0;
 
-        $existentes = Producto::pluck('Codigo_interno')->flip();
+        $existentes = Producto::pluck('id', 'Codigo_interno');
 
         DB::beginTransaction();
         try {
             foreach ($registros as $registro) {
+                $cantidad = (int) ($registro['cantidad'] ?? 0);
+                unset($registro['cantidad']);
+
                 if (isset($existentes[$registro['Codigo_interno']])) {
+                    $productoId = (int) $existentes[$registro['Codigo_interno']];
                     Producto::where('Codigo_interno', $registro['Codigo_interno'])->update($registro);
                     $actualizados++;
                 } else {
@@ -224,9 +256,11 @@ class ExcelProductosService
                         'costo_anticipado'      => 0,
                         'precio_venta_producto' => 0,
                     ];
-                    Producto::create($registro);
+                    $productoId = (int) Producto::create($registro)->id;
                     $creados++;
                 }
+
+                $this->reemplazarExistenciaPorTallas($productoId, $cantidad, $usuarioId);
             }
             DB::commit();
         } catch (\Throwable $e) {
@@ -236,6 +270,78 @@ class ExcelProductosService
         }
 
         return ['creados' => $creados, 'actualizados' => $actualizados];
+    }
+
+    /**
+     * Deja el stock del producto en el número que trajo el archivo. Como el
+     * archivo trae una sola cantidad por producto y la app la guarda por talla,
+     * el total se reparte en partes iguales entre las tallas que el producto ya
+     * tiene y el residuo va a la primera.
+     *
+     * Cada cambio se anota sin orden de producción: una OP reconcilia su
+     * recepción contra su propio histórico de movimientos, así que un ajuste del
+     * archivo no puede confundirse con lo que esa OP metió.
+     */
+    private function reemplazarExistenciaPorTallas(int $productoId, int $cantidad, ?int $usuarioId): void
+    {
+        $producto = Producto::find($productoId);
+
+        if ($producto === null) {
+            return;
+        }
+
+        $tallas = $producto->distribucionesPorTallas()->orderBy('id')->get();
+
+        if ($tallas->isEmpty()) {
+            if ($cantidad === 0) {
+                return;
+            }
+
+            $nueva = Distribucion_por_tallas::create([
+                'grupo' => null,
+                'producto_id' => $productoId,
+                'talla' => null,
+                'cantidad_planificada' => 0,
+                'cantidad_recibida_buena' => $cantidad,
+            ]);
+            $producto->distribucionesPorTallas()->sync([$nueva->id]);
+
+            ProductoMovimiento::registrar(
+                $productoId,
+                null,
+                0,
+                $cantidad,
+                null,
+                'Existencia inicial desde Excel',
+                $usuarioId
+            );
+
+            return;
+        }
+
+        $base = intdiv($cantidad, $tallas->count());
+        $residuo = $cantidad % $tallas->count();
+
+        foreach ($tallas->values() as $indice => $distribucion) {
+            $nuevaCantidad = $base + ($indice === 0 ? $residuo : 0);
+            $existenciaAnterior = (int) ($distribucion->cantidad_recibida_buena ?? 0);
+
+            if ($nuevaCantidad === $existenciaAnterior) {
+                continue;
+            }
+
+            $distribucion->update(['cantidad_recibida_buena' => $nuevaCantidad]);
+
+            ProductoMovimiento::registrar(
+                $productoId,
+                $distribucion->talla === null ? null : (string) $distribucion->talla,
+                $existenciaAnterior,
+                $nuevaCantidad,
+                null,
+                'Ajuste de inventario desde Excel',
+                $usuarioId
+            );
+        }
     }
 
     /** Normaliza a minúsculas sin acentos ni espacios sobrantes. */

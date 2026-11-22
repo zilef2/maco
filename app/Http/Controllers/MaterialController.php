@@ -639,7 +639,7 @@ class MaterialController extends Controller {
         // Validar precio de última compra (obligatorio salvo en genéricos) y, si
         // el material se marca como procesado, las líneas de su ficha técnica.
         // El código del material no se digita: lo arma el modelo con el par
-        // codigo_categoria + codigo_base (TEX-LFI-4).
+        // codigo_categoria + codigo_base y su familia (COM-CAP-055-34).
         $precioObligatorio = $request->boolean('generico') ? 'nullable' : 'required';
         $request->validate([
             'last_purchase_price' => [$precioObligatorio, 'numeric', 'min:0'],

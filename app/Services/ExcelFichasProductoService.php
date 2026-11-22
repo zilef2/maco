@@ -2,10 +2,12 @@
 
 namespace App\Services;
 
+use App\Exceptions\ExcelRechazado;
 use App\Models\FichaTecnica;
 use App\Models\Material;
 use App\Models\Producto;
 use App\Services\Concerns\LeeExcelRapido;
+use App\Traits\MaterialMovimientoTrait;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -23,16 +25,22 @@ use RuntimeException;
  * código quedó vacía, y la "unidad" queda como referencia porque la ficha
  * conserva la unidad del material.
  *
- * Las reglas aparte del código (el consecutivo no importa, la receta apunta al
- * genérico del par y el consumo vacío vale 1) viven en
+ * Las reglas aparte del código (la receta apunta al genérico de la familia del
+ * código y el consumo vacío vale 1) viven en
  * {@see specialfunctions_fichaproducto}.
  *
- * Este archivo no crea productos ni materiales. `validar()` se corre en la
- * misma petición de subida y rechaza el archivo completo con la lista de los
- * códigos que no existen, para que el usuario no espere un job que no iba a
- * insertar nada. Lo que sí pasa pasa por `FichaTecnicaService::guardar()`, el
- * mismo camino del formulario: conserva la unidad y el costo del material,
- * respeta los bloqueos de OP y recalcula el costo de las OPs abiertas.
+ * `validar()` se corre en la misma petición de subida y rechaza el archivo
+ * completo con la lista de los códigos que no existen, para que el usuario no
+ * espere un job que no iba a insertar nada. Lo que sí pasa pasa por
+ * `FichaTecnicaService::guardar()`, el mismo camino del formulario: conserva la
+ * unidad y el costo del material, respeta los bloqueos de OP y recalcula el
+ * costo de las OPs abiertas.
+ *
+ * El único material que sí puede crear este archivo es el genérico de una
+ * familia que la receta citó por uno de sus hijos: la ficha técnica no admite
+ * específicos, así que `importarRegistros()` crea la familia con los datos de
+ * ese hijo (que sigue siendo su hijo) y escribe la receta sobre ella. Productos
+ * no crea ninguno.
  *
  * `registrosDesdeFilas()` e `importarRegistros()` son los mismos dos pasos sin
  * leer el libro, que es como los usa la hoja "ficha" del MPP: ahí los códigos
@@ -42,6 +50,7 @@ use RuntimeException;
 class ExcelFichasProductoService
 {
     use LeeExcelRapido;
+    use MaterialMovimientoTrait;
 
     /** Columnas sin las cuales el archivo no se puede interpretar. */
     private const COLUMNAS_REQUERIDAS = ['codigo_producto', 'codigo_material', 'consumo'];
@@ -74,6 +83,15 @@ class ExcelFichasProductoService
     /** Cuántos códigos y cuántas filas se muestran en un aviso. */
     private const MAXIMO_EN_AVISO = 10;
 
+    /**
+     * Específicos que la lectura resolvió sin tener genérico en su familia
+     * (id de material => código de la celda). Lo llena `resolverMaterial()` y lo
+     * consume `importarRegistros()`, que es donde se pueden escribir materiales.
+     *
+     * @var array<int, string>
+     */
+    private array $especificosSinGenerico = [];
+
     public function __construct(
         private ExcelSecurityScanner $scanner,
         private FichaTecnicaService $fichas,
@@ -91,8 +109,10 @@ class ExcelFichasProductoService
 
     /**
      * Revisa el archivo entero antes de encolar la carga: el formato, que cada
-     * producto y cada material del archivo tengan su genérico en la app, que los
-     * consumos sean números y que ninguna ficha esté bloqueada por una OP activa.
+     * producto y cada material del archivo existan en la app, que los consumos
+     * sean números y que ninguna ficha esté bloqueada por una OP activa. La
+     * familia de un material citado por su hijo no se exige: si falta, la carga
+     * la crea con los datos de ese hijo.
      *
      * @return array{filas: int, productos: int, fichas: int, materiales: int, avisos: string[]}
      *
@@ -161,9 +181,9 @@ class ExcelFichasProductoService
      *
      * @return array{creados: int, actualizados: int, filas: int, avisos: string[]}
      */
-    public function importar(string $ruta): array
+    public function importar(string $ruta, ?int $usuarioId = null): array
     {
-        return $this->importarRegistros($this->registrosDesdeArchivo($ruta));
+        return $this->importarRegistros($this->registrosDesdeArchivo($ruta), $usuarioId);
     }
 
     /**
@@ -171,18 +191,30 @@ class ExcelFichasProductoService
      * fichas y la hoja "ficha" del MPP, que llega con las filas en memoria
      * después de haber importado los materiales y los productos que necesitan.
      *
+     * Antes de guardar, las familias que la lectura trajo solo por su específico
+     * sacan su genérico: la ficha técnica no admite específicos.
+     *
      * @param  array{destinos: array<string, array{ficha_id: int|null, codigos: string[], producto_ids: int[], materiales: array<int, array<string, mixed>>}>, consumos_vacios: int[]}  $lectura
      * @return array{creados: int, actualizados: int, filas: int, avisos: string[]}
      */
-    public function importarRegistros(array $lectura): array
+    public function importarRegistros(array $lectura, ?int $usuarioId = null): array
     {
         $destinos = $lectura['destinos'];
+        $especificos = $this->especificosSinGenerico;
+        $this->especificosSinGenerico = [];
 
         $creados = 0;
         $actualizados = 0;
         $filas = 0;
+        $genericos = [];
 
-        DB::transaction(function () use ($destinos, &$creados, &$actualizados, &$filas): void {
+        DB::transaction(function () use (&$destinos, $especificos, $usuarioId, &$creados, &$actualizados, &$filas, &$genericos): void {
+            $genericos = $this->crearGenericosFaltantes($especificos, $usuarioId);
+
+            if ($genericos !== []) {
+                $destinos = $this->reapuntarFichasAlGenerico($destinos, $genericos);
+            }
+
             foreach ($destinos as $destino) {
                 $ficha = $destino['ficha_id'] === null
                     ? null
@@ -220,7 +252,10 @@ class ExcelFichasProductoService
             'creados' => $creados,
             'actualizados' => $actualizados,
             'filas' => $filas,
-            'avisos' => $this->avisosDeLectura($lectura['consumos_vacios']),
+            'avisos' => array_merge(
+                $this->avisosDeGenericos($genericos),
+                $this->avisosDeLectura($lectura['consumos_vacios'])
+            ),
         ];
     }
 
@@ -422,6 +457,11 @@ class ExcelFichasProductoService
             ];
         }
 
+        // El correo y la pantalla se quedan con los primeros avisos; la lista
+        // completa, con un elemento por código sin registro, es la que escribe
+        // `RegistroErroresMpp` en storage/logs/MPP.log.
+        $errores = array_merge($avisos, array_keys($sinProducto), array_keys($sinMaterial));
+
         if (!empty($sinProducto)) {
             $avisos[] = 'No se pudo ubicar el producto de estas celdas: ' . $this->lista(array_keys($sinProducto))
                 . '. El código debe existir en la app (cárguelo con la tarjeta de Productos) y el nombre solo sirve cuando la celda del código quedó vacía.';
@@ -429,12 +469,18 @@ class ExcelFichasProductoService
 
         if (!empty($sinMaterial)) {
             $avisos[] = 'No se pudo ubicar el material de estas celdas: ' . $this->lista(array_keys($sinMaterial))
-                . '. El número del final no importa (ACC-APL-7 vale como ACC-APL-0), pero la receta se escribe sobre el material genérico del par, así que el par tiene que existir y tener su CAT-BAS-0; si le falta, crélo con el botón «Materiales genéricos» de Actividad.';
+                . '. La receta se escribe sobre el genérico de la familia: CAT-BAS-55 es el genérico y CAT-BAS-55-3 uno de'
+                . ' sus hijos, que se anota como CAT-BAS-55. El número de familia es el de la empresa, no relleno:'
+                . ' CAT-BAS-55 y CAT-BAS-96 son familias distintas, así que el genérico tiene que existir en la app o'
+                . ' venir en la hoja "material" del mismo archivo.';
         }
 
         if (!empty($avisos)) {
-            throw new RuntimeException(implode(' | ', array_slice($avisos, 0, 8))
-                . (count($avisos) > 8 ? ' | y ' . (count($avisos) - 8) . ' avisos más.' : ''));
+            throw ExcelRechazado::conErrores(
+                implode(' | ', array_slice($avisos, 0, 8))
+                    . (count($avisos) > 8 ? ' | y ' . (count($avisos) - 8) . ' avisos más.' : ''),
+                $errores
+            );
         }
 
         if (empty($grupos)) {
@@ -448,10 +494,11 @@ class ExcelFichasProductoService
     }
 
     /**
-     * Material de la fila (reglas 1, 2 y 3): el genérico del par del código, con
-     * el nombre solo si la celda del código está vacía. El consecutivo se busca
-     * sin ceros a la izquierda (COM-SES-039 vale como COM-SES-39) y el material
-     * tiene que ser genérico: la ficha técnica no admite específicos.
+     * Material de la fila (reglas 1, 2 y 3): el genérico de la familia del
+     * código, con el nombre solo si la celda del código está vacía. Un hijo
+     * (COM-SES-055-3) se reduce a su familia (COM-SES-055), que es la que admite
+     * la ficha técnica. Si la familia todavía no tiene genérico la fila se
+     * acepta con el id del hijo y `crearGenericosFaltantes()` crea la familia.
      *
      * @param  array<string, int>  $materiales
      * @return array{material_id: int|null, motivo: string|null}
@@ -462,8 +509,8 @@ class ExcelFichasProductoService
             return $this->especiales->materialDesdeNombre($nombre);
         }
 
-        // El Excel suele traer el consecutivo con ceros (COM-SES-039) y en la app
-        // el código vive sin ellas (COM-SES-39): se busca por la forma canónica.
+        // El Excel puede traer el número sin su relleno (COM-SES-55-3) y en la
+        // app el código vive con él (COM-SES-055-03): se busca por la forma canónica.
         $canonico = Material::normalizarCodigo($codigo) ?? $codigo;
         $resuelto = $this->especiales->materialDesdeCodigo($canonico);
 
@@ -471,8 +518,8 @@ class ExcelFichasProductoService
             return $resuelto;
         }
 
-        // Aunque el par no tenga genérico, el código puede apuntar directo a uno
-        // que no sigue el formato CAT-BAS-0.
+        // El índice del archivo es código exacto => id: cubre al genérico que se
+        // guarda escrito sin el relleno de su familia.
         $exacto = $this->buscar($materiales, $canonico, true);
 
         if ($exacto === null) {
@@ -481,9 +528,188 @@ class ExcelFichasProductoService
                 : $resuelto;
         }
 
-        return $this->especiales->esGenerico($exacto)
-            ? ['material_id' => $exacto, 'motivo' => null]
-            : ['material_id' => null, 'motivo' => specialfunctions_fichaproducto::SIN_GENERICO];
+        if ($this->especiales->esGenerico($exacto)) {
+            return ['material_id' => $exacto, 'motivo' => null];
+        }
+
+        // La fila citó un específico cuya familia todavía no tiene genérico: se
+        // acepta con su id y `crearGenericosFaltantes()` escribe la receta sobre
+        // el genérico que se acaba de crear a partir de él.
+        $this->especificosSinGenerico[$exacto] = $canonico;
+
+        return ['material_id' => $exacto, 'motivo' => null];
+    }
+
+    /**
+     * Genéricos que le faltan a las familias citadas por un específico. Se crea
+     * uno por familia: toma los datos del específico de la fila (sin talla ni
+     * color, que son del hijo) y el promedio de los precios de sus hermanos. El
+     * específico no se modifica, queda como hijo de la familia que acaba de nacer.
+     *
+     * @param  array<int, string>  $especificos  id del específico => código citado
+     * @return array<int, array{id: int, codigo: string, precio: float|null}> id específico => su genérico
+     */
+    private function crearGenericosFaltantes(array $especificos, ?int $usuarioId): array
+    {
+        if ($especificos === []) {
+            return [];
+        }
+
+        $hijos = Material::whereIn('id', array_keys($especificos))->orderBy('codigo_material')->get();
+
+        // Sin código de familia no se puede crear el genérico: la celda apuntó a
+        // un material que no sigue la regla CAT-BAS-X-Y.
+        $familiaPorId = [];
+
+        foreach ($hijos as $hijo) {
+            $familia = Material::familiaDeCodigo($hijo->codigo_material);
+
+            if ($familia !== null) {
+                $familiaPorId[(int) $hijo->id] = $familia;
+            }
+        }
+
+        $familias = array_values(array_unique($familiaPorId));
+
+        if ($familias === []) {
+            return [];
+        }
+
+        // Dos consultas para todo el archivo: las familias que ya tienen su
+        // genérico y los hijos de las que no, de los que sale el promedio.
+        $yaTienenGenerico = Material::whereIn('codigo_material', $familias)->pluck('codigo_material')->all();
+
+        $promediosPorFamilia = [];
+
+        Material::with('prices')
+            ->where('generico', false)
+            ->where(fn ($porFamilia) => collect($familias)
+                ->each(fn (string $familia) => $porFamilia->orWhere('codigo_material', 'like', $familia . '-%')))
+            ->get()
+            ->each(function (Material $familiar) use (&$promediosPorFamilia): void {
+                $promedio = $familiar->costoUnitarioPromedio();
+
+                if ($promedio > 0) {
+                    $promediosPorFamilia[(string) Material::familiaDeCodigo($familiar->codigo_material)][] = $promedio;
+                }
+            });
+
+        $genericos = [];
+        $creadosPorFamilia = [];
+
+        foreach ($hijos as $hijo) {
+            $familia = $familiaPorId[(int) $hijo->id] ?? null;
+
+            if ($familia === null || in_array($familia, $yaTienenGenerico, true)) {
+                continue;
+            }
+
+            // Dos específicos de la misma familia comparten el genérico nuevo.
+            if (!isset($creadosPorFamilia[$familia])) {
+                $creadosPorFamilia[$familia] = $this->crearGenerico(
+                    $hijo,
+                    $familia,
+                    $promediosPorFamilia[$familia] ?? [],
+                    $usuarioId
+                );
+            }
+
+            $genericos[(int) $hijo->id] = $creadosPorFamilia[$familia];
+        }
+
+        return $genericos;
+    }
+
+    /**
+     * El genérico de la familia: copia los datos del específico que citó la fila
+     * (nombre, unidad, proveedor) sin su talla ni su color, que son del hijo, y
+     * vale el promedio de los precios de la familia.
+     *
+     * @param  float[]  $promedios
+     * @return array{id: int, codigo: string, precio: float|null}
+     */
+    private function crearGenerico(Material $hijo, string $familia, array $promedios, ?int $usuarioId): array
+    {
+        $generico = Material::create([
+            'codigo_material' => $familia,
+            'codigo_categoria' => $hijo->codigo_categoria,
+            'codigo_base' => $hijo->codigo_base,
+            'categoria' => $hijo->categoria,
+            'nombre_base' => $hijo->nombre_base,
+            'marca' => $hijo->marca,
+            'unidad_inventario' => $hijo->unidad_inventario,
+            'unidad_compra' => $hijo->unidad_compra,
+            'proveedor_habitual' => $hijo->proveedor_habitual,
+            'estado' => $hijo->estado ?: 'Activo',
+            'generico' => true,
+        ]);
+
+        $this->registrarMovimientoCreacion($generico, 'Creación desde el Excel de fichas de producto', $usuarioId);
+
+        $precio = $promedios === [] ? null : round(array_sum($promedios) / count($promedios), 2);
+
+        if ($precio !== null) {
+            $generico->prices()->create(['precio' => $precio, 'fecha' => now()->toDateString()]);
+        }
+
+        return ['id' => (int) $generico->id, 'codigo' => $familia, 'precio' => $precio];
+    }
+
+    /**
+     * Recetas escritas sobre el específico, movidas a su genérico nuevo. La
+     * unidad y el costo los vuelve a tomar `FichaTecnicaService::guardar()` del
+     * material al que apuntan ahora.
+     *
+     * @param  array<string, array{ficha_id: int|null, codigos: string[], producto_ids: int[], materiales: array<int, array<string, mixed>>}>  $destinos
+     * @param  array<int, array{id: int, codigo: string, precio: float|null}>  $genericos
+     * @return array<string, array{ficha_id: int|null, codigos: string[], producto_ids: int[], materiales: array<int, array<string, mixed>>}>
+     */
+    private function reapuntarFichasAlGenerico(array $destinos, array $genericos): array
+    {
+        foreach ($destinos as $clave => $destino) {
+            foreach ($destino['materiales'] as $materialId => $fila) {
+                if (!isset($genericos[$materialId])) {
+                    continue;
+                }
+
+                $nuevoId = $genericos[$materialId]['id'];
+
+                $fila['material_componente_id'] = $nuevoId;
+                unset($destino['materiales'][$materialId]);
+
+                // Dos específicos de la misma familia son el mismo material de la
+                // ficha: gana la última fila, como cuando el código se repite.
+                $destino['materiales'][$nuevoId] = $fila;
+            }
+
+            $destinos[$clave] = $destino;
+        }
+
+        return $destinos;
+    }
+
+    /**
+     * El aviso del correo: qué genéricos se crearon, con su precio promedio.
+     *
+     * @param  array<int, array{id: int, codigo: string, precio: float|null}>  $genericos
+     * @return string[]
+     */
+    private function avisosDeGenericos(array $genericos): array
+    {
+        if ($genericos === []) {
+            return [];
+        }
+
+        $detalle = [];
+
+        foreach ($genericos as $datos) {
+            $detalle[$datos['codigo']] = $datos['codigo'] . ($datos['precio'] === null ? '' : ' (' . $datos['precio'] . ')');
+        }
+
+        return ['El Excel creó el material genérico ' . implode(', ', $detalle)
+            . ' de las familias que solo trajo por su específico. La receta quedó en el genérico y el'
+            . ' material de la fila sigue siendo su hijo. El número entre paréntesis es el promedio de'
+            . ' los precios de su familia.'];
     }
 
     /**

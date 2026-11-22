@@ -67,6 +67,10 @@ class ListaDesplegableSeeder extends Seeder
             ['nombre' => 'Única',            'categoria' => 'Producto', 'subcategoria' => 'Opciones'],
 
             // ciudad (ficha de terceros: proveedor, taller y empresa externa)
+            ['nombre' => 'Cali',      'categoria' => 'ciudad', 'subcategoria' => 'general'],
+            ['nombre' => 'Bogotá',      'categoria' => 'ciudad', 'subcategoria' => 'general'],
+            ['nombre' => 'Barranquilla',      'categoria' => 'ciudad', 'subcategoria' => 'general'],        
+            ['nombre' => 'Medellín',      'categoria' => 'ciudad', 'subcategoria' => 'general'],
             ['nombre' => 'Manizales',      'categoria' => 'ciudad', 'subcategoria' => 'general'],
             ['nombre' => 'Armenia',        'categoria' => 'ciudad', 'subcategoria' => 'general'],
             ['nombre' => 'Villavicencio',  'categoria' => 'ciudad', 'subcategoria' => 'general'],

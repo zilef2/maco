@@ -9,10 +9,13 @@ use Illuminate\Support\Str;
 /**
  * Reglas aparte de la carga masiva de la ficha de producto.
  *
- * 1. El código de material se valida por su par CATEGORIA-BASE sin mirar el
- *    consecutivo: si ACC-APL-0 existe, pasan ACC-APL-1, ACC-APL-7 y ACC-APL-9898.
- * 2. Al procesar, cualquier consecutivo equivale al genérico del par (CAT-BAS-0),
- *    que es el único material que admite la ficha técnica.
+ * 1. El código de la fila dice la familia del material: CAT-BAS-X es el genérico
+ *    de la familia (X es el número de la empresa) y CAT-BAS-X-Y es uno de sus
+ *    hijos, que pertenece a la familia CAT-BAS-X. El número de familia no es
+ *    decorativo: ACC-APL-7 y ACC-APL-9 son familias distintas.
+ * 2. Al procesar, la celda se reduce a su familia y la receta se escribe sobre
+ *    el genérico de esa familia, que es el único material que admite la ficha
+ *    técnica. Ningún tramo del código puede valer cero.
  * 3. Los nombres de producto y de material buscan el registro parecido, pero
  *    solo cuando la celda del código llegó vacía.
  * 4. El "consumo por par" vacío vale 1 y cada fila que pasó por ahí se reporta
@@ -32,16 +35,16 @@ class specialfunctions_fichaproducto
     public const SIN_GENERICO = 'sin_generico';
     public const AMBIGUO = 'ambiguo';
 
-    /** @var array<string, int> prefijo CATEGORIA-BASE => id del material genérico */
-    private array $genericosPorPar = [];
+    /** @var array<string, int> código de familia => id de su material genérico */
+    private array $genericosPorFamilia = [];
 
-    /** @var array<string, bool> prefijo CATEGORIA-BASE => existe algún material del par */
-    private array $paresConocidos = [];
+    /** @var array<string, bool> código de familia => existe algún material de esa familia */
+    private array $familiasConocidas = [];
 
     /** @var array<int, bool> ids de materiales genéricos */
     private array $materialesGenericos = [];
 
-    /** @var array<int, array{clave: string, id: int, prefijo: string|null}> */
+    /** @var array<int, array{clave: string, id: int, familia: string|null}> */
     private array $materialesPorClave = [];
 
     /** @var array<int, array{clave: string, id: int}> */
@@ -50,8 +53,8 @@ class specialfunctions_fichaproducto
     private bool $cargado = false;
 
     /**
-     * Material de la receta para el código de una fila: siempre el genérico del
-     * par, sin importar el consecutivo que diga la celda (reglas 1 y 2).
+     * Genérico de la familia del código de una fila (reglas 1 y 2): si la celda
+     * trae un hijo (CAT-BAS-X-Y) se usa su familia (CAT-BAS-X).
      *
      * @return array{material_id: int|null, motivo: string|null}
      */
@@ -59,14 +62,14 @@ class specialfunctions_fichaproducto
     {
         $this->cargar();
 
-        $prefijo = self::prefijoDe($codigo);
+        $familia = self::familiaDe($codigo);
 
-        if ($prefijo === null) {
+        if ($familia === null) {
             return ['material_id' => null, 'motivo' => self::SIN_FORMATO];
         }
 
-        $clave = self::clave($prefijo);
-        $generico = $this->genericosPorPar[$clave] ?? null;
+        $clave = self::clave($familia);
+        $generico = $this->genericosPorFamilia[$clave] ?? null;
 
         if ($generico !== null) {
             return ['material_id' => $generico, 'motivo' => null];
@@ -74,13 +77,13 @@ class specialfunctions_fichaproducto
 
         return [
             'material_id' => null,
-            'motivo' => isset($this->paresConocidos[$clave]) ? self::SIN_GENERICO : self::INEXISTENTE,
+            'motivo' => isset($this->familiasConocidas[$clave]) ? self::SIN_GENERICO : self::INEXISTENTE,
         ];
     }
 
     /**
      * Material buscado por nombre (regla 3, para las filas con la celda de
-     * código vacía). También devuelve el genérico del par del nombre encontrado.
+     * código vacía). El genérico es el de la familia del nombre encontrado.
      *
      * @return array{material_id: int|null, motivo: string|null}
      */
@@ -99,18 +102,18 @@ class specialfunctions_fichaproducto
             return ['material_id' => null, 'motivo' => self::INEXISTENTE];
         }
 
-        $pares = array_values(array_filter(array_unique(array_map(
-            fn (array $material): ?string => $material['prefijo'],
+        $familias = array_values(array_filter(array_unique(array_map(
+            fn (array $material): ?string => $material['familia'],
             $candidatos
         ))));
 
-        if (count($pares) > 1) {
+        if (count($familias) > 1) {
             return ['material_id' => null, 'motivo' => self::AMBIGUO];
         }
 
-        // Un solo par, aunque ninguno de sus materiales tenga código de par:
-        // sin CATEGORIA-BASE no hay forma de llegar al genérico.
-        $generico = $pares === [] ? null : ($this->genericosPorPar[self::clave($pares[0])] ?? null);
+        // Un solo nombre, aunque no tenga código de familia: sin CAT-BAS-X no hay
+        // forma de llegar al genérico.
+        $generico = $familias === [] ? null : ($this->genericosPorFamilia[self::clave($familias[0])] ?? null);
 
         return [
             'material_id' => $generico,
@@ -149,7 +152,8 @@ class specialfunctions_fichaproducto
     }
 
     /**
-     * Si el material ya es uno de los genéricos CAT-BAS-0 de la app.
+     * Si el material ya es uno de los genéricos de la app (el código de su
+     * familia, CAT-BAS-X).
      */
     public function esGenerico(int $materialId): bool
     {
@@ -186,30 +190,21 @@ class specialfunctions_fichaproducto
     public static function textoMotivo(string $motivo): string
     {
         return match ($motivo) {
-            self::SIN_FORMATO => 'no tiene el formato CATEGORIA-BASE-0',
-            self::SIN_GENERICO => 'existe pero su par no tiene material genérico',
+            self::SIN_FORMATO => 'no tiene el formato CAT-BAS-7 o CAT-BAS-7-3',
+            self::SIN_GENERICO => 'existe pero su familia no tiene material genérico',
             self::AMBIGUO => 'coincide con varios registros',
             default => 'no existe en la app',
         };
     }
 
     /**
-     * Par CATEGORIA-BASE de un código, sin el consecutivo. Null si la celda no
-     * tiene formato de código de material.
+     * Familia de un código: el código del genérico. En un hijo es el código sin
+     * el último tramo (COM-CAP-055-34 es COM-CAP-055) y en una familia es ella
+     * misma. Null si la celda no tiene formato de código de material.
      */
-    public static function prefijoDe(?string $codigo): ?string
+    public static function familiaDe(?string $codigo): ?string
     {
-        $normalizado = Material::normalizarCodigo($codigo);
-
-        if ($normalizado === null) {
-            return null;
-        }
-
-        if (preg_match('/^([A-Z]{1,' . Material::LONGITUD_FRAGMENTO . '}-[A-Z]{1,' . Material::LONGITUD_FRAGMENTO . '})-\d{1,6}$/', $normalizado, $coincidencia) === 1) {
-            return $coincidencia[1];
-        }
-
-        return null;
+        return Material::familiaDeCodigo($codigo);
     }
 
     private function cargar(): void
@@ -221,15 +216,15 @@ class specialfunctions_fichaproducto
         $this->cargado = true;
 
         foreach (Material::query()->get(['id', 'codigo_material', 'nombre_base', 'generico']) as $material) {
-            $prefijo = self::prefijoDe($material->codigo_material);
-            $clavePar = $prefijo === null ? null : self::clave($prefijo);
+            $familia = self::familiaDe($material->codigo_material);
+            $claveFamilia = $familia === null ? null : self::clave($familia);
             $esGenerico = (bool) $material->generico;
 
-            if ($clavePar !== null) {
-                $this->paresConocidos[$clavePar] = true;
+            if ($claveFamilia !== null) {
+                $this->familiasConocidas[$claveFamilia] = true;
 
                 if ($esGenerico) {
-                    $this->genericosPorPar[$clavePar] ??= (int) $material->id;
+                    $this->genericosPorFamilia[$claveFamilia] ??= (int) $material->id;
                 }
             }
 
@@ -242,7 +237,7 @@ class specialfunctions_fichaproducto
                 $this->materialesPorClave[] = [
                     'clave' => $claveNombre,
                     'id' => (int) $material->id,
-                    'prefijo' => $prefijo,
+                    'familia' => $familia,
                 ];
             }
         }

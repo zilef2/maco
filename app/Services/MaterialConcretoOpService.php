@@ -12,24 +12,19 @@ use Illuminate\Validation\ValidationException;
 /**
  * Material concreto por línea genérica de la ficha, dentro de una OP.
  *
- * La ficha técnica declara genéricos (COM-CAP-0) porque allí solo importa el
- * consumo del par; el color o la talla que se van a gastar se deciden en la OP
- * y deben ser un material del mismo par categoría-base (COM-CAP-1..975). Esta
- * clase valida esa elección, la guarda y la resuelve para que el kit, los
- * compromisos, los faltantes, el descuento en taller y los costos trabajen
- * siempre con el material concreto.
+ * La ficha técnica declara el genérico de la familia (COM-CAP-055) porque allí
+ * solo importa el consumo; el color o la talla que se van a gastar se deciden en
+ * la OP y tienen que ser un hijo de esa misma familia (COM-CAP-055-01,
+ * COM-CAP-055-02, …). Esta clase valida esa elección, la guarda y la resuelve
+ * para que el kit, los compromisos, los faltantes, el descuento en taller y los
+ * costos trabajen siempre con el material concreto.
  */
 class MaterialConcretoOpService
 {
-    /** Prefijo de familia de un material: el par categoría-base (COM-CAP). */
+    /** Familia de un material: el código de su genérico (COM-CAP-055-34 => COM-CAP-055). */
     public static function familiaDe(?Material $material): string
     {
-        if (!$material) {
-            return '';
-        }
-
-        return Material::normalizarFragmento($material->codigo_categoria)
-            . '-' . Material::normalizarFragmento($material->codigo_base);
+        return $material === null ? '' : (string) Material::familiaDeCodigo($material->codigo_material);
     }
 
     /**
@@ -68,7 +63,7 @@ class MaterialConcretoOpService
 
     /**
      * Nombre con el que un material concreto aparece en los selectores: su
-     * código y, si las tiene, sus variantes (COM-CAP-17 · 23).
+     * código y, si las tiene, sus variantes (COM-CAP-055-34 · 23).
      */
     public function nombreConcreto(Material $material): string
     {

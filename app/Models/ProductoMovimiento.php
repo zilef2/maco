@@ -50,7 +50,8 @@ class ProductoMovimiento extends Model
         int $existenciaAnterior,
         int $existenciaNueva,
         ?int $ordenProduccionId = null,
-        ?string $motivo = null
+        ?string $motivo = null,
+        ?int $usuarioId = null
     ): ?self {
         if ($existenciaAnterior === $existenciaNueva) {
             return null;
@@ -65,7 +66,9 @@ class ProductoMovimiento extends Model
             'existencia_anterior' => $existenciaAnterior,
             'existencia_nueva' => $existenciaNueva,
             'motivo' => $motivo,
-            'user_id' => Auth::id(),
+            // En la importación en segundo plano no hay sesión: el job pasa el
+            // id de quien subió el archivo.
+            'user_id' => $usuarioId ?? Auth::id(),
         ]);
     }
 

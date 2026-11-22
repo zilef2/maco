@@ -7,7 +7,6 @@ use App\Http\Requests\PurgarMaterialesRequest;
 use App\Http\Requests\ReiniciarOrdenesProduccionRequest;
 use App\Services\Bitacora;
 use App\Services\ExistenciasMaterialesService;
-use App\Services\MaterialesGenericosService;
 use App\Services\PurgarDatosPruebaService;
 use App\Services\PurgarMaterialesService;
 use App\Services\ReiniciarOrdenesProduccionService;
@@ -20,7 +19,6 @@ class SuperadminAccionesController extends Controller
         protected PurgarDatosPruebaService $purgarService,
         protected PurgarMaterialesService $purgarMaterialesService,
         protected ExistenciasMaterialesService $existenciasService,
-        protected MaterialesGenericosService $genericosService,
         protected ReiniciarOrdenesProduccionService $reiniciarOpService
     ) {}
 
@@ -66,28 +64,6 @@ class SuperadminAccionesController extends Controller
         );
 
         return back()->with('success', "Existencia al azar en {$conteo['existencias']} materiales y precio al azar en {$conteo['precios']}.");
-    }
-
-    /** Crea los genéricos faltantes con el código CAT-BAS-0 y refresca su precio promedio. */
-    public function materialesGenericos(Request $request): RedirectResponse
-    {
-        $conteo = $this->genericosService->sincronizar();
-
-        Bitacora::accion(
-            'Superadmin',
-            'materialesGenericos',
-            "{$conteo['creados']} genéricos creados, {$conteo['precios']} precios promediados, {$conteo['renumerados']} renumerados a CAT-BAS-0"
-        );
-
-        $detalle = $conteo['precios'] > 0
-            ? " y precio promedio en {$conteo['precios']}"
-            : '';
-
-        $renumerados = $conteo['renumerados'] > 0
-            ? ". {$conteo['renumerados']} genéricos pasaron al código CAT-BAS-0"
-            : '';
-
-        return back()->with('success', "Se crearon {$conteo['creados']} materiales genéricos{$detalle}{$renumerados}.");
     }
 
     public function reiniciarOrdenesProduccion(ReiniciarOrdenesProduccionRequest $request): RedirectResponse

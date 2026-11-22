@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\ExcelRechazado;
 use Illuminate\Support\Facades\DB;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 use PhpOffice\PhpSpreadsheet\Reader\IReadFilter;
@@ -26,9 +27,9 @@ use Throwable;
  * transacción: si una hoja falla, no queda nada importado de las demás. Por eso
  * el orden importa: los materiales señalan al proveedor habitual del mismo
  * archivo y la receta señala a los productos y materiales que el mismo archivo
- * acaba de escribir, así que "proveedor" va primero y "ficha" al final. Antes
- * de las fichas se sincronizan los materiales genéricos, que son los únicos que
- * admite la ficha técnica.
+ * acaba de escribir, así que "proveedor" va primero y "ficha" al final. Los
+ * genéricos que admite la ficha técnica los trae el archivo en la hoja
+ * "material": no se deducen ni se crean aquí.
  */
 class ExcelMPPService
 {
@@ -50,7 +51,6 @@ class ExcelMPPService
         private ExcelProductosService $productos,
         private ExcelTalleresService $talleres,
         private ExcelFichasProductoService $fichas,
-        private MaterialesGenericosService $genericos,
     ) {
     }
 
@@ -128,16 +128,6 @@ class ExcelMPPService
                     continue;
                 }
 
-                if ($hoja === 'ficha') {
-                    // Las recetas se escriben sobre el genérico del par y el
-                    // archivo acaba de crear los materiales específicos: sin
-                    // ese paso, la hoja de fichas rechazaría el archivo entero.
-                    $aviso = $this->asegurarGenericos();
-                    if ($aviso !== null) {
-                        $avisos[] = $aviso;
-                    }
-                }
-
                 $resultado = $this->conAvisoDeHoja(
                     $hoja,
                     fn (): array => $this->importarHoja($hoja, $filasPorHoja[$hoja], $usuarioId)
@@ -146,7 +136,7 @@ class ExcelMPPService
                 $desglose[$hoja] = $resultado;
 
                 // Avisos que no cancelan la carga: los aporta la hoja de
-                // fichas (genéricos nuevos y filas que llegaron sin consumo).
+                // fichas (las filas que llegaron sin consumo).
                 foreach ((array) ($resultado['avisos'] ?? []) as $aviso) {
                     $avisos[] = $aviso;
                 }
@@ -396,27 +386,15 @@ class ExcelMPPService
         if ($hoja === 'ficha') {
             $lectura = $this->fichas->registrosDesdeFilas($filas);
 
-            return $this->fichas->importarRegistros($lectura);
+            return $this->fichas->importarRegistros($lectura, $usuarioId);
         }
 
         $lectura = $this->productos->registrosDesdeFilas($filas);
 
-        return $this->conFilas($this->productos->importar($lectura['registros']), count($lectura['registros']));
-    }
-
-    /**
-     * Pone al día los materiales genéricos antes de escribir las recetas: la
-     * ficha técnica solo admite el CAT-BAS-0 del par y el archivo acaba de
-     * crear los materiales específicos. Es el mismo sincronizador del botón
-     * «Materiales genéricos» de Actividad, así que correrlo no duplica nada.
-     */
-    private function asegurarGenericos(): ?string
-    {
-        $resultado = $this->genericos->sincronizar();
-
-        return $resultado['creados'] > 0
-            ? 'La hoja "ficha" creó ' . $resultado['creados'] . ' material(es) genérico(s) que les faltaban a los pares del archivo.'
-            : null;
+        return $this->conFilas(
+            $this->productos->importar($lectura['registros'], $usuarioId),
+            count($lectura['registros'])
+        );
     }
 
     /**
@@ -437,7 +415,13 @@ class ExcelMPPService
         try {
             return $accion();
         } catch (Throwable $e) {
-            throw new RuntimeException('La hoja "' . $hoja . '": ' . $e->getMessage(), 0, $e);
+            $mensaje = 'La hoja "' . $hoja . '": ' . $e->getMessage();
+
+            // El detalle completo viaja en la excepción: MPP.log lo escribe sin
+            // importar cuántos avisos haya recortado el mensaje del correo.
+            throw $e instanceof ExcelRechazado
+                ? ExcelRechazado::conErrores($mensaje, $e->errores(), $e)
+                : new RuntimeException($mensaje, 0, $e);
         }
     }
 

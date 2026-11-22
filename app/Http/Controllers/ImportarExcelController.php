@@ -11,6 +11,7 @@ use App\Services\ExcelImportacionTracker;
 use App\Services\ExcelMPPService;
 use App\Services\ImportacionExcelNotificador;
 use App\Services\PlantillasExcelService;
+use App\Services\RegistroErroresMpp;
 use App\Services\VerificarImportacionService;
 use App\Traits\ExcelDesdeDriveTrait;
 use Illuminate\Http\JsonResponse;
@@ -100,7 +101,7 @@ class ImportarExcelController extends Controller
                 'grupo'               => 'Producción',
                 'descripcion'         => 'Receta de materiales de cada producto, una fila por material',
                 'ruta'                => route('ImportarExcel.ficha-producto'),
-                'nota'                => 'La hoja se llama "Codigos" y la fila 1 trae los títulos: "Codigo producto", "Producto", "codigo material", "Material", "consumo por par" y "unidad". Cada fila es un material de la receta del producto, y todas las filas con el mismo código de producto forman una sola ficha llamada "Ficha PT-042", con el código del producto. Si ese producto ya tenía ficha, se reemplazan sus materiales por los del archivo; si la ficha compartida cubre más productos, se conservan. El código de material se valida por su par, sin mirar el número del final: si existe ACC-APL-0, valen ACC-APL-1, ACC-APL-7 o ACC-APL-9898, y los tres se guardan como el material genérico del par (ACC-APL-0), que es el único que admite la ficha técnica; si el par existe pero no tiene su genérico, créelo con el botón «Materiales genéricos» de Actividad. Las columnas "Producto" y "Material" sirven para ubicar el registro solo cuando la celda del código quedó vacía, y si el nombre coincide con varios registros la fila se rechaza: escriba el código. Una celda vacía en "consumo por par" se toma como 1 y las filas que pasaron por ahí quedan listadas en el aviso amarillo de esta tarjeta y en el correo del resultado. Antes de guardar, la subida verifica que cada producto y cada material existan en la app y que ninguna orden de producción abierta bloquee la ficha: si falta uno solo o hay una OP activa, se rechaza el archivo completo con la lista, sin importar nada. Por eso la validación tarda unos segundos. El archivo se procesa en segundo plano y recibirás un correo con el resultado.',
+                'nota'                => 'La hoja se llama "Codigos" y la fila 1 trae los títulos: "Codigo producto", "Producto", "codigo material", "Material", "consumo por par" y "unidad". Cada fila es un material de la receta del producto, y todas las filas con el mismo código de producto forman una sola ficha llamada "Ficha PT-042", con el código del producto. Si ese producto ya tenía ficha, se reemplazan sus materiales por los del archivo; si la ficha compartida cubre más productos, se conservan. El código de material se resuelve por su familia: CAT-BAS-X es el genérico de la familia y CAT-BAS-X-Y uno de sus hijos, así que las dos escrituras guardan el genérico CAT-BAS-X, que es el único que admite la ficha técnica. El número de familia no es relleno (ACC-APL-7 y ACC-APL-9 son familias distintas) y ninguno de los dos números puede ser 0. Si la familia no existe en la app ni viene en la hoja "material" del mismo archivo, la fila se rechaza: hay que registrar su genérico. Las columnas "Producto" y "Material" sirven para ubicar el registro solo cuando la celda del código quedó vacía, y si el nombre coincide con varios registros la fila se rechaza: escriba el código. Una celda vacía en "consumo por par" se toma como 1 y las filas que pasaron por ahí quedan listadas en el aviso amarillo de esta tarjeta y en el correo del resultado. Antes de guardar, la subida verifica que cada producto y cada material existan en la app y que ninguna orden de producción abierta bloquee la ficha: si falta uno solo o hay una OP activa, se rechaza el archivo completo con la lista, sin importar nada. Por eso la validación tarda unos segundos. El archivo se procesa en segundo plano y recibirás un correo con el resultado.',
             ],
             [
                 'id'                  => 'estado_operacion',
@@ -220,6 +221,7 @@ class ImportarExcelController extends Controller
         Request $request,
         ExcelMPPService $excel,
         ImportacionExcelNotificador $notificador,
+        RegistroErroresMpp $errores,
     ): RedirectResponse {
         Myhelp::EscribirEnLog($this, ' uploadMpp ');
 
@@ -274,6 +276,7 @@ class ImportarExcelController extends Controller
             }
 
             $notificador->fallo($usuario?->email, $usuario?->name, $nombreArchivo, 'MPP (materiales, productos, proveedores y fichas)', $e);
+            $errores->registrar($nombreArchivo, $usuario?->name, $e);
             Myhelp::EscribirEnLog($this, 'uploadMpp ERROR', $e->getMessage());
 
             return back()->with('error', 'No se importó nada: ' . $e->getMessage());
@@ -285,8 +288,8 @@ class ImportarExcelController extends Controller
      *
      * A diferencia del resto de las tarjetas, aquí se valida el contenido
      * completo del archivo en la misma petición: cada producto tiene que existir
-     * en la app y cada material tiene que apuntar a un par con su genérico
-     * (CAT-BAS-0), y ninguna ficha puede estar bloqueada por una OP activa. Si
+     * en la app y cada material tiene que apuntar a una familia con su genérico
+     * (CAT-BAS-X), y ninguna ficha puede estar bloqueada por una OP activa. Si
      * falta algo, el archivo se rechaza con la lista de los códigos y el usuario
      * lo corrige antes de volver a subirlo; por eso hay que esperar unos segundos
      * mientras se lee la hoja.

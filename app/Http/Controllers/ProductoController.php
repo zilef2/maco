@@ -801,7 +801,7 @@ class ProductoController extends Controller {
 
         try {
             $lectura = $this->excelProductos->registrosDesdeFilas($filas);
-            $resultado = $this->excelProductos->importar($lectura['registros']);
+            $resultado = $this->excelProductos->importar($lectura['registros'], $request->user()?->id);
         } catch (\Throwable $e) {
             Myhelp::EscribirEnLog($this, 'uploadExcel ERROR', $e->getMessage());
             return back()->with('error', $e->getMessage());

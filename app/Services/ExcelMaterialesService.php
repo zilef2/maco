@@ -239,6 +239,12 @@ class ExcelMaterialesService
                 continue;
             }
 
+            if (Material::tieneNumeroEnCero($codigo)) {
+                $errores[] = "Fila {$filaExcel}: el código \"{$codigoBruto}\" usa el número 0; la familia y el hijo"
+                    . ' empiezan en 1 (CAT-BASE-001 y CAT-BASE-001-01)';
+                continue;
+            }
+
             $esGenerico = $codigo !== null && Material::esCodigoFamilia($codigo);
 
             // El par forma el prefijo del código: primero lo que digita el

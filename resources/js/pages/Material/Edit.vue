@@ -146,7 +146,7 @@ const descripcionToggle = (campo: string, activo: boolean): string => {
     }
     if (campo === 'generico') {
         return activo
-            ? 'Sí, es genérico: sin talla, color, diseño, proveedor, existencia ni gasto diario propios; se codifica con el 0 del par (COM-CAP-0), su precio es el promedio de sus similares y la OP elige el material concreto de su familia'
+            ? 'Sí, es genérico: sin talla, color, diseño, proveedor, existencia ni gasto diario propios; se codifica con el número de la familia (COM-CAP-055) y la OP elige un hijo suyo (COM-CAP-055-34), que es el que se gasta y se costea'
             : 'No, es un material específico con sus variantes y su precio de compra';
     }
     return activo ? 'Sí, este material lo maneja' : 'No aplica para este material';
@@ -268,9 +268,10 @@ const update = () => {
                                     <TextInput :id="atributosform.idd" class="mt-1 block w-full bg-gray-100 dark:bg-gray-800/60 cursor-not-allowed opacity-70"
                                         v-model="form[atributosform.idd]" disabled />
                                     <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                                        Se forma con el código de la categoría y el código base (TEX-LFI-4). Si cambias el
-                                        par, el material toma el siguiente número libre del prefijo nuevo. Los genéricos
-                                        siempre llevan el 0: COM-CAP-0.
+                                        Se forma con el código de la categoría y el código base (TEX-LFI-004). Si cambias el
+                                        par, el material toma el siguiente número libre del prefijo nuevo. El genérico es la
+                                        familia y lleva su número de 3 dígitos (COM-CAP-055); el concreto es un hijo suyo
+                                        (COM-CAP-055-34). Ningún número puede ser 0.
                                     </p>
                                     <InputError class="mt-2" :message="form.errors[atributosform.idd]" />
                                 </div>

@@ -552,9 +552,9 @@ class OrdenProduccionController extends Controller {
                 ];
             })->values()->all();
 
-        // Familias (par categoría-base) de los componentes genéricos de las
-        // fichas: en la OP se elige, por cada familia, el material concreto que
-        // realmente se consume (COM-CAP-17 con su variante, color o talla).
+        // Familias (el código del genérico) de los componentes de las fichas: en
+        // la OP se elige, por cada familia, el material concreto que realmente se
+        // consume (COM-CAP-055-34 con su variante, color o talla).
         $materialesComponente = $productos
             ->flatMap(fn ($producto) => collect($producto['ficha_materiales'])->pluck('material_id'))
             ->merge(collect($materialesProcesados)->flatMap(
@@ -568,7 +568,7 @@ class OrdenProduccionController extends Controller {
         $genericosComponente = Material::query()
             ->whereIn('id', $materialesComponente)
             ->where('generico', true)
-            ->get(['id', 'codigo_categoria', 'codigo_base'])
+            ->get(['id', 'codigo_material'])
             ->mapWithKeys(fn (Material $material) => [
                 (int) $material->id => MaterialConcretoOpService::familiaDe($material),
             ]);

@@ -382,7 +382,7 @@ class FichaTecnicaService
             ->get()
             ->keyBy('id');
 
-        // La ficha solo admite materiales genéricos (uno por par categoría-base).
+        // La ficha solo admite materiales genéricos (uno por familia CAT-BAS-X).
         $noGenericos = $materialesPorId
             ->reject(fn (Material $material) => (bool) $material->generico)
             ->map(fn (Material $material) => $material->codigo_material ?: $material->nombre_base)
@@ -392,7 +392,8 @@ class FichaTecnicaService
             throw ValidationException::withMessages([
                 'materiales' => 'La ficha técnica solo admite materiales genéricos: '
                     . $noGenericos->implode(', ')
-                    . '. Use el genérico de su par categoría-base (el botón «Crear los genéricos que faltan» de Actividad los agrega).',
+                    . '. Use el genérico de su familia (CAT-BAS-X): los hijos CAT-BAS-X-Y son los que se gastan y no van en la ficha.'
+                    . ' Si la familia todavía no existe, registre el genérico en Materiales o en la hoja "material" del Excel.',
             ]);
         }
 

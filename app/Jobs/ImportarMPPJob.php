@@ -6,6 +6,7 @@ use Alejo\Notificaciones\Facades\NotificacionesFacade as Notificaciones;
 use App\Services\ExcelImportacionTracker;
 use App\Services\ExcelMPPService;
 use App\Services\ImportacionExcelNotificador;
+use App\Services\RegistroErroresMpp;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Foundation\Queue\Queueable;
@@ -52,6 +53,7 @@ class ImportarMPPJob implements ShouldQueue
         ExcelMPPService $excel,
         ImportacionExcelNotificador $notificador,
         ExcelImportacionTracker $tracker,
+        RegistroErroresMpp $errores,
     ): void {
         $ruta = Storage::disk('local')->path($this->rutaRelativa);
 
@@ -80,6 +82,10 @@ class ImportarMPPJob implements ShouldQueue
             ]);
         } catch (Throwable $e) {
             $tracker->fallar($this->importacionId, $e->getMessage());
+
+            // El correo trae los primeros avisos; el archivo, todos los errores
+            // que encontró la lectura (sin traza y sin el resumen con IA).
+            $errores->registrar($this->nombreArchivo, $this->nombreUsuario, $e);
 
             $notificador->fallo(
                 $this->emailUsuario,

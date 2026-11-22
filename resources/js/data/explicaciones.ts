@@ -557,36 +557,39 @@ export const explicaciones: Explicacion[] = [
         categoria: 'Material',
         categoriaLabel: 'Materiales',
         subcategoria: 'Código del material',
-        titulo: 'Cómo se forma el código CAT-BASE-N y qué pasa al cambiar el par',
+        titulo: 'Cómo se forma el código CAT-BAS-X (familia) y CAT-BAS-X-Y (hijo)',
         resumen:
-            'El código del material ya no es un consecutivo global (MAT-30): se arma con el código de la categoría, el código base y el número libre más alto de esa combinación, sin ceros a la izquierda.',
+            'El código del material ya no es un consecutivo global (MAT-30): se arma con el código de la categoría, el código base y dos números con su relleno. CAT-BAS-X es el material genérico de la familia y CAT-BAS-X-Y uno de sus hijos, el material concreto con su color o talla.',
         etiquetas: [
             'codigo material',
             'codigo categoria',
             'codigo base',
             'consecutivo',
             'prefijo',
-            'TEX-LFI-4',
+            'TEX-LFI-004',
             'MAT-30',
             'ceros a la izquierda',
             'abreviatura',
             'formato del codigo',
+            'familia',
+            'hijo',
         ],
-        actualizada: '2026-11-03',
+        actualizada: '2026-11-22',
         bloques: [
             {
                 tipo: 'texto',
                 texto:
-                    'El par «código de categoría + código base» define el prefijo y el número es exclusivo de esa combinación. Si TEX-LFI llega hasta el 3, el siguiente material del par es TEX-LFI-4. El número lo asigna el servidor: en el formulario el campo de código sale bloqueado.',
+                    'El par «código de categoría + código base» define el prefijo. Después van los dos números: el de la familia, que es el número de la empresa dueña de esa familia (COM-CAP-055), y el del hijo, que sube dentro de su familia (COM-CAP-055-01, COM-CAP-055-02, …). El mismo par puede tener varias familias y cada una tiene su propio genérico. Cuando el código viene vacío, el formulario y el Excel asignan el siguiente número libre; el número lo termina de decidir el servidor, que es quien lo guarda.',
             },
             {
                 tipo: 'lista',
                 items: [
                     'Cada fragmento admite hasta 3 letras, siempre en mayúsculas y sin tildes; lo que sobre se corta.',
                     'Si el par queda vacío, se abrevia el nombre: una palabra aporta sus tres primeras letras (Textil → TEX) y varias palabras aportan sus iniciales completadas con las letras siguientes (Lana fibrada → LFA).',
-                    'Los ceros a la izquierda se borran al guardar y al importar: TEX-LFL-005 queda TEX-LFL-5.',
-                    'Misma combinación de par → número consecutivo; par distinto → el material salta al siguiente número libre del prefijo nuevo y el número que deja vuelve a estar disponible.',
-                    'El código es único en la base de datos, así que dos materiales no pueden quedar con el mismo.',
+                    'El número de familia se guarda con 3 dígitos y el de hijo con 2: COM-CAP-55-4 pasa a COM-CAP-055-04. El relleno es formato, no valor.',
+                    'Ningún número puede valer 0. COM-CAP-000 y COM-CAP-055-00 se rechazan, tanto en el formulario como en el Excel; COM-CAP-001 sí es válido (es la familia uno).',
+                    'Misma familia → número consecutivo; par distinto → el material salta al siguiente número libre del prefijo nuevo y el número que deja vuelve a estar disponible.',
+                    'El código es único en la base de datos, así que dos materiales no pueden quedar con el mismo; un código de familia tampoco puede usarse para un concreto.',
                 ],
             },
             {
@@ -595,17 +598,17 @@ export const explicaciones: Explicacion[] = [
                     {
                         pregunta: '¿Se puede escribir el código a mano?',
                         respuesta:
-                            'No desde la app: el formulario lo genera. En el Excel sí se puede traer el número, y se respeta cuando está libre; si ya existe, la fila actualiza ese material en vez de crear otro.',
+                            'No desde la app: el formulario lo genera y lo deja bloqueado. En el Excel del MPP sí se trae escrito y se respeta, porque el número de familia identifica a la empresa y la app no lo puede deducir. Si el código ya existe, la fila actualiza ese material en vez de crear otro.',
                     },
                     {
                         pregunta: '¿Qué pasó con los MAT-30 antiguos?',
                         respuesta:
-                            'La migración los reescribió al formato nuevo derivando el par de su categoría y su nombre base. Los que ya venían en formato CAT-BASE-N conservaron su número.',
+                            'La migración los reescribió al formato de prefijo derivando la categoría y el nombre base. Un material concreto sin familia encima queda como hijo de la familia más alta del par.',
                     },
                     {
                         pregunta: '¿Por qué una fila nueva quedó con un número distinto al del archivo?',
                         respuesta:
-                            'Porque ese número ya estaba usado por otro material del mismo par: se toma el siguiente libre. Para editar un material existente, el código de la fila debe coincidir con uno cargado (con o sin ceros).',
+                            'Porque la celda venía vacía: el modelo toma el siguiente número libre. Cuando el archivo trae el código escrito, ese se respeta y, si ya está tomado, la fila actualiza el material que lo tiene.',
                     },
                 ],
             },
@@ -617,12 +620,12 @@ export const explicaciones: Explicacion[] = [
             },
         ],
         fuentes: [
-            'app/Models/Material.php (aplicarReglaDelCodigo, normalizarCodigo, normalizarFragmento, abreviar, siguienteConsecutivo)',
-            'app/Http/Controllers/MaterialController.php (store y uploadExcel usan la regla; el código no se copia del cliente en store)',
+            'app/Models/Material.php (aplicarReglaDelCodigo, normalizarCodigo, normalizarFragmento, abreviar, siguienteNumeroFamilia, siguienteNumeroHijo, tieneNumeroEnCero, familiaDeCodigo)',
+            'app/Http/Controllers/MaterialController.php (store y update usan la regla; el código no se copia del cliente en store)',
             'app/Services/PlantillasExcelService.php (columnas y ejemplos del formato de materiales)',
+            'app/Services/ExcelMaterialesService.php (el formato del código, el rechazo del 0 y el rol genérico/hijo por la cantidad de tramos)',
             'database/migrations/2026_11_03_110000_add_codigo_categoria_base_a_materials_table.php (columnas nuevas y reescritura de códigos MAT-##)',
-            'resources/js/pages/Material/Create.vue y Edit.vue (código bloqueado, par editable en mayúsculas)',
-            'resources/js/pages/Material/ImportarMaterialModal.vue (ayuda del formato, leída de la misma plantilla)',
+            'resources/js/pages/Material/Create.vue y Edit.vue (código bloqueado, par editable en mayúsculas y la previsualización del número)',
         ],
     },
     {
@@ -883,59 +886,58 @@ export const explicaciones: Explicacion[] = [
         categoria: 'Material',
         categoriaLabel: 'Materiales',
         subcategoria: 'Material genérico',
-        titulo: 'El material genérico: uno por cada par categoría-base',
+        titulo: 'El material genérico: la familia CAT-BAS-X y sus hijos',
         resumen:
-            'Un material genérico representa a todos los que comparten su código de categoría y su código base: se codifica con el 0 del par (COM-CAP-0), no maneja talla ni color, no tiene existencia ni gasto diario y su precio es el promedio de los precios de sus similares. La ficha técnica lo usa para declarar el consumo del par, pero el material que se gasta (con su color o talla) se elige en la OP.',
+            'Un material genérico representa a una familia de materiales: su código es CAT-BAS-X, donde X es el número de la empresa dueña de esa familia. Los materiales concretos que se gastan son hijos suyos y se escriben CAT-BAS-X-Y. El genérico no maneja talla ni color, no tiene existencia ni gasto diario y su precio es el promedio de los precios de sus similares. La ficha técnica lo usa para declarar el consumo de la familia, pero el material que se gasta (con su color o talla) se elige en la OP.',
         etiquetas: [
             'genérico',
             'generico',
             'material genérico',
             'promedio de precios',
             'categoria base',
-            'CAT-BAS-0',
-            'TEX-LFL-0',
+            'CAT-BAS-X',
+            'familia',
+            'hijo',
+            'número de empresa',
+            'TEX-LFL-001',
             'sin talla',
             'sin color',
             'sin existencia',
             'proyectado',
             'gasto diario',
             'material concreto',
-            'familia',
             'color o talla en la OP',
-            'botón superadmin',
-            'crear genéricos',
         ],
-        actualizada: '2026-11-14',
+        actualizada: '2026-11-22',
         bloques: [
             {
                 tipo: 'texto',
                 texto:
-                    'Si existen TEX-LFL-1 a TEX-LFL-5 (Lona Florentina) y TEX-LYC-1 (Lycra), solo hacen falta dos genéricos: uno para el par TEX-LFL y otro para TEX-LYC. El genérico no usa el consecutivo del par: siempre lleva el 0 (TEX-LFL-0 y TEX-LYC-0), porque debe haber uno solo por categoría y nombre base. El nombre base lleva el sufijo «(Genérico)» para distinguirlo en los selects.',
+                    'El código de un material tiene dos números: CAT-BAS-X para el genérico (la familia) y CAT-BAS-X-Y para sus hijos (los concretos). X es el número de la empresa dueña de la familia, así que TEX-LFL-001 y TEX-LFL-002 son dos familias distintas del mismo par, cada una con su propio genérico. Y arranca en 1 y sube dentro de su familia. Ninguno de los dos puede valer 0: la familia 0 y el hijo 0 no existen. El relleno con ceros sí forma parte del código, así que COM-CAP-055-34 es la escritura correcta del hijo 34 de la familia 55.',
             },
             {
                 tipo: 'lista',
                 items: [
                     'La columna «generico» de la tabla materials marca el material; el modelo obliga a que un genérico no tenga talla ni color: limpia maneja_color, maneja_talla, maneja_otra_variante, color, talla_tamaño y borra sus variantes al guardar, venga de donde venga la escritura.',
-                    'La misma escritura del modelo fuerza el código CAT-BAS-0 del par y rechaza un segundo genérico para ese par, así que ni el formulario, ni el Excel ni el botón pueden duplicarlo.',
-                    'El precio se calcula en dos pasos: primero el promedio de las filas de precio de cada similar y luego el promedio entre los similares que sí tienen precio. El resultado se guarda como una fila nueva en material_prices con la fecha de hoy.',
-                    'Si un grupo no tiene ningún similar con precio, el genérico se crea igual pero se queda sin fila de precio.',
-                    'El botón vive en Actividad → Acciones de Superadministrador, al lado de «Existencias y precios al azar», y no requiere entorno de prueba.',
+                    'La escritura del modelo deja el código con su relleno (COM-CAP-55-4 pasa a COM-CAP-055-04), rechaza cualquier número 0 y no permite repetir un código: el genérico es uno por familia, no uno por par.',
+                    'Un concreto siempre cuelga de una familia. Si el par todavía no tiene ningún genérico, el modelo rechaza el alta y dice primero registre su familia; si el archivo trae el código escrito, ese se respeta.',
+                    'El número de familia no se deduce: lo define quien crea el material (el formulario deja el siguiente libre del par y el Excel MPP trae el que diga la celda). Ya no existe ninguna acción masiva que los cree.',
                     'El genérico no almacena nada: la misma escritura del modelo deja en null su existencia actual y su gasto diario, y el recálculo del gasto diario de todos empieza limpiando los genéricos. Por eso tampoco aparece en la proyección de la tabla de Materiales, ni en la previsión de faltantes, y una compra rechazada avisa que se compre el concreto de su familia.',
                 ],
             },
             {
                 tipo: 'pasos',
                 items: [
-                    'Abrir Actividad (solo superadmin) y bajar hasta «Acciones de Superadministrador».',
-                    'En la tarjeta «Materiales genéricos» revisar el detalle: cuántas combinaciones hay, cuántas están sin genérico y cuántos genéricos existen.',
-                    'Pulsar «Crear los genéricos que faltan». Se puede pulsar las veces que sea: crea los que faltan con su código CAT-BAS-0, renumera a ese código a los genéricos creados con la regla antigua y, en los que ya existen, agrega una fila de precio únicamente si el promedio cambió.',
+                    'Traer la hoja «material» del Excel MPP con el genérico y sus hijos: la fila de COM-CAP-055 queda como el genérico de la familia y las de COM-CAP-055-34, COM-CAP-055-35, … como sus concretos. El rol lo decide la forma del código (tres tramos = familia, cuatro = hijo); no hay columna «Genérico».',
+                    'O crearlos de a uno en Materiales → Nuevo: escribir el código de la categoría y el código base activa el interruptor «Genérico» para la familia y, al desactivarlo, el material queda como hijo de la familia más alta del par.',
+                    'Antes de subir, usar «Verificar» en la tarjeta de Materiales: avisa fila por fila los códigos sin formato, los que usan el 0 y los que se repiten, sin tocar la base de datos.',
                 ],
             },
             {
                 tipo: 'nota',
                 tono: 'info',
                 texto:
-                    'El genérico también se puede marcar a mano con el interruptor «Genérico» del formulario de material, que está al lado del código de categoría; al activarlo se le quitan tallas, colores, diseño, proveedor y precio propios, y el código pasa a ser el 0 del par.',
+                    'El interruptor «Genérico» del formulario de material está al lado del código de categoría; al activarlo se le quitan tallas, colores, diseño, proveedor y precio propios y el código pasa a ser el de la familia.',
             },
             {
                 tipo: 'subtitulo',
@@ -944,7 +946,7 @@ export const explicaciones: Explicacion[] = [
             {
                 tipo: 'lista',
                 items: [
-                    'En la ficha de producto y de material procesado, el select de material lista únicamente los materiales genéricos; si una ficha antigua tiene un material específico, la fila conserva su nombre pero el servidor rechaza el guardado hasta reemplazarlo por el genérico de su par categoría-base.',
+                    'En la ficha de producto y de material procesado, el select de material lista únicamente los materiales genéricos; si una ficha antigua tiene un material específico, la fila conserva su nombre pero el servidor rechaza el guardado hasta reemplazarlo por el genérico de su familia.',
                     'El buscador del select funciona por código o por nombre base, sin distinguir mayúsculas ni tildes (escribir «lfl» o «Florentina» encuentra lo mismo).',
                     'Al dar Enter con el foco en el select de material se agrega otra fila y el foco vuelve al buscador, para encadenar materiales sin usar el ratón.',
                 ],
@@ -956,14 +958,14 @@ export const explicaciones: Explicacion[] = [
             {
                 tipo: 'texto',
                 texto:
-                    'La ficha solo dice «se gasta COM-CAP-0» y cuánto se gasta por unidad producida, porque allí solo importa el consumo del par. El color o la talla reales se deciden al registrar la orden: la tarjeta «Material concreto de la orden» lista, por cada producto o material procesado de la OP, sus líneas genéricas y obliga a elegir un material de esa misma familia (COM-CAP-1, COM-CAP-2, …). Desde ese momento todo el sistema trabaja con el concreto: el kit de proceso, los compromisos con otras OP, los faltantes, la compra, el descuento al pasar a taller y el precio congelado de la orden.',
+                    'La ficha solo dice «se gasta COM-CAP-055» y cuánto se gasta por unidad producida, porque allí solo importa el consumo de la familia. El color o la talla reales se deciden al registrar la orden: la tarjeta «Material concreto de la orden» lista, por cada producto o material procesado de la OP, sus líneas genéricas y obliga a elegir un hijo de esa misma familia (COM-CAP-055-1, COM-CAP-055-2, …). Desde ese momento todo el sistema trabaja con el concreto: el kit de proceso, los compromisos con otras OP, los faltantes, la compra, el descuento al pasar a taller y el precio congelado de la orden.',
             },
             {
                 tipo: 'lista',
                 items: [
-                    'Las opciones salen de los materiales activos de la misma familia (el par código_categoria-código_base) que no están marcados como genéricos; cada opción se muestra con su código y sus variantes (COM-CAP-17 · 23), que es donde vive el color o la talla.',
+                    'Las opciones salen de los materiales activos cuyo código es hijo del genérico (COM-CAP-055-…) y no están marcados como genéricos; cada opción se muestra con su código y sus variantes (COM-CAP-055-34 · 23), que es donde vive el color o la talla.',
                     'La elección se guarda en orden_produccion_material_concreto, una fila por objetivo (producto o material producido) y línea genérica de su ficha, así que dos productos de la misma OP pueden gastar colores distintos de la misma familia.',
-                    'El registro de la OP no se guarda sin todas las elecciones: el aviso dice qué genérico falta («Defina el material concreto (color o talla) de: COM-CAP-0 de …»). Un borrador guardado con «Terminar después» acepta la orden incompleta.',
+                    'El registro de la OP no se guarda sin todas las elecciones: el aviso dice qué genérico falta («Defina el material concreto (color o talla) de: COM-CAP-055 de …»). Un borrador guardado con «Terminar después» acepta la orden incompleta.',
                     'Si la familia solo tiene un material concreto, ese se elige solo. Si no tiene ninguno, la tarjeta lo advierte: hay que crear el material con su color o talla antes de registrar la OP.',
                     'Al editar, la elección viaja con el plan de la orden: desde «En taller» queda congelada junto con los productos y las tallas, porque el kit ya salió de bodega.',
                     'Las OPs antiguas no tienen elección guardada: el kit y los costos siguen usando el material que estaba en la ficha y la elección se completa al editar la orden.',
@@ -981,14 +983,12 @@ export const explicaciones: Explicacion[] = [
         ],
         fuentes: [
             'database/migrations/2026_11_11_100000_add_generico_to_materials_table.php',
-            'app/Models/Material.php (aplicarReglaDelCodigo con el 0 del par y descartarGenericoDuplicado; limpiarVariantesPorGenerico en saving; sincronizarVariantes la respeta)',
-            'app/Services/MaterialesGenericosService.php (sincronizar crea, renumera a CAT-BAS-0 y promedia; estadisticas)',
+            'app/Models/Material.php (aplicarReglaDelCodigo: relleno, rechazo del 0 y del código tomado; siguienteNumeroFamilia, siguienteNumeroHijo, familiaMasAltaDelPar; limpiarVariantesPorGenerico en saving; sincronizarVariantes la respeta)',
+            'app/Models/Material.php (normalizarCodigo, esCodigoFamilia, esCodigoHijo, tieneNumeroEnCero, familiaDeCodigo)',
+            'app/Services/ExcelMaterialesService.php (la hoja «material» del MPP trae genéricos e hijos con su código escrito)',
             'app/Services/FichaTecnicaService.php (opcionesMateriales con bandera generico; guardar solo admite genéricos)',
             'resources/js/pages/FichaTecnicaMateriales/EditorMateriales.vue (select filtrado, búsqueda por código/nombre, Enter agrega fila)',
-            'resources/js/pages/Material/Create.vue y Edit.vue (interruptor «Genérico» junto al código de categoría; el código previsualizado usa el 0 del par)',
-            'app/Http/Controllers/SuperadminAccionesController.php (materialesGenericos)',
-            'routes/web.php (POST /superadmin/materiales-genericos)',
-            'resources/js/pages/actividad/AccionesSuperadmin.vue (tarjeta «Materiales genéricos»)',
+            'resources/js/pages/Material/Create.vue y Edit.vue (interruptor «Genérico» junto al código de categoría y la previsualización del código de familia/hijo)',
             'database/migrations/2026_11_14_100000_generico_sin_inventario.php (existencia_actual nullable y null para los genéricos)',
             'app/Models/Material.php (recalcularGastoDiario y recalcularGastoDiarioDeTodos devuelven null en genéricos)',
             'app/Http/Controllers/MaterialController.php (index y prevision excluyen genéricos; registrarCompra los rechaza)',
@@ -996,6 +996,7 @@ export const explicaciones: Explicacion[] = [
             'database/migrations/2026_11_14_110000_create_orden_produccion_material_concreto_table.php',
             'app/Models/OrdenProduccionMaterialConcreto.php (objetivo_tipo producto|material)',
             'app/Services/MaterialConcretoOpService.php (concretosPorFamilia, validar, guardar, mapaDeOrden, resolver, materialResuelto)',
+            'app/Services/specialfunctions_fichaproducto.php y ExcelFichasProductoService.php (la celda de material se reduce a su familia: CAT-BAS-X-Y apunta al genérico CAT-BAS-X)',
             'app/Http/Controllers/OrdenProduccionController.php (obtenerSelects con materiales_familias; concretosDesdeRequest en store/guardarBorrador/update; necesidadMateriales resuelve el concreto)',
             'app/Services/CostoMaterialOpService.php y CostoRecepcionOpService.php (el snapshot de costos usa el id del concreto)',
             'resources/js/composables/materialesConcretosOp.ts (elecciones, opcionesDe, materialDeLinea, asegurarUnicos, payload)',

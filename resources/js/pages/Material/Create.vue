@@ -150,7 +150,7 @@ const descripcionToggle = (campo: string, activo: boolean): string => {
     }
     if (campo === 'generico') {
         return activo
-            ? 'Sí, es genérico: sin talla, color, diseño, proveedor, existencia ni gasto diario propios; se codifica con el 0 del par (COM-CAP-0), su precio es el promedio de sus similares y la OP elige el material concreto de su familia'
+            ? 'Sí, es genérico: sin talla, color, diseño, proveedor, existencia ni gasto diario propios; se codifica con el número de la familia (COM-CAP-055) y la OP elige un hijo suyo (COM-CAP-055-34), que es el que se gasta y se costea'
             : 'No, es un material específico con sus variantes y su precio de compra';
     }
     return activo ? 'Sí, este material lo maneja' : 'No aplica para este material';
@@ -194,29 +194,47 @@ const generarCodigoMaterial = () => {
 
     const prefijo = `${cat}-${base}`;
 
-    // El genérico es uno solo por par, así que siempre lleva el 0 del prefijo.
-    if (esGenerico.value) {
-        form.codigo_material = `${prefijo}-0`;
-        return;
-    }
-
-    let max = 0;
     const listaMateriales = [
         ...(Array.isArray(props.materiales) ? props.materiales : []),
         ...(Array.isArray(props.losSelect?.materiales) ? props.losSelect.materiales : []),
     ];
 
+    // Números que el par ya usa, separando familias (CAT-BAS-055) de hijos
+    // (CAT-BAS-055-34), igual que hace el servidor al asignar el código.
+    const familias: number[] = [];
+    const hijosPorFamilia = new Map<number, number[]>();
+
     listaMateriales.forEach((m: any) => {
         const cod = m?.codigo_material || (typeof m?.name === 'string' && m.name.includes('—') ? m.name.split('—')[0].trim() : '');
-        if (cod && cod.startsWith(prefijo + '-')) {
-            const num = parseInt(cod.slice(prefijo.length + 1), 10);
-            if (!isNaN(num) && num > max) {
-                max = num;
-            }
+        if (typeof cod !== 'string' || !cod.toUpperCase().startsWith(prefijo + '-')) return;
+
+        const coincidencia = cod.toUpperCase().match(/^[A-Z]{1,3}-[A-Z]{1,3}-(\d{1,4})(?:-(\d{1,4}))?$/);
+        if (!coincidencia) return;
+
+        const familia = parseInt(coincidencia[1], 10);
+        if (coincidencia[2]) {
+            hijosPorFamilia.set(familia, [...(hijosPorFamilia.get(familia) ?? []), parseInt(coincidencia[2], 10)]);
+        } else {
+            familias.push(familia);
         }
     });
 
-    form.codigo_material = `${prefijo}-${max + 1}`;
+    const mayor = (numeros: number[]): number => numeros.reduce((max, n) => (n > max ? n : max), 0);
+
+    if (esGenerico.value) {
+        form.codigo_material = `${prefijo}-${String(mayor(familias) + 1).padStart(3, '0')}`;
+        return;
+    }
+
+    // Un concreto es hijo de la familia más alta del par; sin genérico no hay
+    // código posible y el servidor es quien lo avisa.
+    const familia = mayor(familias);
+    if (familia === 0) {
+        form.codigo_material = '';
+        return;
+    }
+
+    form.codigo_material = `${prefijo}-${String(familia).padStart(3, '0')}-${String(mayor(hijosPorFamilia.get(familia) ?? []) + 1).padStart(2, '0')}`;
 };
 
 watch(
@@ -357,7 +375,9 @@ watchEffect(() => {
                                         :model-value="form.codigo_material" disabled placeholder="Se genera automáticamente" />
                                     <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                                         Se forma con el código de la categoría y el código base, más el siguiente número
-                                        libre de esa combinación (TEX-LFI-4). Los genéricos siempre llevan el 0: COM-CAP-0.
+                                        libre de esa combinación (TEX-LFI-004). El genérico es la familia y lleva su número
+                                        de 3 dígitos (COM-CAP-055); el concreto es un hijo suyo (COM-CAP-055-34). Ningún
+                                        número puede ser 0.
                                     </p>
                                     <InputError class="mt-2" :message="form.errors.codigo_material" />
                                 </div>

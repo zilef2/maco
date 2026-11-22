@@ -31,7 +31,6 @@ Route::middleware(['auth', 'verified', 'role:superadmin'])->group(function () {
 	Route::post('/superadmin/purgar-materiales', [\App\Http\Controllers\SuperadminAccionesController::class, 'purgarMateriales'])->name('superadmin.purgar-materiales');
 	Route::post('/superadmin/existencias-cero', [\App\Http\Controllers\SuperadminAccionesController::class, 'ceroExistencias'])->name('superadmin.existencias-cero');
 	Route::post('/superadmin/materiales-al-azar', [\App\Http\Controllers\SuperadminAccionesController::class, 'rellenarMateriales'])->name('superadmin.materiales-al-azar');
-	Route::post('/superadmin/materiales-genericos', [\App\Http\Controllers\SuperadminAccionesController::class, 'materialesGenericos'])->name('superadmin.materiales-genericos');
 	Route::post('/superadmin/reiniciar-ops', [\App\Http\Controllers\SuperadminAccionesController::class, 'reiniciarOrdenesProduccion'])->name('superadmin.reiniciar-ops');
 });
 

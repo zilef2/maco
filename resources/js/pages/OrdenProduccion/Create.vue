@@ -1117,10 +1117,10 @@ watch(
                         Material concreto de la orden
                     </h3>
                     <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                        La ficha de producto declara el material genérico de la familia (por ejemplo COM-CAP-0), que solo representa el par
-                        categoría-base. Aquí se define el material con el color o la talla que realmente se va a gastar en esta OP: debe
-                        ser uno de esa misma familia (COM-CAP-1, COM-CAP-2, ...). El inventario, el faltante y el costo se calculan con el
-                        material elegido.
+                        La ficha de producto declara el material genérico de la familia (por ejemplo COM-CAP-055), cuyo
+                        número identifica la empresa. Aquí se define el material con el color o la talla que realmente se
+                        va a gastar en esta OP: debe ser un hijo de esa familia (COM-CAP-055-01, COM-CAP-055-02, ...). El
+                        inventario, el faltante y el costo se calculan con el material elegido.
                     </p>
 
                     <div class="mt-3 space-y-4">
