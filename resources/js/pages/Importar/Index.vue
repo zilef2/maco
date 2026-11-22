@@ -25,6 +25,7 @@ type HojaExcel = {
     nombre: string;
     columnas_requeridas: string[];
     columnas_opcionales: string[];
+    columnas?: Array<{ titulo: string; requerida: boolean }>;
 };
 
 const props = defineProps({

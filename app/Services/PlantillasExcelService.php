@@ -5,6 +5,7 @@ namespace App\Services;
 use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Style\Fill;
+use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 /**
@@ -159,6 +160,19 @@ class PlantillasExcelService
     ];
 
     /**
+     * Hojas del libro MPP, en el mismo orden en que se importan, y la
+     * plantilla de la que sale el formato de cada una.
+     *
+     * @var array<string, string>
+     */
+    private const HOJAS_MPP = [
+        'proveedor' => 'taller',
+        'material'  => 'material',
+        'producto'  => 'producto',
+        'ficha'     => 'ficha_tecnica_materiales',
+    ];
+
+    /**
      * Claves de las entidades que tienen plantilla descargable.
      *
      * @return string[]
@@ -166,6 +180,34 @@ class PlantillasExcelService
     public function claves(): array
     {
         return array_keys(self::PLANTILLAS);
+    }
+
+    /**
+     * Hojas del libro MPP y la clave de plantilla que define sus columnas.
+     *
+     * @return array<string, string>
+     */
+    public function hojasMpp(): array
+    {
+        return self::HOJAS_MPP;
+    }
+
+    /**
+     * Columnas en el orden exacto en que van en el Excel, indicando cuáles
+     * son obligatorias. La tarjeta las muestra en ese mismo orden y conserva
+     * el rojo en las requeridas.
+     *
+     * @return array<int, array{titulo: string, requerida: bool}>
+     */
+    public function columnasOrdenadas(string $clave): array
+    {
+        return array_map(
+            fn (array $columna): array => [
+                'titulo'    => $columna['titulo'],
+                'requerida' => (bool) $columna['requerida'],
+            ],
+            $this->columnas($clave)
+        );
     }
 
     /**
@@ -244,6 +286,63 @@ class PlantillasExcelService
         $hoja = $spreadsheet->getActiveSheet();
         $hoja->setTitle($plantilla['hoja']);
 
+        $cantEjemplos = $this->escribirHojaDatos($hoja, $plantilla);
+
+        $this->agregarInstrucciones($spreadsheet, [[
+            'hoja'      => $plantilla['hoja'],
+            'plantilla' => $plantilla,
+            'ejemplos'  => $cantEjemplos,
+        ]], false);
+
+        // Los importadores leen la hoja activa: debe seguir siendo la de datos,
+        // no la de instrucciones.
+        $spreadsheet->setActiveSheetIndex(0);
+
+        return $spreadsheet;
+    }
+
+    /**
+     * Construye el libro MPP con una hoja por cada entidad, en el mismo orden
+     * en que se importan: proveedor, material, producto y ficha. Cada hoja
+     * replica exactamente el formato de su plantilla individual, para que el
+     * archivo descargado sirva como ejemplo de cómo va cada hoja.
+     */
+    public function spreadsheetMpp(): Spreadsheet
+    {
+        $spreadsheet = new Spreadsheet();
+        $resumen = [];
+        $primera = true;
+
+        foreach (self::HOJAS_MPP as $nombreHoja => $clave) {
+            $plantilla = $this->definicion($clave);
+            if ($plantilla === null) {
+                continue;
+            }
+
+            $hoja = $primera ? $spreadsheet->getActiveSheet() : $spreadsheet->createSheet();
+            $primera = false;
+            $hoja->setTitle($nombreHoja);
+
+            $resumen[] = [
+                'hoja'      => $nombreHoja,
+                'plantilla' => $plantilla,
+                'ejemplos'  => $this->escribirHojaDatos($hoja, $plantilla),
+            ];
+        }
+
+        $this->agregarInstrucciones($spreadsheet, $resumen, true);
+
+        $spreadsheet->setActiveSheetIndex(0);
+
+        return $spreadsheet;
+    }
+
+    /**
+     * Escribe encabezados, filas de ejemplo y formato de una hoja de datos.
+     * Devuelve la cantidad de filas de ejemplo.
+     */
+    private function escribirHojaDatos(Worksheet $hoja, array $plantilla): int
+    {
         $titulos = array_column($plantilla['columnas'], 'titulo');
         $hoja->fromArray($titulos, null, 'A1');
 
@@ -283,49 +382,89 @@ class PlantillasExcelService
             $hoja->getColumnDimension(Coordinate::stringFromColumnIndex($indice + 1))->setAutoSize(true);
         }
 
+        return $cantEjemplos;
+    }
+
+    /**
+     * Agrega la hoja de instrucciones con la descripción y los ejemplos de
+     * cada columna. En el libro MPP se incluye además la hoja a la que
+     * pertenece cada columna.
+     *
+     * @param array<int, array{hoja: string, plantilla: array, ejemplos: int}> $hojas
+     */
+    private function agregarInstrucciones(Spreadsheet $spreadsheet, array $hojas, bool $incluirHoja): void
+    {
         $instrucciones = $spreadsheet->createSheet();
         $instrucciones->setTitle('Instrucciones');
 
-        $filas = [array_merge(
-            ['Columna', 'Obligatorio', 'Descripción'],
-            array_map(fn (int $n): string => 'Ejemplo ' . $n, range(1, $cantEjemplos))
-        )];
-        foreach ($plantilla['columnas'] as $columna) {
-            $fila = [
-                $columna['titulo'],
-                $columna['requerida'] ? 'Sí' : 'No',
-                $columna['descripcion'],
-            ];
-            for ($indice = 0; $indice < $cantEjemplos; $indice++) {
-                $fila[] = $columna['ejemplos'][$indice] ?? '';
-            }
-            $filas[] = $fila;
+        $cantEjemplos = 0;
+        foreach ($hojas as $hoja) {
+            $cantEjemplos = max($cantEjemplos, $hoja['ejemplos']);
         }
+
+        $cabecera = $incluirHoja
+            ? ['Hoja', 'Columna', 'Obligatorio', 'Descripción']
+            : ['Columna', 'Obligatorio', 'Descripción'];
+
+        $columnasFijas = count($cabecera);
+
+        $filas = [array_merge(
+            $cabecera,
+            array_map(fn (int $n): string => 'Ejemplo ' . $n, range(1, max($cantEjemplos, 1)))
+        )];
+
+        foreach ($hojas as $hoja) {
+            foreach ($hoja['plantilla']['columnas'] as $columna) {
+                $fila = [];
+                if ($incluirHoja) {
+                    $fila[] = $hoja['hoja'];
+                }
+                $fila[] = $columna['titulo'];
+                $fila[] = $columna['requerida'] ? 'Sí' : 'No';
+                $fila[] = $columna['descripcion'];
+
+                for ($indice = 0; $indice < $cantEjemplos; $indice++) {
+                    $fila[] = $columna['ejemplos'][$indice] ?? '';
+                }
+                $filas[] = $fila;
+            }
+        }
+
+        // Si no hay ejemplos, se quita la columna sobrante "Ejemplo 1".
+        if ($cantEjemplos === 0) {
+            $filas = array_map(fn (array $fila): array => array_slice($fila, 0, $columnasFijas), $filas);
+        }
+
         $instrucciones->fromArray($filas, null, 'A1');
 
-        $ultimaColumnaInstrucciones = Coordinate::stringFromColumnIndex(3 + $cantEjemplos);
+        $totalColumnas = $columnasFijas + $cantEjemplos;
+        $ultimaColumnaInstrucciones = Coordinate::stringFromColumnIndex(max($totalColumnas, 1));
         $cabeceraInstrucciones = $instrucciones->getStyle("A1:{$ultimaColumnaInstrucciones}1");
         $cabeceraInstrucciones->getFont()->setBold(true)->getColor()->setRGB('FFFFFF');
         $cabeceraInstrucciones->getFill()->setFillType(Fill::FILL_SOLID)->getStartColor()->setRGB('111827');
 
-        foreach (range(1, 3 + $cantEjemplos) as $indice) {
+        foreach (range(1, max($totalColumnas, 1)) as $indice) {
             $instrucciones->getColumnDimension(Coordinate::stringFromColumnIndex($indice))->setAutoSize(true);
         }
 
         if ($cantEjemplos > 0) {
             $ultimaFila = count($filas) + 2;
-            $instrucciones->fromArray([[
-                "Las filas 2 a {$ultimaFilaEjemplo} de la primera hoja son ejemplos: bórralas antes de cargar el archivo.",
-            ]], null, "A{$ultimaFila}");
+            $nota = $incluirHoja
+                ? 'Las filas de ejemplo de cada hoja son solo una muestra: bórralas antes de cargar el archivo.'
+                : 'Las filas 2 a ' . ($cantEjemplos + 1) . ' de la primera hoja son ejemplos: bórralas antes de cargar el archivo.';
+            $instrucciones->fromArray([[$nota]], null, "A{$ultimaFila}");
             $instrucciones->getStyle("A{$ultimaFila}")->getFont()->setItalic(true)->getColor()->setRGB('B45309');
         }
-
-        // Los importadores leen la hoja activa: debe seguir siendo la de datos,
-        // no la de instrucciones.
-        $spreadsheet->setActiveSheetIndex(0);
-
-        return $spreadsheet;
     }
+
+    /**
+     * Nombre del archivo .xlsx del libro MPP.
+     */
+    public function nombreArchivoMpp(): string
+    {
+        return 'plantilla-mpp.xlsx';
+    }
+
 
     /**
      * Escribe el .xlsx en la salida estándar (para streamDownload).

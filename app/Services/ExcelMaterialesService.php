@@ -207,7 +207,7 @@ class ExcelMaterialesService
         $registros = [];
 
         foreach ($filas as $numFila => $fila) {
-            $filaExcel = $numFila + 1; // fila real en el Excel (el encabezado es la 1)
+            $filaExcel = $numFila + 2; // fila real en el Excel (el encabezado es la 1)
 
             $registro = [];
             foreach ($encabezado as $indice => $claveCanonica) {

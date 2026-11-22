@@ -19,6 +19,7 @@ type HojaExcel = {
     nombre: string;
     columnas_requeridas: string[];
     columnas_opcionales: string[];
+    columnas?: Array<{ titulo: string; requerida: boolean }>;
 };
 
 const props = defineProps<{
@@ -32,6 +33,7 @@ const props = defineProps<{
         columnas_opcionales: string[];
         nota: string;
         plantilla: string | null;
+        verificacion?: string | null;
         hojas?: HojaExcel[];
         avisos?: string[];
         metrica: {
@@ -54,12 +56,21 @@ const ICONOS: Record<string, any> = {
     ficha_tecnica_materiales: ClipboardDocumentListIcon,
 };
 
+type ResultadoVerificacion = {
+    ok: boolean;
+    problemas: string[];
+    avisos: string[];
+    resumen: string;
+};
+
 type EstadoTarjeta = {
     archivo: File | null;
     enlace: string;
     error: string | null;
     procesando: boolean;
     progreso: number | null;
+    verificando: boolean;
+    verificacion: ResultadoVerificacion | null;
 };
 
 const estado = reactive<Record<string, EstadoTarjeta>>({});
@@ -80,7 +91,15 @@ function enlaceGuardado(id: string): string {
 
 const estadoDe = (id: string): EstadoTarjeta => {
     if (!estado[id]) {
-        estado[id] = { archivo: null, enlace: enlaceGuardado(id), error: null, procesando: false, progreso: null };
+        estado[id] = {
+            archivo: null,
+            enlace: enlaceGuardado(id),
+            error: null,
+            procesando: false,
+            progreso: null,
+            verificando: false,
+            verificacion: null,
+        };
     }
     return estado[id];
 };
@@ -101,6 +120,7 @@ function onEnlaceInput(e: Event) {
     const st = estadoDe(props.entidad.id);
     st.enlace = (e.target as HTMLInputElement).value;
     st.error = null;
+    st.verificacion = null;
 
     try {
         const valor = st.enlace.trim();
@@ -115,6 +135,7 @@ function borrarEnlace() {
     const st = estadoDe(props.entidad.id);
     st.enlace = '';
     st.error = null;
+    st.verificacion = null;
 
     try {
         localStorage.removeItem(CLAVE_ENLACE + props.entidad.id);
@@ -137,8 +158,17 @@ function textoMuestras(muestra?: number): string {
     return `Promedio de las últimas ${muestra} ${muestra === 1 ? 'carga' : 'cargas'} completadas`;
 }
 
-function formatearFecha(iso?: string | null): string {
-    if (!iso) return 'Sin registros';
+/** Columnas de una hoja MPP en el orden del Excel; las requeridas van en rojo. */
+function columnasDeHoja(hoja: HojaExcel): Array<{ titulo: string; requerida: boolean }> {
+    if (hoja.columnas?.length) return hoja.columnas;
+
+    return [
+        ...(hoja.columnas_requeridas ?? []).map((titulo) => ({ titulo, requerida: true })),
+        ...(hoja.columnas_opcionales ?? []).map((titulo) => ({ titulo, requerida: false })),
+    ];
+}
+
+function formatearFecha(iso?: string | null): string {    if (!iso) return 'Sin registros';
     const fecha = new Date(iso);
     if (Number.isNaN(fecha.getTime())) return 'Sin registros';
 
@@ -172,6 +202,7 @@ async function onFileChange(e: Event) {
     const st = estadoDe(props.entidad.id);
     st.error = null;
     st.archivo = null;
+    st.verificacion = null;
 
     const file = input.files?.[0] ?? null;
     if (!file) return;
@@ -215,26 +246,10 @@ function subir() {
         return;
     }
 
-    const enlace = st.enlace.trim();
-
-    if (!st.archivo && enlace === '') {
-        st.error = 'Elegí un archivo .xlsx o pegá su enlace de Google Drive';
+    const datos = archivoOEnlace(st);
+    if (!datos) {
         return;
     }
-
-    if (!st.archivo && !esEnlaceDeGoogle(enlace)) {
-        st.error = 'El enlace debe ser de drive.google.com o docs.google.com';
-        return;
-    }
-
-    const datos = new FormData();
-    if (st.archivo) {
-        datos.append('archivo', st.archivo);
-    } else {
-        // El servidor baja el libro desde el enlace y lo valida igual que al adjunto.
-        datos.append('enlace', enlace);
-    }
-
     st.procesando = true;
     st.progreso = 0;
 
@@ -255,6 +270,100 @@ function subir() {
             st.procesando = false;
         },
     });
+}
+
+/**
+ * La verificación responde con JSON en vez de redirigir: así el resultado se
+ * queda en la tarjeta, sin recargar la vista y sin tocar la base de datos.
+ */
+function tokenCsrf(): string {
+    return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') ?? '';
+}
+
+function archivoOEnlace(st: EstadoTarjeta): FormData | null {
+    const enlace = st.enlace.trim();
+
+    if (!st.archivo && enlace === '') {
+        st.error = 'Elegí un archivo .xlsx o pegá su enlace de Google Drive';
+        return null;
+    }
+
+    if (!st.archivo && !esEnlaceDeGoogle(enlace)) {
+        st.error = 'El enlace debe ser de drive.google.com o docs.google.com';
+        return null;
+    }
+
+    const datos = new FormData();
+    if (st.archivo) {
+        datos.append('archivo', st.archivo);
+    } else {
+        datos.append('enlace', enlace);
+    }
+
+    return datos;
+}
+
+async function verificar() {
+    const st = estadoDe(props.entidad.id);
+    st.error = null;
+    st.verificacion = null;
+
+    if (!props.entidad.verificacion) {
+        st.error = 'Esta entidad todavía no tiene verificación previa';
+        return;
+    }
+
+    const datos = archivoOEnlace(st);
+    if (!datos) return;
+    datos.append('entidad', props.entidad.id);
+
+    st.verificando = true;
+
+    try {
+        const respuesta = await fetch(props.entidad.verificacion, {
+            method: 'POST',
+            headers: {
+                Accept: 'application/json',
+                'X-CSRF-TOKEN': tokenCsrf(),
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            body: datos,
+        });
+
+        const cuerpo = await respuesta.json().catch(() => null);
+
+        if (respuesta.status === 422 && cuerpo?.errors) {
+            st.verificacion = {
+                ok: false,
+                problemas: Object.values(cuerpo.errors as Record<string, string[]>).flat(),
+                avisos: [],
+                resumen: '',
+            };
+        } else if (!respuesta.ok) {
+            st.verificacion = {
+                ok: false,
+                problemas: [cuerpo?.message ?? `El servidor respondió ${respuesta.status}. Recargá la página e intentá de nuevo.`],
+                avisos: [],
+                resumen: '',
+            };
+        } else {
+            st.verificacion = {
+                ok: Boolean(cuerpo?.ok),
+                problemas: (cuerpo?.problemas ?? []) as string[],
+                avisos: (cuerpo?.avisos ?? []) as string[],
+                resumen: (cuerpo?.resumen ?? '') as string,
+            };
+        }
+    } catch (e) {
+        st.verificacion = {
+            ok: false,
+            problemas: [`No se pudo hablar con el servidor: ${(e as Error).message}`],
+            avisos: [],
+            resumen: '',
+        };
+    } finally {
+        st.verificando = false;
+    }
 }
 </script>
 
@@ -331,17 +440,13 @@ function subir() {
                     </p>
                     <div class="flex flex-wrap gap-1">
                         <code
-                            v-for="col in hoja.columnas_requeridas"
-                            :key="`${hoja.nombre}-${col}`"
-                            class="rounded border border-red-100 bg-red-50 px-1.5 py-0.5 font-mono text-[10px] text-red-700"
-                        >{{ col }}</code>
-                    </div>
-                    <div v-if="hoja.columnas_opcionales?.length" class="flex flex-wrap gap-1">
-                        <code
-                            v-for="col in hoja.columnas_opcionales"
-                            :key="`${hoja.nombre}-${col}`"
-                            class="rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 font-mono text-[10px] text-gray-600"
-                        >{{ col }}</code>
+                            v-for="col in columnasDeHoja(hoja)"
+                            :key="`${hoja.nombre}-${col.titulo}`"
+                            class="rounded border px-1.5 py-0.5 font-mono text-[10px]"
+                            :class="col.requerida
+                                ? 'border-red-100 bg-red-50 text-red-700'
+                                : 'border-gray-200 bg-gray-50 text-gray-600'"
+                        >{{ col.titulo }}</code>
                     </div>
                 </div>
             </template>
@@ -410,7 +515,7 @@ function subir() {
                     class="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-gray-700 transition hover:border-gray-400 hover:bg-gray-50"
                 >
                     <ArrowDownTrayIcon class="h-3.5 w-3.5" />
-                    Descargar formato .xlsx
+                    {{ entidad.hojas?.length ? 'Descargar plantilla de las 4 hojas' : 'Descargar formato .xlsx' }}
                 </a>
             </div>
 
@@ -471,6 +576,55 @@ function subir() {
                     >
                         {{ estadoDe(entidad.id).procesando ? 'Subiendo…' : 'Subir' }}
                     </button>
+                </div>
+
+                <div v-if="entidad.verificacion" class="flex flex-wrap items-center gap-3">
+                    <button
+                        type="button"
+                        :disabled="!puedeSubir(entidad.id) || estadoDe(entidad.id).verificando || estadoDe(entidad.id).procesando"
+                        class="shrink-0 rounded-md border border-gray-400 bg-white px-4 py-2 text-xs font-semibold uppercase tracking-wider text-gray-700 transition hover:border-gray-950 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
+                        @click="verificar()"
+                    >
+                        {{ estadoDe(entidad.id).verificando ? 'Verificando…' : 'Verificar' }}
+                    </button>
+                    <p class="text-[10px] leading-relaxed text-gray-500">
+                        Corre los mismos requisitos que la subida, sin tocar la base de datos y sin avisar por correo.
+                    </p>
+                </div>
+
+                <div
+                    v-if="estadoDe(entidad.id).verificacion"
+                    class="rounded-md border px-3 py-2 text-[11px] leading-relaxed"
+                    :class="estadoDe(entidad.id).verificacion?.ok
+                        ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                        : 'border-red-200 bg-red-50 text-red-800'"
+                >
+                    <p class="text-[9px] font-semibold uppercase tracking-[0.18em]">
+                        {{ estadoDe(entidad.id).verificacion?.ok
+                            ? 'Verificación aprobada'
+                            : `Verificación: ${estadoDe(entidad.id).verificacion?.problemas.length ?? 0} problema(s)` }}
+                    </p>
+                    <p v-if="estadoDe(entidad.id).verificacion?.resumen" class="mt-1 font-medium">
+                        {{ estadoDe(entidad.id).verificacion?.resumen }}
+                    </p>
+                    <ol
+                        v-if="(estadoDe(entidad.id).verificacion?.problemas.length ?? 0) > 0"
+                        class="mt-1.5 list-decimal space-y-0.5 pl-4"
+                    >
+                        <li
+                            v-for="(problema, indice) in estadoDe(entidad.id).verificacion?.problemas"
+                            :key="indice"
+                        >
+                            {{ problema }}
+                        </li>
+                    </ol>
+                    <p
+                        v-for="aviso in estadoDe(entidad.id).verificacion?.avisos"
+                        :key="aviso"
+                        class="mt-1 text-amber-700"
+                    >
+                        {{ aviso }}
+                    </p>
                 </div>
 
                 <p class="text-[10px] leading-relaxed text-gray-500">

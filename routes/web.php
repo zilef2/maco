@@ -107,7 +107,9 @@ Route::middleware('auth', 'verified')->group(function () {
 	Route::post("/ImportarExcel/mpp", [\App\Http\Controllers\ImportarExcelController::class, 'uploadMpp'])->name('ImportarExcel.mpp');
 	Route::post("/ImportarExcel/ficha-producto", [\App\Http\Controllers\ImportarExcelController::class, 'uploadFichaProducto'])->name('ImportarExcel.ficha-producto');
 	Route::post("/ImportarExcel/entidad", [\App\Http\Controllers\ImportarExcelController::class, 'toggleEntidad'])->name('ImportarExcel.toggleEntidad');
+	Route::post("/ImportarExcel/verificar", [\App\Http\Controllers\ImportarExcelController::class, 'verificar'])->name('ImportarExcel.verificar');
 	Route::get("/ImportarExcel/plantilla/{clave}", [\App\Http\Controllers\ImportarExcelController::class, 'descargarPlantilla'])->name('ImportarExcel.plantilla');
+	Route::get("/ImportarExcel/plantilla-mpp", [\App\Http\Controllers\ImportarExcelController::class, 'descargarPlantillaMpp'])->name('ImportarExcel.plantilla-mpp');
 	Route::resource("/EstadoOpMaterial", \App\Http\Controllers\EstadoOpMaterialController::class);
 	// La merma no se registra a mano: es el «No recuperable» de la recepción de la OP.
 	Route::get("/Merma", [\App\Http\Controllers\MermaController::class, 'index'])->name('Merma.index');

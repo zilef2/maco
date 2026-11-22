@@ -11,13 +11,16 @@ use App\Services\ExcelImportacionTracker;
 use App\Services\ExcelMPPService;
 use App\Services\ImportacionExcelNotificador;
 use App\Services\PlantillasExcelService;
+use App\Services\VerificarImportacionService;
 use App\Traits\ExcelDesdeDriveTrait;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -145,7 +148,12 @@ class ImportarExcelController extends Controller
             return $entidad + [
                 'columnas_requeridas' => $clave === 'mpp' ? [] : $this->plantillas->titulosRequeridos($clave),
                 'columnas_opcionales' => $clave === 'mpp' ? [] : $this->plantillas->titulosOpcionales($clave),
-                'plantilla'           => $clave === 'mpp' ? null : route('ImportarExcel.plantilla', ['clave' => $clave]),
+                'plantilla'           => $clave === 'mpp'
+                    ? route('ImportarExcel.plantilla-mpp')
+                    : route('ImportarExcel.plantilla', ['clave' => $clave]),
+                'verificacion'        => in_array($clave, VerificarImportacionService::ENTIDADES, true)
+                    ? route('ImportarExcel.verificar')
+                    : null,
                 'metrica'             => $metricas[$clave] ?? null,
                 'avisos'              => array_values(array_map('strval', (array) ($avisosPorEntidad[$clave] ?? []))),
             ];
@@ -175,6 +183,24 @@ class ImportarExcelController extends Controller
         return response()->streamDownload(function () use ($writer) {
             $writer->save('php://output');
         }, $this->plantillas->nombreArchivo($clave), [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ]);
+    }
+
+    /**
+     * Descarga el libro MPP de ejemplo: una hoja por entidad (proveedor,
+     * material, producto y ficha) con sus encabezados y filas de ejemplo,
+     * más una hoja de instrucciones.
+     */
+    public function descargarPlantillaMpp(): StreamedResponse
+    {
+        Myhelp::EscribirEnLog($this, 'descargarPlantillaMpp');
+
+        $writer = new Xlsx($this->plantillas->spreadsheetMpp());
+
+        return response()->streamDownload(function () use ($writer) {
+            $writer->save('php://output');
+        }, $this->plantillas->nombreArchivoMpp(), [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         ]);
     }
@@ -332,6 +358,27 @@ class ImportarExcelController extends Controller
     }
 
     /**
+     * Prueba la subida sin tocar la base de datos: los mismos requisitos que
+     * corre la importación, pero juntando todos los problemas y devolviéndolos a
+     * la tarjeta. No encola job ni manda correo: es para corregir el archivo
+     * antes de subirlo.
+     */
+    public function verificar(Request $request, VerificarImportacionService $verificador): JsonResponse
+    {
+        $datos = $request->validate(
+            ['entidad' => ['required', 'string', Rule::in(VerificarImportacionService::ENTIDADES)]]
+                + self::reglasDeSubidaExcel(),
+            self::mensajesDeSubidaExcel()
+        );
+
+        $archivo = $this->excelDeLaSubida($request);
+
+        Myhelp::EscribirEnLog($this, 'verificar', $datos['entidad'] . ' | ' . $archivo->getClientOriginalName());
+
+        return response()->json($verificador->verificar($datos['entidad'], $archivo));
+    }
+
+    /**
      * Activa o desactiva la capacidad de carga por Excel de una entidad.
      * Todo se persiste en un único registro de Parametro.
      */
@@ -382,24 +429,18 @@ class ImportarExcelController extends Controller
      * formato de la ficha individual y es la última: su receta señala los
      * materiales y productos que las hojas anteriores acaban de escribir.
      *
-     * @return array<int, array{nombre: string, columnas_requeridas: string[], columnas_opcionales: string[]}>
+     * @return array<int, array{nombre: string, columnas_requeridas: string[], columnas_opcionales: string[], columnas: array<int, array{titulo: string, requerida: bool}>}>
      */
     private function resumenHojasMPP(): array
     {
-        $formatoPorHoja = [
-            'proveedor' => 'taller',
-            'material'  => 'material',
-            'producto'  => 'producto',
-            'ficha'     => 'ficha_tecnica_materiales',
-        ];
-
         $hojas = [];
 
-        foreach ($formatoPorHoja as $hoja => $clave) {
+        foreach ($this->plantillas->hojasMpp() as $hoja => $clave) {
             $hojas[] = [
                 'nombre'              => $hoja,
                 'columnas_requeridas' => $this->plantillas->titulosRequeridos($clave),
                 'columnas_opcionales' => $this->plantillas->titulosOpcionales($clave),
+                'columnas'            => $this->plantillas->columnasOrdenadas($clave),
             ];
         }
 

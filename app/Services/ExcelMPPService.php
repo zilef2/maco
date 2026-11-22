@@ -169,6 +169,103 @@ class ExcelMPPService
     }
 
     /**
+     * Pasa los requisitos del archivo sin escribir: las hojas obligatorias, los
+     * títulos de cada hoja y las filas de material, producto y proveedor, por el
+     * mismo camino de lectura que usa `importar()`.
+     *
+     * La hoja "ficha" se revisa solo en formato. Sus recetas se validan contra
+     * los materiales y productos que el propio archivo crea y contra el genérico
+     * de cada familia, así que en la verificación todavía no existen en la app.
+     *
+     * @return array{problemas: string[], avisos: string[], resumen: string}
+     */
+    public function verificar(string $ruta): array
+    {
+        try {
+            $this->validarLibro($ruta);
+        } catch (Throwable $e) {
+            return ['problemas' => [$e->getMessage()], 'avisos' => [], 'resumen' => ''];
+        }
+
+        $problemas = [];
+        $avisos = [];
+        $conteo = [];
+
+        foreach ($this->filasPorHoja($ruta) as $hoja => $filas) {
+            try {
+                $conteo[$hoja] = $this->conteoDeVerificacion($hoja, $filas, $avisos);
+            } catch (Throwable $e) {
+                // Se acumula hoja por hoja y fila por fila: corregir un archivo no
+                // debería costar una subida cada vez que aparece un error. Como el
+                // servicio de la hoja lanza todos sus problemas juntos, cada uno
+                // vuelve a su línea con el nombre de su hoja.
+                foreach (preg_split('/\s\|\s/', $e->getMessage()) ?: [$e->getMessage()] as $parte) {
+                    $problemas[] = 'La hoja "' . $hoja . '": ' . trim($parte);
+                }
+            }
+        }
+
+        $resumen = $conteo === [] ? '' : implode(', ', array_map(
+            fn (string $hoja): string => count($conteo[$hoja]) . ' fila(s) en "' . $hoja . '"',
+            array_keys($conteo)
+        ));
+
+        return ['problemas' => $problemas, 'avisos' => $avisos, 'resumen' => $resumen];
+    }
+
+    /**
+     * Filas de la hoja que pasan su validación de lectura.
+     *
+     * @param  array<int, array<int, mixed>>  $filas
+     * @param  string[]  $avisos
+     */
+    private function conteoDeVerificacion(string $hoja, array $filas, array &$avisos): array
+    {
+        if ($hoja === 'proveedor') {
+            return $this->talleres->registrosDesdeFilas($filas);
+        }
+
+        if ($hoja === 'material') {
+            $lectura = $this->materiales->registrosDesdeFilas($filas);
+            $this->avisoDeColumnasIgnoradas($hoja, $lectura['ignoradas'], $avisos);
+
+            return $lectura['registros'];
+        }
+
+        if ($hoja === 'producto') {
+            $lectura = $this->productos->registrosDesdeFilas($filas);
+            $this->avisoDeColumnasIgnoradas($hoja, $lectura['ignoradas'], $avisos);
+
+            return $lectura['registros'];
+        }
+
+        $avisos[] = 'La hoja "ficha" se revisó solo en formato: sus recetas se validan al importar,'
+            . ' cuando los materiales y productos del archivo ya están en la app.';
+
+        return array_filter(array_slice($filas, 1), function (array $fila): bool {
+            foreach ($fila as $celda) {
+                if (is_scalar($celda) && trim((string) $celda) !== '') {
+                    return true;
+                }
+            }
+
+            return false;
+        });
+    }
+
+    /**
+     * @param  string[]  $ignoradas
+     * @param  string[]  $avisos
+     */
+    private function avisoDeColumnasIgnoradas(string $hoja, array $ignoradas, array &$avisos): void
+    {
+        if (!empty($ignoradas)) {
+            $avisos[] = 'La hoja "' . $hoja . '" tiene columnas que no se reconocen y se ignoran: '
+                . implode(', ', $ignoradas) . '.';
+        }
+    }
+
+    /**
      * Título de hoja escrito como sea ("Material", "PRODUCTO ", " proveedor ",
      * "Codigos") y su nombre canónico, o null si la hoja se descarta.
      */
