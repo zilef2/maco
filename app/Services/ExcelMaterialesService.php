@@ -203,7 +203,7 @@ class ExcelMaterialesService
 
         $errores = [];
         $proveedoresDesconocidos = [];
-        $existentes = Material::pluck('id', 'codigo_material');
+        $existentes = $this->indexarCodigos();
         $registros = [];
 
         foreach ($filas as $numFila => $fila) {
@@ -227,16 +227,19 @@ class ExcelMaterialesService
                 continue;
             }
 
-            // El código puede venir vacío: el material toma el siguiente número
-            // libre del par. Si viene, se acepta CAT-BASE-N y se le quitan los
-            // ceros a la izquierda (TEX-LFL-005 es el mismo TEX-LFL-5).
+            // El código define qué es la fila: CAT-BASE-055 es el genérico de la
+            // familia y CAT-BASE-055-34 uno de sus hijos (el material con su
+            // color o su talla). Vacío: el modelo lo forma bajo la familia del
+            // par, así que el par ya tiene que tener su genérico.
             $codigoBruto = trim((string) ($registro['codigo_material'] ?? ''));
             $codigo = Material::normalizarCodigo($codigoBruto);
 
             if ($codigoBruto !== '' && ($codigo === null || !preg_match(Material::PATRON_CODIGO, $codigo))) {
-                $errores[] = "Fila {$filaExcel}: el código \"{$codigoBruto}\" no tiene el formato CAT-BASE-N (ej: TEX-LFI-4)";
+                $errores[] = "Fila {$filaExcel}: el código \"{$codigoBruto}\" no tiene el formato de la familia (CAT-BASE-055) ni el de un hijo suyo (CAT-BASE-055-34)";
                 continue;
             }
+
+            $esGenerico = $codigo !== null && Material::esCodigoFamilia($codigo);
 
             // El par forma el prefijo del código: primero lo que digita el
             // archivo, luego el propio prefijo del código de la fila y por
@@ -344,7 +347,7 @@ class ExcelMaterialesService
             $fragmentos = explode('-', $prefijo);
             $existe = $codigo !== null && isset($existentes[$codigo]);
 
-            if (!$existe && !preg_match(Material::PATRON_CODIGO, $prefijo . '-1')) {
+            if (!$existe && !preg_match(Material::PATRON_CODIGO, $prefijo . '-001')) {
                 $errores[] = "Fila {$filaExcel}: no se puede formar el código material; escriba Código categoría y Código base (o Categoría y Nombre base)";
                 continue;
             }
@@ -369,10 +372,13 @@ class ExcelMaterialesService
             }
 
             // El par forma el prefijo del código y manda siempre el modelo, que
-            // respeta el número de la fila cuando está libre y autogenera lo
+            // respeta el código de la fila cuando ya existe y autogenera lo
             // contrario. Así volver a subir el mismo archivo no duplica nada.
             if ($codigo !== null) {
                 $datos['codigo_material'] = $codigo;
+                // Con el código escrito el rol de la fila no deja duda: el de
+                // tres tramos es el genérico de la familia y el de cuatro un hijo.
+                $datos['generico'] = $esGenerico;
             }
 
             // El par solo se cambia cuando el archivo lo trae escrito: en blanco
@@ -434,7 +440,7 @@ class ExcelMaterialesService
         $actualizados = 0;
         $materialesConPrecioNuevo = [];
 
-        $existentes = Material::pluck('id', 'codigo_material');
+        $existentes = $this->indexarCodigos();
 
         DB::beginTransaction();
         try {
@@ -463,7 +469,11 @@ class ExcelMaterialesService
                         // El modelo arma el código con el par, así que se registra
                         // tanto el código generado como el que traía la fila.
                         $material = Material::create($registro['datos']);
+                        $canonico = Material::normalizarCodigo($material->codigo_material);
                         $existentes[$material->codigo_material] ??= $material->id;
+                        if ($canonico !== null) {
+                            $existentes[$canonico] ??= $material->id;
+                        }
                         if ($codigoMaterial !== null) {
                             $existentes[$codigoMaterial] ??= $material->id;
                         }
@@ -549,6 +559,29 @@ class ExcelMaterialesService
             'precio' => $precio,
             'fecha' => $fecha,
         ]);
+    }
+
+    /**
+     * Id de cada material indexado por su código canónico y por el que tiene
+     * escrito: el archivo puede llegar con otros ceros (COM-CAP-55-4) y seguir
+     * señalando al mismo material (COM-CAP-055-04), así que volver a subirlo no
+     * crea un duplicado.
+     *
+     * @return array<string, int>
+     */
+    private function indexarCodigos(): array
+    {
+        $indice = [];
+
+        foreach (Material::query()->get(['id', 'codigo_material']) as $material) {
+            $canonico = Material::normalizarCodigo($material->codigo_material);
+
+            foreach (array_filter([$material->codigo_material, $canonico]) as $clave) {
+                $indice[$clave] ??= (int) $material->id;
+            }
+        }
+
+        return $indice;
     }
 
     /**

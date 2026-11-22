@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\EstadoOperacion;
+use App\Traits\ExcelDesdeDriveTrait;
 use App\helpers\Myhelp;
 use App\helpers\MyModels;
 use Illuminate\Database\Eloquent\Builder;
@@ -16,6 +17,7 @@ use Inertia\Response;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class EstadoOperacionController extends Controller {
+    use ExcelDesdeDriveTrait;
     public array $thisAtributos;
     public string $FromController = 'EstadoOperacion';
 
@@ -182,16 +184,9 @@ class EstadoOperacionController extends Controller {
         Myhelp::EscribirEnLog($this, 'uploadExcel: inicio');
 
         // 1. Validaciones de seguridad del archivo (previas a cualquier lectura)
-        $request->validate([
-            'archivo' => [
-                'required',
-                'file',
-                'max:10240',    // máx 10 MB
-                'mimes:xlsx',
-            ],
-        ]);
+        $request->validate(self::reglasDeSubidaExcel(), self::mensajesDeSubidaExcel());
 
-        $archivo = $request->file('archivo');
+        $archivo = $this->excelDeLaSubida($request);
 
         // 2. Doble-verificación de extensión
         if (strtolower($archivo->getClientOriginalExtension()) !== 'xlsx') {

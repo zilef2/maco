@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\FichaTecnica;
+use App\Traits\ExcelDesdeDriveTrait;
 use App\Models\Compromisomaterial;
 use App\Models\KitProceso;
 use App\Models\Material;
@@ -36,6 +37,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 use App\Traits\MaterialMovimientoTrait;
 
 class MaterialController extends Controller {
+    use ExcelDesdeDriveTrait;
     use MaterialMovimientoTrait;
 
     public array $thisAtributos;
@@ -986,16 +988,9 @@ class MaterialController extends Controller {
         Myhelp::EscribirEnLog($this, 'uploadExcel: inicio');
 
         // 1. Validaciones de seguridad del archivo (previas a cualquier lectura)
-        $request->validate([
-            'archivo' => [
-                'required',
-                'file',
-                'max:10240',    // máx 10 MB
-                'mimes:xlsx',   // valida por extensión del cliente (suficiente como primera capa)
-            ],
-        ]);
+        $request->validate(self::reglasDeSubidaExcel(), self::mensajesDeSubidaExcel());
 
-        $archivo = $request->file('archivo');
+        $archivo = $this->excelDeLaSubida($request);
 
         // 2. Doble-verificación de extensión (defensa en profundidad)
         if (strtolower($archivo->getClientOriginalExtension()) !== 'xlsx') {

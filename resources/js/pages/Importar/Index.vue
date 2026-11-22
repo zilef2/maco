@@ -3,8 +3,9 @@ import AppLayout from '@/layouts/AppLayout.vue';
 import Breadcrumb from '@/components/Breadcrumb.vue';
 import TarjetaEntidad from './TarjetaEntidad.vue';
 import { Head, router, usePage } from '@inertiajs/vue3';
-import { ArrowDownTrayIcon, ChevronDownIcon, ChevronUpIcon } from '@heroicons/vue/24/solid';
-import { computed, reactive, ref } from 'vue';
+import { ArrowDownTrayIcon, ChevronDownIcon, ChevronUpIcon, XMarkIcon } from '@heroicons/vue/24/solid';
+import { computed, onMounted, reactive, ref } from 'vue';
+import { leerResultado, type ResultadoRecarga } from './recargaResultado';
 
 type EntidadExcel = {
     clave: string;
@@ -50,6 +51,49 @@ const metricasPorClave = computed<Record<string, MetricaExcel | null | undefined
     Object.fromEntries((props.entidades ?? []).map((entidad) => [entidad.id, entidad.metrica])),
 );
 
+type Tarjeta = NonNullable<typeof props.entidades>[number];
+
+/** Lo que dejó la última subida: llega en sessionStorage, con el HTML recargado. */
+const resultado = ref<ResultadoRecarga | null>(null);
+
+onMounted(() => {
+    resultado.value = leerResultado();
+});
+
+/** Si el archivo dejó varios mensajes, se muestra el más grave. */
+const ORDEN_MENSAJES = ['error', 'warning', 'info', 'success'];
+
+const mensajeRecargado = computed(() => {
+    const mensajes = resultado.value?.mensajes ?? {};
+    const tipo = ORDEN_MENSAJES.find((clave) => mensajes[clave]);
+
+    return tipo ? { tipo, texto: mensajes[tipo] } : null;
+});
+
+const CLASES_MENSAJE: Record<string, string> = {
+    error: 'border-red-200 bg-red-50 text-red-800',
+    warning: 'border-amber-200 bg-amber-50 text-amber-800',
+    info: 'border-sky-200 bg-sky-50 text-sky-800',
+    success: 'border-emerald-200 bg-emerald-50 text-emerald-800',
+};
+
+/**
+ * El flash de la sesión ya se consumió cuando se recargó el HTML, así que los
+ * avisos de cada tarjeta (las filas que llegaron sin consumo, por ejemplo) se
+ * reenganchan desde el resultado guardado.
+ */
+function conResultado(entidad: Tarjeta): Tarjeta {
+    const recargados = resultado.value?.avisos[entidad.id] ?? [];
+    if (recargados.length === 0) return entidad;
+
+    const vistos = new Set(entidad.avisos ?? []);
+
+    return {
+        ...entidad,
+        avisos: [...(entidad.avisos ?? []), ...recargados.filter((aviso) => !vistos.has(aviso))],
+    };
+}
+
 /** "1,24 s", "820 ms" o "Sin datos" para el promedio de una entidad. */
 function formatearTiempo(ms?: number | null): string {
     if (ms === null || ms === undefined) return 'Sin datos';
@@ -92,12 +136,16 @@ const CLAVES_OPCIONALES_SUPER = ['estado_operacion', 'usuario'];
 
 /** Entidades del grid principal (todas menos las opcionales de super). */
 const entidadesPrincipales = computed(() =>
-    (props.entidades ?? []).filter((entidad) => !CLAVES_OPCIONALES_SUPER.includes(entidad.id)),
+    (props.entidades ?? [])
+        .filter((entidad) => !CLAVES_OPCIONALES_SUPER.includes(entidad.id))
+        .map(conResultado),
 );
 
 /** Entidades de «Exceles opcionales»: Estados de Operación y Usuarios. */
 const entidadesOpcionalesSuper = computed(() =>
-    (props.entidades ?? []).filter((entidad) => CLAVES_OPCIONALES_SUPER.includes(entidad.id)),
+    (props.entidades ?? [])
+        .filter((entidad) => CLAVES_OPCIONALES_SUPER.includes(entidad.id))
+        .map(conResultado),
 );
 
 /** Switches de cobertura visibles: todos para super, sin las dos opcionales para el resto. */
@@ -150,6 +198,23 @@ function alternarOpcionales() {
                         máx 10 MB
                     </span>
                 </div>
+            </div>
+
+            <!-- Resultado de la subida que obligó a recargar la página -->
+            <div
+                v-if="mensajeRecargado"
+                class="flex items-start justify-between gap-3 rounded-xl border px-4 py-3"
+                :class="CLASES_MENSAJE[mensajeRecargado.tipo]"
+            >
+                <p class="text-xs leading-relaxed font-medium">{{ mensajeRecargado.texto }}</p>
+                <button
+                    type="button"
+                    class="shrink-0 rounded-md p-1 opacity-60 transition hover:opacity-100"
+                    aria-label="Cerrar el aviso del resultado"
+                    @click="resultado = null"
+                >
+                    <XMarkIcon class="h-4 w-4" />
+                </button>
             </div>
 
             <!-- Zona informativa: cobertura Excel por entidad -->

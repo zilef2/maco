@@ -33,6 +33,11 @@ use RuntimeException;
  * insertar nada. Lo que sí pasa pasa por `FichaTecnicaService::guardar()`, el
  * mismo camino del formulario: conserva la unidad y el costo del material,
  * respeta los bloqueos de OP y recalcula el costo de las OPs abiertas.
+ *
+ * `registrosDesdeFilas()` e `importarRegistros()` son los mismos dos pasos sin
+ * leer el libro, que es como los usa la hoja "ficha" del MPP: ahí los códigos
+ * que valida la receta los acaba de escribir el mismo archivo, así que la hoja
+ * se procesa al final y dentro de la misma transacción.
  */
 class ExcelFichasProductoService
 {
@@ -95,8 +100,8 @@ class ExcelFichasProductoService
      */
     public function validar(string $ruta): array
     {
-        $lectura = $this->gruposDesdeArchivo($ruta);
-        $destinos = $this->agruparPorFicha($lectura['grupos']);
+        $lectura = $this->registrosDesdeArchivo($ruta);
+        $destinos = $lectura['destinos'];
 
         $bloqueos = $this->fichas->bloqueosPorProducto();
         $bloqueados = [];
@@ -158,8 +163,20 @@ class ExcelFichasProductoService
      */
     public function importar(string $ruta): array
     {
-        $lectura = $this->gruposDesdeArchivo($ruta);
-        $destinos = $this->agruparPorFicha($lectura['grupos']);
+        return $this->importarRegistros($this->registrosDesdeArchivo($ruta));
+    }
+
+    /**
+     * Escribe las fichas ya leídas. Es el paso que comparten el archivo de
+     * fichas y la hoja "ficha" del MPP, que llega con las filas en memoria
+     * después de haber importado los materiales y los productos que necesitan.
+     *
+     * @param  array{destinos: array<string, array{ficha_id: int|null, codigos: string[], producto_ids: int[], materiales: array<int, array<string, mixed>>}>, consumos_vacios: int[]}  $lectura
+     * @return array{creados: int, actualizados: int, filas: int, avisos: string[]}
+     */
+    public function importarRegistros(array $lectura): array
+    {
+        $destinos = $lectura['destinos'];
 
         $creados = 0;
         $actualizados = 0;
@@ -254,14 +271,55 @@ class ExcelFichasProductoService
     }
 
     /**
+     * Lee la hoja de fichas y arma una entrada por ficha. Mismo recorrido para
+     * el archivo individual y para la hoja "ficha" del MPP.
+     *
+     * @param  array<int, array<int, mixed>>  $filas
+     * @return array{destinos: array<string, array{ficha_id: int|null, codigos: string[], producto_ids: int[], materiales: array<int, array<string, mixed>>}>, consumos_vacios: int[]}
+     *
+     * @throws RuntimeException con todo lo que hay que corregir, junto
+     */
+    public function registrosDesdeFilas(array $filas): array
+    {
+        $lectura = $this->gruposDesdeFilas($filas);
+
+        return [
+            'destinos' => $this->agruparPorFicha($lectura['grupos']),
+            'consumos_vacios' => $lectura['consumos_vacios'],
+        ];
+    }
+
+    /**
+     * Revisa solo la fila de títulos de la hoja: es lo que puede comprobarse en
+     * la subida, cuando todavía no existen los materiales ni los productos que
+     * el archivo va a crear.
+     *
+     * @param  array<int, mixed>  $titulos
+     *
+     * @throws RuntimeException cuando faltan las columnas obligatorias
+     */
+    public function validarTitulos(array $titulos): void
+    {
+        $this->columnasDesdeTitulos($titulos);
+    }
+
+    /**
+     * @return array{destinos: array<string, array{ficha_id: int|null, codigos: string[], producto_ids: int[], materiales: array<int, array<string, mixed>>}>, consumos_vacios: int[]}
+     */
+    private function registrosDesdeArchivo(string $ruta): array
+    {
+        return $this->registrosDesdeFilas($this->leerTodasLasFilas($ruta));
+    }
+
+    /**
      * Lee la hoja y devuelve una entrada por producto con sus materiales, más
      * las filas que llegaron sin consumo y se tomaron como 1.
      *
+     * @param  array<int, array<int, mixed>>  $filas
      * @return array{grupos: array<int, array{codigo_producto: string, producto_id: int, materiales: array<int, array<string, mixed>>}>, consumos_vacios: int[]}
      */
-    private function gruposDesdeArchivo(string $ruta): array
+    private function gruposDesdeFilas(array $filas): array
     {
-        $filas = $this->leerTodasLasFilas($ruta);
         if (empty($filas)) {
             throw new RuntimeException('El archivo está vacío.');
         }

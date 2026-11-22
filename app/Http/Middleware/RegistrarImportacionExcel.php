@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use App\Models\ImportacionExcel;
 use App\Services\ExcelImportacionTracker;
+use App\Services\ExcelDesdeDriveService;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -32,7 +33,8 @@ class RegistrarImportacionExcel
         $archivo = $request->file('archivo');
         $registro = $this->tracker->iniciar(
             $entidad,
-            $archivo?->getClientOriginalName(),
+            $archivo?->getClientOriginalName()
+                ?? ExcelDesdeDriveService::nombreDesdeEnlace($request->input('enlace')),
             $request->user()?->id,
         );
 

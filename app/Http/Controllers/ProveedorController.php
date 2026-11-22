@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\helpers\Myhelp;
+use App\Traits\ExcelDesdeDriveTrait;
 use App\Http\Requests\StoreProveedorRequest;
 use App\Http\Requests\UpdateProveedorRequest;
 use App\Jobs\ImportarProveedoresJob;
@@ -18,6 +19,7 @@ use Inertia\Response;
 
 class ProveedorController extends Controller
 {
+    use ExcelDesdeDriveTrait;
     public function __construct(
         protected ProveedorService $proveedorService
     ) {}
@@ -77,16 +79,9 @@ class ProveedorController extends Controller
         ExcelTalleresService $excel,
         ImportacionExcelNotificador $notificador,
     ): RedirectResponse {
-        $request->validate([
-            'archivo' => ['required', 'file', 'max:10240', 'mimes:xlsx'],
-        ], [
-            'archivo.required' => 'Selecciona un archivo .xlsx.',
-            'archivo.file' => 'El archivo no es válido.',
-            'archivo.max' => 'El archivo supera el tamaño máximo de 10 MB.',
-            'archivo.mimes' => 'Solo se permiten archivos .xlsx.',
-        ]);
+        $request->validate(self::reglasDeSubidaExcel(), self::mensajesDeSubidaExcel());
 
-        $archivo = $request->file('archivo');
+        $archivo = $this->excelDeLaSubida($request);
         $usuario = $request->user();
         $nombreArchivo = $archivo->getClientOriginalName();
         $rutaRelativa = null;
@@ -137,16 +132,9 @@ class ProveedorController extends Controller
 
     public function uploadExcel(Request $request, ExcelProveedoresService $excel, ImportacionExcelNotificador $notificador): RedirectResponse
     {
-        $request->validate([
-            'archivo' => ['required', 'file', 'max:10240', 'mimes:xlsx'],
-        ], [
-            'archivo.required' => 'Selecciona un archivo .xlsx.',
-            'archivo.file' => 'El archivo no es válido.',
-            'archivo.max' => 'El archivo supera el tamaño máximo de 10 MB.',
-            'archivo.mimes' => 'Solo se permiten archivos .xlsx.',
-        ]);
+        $request->validate(self::reglasDeSubidaExcel(), self::mensajesDeSubidaExcel());
 
-        $archivo = $request->file('archivo');
+        $archivo = $this->excelDeLaSubida($request);
         $usuario = $request->user();
         $rutaGuardada = null;
 

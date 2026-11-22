@@ -17,12 +17,12 @@ use RuntimeException;
 use Throwable;
 
 /**
- * Procesa en segundo plano el archivo MPP (materiales, productos y
- * proveedores) previamente validado en la subida.
+ * Procesa en segundo plano el archivo MPP (materiales, productos, proveedores
+ * y fichas de producto) previamente validado en la subida.
  *
  * Si todo sale bien envía un correo al usuario; si falla, el administrador
  * recibe el detalle completo (con la hoja que produjo el error) y el usuario un
- * aviso genérico. Como las tres hojas se importan en una sola transacción, un
+ * aviso genérico. Como todas las hojas se importan en una sola transacción, un
  * error significa que no se guardó nada.
  */
 class ImportarMPPJob implements ShouldQueue
@@ -30,12 +30,13 @@ class ImportarMPPJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     /** Como el archivo se llama MPP, el correo debe decir qué importa. */
-    private const ENTIDAD = 'MPP (materiales, productos y proveedores)';
+    private const ENTIDAD = 'MPP (materiales, productos, proveedores y fichas)';
 
     /** Sin reintentos: evita correos duplicados. */
     public int $tries = 1;
 
-    public int $timeout = 300;
+    /** La hoja de fichas guarda una ficha por producto y recalcula costos. */
+    public int $timeout = 900;
 
     public function __construct(
         public string $rutaRelativa,
@@ -109,7 +110,7 @@ class ImportarMPPJob implements ShouldQueue
     {
         try {
             Notificaciones::crear(
-                'La lectura del archivo MPP (materiales, productos y proveedores) en el excel ha finalizado',
+                'La lectura del archivo MPP (materiales, productos, proveedores y fichas) en el excel ha finalizado',
                 'alto'
             );
         } catch (Throwable $e) {

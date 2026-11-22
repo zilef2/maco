@@ -10,35 +10,47 @@ use RuntimeException;
 use Throwable;
 
 /**
- * Archivo MPP: Materiales, Productos y Proveedores en un solo Excel.
+ * Archivo MPP: Materiales, Productos, Proveedores y Fichas en un solo Excel.
  *
- * El libro debe traer tres hojas llamadas "material", "producto" y
- * "proveedor"; cualquier otra hoja se descarta. Cada hoja se lee con el mismo
- * formato de su tarjeta en el Centro de Importación (ExcelMaterialesService,
- * ExcelProductosService y ExcelTalleresService), así que lo que sirve para
+ * El libro debe traer las hojas "material", "producto" y "proveedor"; puede
+ * traer además "ficha" con las recetas de los productos. Cualquier otra hoja se
+ * descarta. Cada hoja se lee con el mismo formato de su tarjeta en el Centro de
+ * Importación (ExcelMaterialesService, ExcelProductosService,
+ * ExcelTalleresService y ExcelFichasProductoService), así que lo que sirve para
  * el MPP sirve también para la carga por entidad. La hoja "proveedor" es la
  * ficha de terceros: su columna de clasificación decide si cada fila termina
  * en Taller, Empresa externa o Proveedor.
  *
  * En la petición de subida solo se valida la fila de títulos; las filas de
  * datos se validan e insertan en el job. La importación es una sola
- * transacción: si una hoja falla, no queda nada importado de las otras dos.
+ * transacción: si una hoja falla, no queda nada importado de las demás. Por eso
+ * el orden importa: los materiales señalan al proveedor habitual del mismo
+ * archivo y la receta señala a los productos y materiales que el mismo archivo
+ * acaba de escribir, así que "proveedor" va primero y "ficha" al final. Antes
+ * de las fichas se sincronizan los materiales genéricos, que son los únicos que
+ * admite la ficha técnica.
  */
 class ExcelMPPService
 {
     /**
-     * Hojas que se leen, en el orden en que se importan. Los materiales apuntan
-     * al proveedor habitual, así que la ficha de terceros va primero: un
-     * proveedor nuevo escrito en el mismo archivo ya está en la BD cuando llega
-     * su material.
+     * Hojas que se leen, en el orden en que se importan.
      */
-    public const HOJAS = ['proveedor', 'material', 'producto'];
+    public const HOJAS = ['proveedor', 'material', 'producto', 'ficha'];
+
+    /** Sin alguna de estas tres no hay archivo MPP; la de fichas es opcional. */
+    private const REQUERIDAS = ['proveedor', 'material', 'producto'];
+
+    /** Títulos con los que además se reconoce la hoja de fichas: la plantilla
+     * individual la llama "Codigos". */
+    private const OTROS_TITULOS = ['codigos' => 'ficha', 'fichaproducto' => 'ficha'];
 
     public function __construct(
         private ExcelSecurityScanner $scanner,
         private ExcelMaterialesService $materiales,
         private ExcelProductosService $productos,
         private ExcelTalleresService $talleres,
+        private ExcelFichasProductoService $fichas,
+        private MaterialesGenericosService $genericos,
     ) {
     }
 
@@ -51,8 +63,9 @@ class ExcelMPPService
     }
 
     /**
-     * Lo que se comprueba antes de encolar el archivo: que estén las tres hojas
-     * y que sus títulos cumplan el formato de cada entidad.
+     * Lo que se comprueba antes de encolar el archivo: que estén las hojas
+     * obligatorias y que los títulos de cada hoja que sí venga cumplan el
+     * formato de su entidad.
      *
      * @throws RuntimeException con el aviso que debe ver el usuario
      */
@@ -60,17 +73,25 @@ class ExcelMPPService
     {
         $titulos = $this->titulosPorHoja($ruta);
 
-        $faltantes = array_values(array_diff(self::HOJAS, array_keys($titulos)));
+        $faltantes = array_values(array_diff(self::REQUERIDAS, array_keys($titulos)));
         if (!empty($faltantes)) {
             throw new RuntimeException($this->avisoHojasFaltantes($faltantes));
         }
 
         foreach (self::HOJAS as $hoja) {
+            // La hoja de fichas es opcional; si el archivo la trae, sus títulos
+            // se exigen aquí mismo para que el usuario los corrija sin esperar.
+            if (!isset($titulos[$hoja])) {
+                continue;
+            }
+
             $this->conAvisoDeHoja($hoja, function () use ($hoja, $titulos): void {
                 if ($hoja === 'material') {
                     $this->materiales->validarTitulos($titulos[$hoja]);
                 } elseif ($hoja === 'producto') {
                     $this->productos->validarTitulos($titulos[$hoja]);
+                } elseif ($hoja === 'ficha') {
+                    $this->fichas->validarTitulos($titulos[$hoja]);
                 } else {
                     $this->talleres->validarTitulos($titulos[$hoja]);
                 }
@@ -79,13 +100,13 @@ class ExcelMPPService
     }
 
     /**
-     * Importa las tres hojas del archivo.
+     * Importa las hojas del archivo, en el orden de `HOJAS`.
      *
      * @param  int|null  $usuarioId  El que subió el archivo; en la cola no hay
      *                               sesión y los movimientos de inventario
      *                               necesitan saber quién los causó.
      *
-     * @return array{creados: int, actualizados: int, filas: int, desglose: array<string, array{creados: int, actualizados: int}>}
+     * @return array{creados: int, actualizados: int, filas: int, desglose: array<string, array{creados: int, actualizados: int}>, avisos: string[]}
      *
      * @throws RuntimeException cuando alguna hoja no se puede importar
      */
@@ -93,19 +114,42 @@ class ExcelMPPService
     {
         $filasPorHoja = $this->filasPorHoja($ruta);
 
-        $faltantes = array_values(array_diff(self::HOJAS, array_keys($filasPorHoja)));
+        $faltantes = array_values(array_diff(self::REQUERIDAS, array_keys($filasPorHoja)));
         if (!empty($faltantes)) {
             throw new RuntimeException($this->avisoHojasFaltantes($faltantes));
         }
 
         $desglose = [];
+        $avisos = [];
 
-        DB::transaction(function () use ($filasPorHoja, $usuarioId, &$desglose): void {
+        DB::transaction(function () use ($filasPorHoja, $usuarioId, &$desglose, &$avisos): void {
             foreach (self::HOJAS as $hoja) {
-                $desglose[$hoja] = $this->conAvisoDeHoja(
+                if (!isset($filasPorHoja[$hoja])) {
+                    continue;
+                }
+
+                if ($hoja === 'ficha') {
+                    // Las recetas se escriben sobre el genérico del par y el
+                    // archivo acaba de crear los materiales específicos: sin
+                    // ese paso, la hoja de fichas rechazaría el archivo entero.
+                    $aviso = $this->asegurarGenericos();
+                    if ($aviso !== null) {
+                        $avisos[] = $aviso;
+                    }
+                }
+
+                $resultado = $this->conAvisoDeHoja(
                     $hoja,
                     fn (): array => $this->importarHoja($hoja, $filasPorHoja[$hoja], $usuarioId)
                 );
+
+                $desglose[$hoja] = $resultado;
+
+                // Avisos que no cancelan la carga: los aporta la hoja de
+                // fichas (genéricos nuevos y filas que llegaron sin consumo).
+                foreach ((array) ($resultado['avisos'] ?? []) as $aviso) {
+                    $avisos[] = $aviso;
+                }
             }
         });
 
@@ -120,12 +164,13 @@ class ExcelMPPService
                 ],
                 $desglose
             ),
+            'avisos' => array_values(array_unique($avisos)),
         ];
     }
 
     /**
-     * Título de hoja escrito como sea ("Material", "PRODUCTO ", " proveedor ") y
-     * su nombre canónico, o null si la hoja se descarta.
+     * Título de hoja escrito como sea ("Material", "PRODUCTO ", " proveedor ",
+     * "Codigos") y su nombre canónico, o null si la hoja se descarta.
      */
     public static function claveDeHoja(string $titulo): ?string
     {
@@ -135,6 +180,7 @@ class ExcelMPPService
             mb_strtolower(trim($titulo), 'UTF-8')
         );
         $clave = strtr((string) $clave, ['á' => 'a', 'é' => 'e', 'í' => 'i', 'ó' => 'o', 'ú' => 'u']);
+        $clave = self::OTROS_TITULOS[$clave] ?? $clave;
 
         return in_array($clave, self::HOJAS, true) ? $clave : null;
     }
@@ -165,7 +211,7 @@ class ExcelMPPService
     }
 
     /**
-     * Lee todas las filas de las tres hojas que interesa.
+     * Lee todas las filas de las hojas que interesa.
      *
      * @return array<string, array<int, array<int, mixed>>> nombre canónico => filas
      */
@@ -207,8 +253,8 @@ class ExcelMPPService
 
                 public function readCell(string $columnAddress, int $row, string $worksheetName = ''): bool
                 {
-                    // Las hojas que no son material, producto ni proveedor se
-                    // descartan sin leerlas.
+                    // Las hojas que no son material, producto, proveedor ni
+                    // ficha se descartan sin leerlas.
                     if (ExcelMPPService::claveDeHoja($worksheetName) === null) {
                         return false;
                     }
@@ -231,7 +277,7 @@ class ExcelMPPService
      * Valida las filas de una hoja e inserta. Devuelve el conteo de esa hoja.
      *
      * @param  array<int, array<int, mixed>>  $filas
-     * @return array{creados: int, actualizados: int, filas: int}
+     * @return array{creados: int, actualizados: int, filas: int, avisos?: string[]}
      */
     private function importarHoja(string $hoja, array $filas, ?int $usuarioId = null): array
     {
@@ -250,9 +296,30 @@ class ExcelMPPService
             );
         }
 
+        if ($hoja === 'ficha') {
+            $lectura = $this->fichas->registrosDesdeFilas($filas);
+
+            return $this->fichas->importarRegistros($lectura);
+        }
+
         $lectura = $this->productos->registrosDesdeFilas($filas);
 
         return $this->conFilas($this->productos->importar($lectura['registros']), count($lectura['registros']));
+    }
+
+    /**
+     * Pone al día los materiales genéricos antes de escribir las recetas: la
+     * ficha técnica solo admite el CAT-BAS-0 del par y el archivo acaba de
+     * crear los materiales específicos. Es el mismo sincronizador del botón
+     * «Materiales genéricos» de Actividad, así que correrlo no duplica nada.
+     */
+    private function asegurarGenericos(): ?string
+    {
+        $resultado = $this->genericos->sincronizar();
+
+        return $resultado['creados'] > 0
+            ? 'La hoja "ficha" creó ' . $resultado['creados'] . ' material(es) genérico(s) que les faltaban a los pares del archivo.'
+            : null;
     }
 
     /**
@@ -265,7 +332,7 @@ class ExcelMPPService
     }
 
     /**
-     * En un libro de tres hojas, un aviso sin hoja no se puede corregir: todo
+     * En un libro de varias hojas, un aviso sin hoja no se puede corregir: todo
      * error se precede con el nombre de la hoja que lo produjo.
      */
     private function conAvisoDeHoja(string $hoja, callable $accion)
@@ -283,6 +350,7 @@ class ExcelMPPService
     private function avisoHojasFaltantes(array $faltantes): string
     {
         return 'Faltan las hojas: ' . implode(', ', $faltantes)
-            . '. El archivo debe traer tres hojas llamadas "material", "producto" y "proveedor".';
+            . '. El archivo debe traer las hojas "material", "producto" y "proveedor";'
+            . ' la hoja "ficha" es opcional y trae las recetas de los productos.';
     }
 }

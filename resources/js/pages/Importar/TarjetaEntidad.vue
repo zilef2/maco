@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { reactive } from 'vue';
 import { router } from '@inertiajs/vue3';
+import { guardarResultado } from './recargaResultado';
 import {
     ArchiveBoxIcon,
     ArrowDownTrayIcon,
@@ -55,6 +56,7 @@ const ICONOS: Record<string, any> = {
 
 type EstadoTarjeta = {
     archivo: File | null;
+    enlace: string;
     error: string | null;
     procesando: boolean;
     progreso: number | null;
@@ -62,14 +64,64 @@ type EstadoTarjeta = {
 
 const estado = reactive<Record<string, EstadoTarjeta>>({});
 
+/**
+ * El enlace del archivo en Google Drive queda guardado en este navegador: el
+ * catálogo se recarga desde el mismo enlace sin volver a pegarlo cada vez.
+ */
+const CLAVE_ENLACE = 'maco:importar:enlace:';
+
+function enlaceGuardado(id: string): string {
+    try {
+        return localStorage.getItem(CLAVE_ENLACE + id) ?? '';
+    } catch {
+        return '';
+    }
+}
+
 const estadoDe = (id: string): EstadoTarjeta => {
     if (!estado[id]) {
-        estado[id] = { archivo: null, error: null, procesando: false, progreso: null };
+        estado[id] = { archivo: null, enlace: enlaceGuardado(id), error: null, procesando: false, progreso: null };
     }
     return estado[id];
 };
 
 const inputId = (id: string) => `excel-input-${id}`;
+
+const enlaceId = (id: string) => `excel-enlace-${id}`;
+
+/** Alcanza con una de las dos formas: el archivo adjunto o el enlace. */
+function puedeSubir(id: string): boolean {
+    const st = estadoDe(id);
+    return st.archivo !== null || st.enlace.trim() !== '';
+}
+
+const esEnlaceDeGoogle = (valor: string) => /^https:\/\/(drive|docs)\.google\.com\/.+/i.test(valor.trim());
+
+function onEnlaceInput(e: Event) {
+    const st = estadoDe(props.entidad.id);
+    st.enlace = (e.target as HTMLInputElement).value;
+    st.error = null;
+
+    try {
+        const valor = st.enlace.trim();
+        if (valor === '') localStorage.removeItem(CLAVE_ENLACE + props.entidad.id);
+        else localStorage.setItem(CLAVE_ENLACE + props.entidad.id, valor);
+    } catch {
+        // Sin almacenamiento (modo privado) el enlace solo dura esta visita.
+    }
+}
+
+function borrarEnlace() {
+    const st = estadoDe(props.entidad.id);
+    st.enlace = '';
+    st.error = null;
+
+    try {
+        localStorage.removeItem(CLAVE_ENLACE + props.entidad.id);
+    } catch {
+        // Nada que limpiar.
+    }
+}
 
 /** "1,24 s", "820 ms" o "Sin datos" para el promedio de una entidad. */
 function formatearTiempo(ms?: number | null): string {
@@ -133,9 +185,25 @@ async function onFileChange(e: Event) {
     st.archivo = file;
 }
 
-function limpiarInput() {
-    const input = document.getElementById(inputId(props.entidad.id)) as HTMLInputElement | null;
-    if (input) input.value = '';
+/**
+ * La validación fuerte corre en la misma petición de subida y deja la vista
+ * desfasada, así que al terminar se recarga el HTML. Como el flash de la sesión
+ * ya se consumió, el resultado se captura aquí y viaja en sessionStorage.
+ */
+function capturarResultado(page: any) {
+    const flash = (page?.props?.flash ?? {}) as Record<string, unknown>;
+    const mensajes = Object.fromEntries(
+        Object.entries(flash).filter(([, valor]) => typeof valor === 'string' && valor !== ''),
+    ) as Record<string, string>;
+
+    const entidades = (page?.props?.entidades ?? []) as Array<{ id: string; avisos?: string[] }>;
+    const avisos = Object.fromEntries(
+        entidades
+            .filter((entidad) => (entidad.avisos ?? []).length > 0)
+            .map((entidad) => [entidad.id, entidad.avisos as string[]]),
+    );
+
+    guardarResultado({ mensajes, avisos });
 }
 
 function subir() {
@@ -147,13 +215,25 @@ function subir() {
         return;
     }
 
-    if (!st.archivo) {
-        st.error = 'Selecciona un archivo .xlsx antes de continuar';
+    const enlace = st.enlace.trim();
+
+    if (!st.archivo && enlace === '') {
+        st.error = 'Elegí un archivo .xlsx o pegá su enlace de Google Drive';
+        return;
+    }
+
+    if (!st.archivo && !esEnlaceDeGoogle(enlace)) {
+        st.error = 'El enlace debe ser de drive.google.com o docs.google.com';
         return;
     }
 
     const datos = new FormData();
-    datos.append('archivo', st.archivo);
+    if (st.archivo) {
+        datos.append('archivo', st.archivo);
+    } else {
+        // El servidor baja el libro desde el enlace y lo valida igual que al adjunto.
+        datos.append('enlace', enlace);
+    }
 
     st.procesando = true;
     st.progreso = 0;
@@ -163,10 +243,9 @@ function subir() {
         onProgress: (p: any) => {
             st.progreso = p?.percentage ?? null;
         },
-        onSuccess: () => {
-            st.archivo = null;
-            st.progreso = null;
-            limpiarInput();
+        onSuccess: (page: any) => {
+            capturarResultado(page);
+            window.location.reload();
         },
         onError: (errors: Record<string, string>) => {
             st.error = Object.values(errors).join(' | ') || 'Error al subir el archivo';
@@ -339,31 +418,66 @@ function subir() {
                 La plantilla ya está disponible. La carga del archivo se habilitará cuando se implemente la importación de fichas técnicas.
             </div>
 
-            <div v-if="entidad.ruta" class="flex gap-2">
-                <input
-                    :id="inputId(entidad.id)"
-                    type="file"
-                    accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    class="hidden"
-                    @change="onFileChange($event)"
-                />
-                <label
-                    :for="inputId(entidad.id)"
-                    class="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-2 text-xs text-gray-600 transition hover:border-gray-400"
-                >
-                    <ArrowUpTrayIcon class="h-4 w-4 shrink-0 text-gray-400" />
-                    <span class="truncate font-mono">
-                        {{ estadoDe(entidad.id).archivo?.name ?? 'Elegir archivo .xlsx' }}
-                    </span>
-                </label>
-                <button
-                    type="button"
-                    :disabled="!estadoDe(entidad.id).archivo || estadoDe(entidad.id).procesando"
-                    class="shrink-0 rounded-md bg-gray-950 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
-                    @click="subir()"
-                >
-                    {{ estadoDe(entidad.id).procesando ? 'Subiendo…' : 'Subir' }}
-                </button>
+            <div v-if="entidad.ruta" class="space-y-2.5">
+                <div>
+                    <label
+                        :for="enlaceId(entidad.id)"
+                        class="mb-1 block text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-400"
+                    >
+                        Enlace de Google Drive
+                    </label>
+                    <div class="flex gap-2">
+                        <input
+                            :id="enlaceId(entidad.id)"
+                            type="url"
+                            :value="estadoDe(entidad.id).enlace"
+                            placeholder="https://drive.google.com/file/d/…/view"
+                            class="min-w-0 flex-1 rounded-md border border-gray-300 bg-white px-3 py-2 font-mono text-[11px] text-gray-700 transition focus:border-gray-900 focus:outline-none"
+                            @input="onEnlaceInput($event)"
+                        />
+                        <button
+                            type="button"
+                            :disabled="!estadoDe(entidad.id).enlace"
+                            class="shrink-0 rounded-md border border-gray-300 bg-white px-3 py-2 text-[11px] font-semibold text-gray-600 transition hover:border-gray-400 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+                            @click="borrarEnlace()"
+                        >
+                            Quitar
+                        </button>
+                    </div>
+                </div>
+
+                <div class="flex gap-2">
+                    <input
+                        :id="inputId(entidad.id)"
+                        type="file"
+                        accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                        class="hidden"
+                        @change="onFileChange($event)"
+                    />
+                    <label
+                        :for="inputId(entidad.id)"
+                        class="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-2 text-xs text-gray-600 transition hover:border-gray-400"
+                    >
+                        <ArrowUpTrayIcon class="h-4 w-4 shrink-0 text-gray-400" />
+                        <span class="truncate font-mono">
+                            {{ estadoDe(entidad.id).archivo?.name ?? '…o elegir archivo .xlsx' }}
+                        </span>
+                    </label>
+                    <button
+                        type="button"
+                        :disabled="!puedeSubir(entidad.id) || estadoDe(entidad.id).procesando"
+                        class="shrink-0 rounded-md bg-gray-950 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
+                        @click="subir()"
+                    >
+                        {{ estadoDe(entidad.id).procesando ? 'Subiendo…' : 'Subir' }}
+                    </button>
+                </div>
+
+                <p class="text-[10px] leading-relaxed text-gray-500">
+                    El enlace tiene que estar compartido como «Cualquiera con el enlace»: el servidor baja el
+                    .xlsx y lo importa igual que el archivo adjunto, que manda si se eligen los dos. El enlace
+                    queda guardado en este navegador.
+                </p>
             </div>
 
             <div

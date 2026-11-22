@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\DestroyBulkProductoRequest;
+use App\Traits\ExcelDesdeDriveTrait;
 use App\Models\Parametro;
 use App\Models\Producto;
 use App\Models\Procesoop;
@@ -27,6 +28,7 @@ use Inertia\Response;
 use PhpOffice\PhpSpreadsheet\IOFactory;
 
 class ProductoController extends Controller {
+    use ExcelDesdeDriveTrait;
     public array $thisAtributos;
     public string $FromController = 'Producto';
 
@@ -768,16 +770,9 @@ class ProductoController extends Controller {
         Myhelp::EscribirEnLog($this, 'uploadExcel: inicio');
 
         // 1. Validaciones de seguridad del archivo (previas a cualquier lectura)
-        $request->validate([
-            'archivo' => [
-                'required',
-                'file',
-                'max:10240',    // máx 10 MB
-                'mimes:xlsx',   // valida por extensión del cliente (suficiente como primera capa)
-            ],
-        ]);
+        $request->validate(self::reglasDeSubidaExcel(), self::mensajesDeSubidaExcel());
 
-        $archivo = $request->file('archivo');
+        $archivo = $this->excelDeLaSubida($request);
 
         // 2. Doble-verificación de extensión (defensa en profundidad)
         if (strtolower($archivo->getClientOriginalExtension()) !== 'xlsx') {

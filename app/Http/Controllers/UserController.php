@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\helpers\HelpExcel;
+use App\Traits\ExcelDesdeDriveTrait;
 use App\helpers\Myhelp;
 use App\helpers\MyModels;
 use App\Http\Requests\User\UserIndexRequest;
@@ -30,6 +31,7 @@ use Maatwebsite\Excel\Facades\Excel;
 
 class UserController extends Controller
 {
+    use ExcelDesdeDriveTrait;
     public $thisAtributos;
 
     public function __construct()
@@ -275,16 +277,9 @@ class UserController extends Controller
     ): RedirectResponse {
         Myhelp::EscribirEnLog($this, 'uploadExcel:users: inicio');
 
-        $request->validate([
-            'archivo' => ['required', 'file', 'max:10240', 'mimes:xlsx'],
-        ], [
-            'archivo.required' => 'Selecciona un archivo .xlsx.',
-            'archivo.file' => 'El archivo no es válido.',
-            'archivo.max' => 'El archivo supera el tamaño máximo de 10 MB.',
-            'archivo.mimes' => 'Solo se permiten archivos .xlsx.',
-        ]);
+        $request->validate(self::reglasDeSubidaExcel(), self::mensajesDeSubidaExcel());
 
-        $archivo = $request->file('archivo');
+        $archivo = $this->excelDeLaSubida($request);
         $usuario = $request->user();
         $nombreArchivo = $archivo->getClientOriginalName();
         $rutaRelativa = null;
