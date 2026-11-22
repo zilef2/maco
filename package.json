@@ -35,7 +35,7 @@
         "@vitejs/plugin-vue": "^5.2.1",
         "@vuepic/vue-datepicker": "^14.0.0",
         "@vueuse/core": "^12.8.2",
-        "@zilef/global": "file:../globalz/zilef-global-1.0.0.tgz",
+        "@zilef/global": "git+https://github.com/zilef2/globalz.git#3eb12178450f9b388e0e909511818c94a5f422d6",
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
         "concurrently": "^9.0.1",

@@ -10,7 +10,7 @@
         "@vitejs/plugin-vue": "^5.2.1",
         "@vuepic/vue-datepicker": "^14.0.0",
         "@vueuse/core": "^12.8.2",
-        "@zilef/global": "file:../globalz/zilef-global-1.0.0.tgz",
+        "@zilef/global": "git+https://github.com/zilef2/globalz.git#3eb12178450f9b388e0e909511818c94a5f422d6",
         "class-variance-authority": "^0.7.1",
         "clsx": "^2.1.1",
         "concurrently": "^9.0.1",
@@ -348,7 +348,7 @@
 
     "@vueuse/shared": ["@vueuse/shared@12.8.2", "", { "dependencies": { "vue": "^3.5.13" } }, "sha512-dznP38YzxZoNloI0qpEfpkms8knDtaoQ6Y/sfS0L7Yki4zh40LFHEhur0odJC6xTHG5dxWVPiUWBXn+wCG2s5w=="],
 
-    "@zilef/global": ["@zilef/global@../globalz/zilef-global-1.0.0.tgz", { "dependencies": { "festivos-colombia": "^0.0.1", "lodash": "^4.18.1" }, "peerDependencies": { "chart.js": "^4.5.1", "vue": "^3.5.42" } }, "sha512-ob+U92ed+ZpPxnTF0dAj4dv4f07NEpsoumSSjU9COhmNNgjOuWFvCVOCboV56IreUa//pD552S8zmQb3dWkkEg=="],
+    "@zilef/global": ["@zilef/global@github:zilef2/globalz#3eb1217", { "dependencies": { "chart.js": "^4.5.1", "festivos-colombia": "^0.0.1", "lodash": "^4.18.1" }, "peerDependencies": { "vue": "^3.5.0" } }, "zilef2-globalz-3eb1217", "sha512-8+7vGPJ403Kehpxxe6GBf0sjEKmhaK3Ad5wxtUCcwr5Rdkk5Fqj1gGsMF7OzKf/birslC/9TVQZU4HGauVnxlA=="],
 
     "acorn": ["acorn@8.18.0", "", { "bin": "bin/acorn" }, "sha512-lGq+9yr1/GuAWaVYIHRjvvySG5/4VfKIvC8EWxStPdcDh/Ka7FG3twP6v4d5BkravUilhIAsG4Qj83t02LWUPQ=="],
 
