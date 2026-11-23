@@ -168,7 +168,8 @@ function columnasDeHoja(hoja: HojaExcel): Array<{ titulo: string; requerida: boo
     ];
 }
 
-function formatearFecha(iso?: string | null): string {    if (!iso) return 'Sin registros';
+function formatearFecha(iso?: string | null): string {
+    if (!iso) return 'Sin registros';
     const fecha = new Date(iso);
     if (Number.isNaN(fecha.getTime())) return 'Sin registros';
 
@@ -260,7 +261,9 @@ function subir() {
         },
         onSuccess: (page: any) => {
             capturarResultado(page);
-            window.location.reload();
+            st.archivo = null;
+            st.progreso = null;
+            router.reload({ only: ['entidades'] });
         },
         onError: (errors: Record<string, string>) => {
             st.error = Object.values(errors).join(' | ') || 'Error al subir el archivo';
@@ -380,28 +383,22 @@ async function verificar() {
                     <p class="text-xs text-gray-500">{{ entidad.descripcion }}</p>
                 </div>
             </div>
-            <span
-                v-if="entidad.ruta"
-                class="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest text-emerald-700"
-            >
+            <span v-if="entidad.ruta"
+                class="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest text-emerald-700">
                 <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
                 Operativo
             </span>
-            <span
-                v-else
-                class="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest text-amber-700"
-            >
+            <span v-else
+                class="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-widest text-amber-700">
                 <span class="h-1.5 w-1.5 rounded-full bg-amber-500"></span>
                 Solo plantilla
             </span>
         </div>
 
         <!-- Tiempo promedio de las últimas cargas -->
-        <div
-            v-if="entidad.ruta"
+        <div v-if="entidad.ruta"
             class="grid grid-cols-2 divide-x divide-gray-100 border-b border-gray-100 bg-gray-50/40"
-            title="Tiempo total desde que se sube el archivo hasta que termina el procesamiento. En cargas en segundo plano incluye la espera de la cola."
-        >
+            title="Tiempo total desde que se sube el archivo hasta que termina el procesamiento. En cargas en segundo plano incluye la espera de la cola.">
             <div class="p-3">
                 <p class="text-[9px] font-semibold uppercase tracking-[0.18em] text-gray-400">
                     Tiempo promedio
@@ -420,11 +417,8 @@ async function verificar() {
                 <p class="mt-0.5 text-xs font-medium text-gray-800">
                     {{ formatearFecha(entidad.metrica?.ultima_en) }}
                 </p>
-                <p
-                    v-if="entidad.metrica?.ultimo_archivo"
-                    class="mt-0.5 truncate font-mono text-[10px] text-gray-500"
-                    :title="entidad.metrica?.ultimo_archivo ?? ''"
-                >
+                <p v-if="entidad.metrica?.ultimo_archivo" class="mt-0.5 truncate font-mono text-[10px] text-gray-500"
+                    :title="entidad.metrica?.ultimo_archivo ?? ''">
                     {{ entidad.metrica?.ultimo_archivo }}
                 </p>
             </div>
@@ -439,14 +433,10 @@ async function verificar() {
                         Hoja «{{ hoja.nombre }}»
                     </p>
                     <div class="flex flex-wrap gap-1">
-                        <code
-                            v-for="col in columnasDeHoja(hoja)"
-                            :key="`${hoja.nombre}-${col.titulo}`"
-                            class="rounded border px-1.5 py-0.5 font-mono text-[10px]"
-                            :class="col.requerida
+                        <code v-for="col in columnasDeHoja(hoja)" :key="`${hoja.nombre}-${col.titulo}`"
+                            class="rounded border px-1.5 py-0.5 font-mono text-[10px]" :class="col.requerida
                                 ? 'border-red-100 bg-red-50 text-red-700'
-                                : 'border-gray-200 bg-gray-50 text-gray-600'"
-                        >{{ col.titulo }}</code>
+                                : 'border-gray-200 bg-gray-50 text-gray-600'">{{ col.titulo }}</code>
                     </div>
                 </div>
             </template>
@@ -457,11 +447,8 @@ async function verificar() {
                         Columnas requeridas
                     </p>
                     <div class="mt-1.5 flex flex-wrap gap-1">
-                        <code
-                            v-for="col in entidad.columnas_requeridas"
-                            :key="col"
-                            class="rounded border border-red-100 bg-red-50 px-1.5 py-0.5 font-mono text-[10px] text-red-700"
-                        >{{ col }}</code>
+                        <code v-for="col in entidad.columnas_requeridas" :key="col"
+                            class="rounded border border-red-100 bg-red-50 px-1.5 py-0.5 font-mono text-[10px] text-red-700">{{ col }}</code>
                     </div>
                 </div>
                 <div v-if="entidad.columnas_opcionales?.length">
@@ -469,11 +456,8 @@ async function verificar() {
                         Opcionales
                     </p>
                     <div class="mt-1.5 flex flex-wrap gap-1">
-                        <code
-                            v-for="col in entidad.columnas_opcionales"
-                            :key="col"
-                            class="rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 font-mono text-[10px] text-gray-600"
-                        >{{ col }}</code>
+                        <code v-for="col in entidad.columnas_opcionales" :key="col"
+                            class="rounded border border-gray-200 bg-gray-50 px-1.5 py-0.5 font-mono text-[10px] text-gray-600">{{ col }}</code>
                     </div>
                 </div>
             </template>
@@ -483,26 +467,18 @@ async function verificar() {
 
         <!-- Consola de carga -->
         <div class="rounded-b-xl border-t border-gray-100 bg-gray-50/60 p-4">
-            <div
-                v-if="entidad.avisos?.length"
-                class="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800"
-            >
+            <div v-if="entidad.avisos?.length"
+                class="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800">
                 <p class="text-[9px] font-semibold uppercase tracking-[0.18em] text-amber-600">
                     Avisos de la última carga
                 </p>
-                <p
-                    v-for="aviso in entidad.avisos"
-                    :key="aviso"
-                    class="mt-1 font-medium"
-                >
+                <p v-for="aviso in entidad.avisos" :key="aviso" class="mt-1 font-medium">
                     {{ aviso }}
                 </p>
             </div>
 
-            <div
-                v-if="estadoDe(entidad.id).error"
-                class="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700"
-            >
+            <div v-if="estadoDe(entidad.id).error"
+                class="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700">
                 {{ estadoDe(entidad.id).error }}
             </div>
 
@@ -510,81 +486,62 @@ async function verificar() {
                 <p class="text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-400">
                     Formato de carga
                 </p>
-                <a
-                    :href="entidad.plantilla"
-                    class="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-gray-700 transition hover:border-gray-400 hover:bg-gray-50"
-                >
+                <a :href="entidad.plantilla"
+                    class="inline-flex items-center gap-1.5 rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-gray-700 transition hover:border-gray-400 hover:bg-gray-50">
                     <ArrowDownTrayIcon class="h-3.5 w-3.5" />
                     {{ entidad.hojas?.length ? 'Descargar plantilla de las 4 hojas' : 'Descargar formato .xlsx' }}
                 </a>
             </div>
 
-            <div v-if="!entidad.ruta" class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800">
-                La plantilla ya está disponible. La carga del archivo se habilitará cuando se implemente la importación de fichas técnicas.
+            <div v-if="!entidad.ruta"
+                class="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-800">
+                La plantilla ya está disponible. La carga del archivo se habilitará cuando se implemente la importación
+                de
+                fichas técnicas.
             </div>
 
             <div v-if="entidad.ruta" class="space-y-2.5">
                 <div>
-                    <label
-                        :for="enlaceId(entidad.id)"
-                        class="mb-1 block text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-400"
-                    >
+                    <label :for="enlaceId(entidad.id)"
+                        class="mb-1 block text-[10px] font-semibold uppercase tracking-[0.18em] text-gray-400">
                         Enlace de Google Drive
                     </label>
                     <div class="flex gap-2">
-                        <input
-                            :id="enlaceId(entidad.id)"
-                            type="url"
-                            :value="estadoDe(entidad.id).enlace"
+                        <input :id="enlaceId(entidad.id)" type="url" :value="estadoDe(entidad.id).enlace"
                             placeholder="https://drive.google.com/file/d/…/view"
                             class="min-w-0 flex-1 rounded-md border border-gray-300 bg-white px-3 py-2 font-mono text-[11px] text-gray-700 transition focus:border-gray-900 focus:outline-none"
-                            @input="onEnlaceInput($event)"
-                        />
-                        <button
-                            type="button"
-                            :disabled="!estadoDe(entidad.id).enlace"
+                            @input="onEnlaceInput($event)" />
+                        <button type="button" :disabled="!estadoDe(entidad.id).enlace"
                             class="shrink-0 rounded-md border border-gray-300 bg-white px-3 py-2 text-[11px] font-semibold text-gray-600 transition hover:border-gray-400 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
-                            @click="borrarEnlace()"
-                        >
+                            @click="borrarEnlace()">
                             Quitar
                         </button>
                     </div>
                 </div>
 
                 <div class="flex gap-2">
-                    <input
-                        :id="inputId(entidad.id)"
-                        type="file"
-                        accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                        class="hidden"
-                        @change="onFileChange($event)"
-                    />
-                    <label
-                        :for="inputId(entidad.id)"
-                        class="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-2 text-xs text-gray-600 transition hover:border-gray-400"
-                    >
+                    <input :id="inputId(entidad.id)" type="file"
+                        accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" class="hidden"
+                        @change="onFileChange($event)" />
+                    <label :for="inputId(entidad.id)"
+                        class="flex min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-md border border-gray-300 bg-white px-3 py-2 text-xs text-gray-600 transition hover:border-gray-400">
                         <ArrowUpTrayIcon class="h-4 w-4 shrink-0 text-gray-400" />
                         <span class="truncate font-mono">
                             {{ estadoDe(entidad.id).archivo?.name ?? '…o elegir archivo .xlsx' }}
                         </span>
                     </label>
-                    <button
-                        type="button"
-                        :disabled="!puedeSubir(entidad.id) || estadoDe(entidad.id).procesando"
+                    <button type="button" :disabled="!puedeSubir(entidad.id) || estadoDe(entidad.id).procesando"
                         class="shrink-0 rounded-md bg-gray-950 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-white transition hover:bg-gray-800 disabled:cursor-not-allowed disabled:opacity-40"
-                        @click="subir()"
-                    >
+                        @click="subir()">
                         {{ estadoDe(entidad.id).procesando ? 'Subiendo…' : 'Subir' }}
                     </button>
                 </div>
 
                 <div v-if="entidad.verificacion" class="flex flex-wrap items-center gap-3">
-                    <button
-                        type="button"
+                    <button type="button"
                         :disabled="!puedeSubir(entidad.id) || estadoDe(entidad.id).verificando || estadoDe(entidad.id).procesando"
                         class="shrink-0 rounded-md border border-gray-400 bg-white px-4 py-2 text-xs font-semibold uppercase tracking-wider text-gray-700 transition hover:border-gray-950 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
-                        @click="verificar()"
-                    >
+                        @click="verificar()">
                         {{ estadoDe(entidad.id).verificando ? 'Verificando…' : 'Verificar' }}
                     </button>
                     <p class="text-[10px] leading-relaxed text-gray-500">
@@ -592,13 +549,10 @@ async function verificar() {
                     </p>
                 </div>
 
-                <div
-                    v-if="estadoDe(entidad.id).verificacion"
-                    class="rounded-md border px-3 py-2 text-[11px] leading-relaxed"
-                    :class="estadoDe(entidad.id).verificacion?.ok
+                <div v-if="estadoDe(entidad.id).verificacion"
+                    class="rounded-md border px-3 py-2 text-[11px] leading-relaxed" :class="estadoDe(entidad.id).verificacion?.ok
                         ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-                        : 'border-red-200 bg-red-50 text-red-800'"
-                >
+                        : 'border-red-200 bg-red-50 text-red-800'">
                     <p class="text-[9px] font-semibold uppercase tracking-[0.18em]">
                         {{ estadoDe(entidad.id).verificacion?.ok
                             ? 'Verificación aprobada'
@@ -607,22 +561,14 @@ async function verificar() {
                     <p v-if="estadoDe(entidad.id).verificacion?.resumen" class="mt-1 font-medium">
                         {{ estadoDe(entidad.id).verificacion?.resumen }}
                     </p>
-                    <ol
-                        v-if="(estadoDe(entidad.id).verificacion?.problemas.length ?? 0) > 0"
-                        class="mt-1.5 list-decimal space-y-0.5 pl-4"
-                    >
-                        <li
-                            v-for="(problema, indice) in estadoDe(entidad.id).verificacion?.problemas"
-                            :key="indice"
-                        >
+                    <ol v-if="(estadoDe(entidad.id).verificacion?.problemas.length ?? 0) > 0"
+                        class="mt-1.5 list-decimal space-y-0.5 pl-4">
+                        <li v-for="(problema, indice) in estadoDe(entidad.id).verificacion?.problemas" :key="indice">
                             {{ problema }}
                         </li>
                     </ol>
-                    <p
-                        v-for="aviso in estadoDe(entidad.id).verificacion?.avisos"
-                        :key="aviso"
-                        class="mt-1 text-amber-700"
-                    >
+                    <p v-for="aviso in estadoDe(entidad.id).verificacion?.avisos" :key="aviso"
+                        class="mt-1 text-amber-700">
                         {{ aviso }}
                     </p>
                 </div>
@@ -634,14 +580,10 @@ async function verificar() {
                 </p>
             </div>
 
-            <div
-                v-if="estadoDe(entidad.id).progreso !== null"
-                class="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-gray-200"
-            >
-                <div
-                    class="h-1.5 rounded-full bg-emerald-500 transition-all duration-300"
-                    :style="{ width: (estadoDe(entidad.id).progreso ?? 0) + '%' }"
-                />
+            <div v-if="estadoDe(entidad.id).progreso !== null"
+                class="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-gray-200">
+                <div class="h-1.5 rounded-full bg-emerald-500 transition-all duration-300"
+                    :style="{ width: (estadoDe(entidad.id).progreso ?? 0) + '%' }" />
             </div>
         </div>
     </div>
