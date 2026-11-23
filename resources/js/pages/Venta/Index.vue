@@ -2,7 +2,7 @@
 import AppLayout from '@/layouts/AppLayout.vue';
 import DataPagination from '@/components/DataPagination.vue';
 import { Head, Link, router } from '@inertiajs/vue3';
-import { computed, onMounted, onUnmounted, reactive, watch } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 
 import { use } from 'echarts/core';
 import { BarChart, LineChart } from 'echarts/charts';
@@ -530,6 +530,8 @@ router.on('start', () => {
 router.on('finish', () => {
     state.cargando = false;
 });
+const breadcrumbCollapsed = ref(false);
+
 </script>
 
 <template>
@@ -537,8 +539,18 @@ router.on('finish', () => {
 
     <AppLayout>
         <div class="flex flex-col gap-4 p-4 sm:p-6">
-            <div class="flex flex-col gap-3">
-                <nav class="flex items-center gap-1.5 text-xs text-muted-foreground" aria-label="Ruta de navegación">
+        <div class="flex justify-end mb-2">
+            <button
+                @click="breadcrumbCollapsed = !breadcrumbCollapsed"
+                class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                :aria-label="breadcrumbCollapsed ? 'Mostrar título y breadcrumb' : 'Ocultar título y breadcrumb'"
+            >
+                <ChevronDownIcon v-if="breadcrumbCollapsed" class="h-4 w-4" />
+                <ChevronUpIcon v-else class="h-4 w-4" />
+            </button>
+        </div>
+        <div v-if="!breadcrumbCollapsed" class="flex flex-col gap-3">
+            <nav class="flex items-center gap-1.5 text-xs text-muted-foreground" aria-label="Ruta de navegación">
                     <Link
                         :href="route('dashboard')"
                         class="rounded-sm transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"

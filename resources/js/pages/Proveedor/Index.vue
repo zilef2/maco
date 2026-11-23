@@ -3,7 +3,7 @@ import DataPagination from '@/components/DataPagination.vue';
 import PrimaryButton from '@/components/PrimaryButton.vue';
 import AppLayout from '@/layouts/AppLayout.vue';
 import { Head, Link } from '@inertiajs/vue3';
-import { computed, reactive, watch } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 
 import {
     ArrowUpTrayIcon,
@@ -283,6 +283,8 @@ const abrirEliminar = (proveedor: any) => {
     state.proveedorSeleccionado = proveedor;
     state.deleteOpen = true;
 };
+const breadcrumbCollapsed = ref(false);
+
 </script>
 
 <template>
@@ -290,8 +292,18 @@ const abrirEliminar = (proveedor: any) => {
 
     <AppLayout>
         <div class="flex flex-col gap-4 p-4 sm:p-6">
-            <div class="flex flex-col gap-3">
-                <nav class="text-muted-foreground flex items-center gap-1.5 text-xs" aria-label="Ruta de navegación">
+        <div class="flex justify-end mb-2">
+            <button
+                @click="breadcrumbCollapsed = !breadcrumbCollapsed"
+                class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                :aria-label="breadcrumbCollapsed ? 'Mostrar título y breadcrumb' : 'Ocultar título y breadcrumb'"
+            >
+                <ChevronDownIcon v-if="breadcrumbCollapsed" class="h-4 w-4" />
+                <ChevronUpIcon v-else class="h-4 w-4" />
+            </button>
+        </div>
+        <div v-if="!breadcrumbCollapsed" class="flex flex-col gap-3">
+            <nav class="text-muted-foreground flex items-center gap-1.5 text-xs" aria-label="Ruta de navegación">
                     <Link
                         :href="route('dashboard')"
                         class="hover:text-foreground focus-visible:ring-ring rounded-sm transition-colors focus-visible:ring-2 focus-visible:outline-none"

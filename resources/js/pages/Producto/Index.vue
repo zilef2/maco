@@ -44,11 +44,14 @@ const props = defineProps({
     numberPermissions: Number,
     losSelect: Object,
     titulos: Array,
+    fotos_disponibles: { type: Array as () => string[], default: () => [] },
     // 1 = promedio de los precios del material; 2 = su último precio. Decide
     // cuál de los dos costes del formulario es el vigente.
     metodo_costos: { type: Number, default: 1 },
     metodo_costos_label: { type: String, default: '' },
 });
+
+const breadcrumbCollapsed = ref(false);
 
 /* --------------------------------------------------------------------------
  * Tabla 100% en cliente: los productos llegan una sola vez y aquí se buscan,
@@ -90,6 +93,7 @@ const cargando = ref(false);
 const columnas = [
     { key: 'Codigo_interno', label: 'Código', sortable: true, align: 'left', headerClass: 'min-w-[120px]', cellClass: 'min-w-[120px]' },
     { key: 'Titulo_Shopify', label: 'Producto', sortable: true, align: 'left', headerClass: 'min-w-[260px]', cellClass: 'min-w-[260px]' },
+    { key: 'fotos', label: 'Foto', sortable: false, align: 'left', headerClass: 'w-[44px]', cellClass: 'w-[44px]' },
     { key: 'cantidad', label: 'Cantidad', sortable: false, align: 'right', headerClass: 'w-[100px]', cellClass: 'w-[100px]' },
     { key: 'Categoria_original', label: 'Categoría', sortable: true, align: 'left', headerClass: 'hidden min-w-[190px] lg:table-cell', cellClass: 'hidden min-w-[190px] lg:table-cell' },
     { key: 'Control_de_variante', label: 'Variante', sortable: true, align: 'left', headerClass: 'hidden min-w-[170px] xl:table-cell', cellClass: 'hidden min-w-[170px] xl:table-cell' },
@@ -266,6 +270,18 @@ const precioVentaDe = (producto: any): number =>
 const texto = (valor: any, fallback = '—'): string => {
     const resultado = String(valor ?? '').trim();
     return resultado !== '' ? resultado : fallback;
+};
+
+// Fotos por ángulo que llegan del modelo (url ya apunta a /storage/produc_photos).
+const fotosDe = (producto: any): any[] =>
+    (Array.isArray(producto?.fotos) ? producto.fotos : []).filter((foto: any) => foto?.url);
+
+const fotoPrincipal = (producto: any): any | null => fotosDe(producto)[0] ?? null;
+
+const fotoAmpliada = ref<any | null>(null);
+
+const abrirFotos = (producto: any) => {
+    if (fotosDe(producto).length) fotoAmpliada.value = producto;
 };
 
 const tallasDe = (producto: any): string[] => {
@@ -608,8 +624,8 @@ const recargar = () => {
 
     <AppLayout>
         <div class="flex flex-col gap-4 p-4 sm:p-6">
-            <div class="flex flex-col gap-3">
-                <nav class="flex items-center gap-1.5 text-xs text-muted-foreground" aria-label="Ruta de navegación">
+        <div class="flex flex-col gap-2">
+            <nav v-if="!breadcrumbCollapsed" class="flex items-center gap-1.5 text-xs text-muted-foreground" aria-label="Ruta de navegación">
                     <Link :href="route('dashboard')"
                         class="rounded-sm transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                         Dashboard
@@ -625,7 +641,7 @@ const recargar = () => {
                 </nav>
 
                 <div class="flex flex-wrap items-end justify-between gap-3">
-                    <div class="min-w-0">
+                    <div class="min-w-0" v-if="!breadcrumbCollapsed">
                         <h1 class="text-2xl font-semibold tracking-tight text-foreground">Productos</h1>
                         <p class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground"
                             role="status" aria-live="polite">
@@ -650,6 +666,15 @@ const recargar = () => {
                             </span>
                         </p>
                     </div>
+
+                    <button
+                        @click="breadcrumbCollapsed = !breadcrumbCollapsed"
+                        class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                        :aria-label="breadcrumbCollapsed ? 'Mostrar título y breadcrumb' : 'Ocultar título y breadcrumb'"
+                    >
+                        <ChevronDownIcon v-if="breadcrumbCollapsed" class="h-4 w-4" />
+                        <ChevronUpIcon v-else class="h-4 w-4" />
+                    </button>
 
                     <div class="flex flex-wrap items-center gap-2">
                         <button type="button" @click="recargar" :disabled="cargando" title="Actualizar datos"
@@ -679,7 +704,7 @@ const recargar = () => {
                         </PrimaryButton>
                     </div>
                 </div>
-            </div>
+        </div>
 
             <div class="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
                 <div class="flex flex-col gap-2.5 border-b border-border p-3">
@@ -892,6 +917,19 @@ const recargar = () => {
                                             {{ texto(producto.descripcion, 'Sin descripción') }}
                                         </span>
                                     </div>
+                                </td>
+
+                                <td class="px-3 py-3 align-top">
+                                    <button v-if="fotoPrincipal(producto)" type="button"
+                                        @click="abrirFotos(producto)"
+                                        :title="`Ver las fotos de ${producto.Codigo_interno || producto.Titulo_Shopify}`"
+                                        :aria-label="`Ver las fotos de ${producto.Codigo_interno || producto.Titulo_Shopify}`"
+                                        class="block h-5 w-5 overflow-hidden rounded border border-border bg-muted/40 transition hover:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                                        <img :src="fotoPrincipal(producto)?.url"
+                                            :alt="producto.Codigo_interno || producto.Titulo_Shopify"
+                                            class="h-full w-full object-cover" loading="lazy" />
+                                    </button>
+                                    <span v-else class="text-xs text-muted-foreground">—</span>
                                 </td>
 
                                 <td class="px-3 py-3 text-right align-top">
@@ -1121,7 +1159,7 @@ const recargar = () => {
         <Create v-if="can(['create Producto'])" :numberPermissions="props.numberPermissions" :titulos="titulos"
             :show="data.createOpen" @close="data.createOpen = false" :title="props.title"
             :losSelect="props.losSelect" :productos="props.productos" :metodoCostos="props.metodo_costos"
-            :metodoCostosLabel="props.metodo_costos_label" />
+            :metodoCostosLabel="props.metodo_costos_label" :fotosDisponibles="props.fotos_disponibles" />
 
         <Edit v-if="can(['update Producto'])" :titulos="titulos" :numberPermissions="props.numberPermissions"
             :show="data.editOpen" @close="data.editOpen = false" :Productoa="data.Productoo" :title="props.title"
@@ -1139,6 +1177,40 @@ const recargar = () => {
 
         <ModalDependenciasProducto :show="data.modalBloqueadosOpen" :bloqueados="data.productosBloqueados"
             :eliminados="data.productosEliminados" @close="data.modalBloqueadosOpen = false" />
+
+        <!-- Vista amplia (100 px) de las fotos por ángulo, fuera del scroll de la tabla -->
+        <Teleport to="body">
+            <div v-if="fotoAmpliada" class="fixed inset-0 z-[120] flex items-center justify-center bg-black/60 p-4"
+                role="dialog" aria-modal="true" @click.self="fotoAmpliada = null">
+                <div class="w-full max-w-lg rounded-xl border border-border bg-card p-4 shadow-2xl">
+                    <div class="flex items-start justify-between gap-3">
+                        <div class="min-w-0">
+                            <p class="truncate text-sm font-semibold text-foreground">
+                                {{ fotoAmpliada.Codigo_interno }} — {{ fotoAmpliada.Titulo_Shopify }}
+                            </p>
+                            <p class="text-xs text-muted-foreground">Fotos del producto</p>
+                        </div>
+                        <button type="button" @click="fotoAmpliada = null" aria-label="Cerrar"
+                            class="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                            <XMarkIcon class="h-4 w-4" />
+                        </button>
+                    </div>
+                    <div class="mt-3 flex flex-wrap justify-center gap-3">
+                        <figure v-for="foto in fotosDe(fotoAmpliada)" :key="foto.campo" class="w-[100px]">
+                            <a :href="foto.url" target="_blank" rel="noopener"
+                                class="block h-[100px] w-[100px] overflow-hidden rounded-lg border border-border bg-muted/40">
+                                <img :src="foto.url"
+                                    :alt="`${fotoAmpliada.Codigo_interno} — ${foto.etiqueta}`"
+                                    class="h-full w-full object-cover" />
+                            </a>
+                            <figcaption class="mt-1 text-center text-[11px] font-medium text-muted-foreground">
+                                {{ foto.etiqueta }}
+                            </figcaption>
+                        </figure>
+                    </div>
+                </div>
+            </div>
+        </Teleport>
     </AppLayout>
 </template>
 

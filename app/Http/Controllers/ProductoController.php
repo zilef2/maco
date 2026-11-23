@@ -23,6 +23,7 @@ use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -166,6 +167,8 @@ class ProductoController extends Controller {
                  'procesos'            => Procesoop::orderBy('nombre')->pluck('nombre')->all(),
              ],
             'titulos'           => Producto::getFillableWithTypes(),
+            // Archivos que el alta puede elegir como fotos del producto.
+            'fotos_disponibles' => $this->fotosDisponibles(),
 
         ]);
     }
@@ -494,6 +497,19 @@ class ProductoController extends Controller {
     }
 
     /**
+     * Archivos de la carpeta de fotos de producto, para elegirlos en el alta.
+     *
+     * @return array<int, string>
+     */
+    private function fotosDisponibles(): array {
+        return collect(Storage::disk('public')->files('produc_photos'))
+            ->map(fn (string $ruta) => basename($ruta))
+            ->sort(SORT_NATURAL | SORT_FLAG_CASE)
+            ->values()
+            ->all();
+    }
+
+    /**
      * Reglas de validación del producto, compartidas por alta y edición.
      */
     private function reglasProducto(): array {
@@ -509,6 +525,11 @@ class ProductoController extends Controller {
             'Observaciones'        => ['nullable', 'string', 'max:255'],
             'descripcion'          => ['nullable', 'string', 'max:5000'],
             'instrucciones'        => ['nullable', 'string', 'max:5000'],
+            // Fotos por ángulo: el nombre del archivo dentro de produc_photos.
+            'foto_frente'          => ['nullable', 'string', 'max:255'],
+            'foto_perfil'          => ['nullable', 'string', 'max:255'],
+            'foto_trasera'         => ['nullable', 'string', 'max:255'],
+            'foto_superior'        => ['nullable', 'string', 'max:255'],
             'costo_anticipado'      => ['nullable', 'numeric', 'min:0'],
             'precio_venta_producto'      => ['nullable', 'numeric', 'min:0'],
             // Ficha técnica (opcional): se registra junto al producto.

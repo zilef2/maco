@@ -24,9 +24,40 @@ class Producto extends Model
         'Observaciones',
         'descripcion',
         'instrucciones',
+        'foto_frente',
+        'foto_perfil',
+        'foto_trasera',
+        'foto_superior',
         'costo_anticipado',
         'precio_venta_producto',
     ];
+
+    /** Fotos del producto por ángulo: la columna guarda el archivo de la carpeta produc_photos. */
+    public const FOTOS = [
+        'foto_frente'   => 'Frontal',
+        'foto_perfil'   => 'Perfil',
+        'foto_trasera'  => 'Trasera',
+        'foto_superior' => 'Superior',
+    ];
+
+    protected $appends = ['fotos'];
+
+    public function getFotosAttribute(): array
+    {
+        return collect(self::FOTOS)
+            ->map(function (string $etiqueta, string $campo) {
+                $archivo = trim((string) ($this->attributes[$campo] ?? ''));
+
+                return [
+                    'campo'    => $campo,
+                    'etiqueta' => $etiqueta,
+                    'archivo'  => $archivo ?: null,
+                    'url'      => $archivo ? '/storage/produc_photos/' . rawurlencode($archivo) : null,
+                ];
+            })
+            ->values()
+            ->all();
+    }
 
     //     05 ficha ensamble
     // OP

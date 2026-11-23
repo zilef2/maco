@@ -16,6 +16,7 @@ import { SidebarTrigger } from '@/components/ui/sidebar';
 import { useMostVisited } from '@/composables/useMostVisited';
 import { History } from 'lucide-vue-next';
 import type { BreadcrumbItemType } from '@/types';
+import { ref } from 'vue';
 
 withDefaults(
     defineProps<{
@@ -27,6 +28,7 @@ withDefaults(
 );
 
 const { top, visitar, limpiar } = useMostVisited();
+const breadcrumbsCollapsed = ref(false);
 </script>
 
 <template>
@@ -64,7 +66,17 @@ const { top, visitar, limpiar } = useMostVisited();
                 </DropdownMenuContent>
             </DropdownMenu>
             <template v-if="breadcrumbs.length > 0">
-                <Breadcrumbs :breadcrumbs="breadcrumbs" />
+                <div class="flex items-center gap-2">
+                    <Breadcrumbs :breadcrumbs="breadcrumbs" />
+                    <button
+                        @click="breadcrumbsCollapsed = !breadcrumbsCollapsed"
+                        class="p-1 rounded hover:bg-muted hover:text-foreground transition-colors"
+                        :aria-label="breadcrumbsCollapsed ? 'Mostrar breadcrumb' : 'Ocultar breadcrumb'"
+                    >
+                        <History class="w-4 h-4" v-if="breadcrumbsCollapsed" />
+                        <History class="w-4 h-4 rotate-180" v-else />
+                    </button>
+                </div>
             </template>
         </div>
         <div class="flex shrink-0 items-center gap-2">

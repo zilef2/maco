@@ -8,9 +8,10 @@ import SecondaryButton from '@/components/SecondaryButton.vue';
 import TextInput from '@/components/TextInput.vue';
 import EditorMateriales from '@/pages/FichaTecnicaMateriales/EditorMateriales.vue';
 import EditorProcesos from '@/pages/Producto/EditorProcesos.vue';
+import FotosProducto from '@/pages/Producto/FotosProducto.vue';
 import { MAX_TALLAS_POR_RANGO, TALLAS_ALFABETICAS, useTallasVariante } from '@/composables/useTallasVariante';
 import { dineroANumero, formatdinero } from '@/global.ts';
-import { CheckCircleIcon, ClipboardDocumentListIcon, Cog6ToothIcon, CubeIcon, DocumentTextIcon, PencilSquareIcon, CurrencyDollarIcon } from '@heroicons/vue/24/solid';
+import { CheckCircleIcon, ClipboardDocumentListIcon, Cog6ToothIcon, CubeIcon, DocumentTextIcon, PencilSquareIcon, CurrencyDollarIcon, PhotoIcon } from '@heroicons/vue/24/solid';
 import { useForm } from '@inertiajs/vue3';
 import { computed, watch, watchEffect } from 'vue';
 import vSelect from 'vue-select';
@@ -83,6 +84,11 @@ watch([modo, tallas], () => {
 // La ficha solo se puede editar si el producto no está en una OP activa.
 const fichaBloqueada = computed(() => Boolean(props.Productoa?.ficha_bloqueada));
 const fichaBloqueoDetalle = computed(() => String(props.Productoa?.ficha_bloqueo_detalle ?? ''));
+
+// Fotos por ángulo (url generada por el modelo desde produc_photos).
+const fotosProducto = computed<any[]>(() =>
+    (Array.isArray(props.Productoa?.fotos) ? props.Productoa.fotos : []).filter((foto: any) => foto?.url),
+);
 
 // Coste de producción: los materiales de la ficha más los procesos, calculado
 // con los dos métodos de precio del material (su último precio registrado y el
@@ -417,6 +423,23 @@ watchEffect(() => {
                                 <InputError class="mt-2" :message="form.errors.Opciones" />
                             </div>
                         </div>
+                    </div>
+
+                    <!-- Fotos del producto por ángulo -->
+                    <div>
+                        <h3
+                            class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
+                            <PhotoIcon class="w-4 h-4 text-gray-400 dark:text-gray-500" />
+                            Fotos del producto
+                        </h3>
+                        <p class="mt-1 mb-3 pl-6 text-xs text-gray-400 dark:text-gray-500">
+                            Los cuatro ángulos, desde la carpeta produc_photos.
+                        </p>
+                        <FotosProducto v-if="fotosProducto.length" :fotos="fotosProducto" />
+                        <p v-else
+                            class="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-400">
+                            Este producto aún no tiene fotos.
+                        </p>
                     </div>
 
                     <!-- Ficha técnica de materiales -->

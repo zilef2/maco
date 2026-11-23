@@ -18,8 +18,8 @@ import UserMenuContent from '@/components/UserMenuContent.vue';
 import { getInitials } from '@/composables/useInitials';
 import type { BreadcrumbItem, NavItem } from '@/types';
 import { Link, usePage } from '@inertiajs/vue3';
-import { BookOpen, Folder, LayoutGrid, Menu, Search } from 'lucide-vue-next';
-import { computed } from 'vue';
+import { BookOpen, Folder, History, LayoutGrid, Menu, Search } from 'lucide-vue-next';
+import { computed, ref } from 'vue';
 
 interface Props {
     breadcrumbs?: BreadcrumbItem[];
@@ -31,6 +31,7 @@ const props = withDefaults(defineProps<Props>(), {
 
 const page = usePage();
 const auth = computed(() => page.props.auth);
+const breadcrumbsCollapsed = ref(false);
 
 const isCurrentRoute = computed(() => (url: string) => page.url === url);
 
@@ -177,7 +178,17 @@ const rightNavItems: NavItem[] = [
 
         <div v-if="props.breadcrumbs.length > 1" class="flex w-full border-b border-sidebar-border/70">
             <div class="mx-auto flex h-12 w-full items-center justify-start px-4 text-neutral-500 md:max-w-7xl">
-                <Breadcrumbs :breadcrumbs="breadcrumbs" />
+                <div class="flex items-center gap-2">
+                    <Breadcrumbs :breadcrumbs="breadcrumbs" />
+                    <button
+                        @click="breadcrumbsCollapsed = !breadcrumbsCollapsed"
+                        class="p-1 rounded hover:bg-muted hover:text-foreground transition-colors"
+                        :aria-label="breadcrumbsCollapsed ? 'Mostrar breadcrumb' : 'Ocultar breadcrumb'"
+                    >
+                        <History class="w-4 h-4" v-if="breadcrumbsCollapsed" />
+                        <History class="w-4 h-4 rotate-180" v-else />
+                    </button>
+                </div>
             </div>
         </div>
     </div>

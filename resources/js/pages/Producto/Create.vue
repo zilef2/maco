@@ -8,9 +8,10 @@ import SecondaryButton from '@/components/SecondaryButton.vue';
 import TextInput from '@/components/TextInput.vue';
 import EditorMateriales from '@/pages/FichaTecnicaMateriales/EditorMateriales.vue';
 import EditorProcesos from '@/pages/Producto/EditorProcesos.vue';
+import FotosProducto from '@/pages/Producto/FotosProducto.vue';
 import { MAX_TALLAS_POR_RANGO, TALLAS_ALFABETICAS, useTallasVariante } from '@/composables/useTallasVariante';
 import { dineroANumero, formatdinero } from '@/global.ts';
-import { CheckCircleIcon, ClipboardDocumentListIcon, Cog6ToothIcon, CubeIcon, DocumentTextIcon, ShoppingBagIcon, CurrencyDollarIcon } from '@heroicons/vue/24/solid';
+import { CheckCircleIcon, ClipboardDocumentListIcon, Cog6ToothIcon, CubeIcon, DocumentTextIcon, ShoppingBagIcon, CurrencyDollarIcon, PhotoIcon } from '@heroicons/vue/24/solid';
 import { useForm } from '@inertiajs/vue3';
 import { computed, ref, watch, watchEffect } from 'vue';
 import vSelect from 'vue-select';
@@ -27,6 +28,7 @@ const props = withDefaults(
         productos?: any[];
         metodoCostos?: number;
         metodoCostosLabel?: string;
+        fotosDisponibles?: string[];
     }>(),
     {
         show: false,
@@ -38,6 +40,7 @@ const props = withDefaults(
         productos: () => [],
         metodoCostos: 1,
         metodoCostosLabel: '',
+        fotosDisponibles: () => [],
     }
 );
 
@@ -129,10 +132,34 @@ const form = useForm({
     descripcion: '',
     instrucciones: '',
     costo_anticipado: '' as string | number,
+    foto_frente: '',
+    foto_perfil: '',
+    foto_trasera: '',
+    foto_superior: '',
     materiales: [] as any[],
     procesos: [] as any[],
     precio_venta_producto: '' as string | number,
 });
+
+// Ángulos de la galería; los archivos salen de la carpeta produc_photos.
+const ANGULOS = [
+    { campo: 'foto_frente', etiqueta: 'Frontal' },
+    { campo: 'foto_perfil', etiqueta: 'Perfil' },
+    { campo: 'foto_trasera', etiqueta: 'Trasera' },
+    { campo: 'foto_superior', etiqueta: 'Superior' },
+] as const;
+
+const fotosSeleccionadas = computed(() =>
+    ANGULOS.map(({ campo, etiqueta }) => {
+        const archivo = String((form as any)[campo] ?? '').trim();
+        return {
+            campo,
+            etiqueta,
+            archivo,
+            url: archivo ? `/storage/produc_photos/${encodeURIComponent(archivo)}` : null,
+        };
+    }).filter((foto) => foto.url !== null),
+);
 
 // El código se asigna solo: PT-001 con el último número registrado + 1.
 // Se recuerda el último creado en esta sesión porque la lista no se recarga
@@ -423,6 +450,46 @@ watch(
                                 </p>
 
                                 <InputError class="mt-2" :message="form.errors.Opciones" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Fotos del producto por ángulo -->
+                    <div>
+                        <h3
+                            class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-1.5">
+                            <PhotoIcon class="w-4 h-4 text-gray-400 dark:text-gray-500" />
+                            Fotos del producto
+                        </h3>
+                        <p class="mt-1 mb-3 pl-6 text-xs text-gray-400 dark:text-gray-500">
+                            Elija el archivo de cada ángulo desde la carpeta produc_photos.
+                        </p>
+                        <FotosProducto v-if="fotosSeleccionadas.length" :fotos="fotosSeleccionadas" />
+                        <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4"
+                            :class="fotosSeleccionadas.length ? 'mt-3' : ''">
+                            <div>
+                                <InputLabel for="foto_frente" value="Foto frontal" />
+                                <v-select id="foto_frente" :options="props.fotosDisponibles"
+                                    v-model="form.foto_frente" :clearable="true" placeholder="Sin foto"
+                                    append-to-body class="mt-1 block w-full" />
+                            </div>
+                            <div>
+                                <InputLabel for="foto_perfil" value="Foto perfil" />
+                                <v-select id="foto_perfil" :options="props.fotosDisponibles"
+                                    v-model="form.foto_perfil" :clearable="true" placeholder="Sin foto"
+                                    append-to-body class="mt-1 block w-full" />
+                            </div>
+                            <div>
+                                <InputLabel for="foto_trasera" value="Foto trasera" />
+                                <v-select id="foto_trasera" :options="props.fotosDisponibles"
+                                    v-model="form.foto_trasera" :clearable="true" placeholder="Sin foto"
+                                    append-to-body class="mt-1 block w-full" />
+                            </div>
+                            <div>
+                                <InputLabel for="foto_superior" value="Foto superior" />
+                                <v-select id="foto_superior" :options="props.fotosDisponibles"
+                                    v-model="form.foto_superior" :clearable="true" placeholder="Sin foto"
+                                    append-to-body class="mt-1 block w-full" />
                             </div>
                         </div>
                     </div>
