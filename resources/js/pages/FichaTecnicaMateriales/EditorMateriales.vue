@@ -71,12 +71,14 @@ const alEnterEnMaterial = (index: number) => {
 const materialDe = (fila: any) =>
     (props.opciones?.materiales || []).find((material: any) => String(material.id) === String(fila.material_componente_id));
 
-// La ficha solo admite materiales genéricos: el select lista únicamente esos.
-// Una fila antigua que apunte a un material específico conserva su opción para
-// que el nombre siga visible al editar.
+// La ficha se anota en las bases y en los huérfanos: el select oculta solo a
+// los hijos de una base. Una fila antigua que apunte a un hijo conserva su
+// opción para que el nombre siga visible al editar.
+const esAnotable = (material: any) => !material.base_id;
+
 const opcionesVisibles = computed<any[]>(() =>
     (props.opciones?.materiales || [])
-        .filter((material: any) => material.generico === true || material.generico === 1)
+        .filter(esAnotable)
         .map((material: any) => ({
             ...material,
             nombre_con_variants: material.variants?.length
@@ -89,8 +91,7 @@ const opcionesDeFila = (fila: any): any[] => {
     const seleccion = (props.opciones?.materiales || []).find(
         (material: any) => String(material.id) === String(fila.material_componente_id),
     );
-    const esGenerica = seleccion && (seleccion.generico === true || seleccion.generico === 1);
-    if (!seleccion || esGenerica) {
+    if (!seleccion || esAnotable(seleccion)) {
         return opcionesVisibles.value;
     }
     return [
@@ -117,6 +118,7 @@ const filtrarOpciones = (opcion: any, busqueda: string): boolean => {
     return (
         normalizarBusqueda(opcion?.codigo_material ?? '').includes(texto) ||
         normalizarBusqueda(opcion?.nombre_base ?? '').includes(texto) ||
+        normalizarBusqueda(opcion?.nombre_material ?? '').includes(texto) ||
         normalizarBusqueda(opcion?.nombre_con_variants ?? '').includes(texto)
     );
 };

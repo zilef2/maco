@@ -176,6 +176,7 @@ const preparadas = computed(() =>
                 [
                     m.codigo_material,
                     m.nombre_base,
+                    m.nombre_material,
                     m.categoria,
                     m.unidad_inventario,
                     estadoNormalizado(m.estado),
@@ -372,7 +373,7 @@ const collator = new Intl.Collator('es', { numeric: true, sensitivity: 'base' })
 const valorOrden = (m: any, key: string): any => {
     switch (key) {
         case 'material':
-            return m.nombre_base ?? '';
+            return m.nombre_material || m.nombre_base || '';
         case 'proveedor':
             return m.proveedor_nombre ?? '';
         case 'last_purchase_price':
@@ -780,18 +781,9 @@ const breadcrumbCollapsed = ref(false);
     <AppLayout>
         <div class="flex flex-col gap-4 p-4 sm:p-6">
             <!-- Encabezado -->
-        <div class="flex justify-end mb-2">
-            <button
-                @click="breadcrumbCollapsed = !breadcrumbCollapsed"
-                class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                :aria-label="breadcrumbCollapsed ? 'Mostrar título y breadcrumb' : 'Ocultar título y breadcrumb'"
-            >
-                <ChevronDownIcon v-if="breadcrumbCollapsed" class="h-4 w-4" />
-                <ChevronUpIcon v-else class="h-4 w-4" />
-            </button>
-        </div>
-        <div v-if="!breadcrumbCollapsed" class="flex flex-col gap-3">
-            <nav class="flex items-center gap-1.5 text-xs text-muted-foreground" aria-label="Ruta de navegación">
+        <!-- boton colapsar se mueve a la fila del titulo -->
+        <div class="flex flex-col gap-2">
+            <nav v-if="!breadcrumbCollapsed" class="flex items-center gap-1.5 text-xs text-muted-foreground" aria-label="Ruta de navegación">
                     <Link :href="route('dashboard')"
                         class="rounded-sm transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                         Dashboard
@@ -807,7 +799,7 @@ const breadcrumbCollapsed = ref(false);
                 </nav>
 
                 <div class="flex flex-wrap items-end justify-between gap-3">
-                    <div class="min-w-0">
+                    <div class="min-w-0" v-if="!breadcrumbCollapsed">
                         <h1 class="text-2xl font-semibold tracking-tight text-foreground">Materiales</h1>
                         <p class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground"
                             role="status" aria-live="polite">
@@ -822,6 +814,15 @@ const breadcrumbCollapsed = ref(false);
                             </span>
                         </p>
                     </div>
+
+                    <button
+                        @click="breadcrumbCollapsed = !breadcrumbCollapsed"
+                        class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                        :aria-label="breadcrumbCollapsed ? 'Mostrar título y breadcrumb' : 'Ocultar título y breadcrumb'"
+                    >
+                        <ChevronDownIcon v-if="breadcrumbCollapsed" class="h-4 w-4" />
+                        <ChevronUpIcon v-else class="h-4 w-4" />
+                    </button>
 
                     <div class="flex flex-wrap items-center gap-2">
                         <button type="button" @click="recargar" :disabled="cargando" title="Actualizar datos"
@@ -1017,7 +1018,7 @@ const breadcrumbCollapsed = ref(false);
 
                         <button type="button"
                             @click="genericoFiltro = !genericoFiltro"
-                            :aria-pressed="genericoFiltro" aria-label="Filtrar materiales genéricos"
+                            :aria-pressed="genericoFiltro" aria-label="Filtrar materiales base"
                             :class="[
                                 'inline-flex h-9 items-center gap-2 rounded-full border px-3 text-xs font-medium shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background',
                                 genericoFiltro
@@ -1033,7 +1034,7 @@ const breadcrumbCollapsed = ref(false);
                                     genericoFiltro ? 'translate-x-3.5' : 'translate-x-0.5',
                                 ]" />
                             </span>
-                            Genéricos
+                            Bases
                         </button>
 
                         <!-- Banner rojo para materiales sin precio -->
@@ -1186,7 +1187,7 @@ const breadcrumbCollapsed = ref(false);
                                 <td class="px-2 py-3 text-center align-top">
                                     <input type="checkbox" :checked="data.selectedId.includes(material.id)"
                                         @change="toggleFila(material.id)"
-                                        :aria-label="`Seleccionar ${material.codigo_material || material.nombre_base}`"
+                                        :aria-label="`Seleccionar ${material.codigo_material || material.nombre_material || material.nombre_base}`"
                                         class="rounded border-input bg-background text-primary focus:ring-2 focus:ring-ring" />
                                 </td>
 
@@ -1202,13 +1203,13 @@ const breadcrumbCollapsed = ref(false);
                                     <div class="flex max-w-[220px] flex-col gap-0.5">
                                         <span class="flex items-center gap-1.5">
                                             <span class="truncate font-medium text-foreground"
-                                                :title="material.nombre_base">
-                                                {{ material.nombre_base || '—' }}
+                                                :title="material.nombre_material || material.nombre_base">
+                                                {{ material.nombre_material || material.nombre_base || '—' }}
                                             </span>
                                             <span v-if="Number(material.generico) === 1 || material.generico === true"
                                                 class="shrink-0 rounded-full border border-sky-300 bg-sky-50 px-1.5 py-px text-[10px] font-medium text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300"
-                                                title="Material genérico: representa a la familia categoría-base; no maneja talla, color ni inventario propio">
-                                                Genérico
+                                                title="Material base: la ficha técnica se anota en él; la OP gasta uno de sus hijos. No maneja talla, color ni inventario propio">
+                                                Base
                                             </span>
                                         </span>
                                         <span class="truncate text-[11px] text-muted-foreground">
@@ -1256,7 +1257,7 @@ const breadcrumbCollapsed = ref(false);
                                 <!-- Existencia -->
                                 <td class="px-3 py-3 text-right align-top">
                                     <div v-if="material._esGenerico" class="flex flex-col items-end gap-0.5"
-                                        title="El genérico no almacena inventario: la existencia está en los materiales concretos de su familia.">
+                                        title="La base no almacena inventario: la existencia está en sus hijos.">
                                         <span class="text-foreground">—</span>
                                         <span class="text-[11px] text-muted-foreground">no aplica</span>
                                     </div>
@@ -1273,7 +1274,7 @@ const breadcrumbCollapsed = ref(false);
                                 <!-- Proyectado: físico + producción pendiente − compromisos -->
                                 <td class="px-3 py-3 text-right align-top">
                                     <div v-if="material._esGenerico" class="flex flex-col items-end gap-0.5"
-                                        title="El genérico no se reserva ni se produce: las OPs consumen el material concreto que se eligió al registrarlas.">
+                                        title="La base no se reserva ni se produce: las OPs consumen el hijo que se eligió al registrarlas.">
                                         <span class="text-foreground">—</span>
                                         <span class="text-[11px] text-muted-foreground">no aplica</span>
                                     </div>
@@ -1301,7 +1302,7 @@ const breadcrumbCollapsed = ref(false);
                                 <!-- Gasto diario -->
                                 <td class="px-3 py-3 text-right align-top">
                                     <div v-if="material._esGenerico" class="flex flex-col items-end gap-0.5"
-                                        title="El consumo se registra a nombre del material concreto, no del genérico.">
+                                        title="El consumo se registra a nombre del hijo elegido, no de la base.">
                                         <span class="text-foreground">—</span>
                                         <span class="text-[11px] text-muted-foreground">no aplica</span>
                                     </div>
@@ -1431,19 +1432,19 @@ const breadcrumbCollapsed = ref(false);
                                     <div class="flex items-center justify-end gap-1">
                                         <button v-if="can(['update Material'])" type="button"
                                             @click="accionFila('edit', material)" title="Editar"
-                                            :aria-label="`Editar ${material.codigo_material || material.nombre_base}`"
+                                            :aria-label="`Editar ${material.codigo_material || material.nombre_material || material.nombre_base}`"
                                             class="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
                                             <PencilIcon class="h-4 w-4" />
                                         </button>
                                         <button v-if="can(['read Material'])" type="button"
                                             @click="accionFila('historial', material)" title="Ver historial"
-                                            :aria-label="`Ver historial de ${material.codigo_material || material.nombre_base}`"
+                                            :aria-label="`Ver historial de ${material.codigo_material || material.nombre_material || material.nombre_base}`"
                                             class="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
                                             <ClockIcon class="h-4 w-4" />
                                         </button>
                                         <DropdownMenu>
                                             <DropdownMenuTrigger type="button" title="Acciones"
-                                                :aria-label="`Acciones de ${material.codigo_material || material.nombre_base}`"
+                                                :aria-label="`Acciones de ${material.codigo_material || material.nombre_material || material.nombre_base}`"
                                                 class="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
                                                 <EllipsisVerticalIcon class="h-4 w-4" />
                                             </DropdownMenuTrigger>

@@ -146,8 +146,8 @@ const descripcionToggle = (campo: string, activo: boolean): string => {
     }
     if (campo === 'generico') {
         return activo
-            ? 'Sí, es genérico: sin talla, color, diseño, proveedor, existencia ni gasto diario propios; se codifica con el número de la familia (COM-CAP-055) y la OP elige un hijo suyo (COM-CAP-055-34), que es el que se gasta y se costea'
-            : 'No, es un material específico con sus variantes y su precio de compra';
+            ? 'Sí, es la base: sin talla, color, diseño, proveedor, existencia ni gasto diario propios. La ficha técnica se anota en ella y la OP elige un hijo suyo (COM-CAP-055-34), que es el que se gasta y se costea'
+            : 'No: tiene sus variantes y su precio de compra. Si tiene una base arriba, la OP lo ofrece como alternativa de esa base; si no tiene base (huérfano), la ficha lo cita directo y se consume tal cual';
     }
     return activo ? 'Sí, este material lo maneja' : 'No aplica para este material';
 };
@@ -268,10 +268,10 @@ const update = () => {
                                     <TextInput :id="atributosform.idd" class="mt-1 block w-full bg-gray-100 dark:bg-gray-800/60 cursor-not-allowed opacity-70"
                                         v-model="form[atributosform.idd]" disabled />
                                     <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                                        Se forma con el código de la categoría y el código base (TEX-LFI-004). Si cambias el
-                                        par, el material toma el siguiente número libre del prefijo nuevo. El genérico es la
-                                        familia y lleva su número de 3 dígitos (COM-CAP-055); el concreto es un hijo suyo
-                                        (COM-CAP-055-34). Ningún número puede ser 0.
+                                        Se formó con el código de la categoría y el código base (TEX-LFI-004) y ya no cambia:
+                                        si editas el par, el material conserva su código. La forma del código no dice nada
+                                        del rol: base o no lo define el interruptor «Material base». Ningún número puede
+                                        ser 0.
                                     </p>
                                     <InputError class="mt-2" :message="form.errors[atributosform.idd]" />
                                 </div>
@@ -350,7 +350,7 @@ const update = () => {
                                         : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/40 hover:border-gray-300 dark:hover:border-gray-600'">
                                     <div>
                                         <span class="block text-sm font-medium text-gray-800 dark:text-gray-200">
-                                            {{ lang().t('app.label')['generico'] || 'Material genérico' }}
+                                            {{ lang().t('app.label')['generico'] || 'Material base' }}
                                         </span>
                                         <span class="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                                             {{ descripcionToggle('generico', esGenerico) }}
@@ -470,7 +470,7 @@ const update = () => {
                         <div v-else
                             class="rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/60 dark:bg-indigo-900/20 px-4 py-3 mb-4">
                             <p class="text-sm font-medium text-gray-800 dark:text-gray-200">
-                                Un material genérico no registra precio ni fecha de compra propios
+                                Una base no registra precio ni fecha de compra propios
                             </p>
                             <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
                                 Su precio es el promedio de los precios de sus similares de la misma categoría y nombre

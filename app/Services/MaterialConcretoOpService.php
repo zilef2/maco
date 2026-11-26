@@ -10,25 +10,29 @@ use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 
 /**
- * Material concreto por línea genérica de la ficha, dentro de una OP.
+ * Material concreto por línea base de la ficha, dentro de una OP.
  *
- * La ficha técnica declara el genérico de la familia (COM-CAP-055) porque allí
- * solo importa el consumo; el color o la talla que se van a gastar se deciden en
- * la OP y tienen que ser un hijo de esa misma familia (COM-CAP-055-01,
- * COM-CAP-055-02, …). Esta clase valida esa elección, la guarda y la resuelve
- * para que el kit, los compromisos, los faltantes, el descuento en taller y los
- * costos trabajen siempre con el material concreto.
+ * La ficha declara la base de la familia (COM-CAP-055) porque allí solo importa
+ * el consumo; el color o la talla que se van a gastar se deciden en la OP y
+ * tienen que ser un hijo de esa misma familia (COM-CAP-055-01, COM-CAP-055-02,
+ * …). Esta clase valida esa elección, la guarda y la resuelve para que el kit,
+ * los compromisos, los faltantes, el descuento en taller y los costos trabajen
+ * siempre con el material concreto.
+ *
+ * Una ficha también puede declarar un material huérfano (sin base arriba). Ese
+ * no se pregunta aquí: no tiene de dónde elegir, así que la OP lo consume tal
+ * como está y se le descuenta su propia existencia.
  */
 class MaterialConcretoOpService
 {
-    /** Familia de un material: el código de su genérico (COM-CAP-055-34 => COM-CAP-055). */
+    /** Familia de un material: el código sin su último tramo (COM-CAP-055-34 => COM-CAP-055). */
     public static function familiaDe(?Material $material): string
     {
         return $material === null ? '' : (string) Material::familiaDeCodigo($material->codigo_material);
     }
 
     /**
-     * Materiales concretos (no genéricos y activos) agrupados por familia.
+     * Hijos de las bases (no genéricos y activos) agrupados por familia.
      *
      * @return Collection<string, Collection<int, Material>>
      */
@@ -39,7 +43,7 @@ class MaterialConcretoOpService
             ->where('generico', false)
             ->where('estado', 'Activo')
             ->orderBy('codigo_material')
-            ->get(['id', 'codigo_material', 'nombre_base', 'codigo_categoria', 'codigo_base', 'unidad_inventario', 'existencia_actual'])
+            ->get(['id', 'codigo_material', 'nombre_base', 'nombre_material', 'codigo_categoria', 'codigo_base', 'unidad_inventario', 'existencia_actual'])
             ->groupBy(fn (Material $material): string => self::familiaDe($material));
     }
 
@@ -75,8 +79,9 @@ class MaterialConcretoOpService
     }
 
     /**
-     * Genéricos declarados en la ficha del objetivo (producto o material
-     * procesado), en el orden en que los lee el kit de la OP.
+     * Bases declaradas en la ficha del objetivo (producto o material procesado),
+     * en el orden en que los lee el kit de la OP. Un huérfano no sale: no tiene
+     * hijos de dónde elegir, así que la OP lo consume tal cual.
      *
      * @return array<int, Material>
      */

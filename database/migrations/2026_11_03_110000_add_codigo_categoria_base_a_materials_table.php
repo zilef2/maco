@@ -12,6 +12,13 @@ use Illuminate\Support\Facades\Schema;
  */
 return new class extends Migration
 {
+    /**
+     * Formato que tenían los códigos al momento de esta migración. Se copia aquí
+     * en vez de leerla del modelo: el modelo cambia con el tiempo y la migración
+     * tiene que quedar reproducible en un migrate fresh.
+     */
+    private const PATRON_LEGADO = '/^[A-Z]{1,3}-[A-Z]{1,3}-\d{1,4}$/';
+
     public function up(): void
     {
         Schema::table('materials', function (Blueprint $table) {
@@ -52,7 +59,7 @@ return new class extends Migration
         foreach ($filas as $fila) {
             $codigo = Material::normalizarCodigo($fila->codigo_material);
             $partes = $codigo !== null ? explode('-', $codigo) : [];
-            $yaFormado = $codigo !== null && count($partes) === 3 && preg_match(Material::PATRON_CODIGO, $codigo);
+            $yaFormado = $codigo !== null && count($partes) === 3 && preg_match(self::PATRON_LEGADO, $codigo);
 
             // El par se lee del código solo cuando el código ya es válido; si
             // no, MAT-30 terminaría disfrazado de prefijo.

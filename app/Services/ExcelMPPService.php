@@ -386,7 +386,7 @@ class ExcelMPPService
         if ($hoja === 'ficha') {
             $lectura = $this->fichas->registrosDesdeFilas($filas);
 
-            return $this->fichas->importarRegistros($lectura, $usuarioId);
+            return $this->fichas->importarRegistros($lectura);
         }
 
         $lectura = $this->productos->registrosDesdeFilas($filas);

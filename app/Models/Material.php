@@ -21,20 +21,14 @@ class Material extends Model
     /** Letras que valen en cada fragmento del código (categoría y base). */
     public const LONGITUD_FRAGMENTO = 3;
 
-    /** Dígitos con los que se escribe el número de la familia: COM-CAP-055. */
-    public const LARGO_FAMILIA = 3;
+    /** Dígitos con los que se escribe el primer número del código: COM-CAP-055. */
+    public const LARGO_NUMERO = 3;
 
-    /** Dígitos con los que se escribe el número del hijo: COM-CAP-055-34. */
-    public const LARGO_HIJO = 2;
+    /** Dígitos del consecutivo que sigue: COM-CAP-055-04. */
+    public const LARGO_CONSECUTIVO = 2;
 
-    /** Código de un genérico: el par y el número de familia, sin hijo. */
-    public const PATRON_FAMILIA = '/^[A-Z]{1,' . self::LONGITUD_FRAGMENTO . '}-[A-Z]{1,' . self::LONGITUD_FRAGMENTO . '}-\d{1,4}$/';
-
-    /** Código de un material concreto: el código de su genérico más el hijo. */
-    public const PATRON_HIJO = '/^[A-Z]{1,' . self::LONGITUD_FRAGMENTO . '}-[A-Z]{1,' . self::LONGITUD_FRAGMENTO . '}-\d{1,4}-\d{1,4}$/';
-
-    /** Formato del código: familia (CAT-BASE-055) o hijo de esa familia (CAT-BASE-055-34). */
-    public const PATRON_CODIGO = '/^[A-Z]{1,' . self::LONGITUD_FRAGMENTO . '}-[A-Z]{1,' . self::LONGITUD_FRAGMENTO . '}-\d{1,4}(-\d{1,4})?$/';
+    /** Los dos fragmentos de letras del código (el par): COM-CAP. */
+    public const PATRON_FRAGMENTOS = '/^[A-Z]{1,' . self::LONGITUD_FRAGMENTO . '}-[A-Z]{1,' . self::LONGITUD_FRAGMENTO . '}$/';
 
     protected $fillable = ['codigo_material',
         'codigo_categoria',
@@ -42,6 +36,7 @@ class Material extends Model
         'codigo_base',
         'generico',
         'nombre_base',
+        'nombre_material',
         'unidad_inventario',
         'existencia_actual',
         'gasto_diario',
@@ -68,11 +63,12 @@ class Material extends Model
     }
 
     /**
-     * El genérico es un referente de familia, no un artículo almacenado: no
-     * maneja talla ni color (se limpian los indicadores y las variantes) y
-     * tampoco tiene inventario propio (existencia y gasto diario viven en los
-     * materiales concretos del mismo par). Se aplica en saving para que valga
-     * en cualquier ruta de escritura (formulario, servicio, tinker).
+     * El material base (la columna "Base si o no" del archivo) es un referente de
+     * familia, no un artículo almacenado: no maneja talla ni color (se limpian los
+     * indicadores y las variantes) y tampoco tiene inventario propio (existencia y
+     * gasto diario viven en los materiales concretos de su familia). Se aplica en
+     * saving para que valga en cualquier ruta de escritura (formulario, servicio,
+     * tinker).
      */
     protected function limpiarVariantesPorGenerico(): void
     {
@@ -92,22 +88,14 @@ class Material extends Model
     }
 
     /**
-     * El código dice de qué familia es el material. El genérico es la familia y
-     * se codifica con el par y su número de tres dígitos (COM-CAP-055); sus
-     * hijos —los que tienen color o talla y los que se gastan— le agregan el
-     * número del hijo (COM-CAP-055-34).
+     * El código identifica al material y nada más: su forma no dice si el material
+     * es base, hijo u huérfano. Lo que hace esta regla es dejar los fragmentos del
+     * par en su forma canónica, rellenar los ceros del código que llega escrito y,
+     * cuando viene vacío, dar el número libre siguiente del par.
      *
-     * Un mismo par admite varios genéricos (COM-CAP-055 y COM-CAP-056), así que
-     * lo único prohibido es repetir un código: cada familia tiene su genérico.
-     *
-     * El código que llega escrito se respeta cuando pertenece al par, porque el
-     * archivo MPP es quien los trae. Cuando viene vacío, el genérico toma el
-     * siguiente número de familia libre del par y el concreto se registra bajo
-     * la familia más alta que el par ya tenga (si el par no tiene genérico, hay
-     * que crearlo primero: sin familia no hay código de hijo posible).
-     *
-     * Cambiar el par mueve el material a la familia nueva; el código que deja
-     * queda disponible para otro material.
+     * El vínculo con el material base sigue siendo el prefijo: COM-CAP-055-04 es
+     * hijo de COM-CAP-055, pero solo lo es si COM-CAP-055 existe y está marcado
+     * como base. Si no, el material está huérfano y se maneja solo.
      */
     public function aplicarReglaDelCodigo(): void
     {
@@ -116,65 +104,47 @@ class Material extends Model
         $this->codigo_base = self::normalizarFragmento($this->codigo_base)
             ?: self::abreviar((string) $this->nombre_base);
 
-        if ($this->codigo_categoria === '' || $this->codigo_base === '') {
-            throw ValidationException::withMessages([
-                'codigo_categoria' => 'No se puede armar el código del material: digite el código de la categoría y el código base, o escriba su categoría y su nombre base.',
-            ]);
-        }
-
-        $prefijo = $this->codigo_categoria . '-' . $this->codigo_base;
         $codigo = self::normalizarCodigo($this->codigo_material);
 
-        if (self::tieneNumeroEnCero($codigo)) {
-            throw ValidationException::withMessages([
-                'codigo_material' => "El código {$codigo} usa el número 0: la familia y el hijo empiezan en 1"
-                    . " ({$prefijo}-001 y {$prefijo}-001-01).",
-            ]);
+        if ($codigo === null) {
+            if ($this->codigo_categoria === '' || $this->codigo_base === '') {
+                throw ValidationException::withMessages([
+                    'codigo_categoria' => 'No se puede armar el código del material: digite el código de la categoría y el código base, o escriba su categoría y su nombre base.',
+                ]);
+            }
+
+            $codigo = self::siguienteCodigoDelPar($this->codigo_categoria . '-' . $this->codigo_base);
         }
 
-        $delPar = $codigo !== null && str_starts_with($codigo, $prefijo . '-');
+        $this->codigo_material = $codigo;
 
-        if ($this->generico) {
-            // Un genérico es una familia: si llegó código de hijo se descarta y
-            // se le asigna el siguiente número de familia libre del par.
-            $this->codigo_material = $delPar && self::esCodigoFamilia($codigo)
-                ? $codigo
-                : $prefijo . '-' . self::siguienteNumeroFamilia($prefijo);
-
-            $this->rechazarCodigoTomado();
-
-            return;
-        }
-
-        if ($delPar) {
-            // El hijo se reescribe con sus ceros (COM-CAP-55-4 es COM-CAP-055-04);
-            // un código de tres tramos es del formato antiguo y queda tal cual.
-            $this->codigo_material = self::esCodigoHijo($codigo)
-                ? $codigo
-                : trim((string) $this->codigo_material);
-
-            $this->rechazarCodigoTomado();
-
-            return;
-        }
-
-        $familia = self::familiaMasAltaDelPar($prefijo);
-
-        if ($familia === null) {
-            throw ValidationException::withMessages([
-                'codigo_material' => "El par {$prefijo} no tiene material genérico: primero registre su familia ({$prefijo}-" . self::siguienteNumeroFamilia($prefijo) . ") y el concreto quedará como hijo de ella.",
-            ]);
-        }
-
-        $this->codigo_material = $familia . '-' . self::siguienteNumeroHijo($familia);
-
+        $this->rechazarNumeroEnCero($codigo);
         $this->rechazarCodigoTomado();
     }
 
     /**
-     * El código identifica a un material: no puede estar usado por otro, ni el
-     * de una familia puede quedar como código de un concreto. Se revisa aquí
-     * para que el aviso sea legible y no el error de la clave única de la tabla.
+     * Los números del código arrancan en 1: COM-CAP-000 y COM-CAP-055-00 no
+     * existen, así que se rechaza la escritura en vez de guardar un código que
+     * luego no se puede volver a formar.
+     */
+    private function rechazarNumeroEnCero(string $codigo): void
+    {
+        foreach (explode('-', $codigo) as $indice => $tramo) {
+            if ($indice < 2 || !ctype_digit($tramo) || (int) $tramo !== 0) {
+                continue;
+            }
+
+            throw ValidationException::withMessages([
+                'codigo_material' => 'Ningún número del código puede valer 0: ' . $codigo
+                    . '. Los números arrancan en 1 (COM-CAP-001, COM-CAP-055-01).',
+            ]);
+        }
+    }
+
+    /**
+     * El código identifica a un material: no puede estar usado por otro. Se revisa
+     * aquí para que el aviso sea legible y no el error de la clave única de la
+     * tabla.
      */
     private function rechazarCodigoTomado(): void
     {
@@ -192,9 +162,8 @@ class Material extends Model
         }
 
         throw ValidationException::withMessages([
-            'codigo_material' => $existente->generico
-                ? "El código {$this->codigo_material} es de un material genérico: los concretos de esa familia se escriben {$this->codigo_material}-34."
-                : "El código {$this->codigo_material} ya lo tiene el material {$existente->nombre_base}.",
+            'codigo_material' => 'El código ' . $this->codigo_material . ' ya lo tiene el material '
+                . ($existente->nombre_base ?: ('#' . $existente->id)) . '.',
         ]);
     }
 
@@ -222,67 +191,90 @@ class Material extends Model
             return null;
         }
 
-        $limpio = mb_strtoupper($limpio);
+        $tramos = explode('-', mb_strtoupper($limpio));
 
-        if (preg_match('/^([A-Z]{1,' . self::LONGITUD_FRAGMENTO . '}-[A-Z]{1,' . self::LONGITUD_FRAGMENTO . '})-(\d{1,4})(?:-(\d{1,4}))?$/', $limpio, $coincidencia) !== 1) {
-            return $limpio;
+        if (count($tramos) < 3 || !ctype_digit($tramos[2]) || !preg_match(self::PATRON_FRAGMENTOS, $tramos[0] . '-' . $tramos[1])) {
+            return implode('-', $tramos);
         }
 
-        return $coincidencia[1] . '-' . str_pad($coincidencia[2], self::LARGO_FAMILIA, '0', STR_PAD_LEFT)
-            . (isset($coincidencia[3]) && $coincidencia[3] !== ''
-                ? '-' . str_pad($coincidencia[3], self::LARGO_HIJO, '0', STR_PAD_LEFT)
-                : '');
-    }
+        $tramos[2] = str_pad($tramos[2], self::LARGO_NUMERO, '0', STR_PAD_LEFT);
 
-    /** El código es de una familia (COM-CAP-055): tres tramos y nada de hijo. */
-    public static function esCodigoFamilia(?string $codigo): bool
-    {
-        return $codigo !== null && $codigo !== '' && preg_match(self::PATRON_FAMILIA, $codigo) === 1;
-    }
+        // El tramo que sigue al número de la familia se rellena con dos dígitos,
+        // que es como la app escribió siempre los consecutivos (COM-CAP-055-04).
+        if (count($tramos) >= 4 && ctype_digit($tramos[3])) {
+            $tramos[3] = str_pad($tramos[3], self::LARGO_CONSECUTIVO, '0', STR_PAD_LEFT);
+        }
 
-    /** El código es de un hijo de familia (COM-CAP-055-34). */
-    public static function esCodigoHijo(?string $codigo): bool
-    {
-        return $codigo !== null && $codigo !== '' && preg_match(self::PATRON_HIJO, $codigo) === 1;
+        return implode('-', $tramos);
     }
 
     /**
-     * Si algún número del código vale 0: la familia 0 (COM-CAP-000) y el hijo 0
-     * (COM-CAP-055-00) no existen. El relleno con ceros sí vale, COM-CAP-001 es
-     * la familia uno.
-     */
-    public static function tieneNumeroEnCero(?string $codigo): bool
-    {
-        if ($codigo === null || preg_match(self::PATRON_CODIGO, $codigo) !== 1) {
-            return false;
-        }
-
-        foreach (array_slice(explode('-', $codigo), 2) as $numero) {
-            if ((int) $numero === 0) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * Familia a la que pertenece un código: la del material genérico. En un
-     * hijo es el código sin el último tramo (COM-CAP-055-34 => COM-CAP-055); en
-     * una familia es ella misma. Null si la celda no tiene formato de código.
+     * Familia a la que pertenece un código: la del material base. En un hijo es el
+     * código sin el último tramo (COM-CAP-055-34 es COM-CAP-055) y en un material
+     * de un solo número es él mismo. Null si la celda no tiene forma de código.
+     *
+     * La familia es solo el vínculo: si el registro de la familia no está marcado
+     * como base, el material está huérfano ({@see basesDeHijos}).
      */
     public static function familiaDeCodigo(?string $codigo): ?string
     {
         $normalizado = self::normalizarCodigo($codigo);
 
-        if ($normalizado === null || preg_match(self::PATRON_CODIGO, $normalizado) !== 1) {
+        if ($normalizado === null) {
             return null;
         }
 
-        return self::esCodigoHijo($normalizado)
-            ? substr($normalizado, 0, (int) strrpos($normalizado, '-'))
+        $tramos = explode('-', $normalizado);
+
+        if (count($tramos) < 3 || !ctype_digit($tramos[count($tramos) - 1])) {
+            return null;
+        }
+
+        return count($tramos) >= 4
+            ? implode('-', array_slice($tramos, 0, -1))
             : $normalizado;
     }
+
+    /**
+     * Genérico de cada material de la lista que es hijo de uno: id del material
+     * => id de su base. Un material es hijo cuando su familia existe y está
+     * marcada como base; los huérfanos (sin base arriba) no entran en el mapa.
+     *
+     * @param  iterable<int, Material>  $materiales
+     * @return array<int, int>
+     */
+    public static function basesDeHijos(iterable $materiales): array
+    {
+        $familiasPorId = [];
+
+        foreach ($materiales as $material) {
+            $familia = self::familiaDeCodigo($material->codigo_material);
+
+            if ($familia !== null && $familia !== self::normalizarCodigo($material->codigo_material)) {
+                $familiasPorId[(int) $material->id] = $familia;
+            }
+        }
+
+        if ($familiasPorId === []) {
+            return [];
+        }
+
+        $basePorFamilia = static::query()
+            ->where('generico', true)
+            ->whereIn('codigo_material', array_unique(array_values($familiasPorId)))
+            ->pluck('id', 'codigo_material');
+
+        $bases = [];
+
+        foreach ($familiasPorId as $materialId => $familia) {
+            if (isset($basePorFamilia[$familia])) {
+                $bases[$materialId] = (int) $basePorFamilia[$familia];
+            }
+        }
+
+        return $bases;
+    }
+
 
     /**
      * Abreviatura de hasta 3 letras para los códigos que no se digitan:
@@ -320,51 +312,21 @@ class Material extends Model
     }
 
     /**
-     * Número libre para un genérico nuevo del par, ya con sus 3 dígitos:
-     * el número de familia más alto usado, más uno.
+     * Código libre del par cuando la fila o el formulario no digitó ninguno: el
+     * número final más alto que el par ya tenga, más uno, con sus 3 dígitos.
+     * El material sale huérfano; para que sea hijo de una base hay que escribir
+     * el código de la base con su consecutivo (COM-CAP-055-04).
      */
-    public static function siguienteNumeroFamilia(string $prefijo): string
+    public static function siguienteCodigoDelPar(string $prefijo): string
     {
         $maximo = static::query()
             ->where('codigo_material', 'like', $prefijo . '-%')
             ->pluck('codigo_material')
             ->map(fn (string $codigo): ?string => self::normalizarCodigo($codigo))
-            ->filter(fn (?string $codigo): bool => self::esCodigoFamilia((string) $codigo))
-            ->map(fn (string $codigo): int => (int) substr($codigo, strlen($prefijo) + 1))
+            ->map(fn (string $codigo): int => (int) (explode('-', $codigo)[2] ?? 0))
             ->max();
 
-        return str_pad((string) ((int) $maximo + 1), self::LARGO_FAMILIA, '0', STR_PAD_LEFT);
-    }
-
-    /** Número libre para un hijo nuevo de la familia, con sus 2 dígitos. */
-    public static function siguienteNumeroHijo(string $familia): string
-    {
-        $maximo = static::query()
-            ->where('codigo_material', 'like', $familia . '-%')
-            ->pluck('codigo_material')
-            ->map(fn (string $codigo): ?string => self::normalizarCodigo($codigo))
-            ->filter(fn (?string $codigo): bool => self::esCodigoHijo((string) $codigo))
-            ->map(fn (string $codigo): int => (int) substr($codigo, strlen($familia) + 1))
-            ->max();
-
-        return str_pad((string) ((int) $maximo + 1), self::LARGO_HIJO, '0', STR_PAD_LEFT);
-    }
-
-    /**
-     * Familia más alta del par: la del genérico con el número de familia más
-     * grande, que es a la que se agrega un concreto registrado a mano. Null
-     * cuando el par todavía no tiene ningún genérico.
-     */
-    public static function familiaMasAltaDelPar(string $prefijo): ?string
-    {
-        return static::query()
-            ->where('generico', true)
-            ->where('codigo_material', 'like', $prefijo . '-%')
-            ->pluck('codigo_material')
-            ->map(fn (string $codigo): ?string => self::normalizarCodigo($codigo))
-            ->filter(fn (?string $codigo): bool => self::esCodigoFamilia((string) $codigo))
-            ->sort()
-            ->last();
+        return $prefijo . '-' . str_pad((string) ((int) $maximo + 1), self::LARGO_NUMERO, '0', STR_PAD_LEFT);
     }
 
     public function movimientos(): HasMany
@@ -509,6 +471,17 @@ class Material extends Model
     public function setVarianteAtributoSugeridoAttribute(?string $value): void
     {
         $this->attributes['modelo_diseno_acabado'] = $value;
+    }
+
+    /**
+     * Nombre con el que se muestra el material: el de la fila ("Nombre del
+     * material" del archivo) y, si vino vacío, el nombre base de la familia.
+     */
+    public function getNombreMostrarAttribute(): string
+    {
+        return trim((string) $this->nombre_material) !== ''
+            ? (string) $this->nombre_material
+            : trim((string) $this->nombre_base);
     }
 
     public function proveedorHabitual()

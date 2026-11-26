@@ -174,18 +174,22 @@ watch(() => props.show, (visible) => {
                 </ul>
                 <p class="mt-3 text-xs text-gray-500 dark:text-gray-400">
                     Si el código de material ya existe, se actualiza el registro; si no, se crea con el siguiente número
-                    libre del par. Las columnas "Maneja …" y "Procesado" admiten SI / NO en mayúsculas o minúsculas.
-                    <b>Procesado</b> es obligatoria y debe cerrar el bloque: inmediatamente después de <b>Costo</b>, o
-                    después de <b>Cantidad</b> si el archivo la trae; con otro orden no se importa nada.
+                    libre del par. Las columnas "Maneja …", "Base si o no" y "Procesado" admiten SI / NO en mayúsculas o
+                    minúsculas y no importa en qué orden vengan: se leen por su rótulo.
                 </p>
                 <p class="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200">
-                    <b>Costo</b> se lee como el <b>Precio</b> de la app y se anota en el histórico de precios del material.
-                    <b>Cantidad</b> es la <b>Existencia actual</b>; en blanco deja la existencia que ya tiene el registro.
+                    <b>Base si o no</b> es obligatoria y es lo único que decide el rol: el código no dice nada. En una
+                    base se ignoran <b>Color</b>, <b>Talla / tamaño</b>, <b>Modelo / diseño / acabado</b>,
+                    <b>Proveedor habitual</b>, <b>Costo</b> e <b>Inventario Fisico</b> — la existencia, las variantes y
+                    el precio de una base viven en sus hijos. Para los demás materiales <b>Costo</b> se lee como el
+                    <b>Precio</b> de la app y se anota en el histórico de precios, e <b>Inventario Fisico</b> es la
+                    <b>Existencia actual</b>; en blanco deja la que ya tiene el registro.
                 </p>
                 <p class="mt-2 rounded-lg border border-violet-200 bg-violet-50 px-3 py-2 text-xs text-violet-800 dark:border-violet-500/30 dark:bg-violet-500/10 dark:text-violet-200">
-                    <b>Código material</b> vale CAT-BASE-N (TEX-LFI-4) y se guarda sin ceros a la izquierda: un
-                    TEX-LFL-005 del archivo pasa a TEX-LFL-5. <b>Unidad inventario</b> es el nombre de la unidad (Metros,
-                    Unidades), no la cantidad en stock.
+                    <b>Código material</b> vale cualquier forma (TEX-LFI-4, TEX-LFI-4-01 o la que traiga el archivo) y el
+                    primer número se guarda con su relleno. <b>Nombre del material</b> es como se muestra el registro; en
+                    blanco se usa <b>Nombre base</b>, que sigue siendo obligatorio. <b>Unidad inventario</b> es el nombre
+                    de la unidad (Metros, Unidades), no la cantidad en stock.
                 </p>
                 <p class="mt-2 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs text-sky-800 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-200">
                     <b>Color</b> y <b>Talla / tamaño</b> alimentan la tabla de variantes del material: sus valores van
@@ -197,7 +201,8 @@ watch(() => props.show, (visible) => {
                     se guardan como dos listas independientes de variantes.
                 </p>
                 <p class="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200">
-                    <b>Proveedor habitual</b> tiene que existir en la app. La forma más segura de escribirlo es su
+                    <b>Proveedor habitual</b> tiene que existir en la app (en las bases la celda se ignora). La forma más
+                    segura de escribirlo es su
                     <b>NIT</b> tal como está registrado (900347285-7); también valen su nombre comercial, su razón
                     social o su código (PRV-8, PROV-8 o el id). La comparación ignora mayúsculas, tildes, espacios,
                     puntos y guiones, y acepta el nombre sin el artículo inicial («Casa de los cordones» sirve para

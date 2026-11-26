@@ -150,8 +150,8 @@ const descripcionToggle = (campo: string, activo: boolean): string => {
     }
     if (campo === 'generico') {
         return activo
-            ? 'Sí, es genérico: sin talla, color, diseño, proveedor, existencia ni gasto diario propios; se codifica con el número de la familia (COM-CAP-055) y la OP elige un hijo suyo (COM-CAP-055-34), que es el que se gasta y se costea'
-            : 'No, es un material específico con sus variantes y su precio de compra';
+            ? 'Sí, es la base: sin talla, color, diseño, proveedor, existencia ni gasto diario propios. La ficha técnica se anota en ella y la OP elige un hijo suyo (COM-CAP-055-34), que es el que se gasta y se costea'
+            : 'No: tiene sus variantes y su precio de compra. Si tiene una base arriba, la OP lo ofrece como alternativa de esa base; si no tiene base (huérfano), la ficha lo cita directo y se consume tal cual';
     }
     return activo ? 'Sí, este material lo maneja' : 'No aplica para este material';
 };
@@ -199,42 +199,21 @@ const generarCodigoMaterial = () => {
         ...(Array.isArray(props.losSelect?.materiales) ? props.losSelect.materiales : []),
     ];
 
-    // Números que el par ya usa, separando familias (CAT-BAS-055) de hijos
-    // (CAT-BAS-055-34), igual que hace el servidor al asignar el código.
-    const familias: number[] = [];
-    const hijosPorFamilia = new Map<number, number[]>();
+    // Número más alto usado por el par, contando base e hijos: COM-CAP-055 y
+    // COM-CAP-055-34 valen 55. Es el mismo criterio del servidor, que tampoco
+    // mira la forma del código para saber si el material es base.
+    const mayor = listaMateriales.reduce((max: number, m: any) => {
+        const cod = (m?.codigo_material
+            || (typeof m?.name === 'string' && m.name.includes('—') ? m.name.split('—')[0].trim() : '')
+        || '').toUpperCase();
+        if (!cod.startsWith(prefijo + '-')) return max;
 
-    listaMateriales.forEach((m: any) => {
-        const cod = m?.codigo_material || (typeof m?.name === 'string' && m.name.includes('—') ? m.name.split('—')[0].trim() : '');
-        if (typeof cod !== 'string' || !cod.toUpperCase().startsWith(prefijo + '-')) return;
+        const numero = parseInt(cod.split('-')[2] ?? '', 10);
 
-        const coincidencia = cod.toUpperCase().match(/^[A-Z]{1,3}-[A-Z]{1,3}-(\d{1,4})(?:-(\d{1,4}))?$/);
-        if (!coincidencia) return;
+        return Number.isFinite(numero) && numero > max ? numero : max;
+    }, 0);
 
-        const familia = parseInt(coincidencia[1], 10);
-        if (coincidencia[2]) {
-            hijosPorFamilia.set(familia, [...(hijosPorFamilia.get(familia) ?? []), parseInt(coincidencia[2], 10)]);
-        } else {
-            familias.push(familia);
-        }
-    });
-
-    const mayor = (numeros: number[]): number => numeros.reduce((max, n) => (n > max ? n : max), 0);
-
-    if (esGenerico.value) {
-        form.codigo_material = `${prefijo}-${String(mayor(familias) + 1).padStart(3, '0')}`;
-        return;
-    }
-
-    // Un concreto es hijo de la familia más alta del par; sin genérico no hay
-    // código posible y el servidor es quien lo avisa.
-    const familia = mayor(familias);
-    if (familia === 0) {
-        form.codigo_material = '';
-        return;
-    }
-
-    form.codigo_material = `${prefijo}-${String(familia).padStart(3, '0')}-${String(mayor(hijosPorFamilia.get(familia) ?? []) + 1).padStart(2, '0')}`;
+    form.codigo_material = `${prefijo}-${String(mayor + 1).padStart(3, '0')}`;
 };
 
 watch(
@@ -248,6 +227,7 @@ const camposIgnorados = [
     'codigo_material',
     'codigo_categoria',
     'codigo_base',
+    'nombre_material',
     'observaciones',
     'modelo_diseno_acabado',
     'color',
@@ -375,9 +355,9 @@ watchEffect(() => {
                                         :model-value="form.codigo_material" disabled placeholder="Se genera automáticamente" />
                                     <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                                         Se forma con el código de la categoría y el código base, más el siguiente número
-                                        libre de esa combinación (TEX-LFI-004). El genérico es la familia y lleva su número
-                                        de 3 dígitos (COM-CAP-055); el concreto es un hijo suyo (COM-CAP-055-34). Ningún
-                                        número puede ser 0.
+                                        libre de esa combinación (TEX-LFI-004). El código no dice si el material es base:
+                                        eso lo define el interruptor «Material base», que puede acompañar cualquier forma.
+                                        Ningún número puede ser 0.
                                     </p>
                                     <InputError class="mt-2" :message="form.errors.codigo_material" />
                                 </div>
@@ -481,7 +461,7 @@ watchEffect(() => {
                                         : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/40 hover:border-gray-300 dark:hover:border-gray-600'">
                                     <div>
                                         <span class="block text-sm font-medium text-gray-800 dark:text-gray-200">
-                                            {{ lang().t('app.label')['generico'] || 'Material genérico' }}
+                                            {{ lang().t('app.label')['generico'] || 'Material base' }}
                                         </span>
                                         <span class="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                                             {{ descripcionToggle('generico', esGenerico) }}
@@ -595,7 +575,7 @@ watchEffect(() => {
                     <div v-else
                         class="rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/60 dark:bg-indigo-900/20 px-4 py-3">
                         <p class="text-sm font-medium text-gray-800 dark:text-gray-200">
-                            Un material genérico no registra precio ni fecha de compra
+                            Una base no registra precio ni fecha de compra
                         </p>
                         <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
                             Su precio es el promedio de los precios de sus similares de la misma categoría y nombre base.

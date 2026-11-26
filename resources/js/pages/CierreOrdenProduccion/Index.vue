@@ -299,18 +299,8 @@ const recargar = () => {
 
     <AppLayout>
         <div class="flex flex-col gap-4 p-4 sm:p-6">
-        <div class="flex justify-end mb-2">
-            <button
-                @click="breadcrumbCollapsed = !breadcrumbCollapsed"
-                class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                :aria-label="breadcrumbCollapsed ? 'Mostrar título y breadcrumb' : 'Ocultar título y breadcrumb'"
-            >
-                <ChevronDownIcon v-if="breadcrumbCollapsed" class="h-4 w-4" />
-                <ChevronUpIcon v-else class="h-4 w-4" />
-            </button>
-        </div>
-        <div v-if="!breadcrumbCollapsed" class="flex flex-col gap-3">
-            <nav class="flex items-center gap-1.5 text-xs text-muted-foreground" aria-label="Ruta de navegación">
+        <div class="flex flex-col gap-2">
+            <nav v-if="!breadcrumbCollapsed" class="flex items-center gap-1.5 text-xs text-muted-foreground" aria-label="Ruta de navegación">
                     <Link
                         :href="route('dashboard')"
                         class="rounded-sm transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -331,7 +321,7 @@ const recargar = () => {
                 </nav>
 
                 <div class="flex flex-wrap items-end justify-between gap-3">
-                    <div class="min-w-0">
+                    <div class="min-w-0" v-if="!breadcrumbCollapsed">
                         <h1 class="text-2xl font-semibold tracking-tight text-foreground">Cierres de OP</h1>
                         <p class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground" role="status" aria-live="polite">
                             <span class="tabular-nums">
@@ -357,6 +347,15 @@ const recargar = () => {
                         </p>
                     </div>
 
+                    <button
+                        @click="breadcrumbCollapsed = !breadcrumbCollapsed"
+                        class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                        :aria-label="breadcrumbCollapsed ? 'Mostrar título y breadcrumb' : 'Ocultar título y breadcrumb'"
+                    >
+                        <ChevronDownIcon v-if="breadcrumbCollapsed" class="h-4 w-4" />
+                        <ChevronUpIcon v-else class="h-4 w-4" />
+                    </button>
+
                     <div class="flex flex-wrap items-center gap-2">
                         <button
                             type="button"
@@ -380,7 +379,7 @@ const recargar = () => {
                         </PrimaryButton>
                     </div>
                 </div>
-            </div>
+        </div>
 
             <div class="overflow-hidden rounded-xl border border-border bg-card shadow-sm">
                 <div class="flex flex-col gap-2.5 border-b border-border p-3">

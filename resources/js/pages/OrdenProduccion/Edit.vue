@@ -1003,8 +1003,9 @@ watch([() => props.show, () => op.value.id], cargarOp, { immediate: true, flush:
                         <span v-if="planBloqueado" class="font-normal text-gray-500 dark:text-gray-400">(congelado por el estado)</span>
                     </h3>
                     <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                        La ficha declara el material genérico de la familia (COM-CAP-055); aquí está el material con el color o
-                        la talla que esta OP va a gastar, que es un hijo de ella (COM-CAP-055-34). El inventario, el faltante y
+                        La ficha declara las bases de familia (COM-CAP-055); aquí está el material con el color o
+                        la talla que esta OP va a gastar, que es un hijo de ella (COM-CAP-055-34). Los materiales sin
+                        base arriba se consumen tal como están, sin elección. El inventario, el faltante y
                         el costo se calculan con él.
                     </p>
 

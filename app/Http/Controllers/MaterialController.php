@@ -231,7 +231,7 @@ class MaterialController extends Controller {
             // Un genérico no tiene existencia ni consumo: la previsión es de los
             // materiales concretos que realmente se compran y se descuentan.
             ->where('generico', false)
-            ->get(['id', 'codigo_material', 'nombre_base', 'existencia_actual', 'unidad_inventario'])
+            ->get(['id', 'codigo_material', 'nombre_base', 'nombre_material', 'existencia_actual', 'unidad_inventario'])
             ->map(function (Material $material) use ($consumoTotal, $ventana) {
                 $total = round((float) ($consumoTotal[$material->id] ?? 0), 2);
                 if ($total <= 0) {
@@ -248,7 +248,7 @@ class MaterialController extends Controller {
                 return [
                     'material_id' => $material->id,
                     'codigo' => $material->codigo_material,
-                    'nombre' => $material->nombre_base,
+                    'nombre' => $material->nombre_mostrar,
                     'unidad' => $material->unidad_inventario,
                     'gasto_dia' => $gastoDia,
                     'total_ventana' => $total,
@@ -464,8 +464,8 @@ class MaterialController extends Controller {
             ]);
         }
 
-        // El genérico no guarda inventario: comprarle a él dejaría la existencia
-        // en cero y el consumo repartido. La compra es del material concreto.
+        // La base no guarda inventario: comprarle a ella dejaría la existencia en
+        // cero y el consumo repartido. La compra es de uno de sus hijos.
         $genericos = Material::query()
             ->whereIn('id', array_column($compras, 'material_id'))
             ->where('generico', true)
@@ -474,8 +474,8 @@ class MaterialController extends Controller {
 
         if (!empty($genericos)) {
             return back()->withErrors([
-                'materiales' => 'Los genéricos no reciben compra: ' . implode(', ', $genericos)
-                    . '. Compre el material concreto (con color o talla) de esa familia.',
+                'materiales' => 'Las bases no reciben compra: ' . implode(', ', $genericos)
+                    . '. Compre el material concreto (con color o talla) que cuelga de esa base.',
             ]);
         }
 
@@ -689,8 +689,8 @@ class MaterialController extends Controller {
 
         DB::commit();
         $this->invalidarCache();
-        Myhelp::EscribirEnLog($this, 'STORE:Materials EXITOSO', 'Material id:' . $Material->id . ' | ' . $Material->nombre, false);
-        return back()->with('success', __('app.label.created_successfully', ['name' => $Material->nombre]));
+        Myhelp::EscribirEnLog($this, 'STORE:Materials EXITOSO', 'Material id:' . $Material->id . ' | ' . $Material->nombre_mostrar, false);
+        return back()->with('success', __('app.label.created_successfully', ['name' => $Material->nombre_mostrar]));
         } catch (\Throwable $e) {
             DB::rollBack();
             throw $e;
@@ -735,7 +735,7 @@ class MaterialController extends Controller {
 
     private function nombreFichaMaterial(Material $material): string
     {
-        $nombre = trim(($material->codigo_material ? $material->codigo_material . ' — ' : '') . $material->nombre_base);
+        $nombre = trim(($material->codigo_material ? $material->codigo_material . ' — ' : '') . $material->nombre_mostrar);
 
         return $nombre !== '' ? $nombre : 'Material #' . $material->id;
     }

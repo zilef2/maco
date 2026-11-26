@@ -7,7 +7,6 @@ use App\Models\Proveedor;
 use App\Traits\MaterialMovimientoTrait;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
-use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use RuntimeException;
 
 /**
@@ -17,6 +16,11 @@ use RuntimeException;
  * desde dos sitios: la tarjeta de Materiales, que usa la hoja activa del
  * archivo, y la tarjeta MPP, que recibe un libro de varias hojas y entrega
  * solo la hoja "material".
+ *
+ * El rol de la fila lo dice la columna "Base si o no", no el código: cualquier
+ * código puede ser del material base de una familia, de un hijo suyo o de un
+ * material huérfano (sin base arriba). Lo que sí se conserva es el vínculo: un
+ * material es hijo de la base cuyo código es el suyo sin el último tramo.
  *
  * Las filas llegan tal como las devuelve PhpSpreadsheet: la posición 0 son los
  * títulos y las siguientes los datos. Una fila vacía se ignora y cualquier
@@ -30,12 +34,31 @@ class ExcelMaterialesService
     private const COLUMNAS_REQUERIDAS = [
         'codigo_material',
         'nombre_base',
+        'generico',
         'estado',
         'procesado',
     ];
 
+    /** Cómo se le llama a cada columna requerida cuando falta alguna. */
+    private const TITULOS_REQUERIDOS = [
+        'codigo_material' => 'Código material',
+        'nombre_base' => 'Nombre base',
+        'generico' => 'Base si o no',
+        'estado' => 'Estado',
+        'procesado' => 'procesado',
+    ];
+
     /** Rótulos de sección del Excel (celdas decorativas): se ignoran en silencio. */
     private const ROTULOS_DE_SECCION = ['opcionales', 'requeridos', 'obligatorios'];
+
+    /** Textos que valen en una columna de sí o no. El vacío se lee como no. */
+    private const TEXTOS_BOOLEANOS = [
+        '', 'si', 's', 'yes', 'y', 'true', 't', '1', 'verdadero', 'v', 'x',
+        'no', 'n', 'not', 'false', 'f', '0', 'falso',
+    ];
+
+    /** Cuáles de esos textos significan sí. */
+    private const TEXTOS_AFIRMATIVOS = ['si', 's', 'yes', 'y', 'true', 't', '1', 'verdadero', 'v', 'x'];
 
     /**
      * Encabezados aceptados (ya normalizados) y la columna a la que apuntan.
@@ -45,6 +68,14 @@ class ExcelMaterialesService
         'codigo'                  => 'codigo_material',
         'nombrebase'              => 'nombre_base',
         'nombre'                  => 'nombre_base',
+        'nombredelmaterial'       => 'nombre_material',
+        'nombrematerial'          => 'nombre_material',
+        'nombrecomercial'         => 'nombre_material',
+        'basesino'                => 'generico',
+        'base'                    => 'generico',
+        'esbase'                  => 'generico',
+        'materialbase'            => 'generico',
+        'generico'                => 'generico',
         'codigobase'              => 'codigo_base',
         'categoria'               => 'categoria',
         'codigocategoria'         => 'codigo_categoria',
@@ -79,6 +110,8 @@ class ExcelMaterialesService
         'cantidad'                => 'existencia_actual',
         'existencia'              => 'existencia_actual',
         'existenciaactual'        => 'existencia_actual',
+        'inventario'              => 'existencia_actual',
+        'inventariofisico'        => 'existencia_actual',
         'procesado'               => 'procesado',
     ];
 
@@ -133,39 +166,8 @@ class ExcelMaterialesService
         $faltantes = array_diff(self::COLUMNAS_REQUERIDAS, array_values($encabezado));
         if (!empty($faltantes)) {
             throw new RuntimeException(
-                'El archivo no tiene las columnas requeridas. Faltan: ' . implode(', ', $faltantes)
-            );
-        }
-
-        // "Procesado" cierra el bloque económico del archivo: va justo después
-        // de "Costo", o después de "Cantidad" cuando el archivo la trae.
-        $columnaCosto = null;
-        $columnaCantidad = null;
-        $columnaProcesado = null;
-        foreach ($encabezado as $indice => $claveCanonica) {
-            if ($claveCanonica === 'precio') {
-                $columnaCosto = $indice;
-            }
-            if ($claveCanonica === 'existencia_actual') {
-                $columnaCantidad = $indice;
-            }
-            if ($claveCanonica === 'procesado') {
-                $columnaProcesado = $indice;
-            }
-        }
-
-        $cantidadEntreMedias = $columnaCosto !== null && $columnaCantidad === $columnaCosto + 1;
-        if ($columnaCosto === null
-            || $columnaProcesado !== $columnaCosto + ($cantidadEntreMedias ? 2 : 1)
-        ) {
-            $esperada = $columnaCosto === null
-                ? null
-                : Coordinate::stringFromColumnIndex($columnaCosto + ($cantidadEntreMedias ? 3 : 2));
-
-            throw new RuntimeException(
-                'La columna "Procesado" (si o no) debe ir justo después de "Costo"'
-                . ($cantidadEntreMedias ? ' y "Cantidad"' : '')
-                . ($esperada !== null ? ", en la columna {$esperada} del archivo." : ', y falta "Costo" para ubicarla.')
+                'El archivo no tiene las columnas requeridas. Faltan: '
+                . implode(', ', array_map(fn (string $campo): string => self::TITULOS_REQUERIDOS[$campo], $faltantes))
             );
         }
 
@@ -220,32 +222,39 @@ class ExcelMaterialesService
             }
 
             $nombre = trim(strip_tags((string) ($registro['nombre_base'] ?? '')));
+            $nombreMaterial = trim(strip_tags((string) ($registro['nombre_material'] ?? '')));
             $categoriaTexto = trim(strip_tags((string) ($registro['categoria'] ?? '')));
 
+            if ($nombre === '' && $nombreMaterial !== '') {
+                // El archivo siempre trae el nombre de la fila; el nombre base se
+                // le puede dejar vacío y se toma el de la fila como base.
+                $nombre = $nombreMaterial;
+            }
+
             if ($nombre === '') {
-                $errores[] = "Fila {$filaExcel}: falta el Nombre base, que es obligatorio";
+                $errores[] = "Fila {$filaExcel}: falta el Nombre base (o el Nombre del material), que es obligatorio";
                 continue;
             }
 
-            // El código define qué es la fila: CAT-BASE-055 es el genérico de la
-            // familia y CAT-BASE-055-34 uno de sus hijos (el material con su
-            // color o su talla). Vacío: el modelo lo forma bajo la familia del
-            // par, así que el par ya tiene que tener su genérico.
+            // "Base si o no" es lo único que define el rol de la fila: el código
+            // ya no lo dice. Base = sí es el material de la familia (sin inventario
+            // ni variantes propias); base = no es un hijo de esa base o un material
+            // huérfano, y es el que se gasta.
+            $baseBruto = trim(strip_tags((string) ($registro['generico'] ?? '')));
+            $baseTexto = preg_replace('/[^a-z]/', '', $this->normalizarTexto($baseBruto));
+
+            if (!in_array($baseTexto, self::TEXTOS_BOOLEANOS, true)) {
+                $errores[] = "Fila {$filaExcel}: \"Base si o no\" debe ser si o no y llegó \"{$baseBruto}\"";
+                continue;
+            }
+
+            $esGenerico = in_array($baseTexto, self::TEXTOS_AFIRMATIVOS, true);
+
+            // El código se respeta tal como llega, solo con su forma canónica
+            // (mayúsculas y los ceros de sus números). Vacío: el modelo lo forma
+            // con el par y el primer número libre.
             $codigoBruto = trim((string) ($registro['codigo_material'] ?? ''));
             $codigo = Material::normalizarCodigo($codigoBruto);
-
-            if ($codigoBruto !== '' && ($codigo === null || !preg_match(Material::PATRON_CODIGO, $codigo))) {
-                $errores[] = "Fila {$filaExcel}: el código \"{$codigoBruto}\" no tiene el formato de la familia (CAT-BASE-055) ni el de un hijo suyo (CAT-BASE-055-34)";
-                continue;
-            }
-
-            if (Material::tieneNumeroEnCero($codigo)) {
-                $errores[] = "Fila {$filaExcel}: el código \"{$codigoBruto}\" usa el número 0; la familia y el hijo"
-                    . ' empiezan en 1 (CAT-BASE-001 y CAT-BASE-001-01)';
-                continue;
-            }
-
-            $esGenerico = $codigo !== null && Material::esCodigoFamilia($codigo);
 
             // El par forma el prefijo del código: primero lo que digita el
             // archivo, luego el propio prefijo del código de la fila y por
@@ -268,14 +277,14 @@ class ExcelMaterialesService
                 continue;
             }
 
-            // Procesado solo admite si o no; el vacío se lee como no.
+            // Procesado solo admite sí o no; el vacío se lee como no.
             $procesadoBruto = trim(strip_tags((string) ($registro['procesado'] ?? '')));
             $procesadoTexto = preg_replace('/[^a-z]/', '', $this->normalizarTexto($procesadoBruto));
-            if (!in_array($procesadoTexto, ['si', 'no', ''], true)) {
+            if (!in_array($procesadoTexto, self::TEXTOS_BOOLEANOS, true)) {
                 $errores[] = "Fila {$filaExcel}: Procesado debe ser si o no y llegó \"{$procesadoBruto}\"";
                 continue;
             }
-            $procesado = $procesadoTexto === 'si' ? 1 : 0;
+            $procesado = in_array($procesadoTexto, self::TEXTOS_AFIRMATIVOS, true) ? 1 : 0;
 
             $manejaColor = $this->parsearBooleano($registro['maneja_color'] ?? '');
             $manejaTalla = $this->parsearBooleano($registro['maneja_talla'] ?? '');
@@ -312,16 +321,19 @@ class ExcelMaterialesService
             $proveedorId = null;
             $claveProveedor = '';
 
-            foreach ([$nitTexto, $proveedorTexto] as $textoProveedor) {
-                if ($textoProveedor === '') {
-                    continue;
-                }
-                $clave = $this->normalizarClave($textoProveedor);
-                $claveProveedor = $claveProveedor !== '' ? $claveProveedor : $clave;
-                $proveedorId = $this->buscarProveedor($clave, $proveedoresPorClave, $proveedoresPorNombre);
-                if ($proveedorId !== null) {
-                    $claveProveedor = $clave;
-                    break;
+            // Una base no declara proveedor habitual: el que compra es el hijo.
+            if (!$esGenerico) {
+                foreach ([$nitTexto, $proveedorTexto] as $textoProveedor) {
+                    if ($textoProveedor === '') {
+                        continue;
+                    }
+                    $clave = $this->normalizarClave($textoProveedor);
+                    $claveProveedor = $claveProveedor !== '' ? $claveProveedor : $clave;
+                    $proveedorId = $this->buscarProveedor($clave, $proveedoresPorClave, $proveedoresPorNombre);
+                    if ($proveedorId !== null) {
+                        $claveProveedor = $clave;
+                        break;
+                    }
                 }
             }
 
@@ -332,7 +344,7 @@ class ExcelMaterialesService
             $atributoSugerido = trim(strip_tags((string) ($registro['modelo_diseno_acabado'] ?? $registro['variante_atributo_sugerido'] ?? '')));
             $observaciones = trim(strip_tags((string) ($registro['observaciones'] ?? '')));
 
-            $precioRaw = $registro['precio'] ?? null;
+            $precioRaw = $esGenerico ? null : ($registro['precio'] ?? null);
             $precio = ($precioRaw !== null && $precioRaw !== '')
                 ? (float) str_replace(',', '.', (string) $precioRaw)
                 : null;
@@ -341,25 +353,43 @@ class ExcelMaterialesService
                 continue;
             }
 
-            $cantidadRaw = $registro['existencia_actual'] ?? null;
+            $cantidadRaw = $esGenerico ? null : ($registro['existencia_actual'] ?? null);
             $cantidad = ($cantidadRaw !== null && $cantidadRaw !== '')
                 ? (float) str_replace(',', '.', (string) $cantidadRaw)
                 : null;
             if ($cantidad !== null && $cantidad < 0) {
-                $errores[] = "Fila {$filaExcel}: la cantidad (existencia actual) no puede ser negativa.";
+                $errores[] = "Fila {$filaExcel}: el Inventario Fisico no puede ser negativo.";
                 continue;
+            }
+
+            if ($esGenerico) {
+                // La base es el referente de la familia: no almacena existencia,
+                // no declara variantes ni proveedor y su precio lo aporta el
+                // promedio de sus hijos, así que esas celdas del archivo no se
+                // escriben — igual que en el formulario del material. Costo e
+                // Inventario Fisico ya se descartaron al leerlos.
+                $colorTexto = null;
+                $tallaTexto = null;
+                $atributoSugerido = '';
+                $colores = [];
+                $variantes = [];
+                $manejaColor = false;
+                $manejaTalla = false;
+                $manejaOtraVariante = false;
             }
 
             $fragmentos = explode('-', $prefijo);
             $existe = $codigo !== null && isset($existentes[$codigo]);
 
-            if (!$existe && !preg_match(Material::PATRON_CODIGO, $prefijo . '-001')) {
-                $errores[] = "Fila {$filaExcel}: no se puede formar el código material; escriba Código categoría y Código base (o Categoría y Nombre base)";
+            if (!$existe && $codigo === null && !preg_match(Material::PATRON_FRAGMENTOS, $prefijo)) {
+                $errores[] = "Fila {$filaExcel}: sin código material hay que formar el prefijo; escriba Código categoría y Código base (o Categoría y Nombre base)";
                 continue;
             }
 
             $datos = [
                 'nombre_base'           => $nombre,
+                'nombre_material'       => $nombreMaterial !== '' ? mb_substr($nombreMaterial, 0, 255) : null,
+                'generico'              => $esGenerico,
                 'unidad_inventario'     => $unidadInventario !== '' ? mb_substr($unidadInventario, 0, 255) : 'Unidades',
                 'maneja_color'          => $manejaColor,
                 'maneja_talla'          => $manejaTalla,
@@ -377,14 +407,11 @@ class ExcelMaterialesService
                 $datos['existencia_actual'] = $cantidad;
             }
 
-            // El par forma el prefijo del código y manda siempre el modelo, que
-            // respeta el código de la fila cuando ya existe y autogenera lo
-            // contrario. Así volver a subir el mismo archivo no duplica nada.
+            // El código manda cuando viene escrito: el modelo respeta el que llega
+            // y solo forma el par-numero cuando la celda quedó vacía. Así volver a
+            // subir el mismo archivo no duplica nada.
             if ($codigo !== null) {
                 $datos['codigo_material'] = $codigo;
-                // Con el código escrito el rol de la fila no deja duda: el de
-                // tres tramos es el genérico de la familia y el de cuatro un hijo.
-                $datos['generico'] = $esGenerico;
             }
 
             // El par solo se cambia cuando el archivo lo trae escrito: en blanco
@@ -714,6 +741,6 @@ class ExcelMaterialesService
     {
         $clave = preg_replace('/[^a-z]/', '', mb_strtolower(trim((string) $valor)));
 
-        return in_array($clave, ['si', 's', 'yes', 'y', 'true', 't', '1'], true);
+        return in_array($clave, self::TEXTOS_AFIRMATIVOS, true);
     }
 }

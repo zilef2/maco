@@ -1,12 +1,13 @@
 import { reactive } from 'vue';
 
 /**
- * Material concreto elegido en la OP para cada línea genérica de la ficha.
+ * Material concreto elegido en la OP para cada línea base de la ficha.
  *
- * La ficha declara el genérico de la familia (COM-CAP-055) porque allí solo
- * importa el consumo de la familia; el color o la talla que se gastan se eligen
- * en la OP y tienen que ser un hijo de esa misma familia (COM-CAP-055-34).
- * Todo lo que se muestra o se costea en el formulario sale del concreto.
+ * La ficha declara la base de la familia (COM-CAP-055) porque allí solo importa
+ * el consumo de la familia; el color o la talla que se gastan se eligen en la OP
+ * y tienen que ser un hijo de esa misma base (COM-CAP-055-34). Todo lo que se
+ * muestra o se costea en el formulario sale del concreto. Una línea sin base
+ * arriba (un huérfano) no se pregunta: se usa tal como está.
  */
 export type LineaFicha = {
     material_id: number;

@@ -179,18 +179,9 @@ const breadcrumbCollapsed = ref(false);
     <Head :title="props.title" />
     <AppLayout>
         <div class="flex flex-col gap-4 p-4 sm:p-6">
-        <div class="flex justify-end mb-2">
-            <button
-                @click="breadcrumbCollapsed = !breadcrumbCollapsed"
-                class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                :aria-label="breadcrumbCollapsed ? 'Mostrar título y breadcrumb' : 'Ocultar título y breadcrumb'"
-            >
-                <ChevronDownIcon v-if="breadcrumbCollapsed" class="h-4 w-4" />
-                <ChevronUpIcon v-else class="h-4 w-4" />
-            </button>
-        </div>
-        <div v-if="!breadcrumbCollapsed" class="flex flex-col gap-3">
-            <nav class="flex items-center gap-1.5 text-xs text-muted-foreground" aria-label="Ruta de navegación">
+        <!-- boton colapsar se mueve a la fila del titulo -->
+        <div class="flex flex-col gap-2">
+            <nav v-if="!breadcrumbCollapsed" class="flex items-center gap-1.5 text-xs text-muted-foreground" aria-label="Ruta de navegación">
                     <Link :href="route('dashboard')"
                         class="rounded-sm transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                         Dashboard
@@ -206,7 +197,7 @@ const breadcrumbCollapsed = ref(false);
                 </nav>
 
                 <div class="flex flex-wrap items-end justify-between gap-3">
-                    <div class="min-w-0">
+                    <div class="min-w-0" v-if="!breadcrumbCollapsed">
                         <h1 class="text-2xl font-semibold tracking-tight text-foreground">{{ props.title }}</h1>
                         <p class="mt-1 text-sm text-muted-foreground" role="status" aria-live="polite">
                             <span class="font-medium text-foreground">{{ ordenadas.length }}</span>
@@ -217,6 +208,16 @@ const breadcrumbCollapsed = ref(false);
                             </template>
                         </p>
                     </div>
+
+                    <button
+                        @click="breadcrumbCollapsed = !breadcrumbCollapsed"
+                        class="p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                        :aria-label="breadcrumbCollapsed ? 'Mostrar título y breadcrumb' : 'Ocultar título y breadcrumb'"
+                    >
+                        <ChevronDownIcon v-if="breadcrumbCollapsed" class="h-4 w-4" />
+                        <ChevronUpIcon v-else class="h-4 w-4" />
+                    </button>
+
                     <div class="flex items-center gap-2">
                         <PrimaryButton v-if="can(['create Procesoop'])" type="button" class="h-9"
                             @click="data.createOpen = true">

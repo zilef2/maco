@@ -28,9 +28,9 @@ class FichaTecnicaService
     /**
      * Opciones para las líneas de material: material, unidad y sus dos costos
      * (el último precio registrado y el promedio de todos).
-     * La ficha solo admite materiales genéricos; la bandera viaja en cada
-     * opción para que el editor filtre el select sin perder las filas antiguas
-     * que apuntan a un material específico.
+     * La ficha se anota en las bases y en los materiales sin base arriba, nunca
+     * en el hijo de una base; el identificador de la base viaja en cada opción
+     * para que el editor filtre el select sin perder las filas antiguas.
      */
     public function opcionesMateriales(): array
     {
@@ -43,19 +43,26 @@ class FichaTecnicaService
 
         $materiales = Material::with(['lastPrice', 'variants'])
             ->orderBy('nombre_base')
-            ->get(['id', 'codigo_material', 'nombre_base', 'unidad_inventario', 'generico'])
-            ->map(fn ($m) => [
-                'id'    => $m->id,
-                'value' => $m->id,
-                'name'  => trim(($m->codigo_material ? $m->codigo_material . ' — ' : '') . $m->nombre_base) ?: ('Material #' . $m->id),
-                'unidad_inventario' => $m->unidad_inventario,
-                'unidad_medida' => $m->unidad_inventario,
-                'costo_unitario' => $m->costoUnitarioActual(),
-                'costo_unitario_promedio' => round((float) ($promedios[$m->id] ?? 0), 2),
-                'precio_registrado' => $m->lastPrice !== null,
-                'generico' => (bool) $m->generico,
-                'variants' => $m->variants->map(fn ($v) => $v->nombre)->all(),
-            ])->values()->all();
+            ->get(['id', 'codigo_material', 'nombre_base', 'nombre_material', 'unidad_inventario', 'generico']);
+
+        $bases = Material::basesDeHijos($materiales);
+
+        $materiales = $materiales->map(fn ($m) => [
+            'id'    => $m->id,
+            'value' => $m->id,
+            'name'  => trim(($m->codigo_material ? $m->codigo_material . ' — ' : '') . $m->nombre_mostrar) ?: ('Material #' . $m->id),
+            'codigo_material' => $m->codigo_material,
+            'nombre_base' => $m->nombre_base,
+            'nombre_material' => $m->nombre_material,
+            'unidad_inventario' => $m->unidad_inventario,
+            'unidad_medida' => $m->unidad_inventario,
+            'costo_unitario' => $m->costoUnitarioActual(),
+            'costo_unitario_promedio' => round((float) ($promedios[$m->id] ?? 0), 2),
+            'precio_registrado' => $m->lastPrice !== null,
+            'generico' => (bool) $m->generico,
+            'base_id' => $bases[$m->id] ?? null,
+            'variants' => $m->variants->map(fn ($v) => $v->nombre)->all(),
+        ])->values()->all();
 
         $opcionesMaterial = $this->listaDesplegableService->getOptionsByCategoriaGrouped('material');
         $unidadesMedida = array_map(fn ($item) => [
@@ -98,7 +105,7 @@ class FichaTecnicaService
         $materialesProcesados = Material::query()
             ->where('material_procesado', true)
             ->orderBy('nombre_base')
-            ->get(['id', 'codigo_material', 'nombre_base'])
+            ->get(['id', 'codigo_material', 'nombre_base', 'nombre_material'])
             ->map(fn ($m) => $this->opcionMaterialProcesado($m))
             ->values()
             ->all();
@@ -139,7 +146,7 @@ class FichaTecnicaService
     /** Nombre del material procesado tal como se muestra en los objetivos. */
     private function nombreMaterialProcesado(Material $material): string
     {
-        return trim(($material->codigo_material ? $material->codigo_material . ' — ' : '') . $material->nombre_base)
+        return trim(($material->codigo_material ? $material->codigo_material . ' — ' : '') . $material->nombre_mostrar)
             ?: ('Material #' . $material->id);
     }
 
@@ -382,18 +389,24 @@ class FichaTecnicaService
             ->get()
             ->keyBy('id');
 
-        // La ficha solo admite materiales genéricos (uno por familia CAT-BAS-X).
-        $noGenericos = $materialesPorId
-            ->reject(fn (Material $material) => (bool) $material->generico)
-            ->map(fn (Material $material) => $material->codigo_material ?: $material->nombre_base)
-            ->values();
+        // La ficha se escribe sobre la base de una familia o sobre un material
+        // huérfano; el hijo de una base no va, porque lo que se gasta es el hijo
+        // y la receta debe quedar en su padre.
+        $basesPorHijo = Material::basesDeHijos($materialesPorId);
 
-        if ($noGenericos->isNotEmpty()) {
+        if ($basesPorHijo !== []) {
+            $nombres = collect($basesPorHijo)
+                ->map(function (int $baseId, int $hijoId) use ($materialesPorId): string {
+                    $hijo = $materialesPorId->get($hijoId);
+                    $nombre = $hijo ? ($hijo->codigo_material ?: $hijo->nombre_mostrar) : ('material #' . $hijoId);
+
+                    return $nombre . ' → base ' . (string) Material::whereKey($baseId)->value('codigo_material');
+                })
+                ->implode(', ');
+
             throw ValidationException::withMessages([
-                'materiales' => 'La ficha técnica solo admite materiales genéricos: '
-                    . $noGenericos->implode(', ')
-                    . '. Use el genérico de su familia (CAT-BAS-X): los hijos CAT-BAS-X-Y son los que se gastan y no van en la ficha.'
-                    . ' Si la familia todavía no existe, registre el genérico en Materiales o en la hoja "material" del Excel.',
+                'materiales' => 'La ficha va sobre la base o sobre el material que no tiene base arriba: ' . $nombres
+                    . '. Quite el hijo y anote su base.',
             ]);
         }
 

@@ -502,8 +502,8 @@ watch(
                             Ficha técnica de materiales
                         </h3>
                         <p class="mt-1 mb-3 pl-6 text-xs text-gray-400 dark:text-gray-500">
-                            Opcional. Solo se admiten materiales genéricos; se guardan en la ficha técnica de este
-                            producto.
+                            Opcional. Van las bases y los materiales que no tienen base arriba, no los hijos; se
+                            guardan en la ficha técnica de este producto.
                         </p>
                         <EditorMateriales v-model="form.materiales" :opciones="props.losSelect" :errors="form.errors" />
                         <InputError class="mt-2" :message="form.errors.materiales" />

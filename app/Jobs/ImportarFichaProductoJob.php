@@ -55,7 +55,7 @@ class ImportarFichaProductoJob implements ShouldQueue
                 throw new RuntimeException(implode(' | ', $problemas));
             }
 
-            $resultado = $excel->importar($ruta, $this->usuarioId);
+            $resultado = $excel->importar($ruta);
 
             $tracker->completar($this->importacionId, $resultado, $resultado['filas']);
 
