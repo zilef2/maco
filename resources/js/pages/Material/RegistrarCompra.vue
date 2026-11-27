@@ -510,7 +510,7 @@ const guardar = () => {
                                             <TextInput
                                                 type="number"
                                                 min="0.01"
-                                                step="0.01"
+                                                step="1"
                                                 class="block h-9 w-full px-2 text-right tabular-nums"
                                                 v-model="fila.cantidad"
                                                 placeholder="0"
