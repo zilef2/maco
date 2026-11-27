@@ -93,6 +93,8 @@ Route::middleware('auth', 'verified')->group(function () {
 	// Antes del resource: /Material/{material} se lo llevaría el show.
 	Route::get("/Material/orden-compra", [\App\Http\Controllers\MaterialController::class, 'ordenCompra'])->name('Material.orden-compra');
 	Route::get("/Material/orden-compra/imprimir", [\App\Http\Controllers\MaterialController::class, 'ordenCompraImprimible'])->name('Material.orden-compra.imprimir');
+	// El Index arranca con pocos materiales y se completa solo: antes del resource.
+	Route::get("/Material/lote", [\App\Http\Controllers\MaterialController::class, 'lote'])->name('Material.lote');
 	Route::resource("/Material", \App\Http\Controllers\MaterialController::class);
 	Route::post("/Material/upload-excel", [\App\Http\Controllers\MaterialController::class, 'uploadExcel'])->name('Material.upload-excel');
 	Route::post("/Material/compra", [\App\Http\Controllers\MaterialController::class, 'registrarCompra'])->name('Material.compra');

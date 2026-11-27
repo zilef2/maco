@@ -68,15 +68,79 @@ const props = defineProps({
     opPorMaterial: { type: Object as () => Record<string, number[]>, default: () => ({}) },
     /** Inventario proyectado por material: físico + producción pendiente − compromisos. */
     proyeccionMateriales: { type: Object as () => Record<string, any>, default: () => ({}) },
+    /** Cuántos materiales vinieron en la carga inicial y de cuántos en cuántos llega el resto. */
+    carga: { type: Object as () => any, default: () => ({}) },
 });
 
 /* --------------------------------------------------------------------------
- * Tabla 100% en cliente: los datos llegan una sola vez y aquí se buscan,
- * filtran, ordenan y paginan sin volver al backend. Solo las acciones de
- * cada fila (editar, existencia, historial, eliminar) hablan con él.
+ * Tabla en cliente: la vista llega con un puñado de materiales y el resto se
+ * descarga en segundo plano, en bloques, hacia `filas`. Buscar, filtrar,
+ * ordenar y paginar es todo local, y una vez descargados no vuelve a pedirse
+ * nada. Solo las acciones de cada fila (editar, existencia, historial,
+ * eliminar) hablan con el servidor.
  * ------------------------------------------------------------------------ */
 
-const filas = computed<any[]>(() => (props.materiales as any[]) ?? []);
+const TAMANO_BLOQUE = Number(props.carga?.lote ?? 100);
+
+const filas = ref<any[]>([...(props.materiales as any[]) ?? []]);
+const totalMaterial = ref(Number(props.total ?? filas.value.length));
+const cargandoResto = ref(false);
+
+/** Tanda en curso: si los props cambian a mitad, la descarga anterior se descarta. */
+let tanda = 0;
+
+const cargarResto = async () => {
+    const mia = ++tanda;
+    cargandoResto.value = filas.value.length < totalMaterial.value;
+
+    try {
+        while (mia === tanda && filas.value.length < totalMaterial.value) {
+            const respuesta = await fetch(
+                `${route('Material.lote')}?desde=${filas.value.length}&limite=${TAMANO_BLOQUE}`,
+                {
+                    headers: { 'X-Requested-With': 'XMLHttpRequest', Accept: 'application/json' },
+                    credentials: 'same-origin',
+                },
+            );
+
+            if (!respuesta.ok) break;
+
+            const payload = await respuesta.json();
+            if (mia !== tanda) return;
+
+            const nuevos = (payload.materiales ?? []) as any[];
+            totalMaterial.value = Number(payload.total ?? totalMaterial.value);
+            if (!nuevos.length) break;
+
+            // Si el listado se reconstruyó a mitad de la tanda, los cortes dejan
+            // de coincidir: un id repetido nunca debe entrar en la tabla.
+            const vistos = new Set(filas.value.map((m: any) => m.id));
+            const antes = filas.value.length;
+            filas.value.push(...nuevos.filter((m: any) => !vistos.has(m.id)));
+
+            // Un bloque que no aportó filas no avanza el offset: seguir sería
+            // pedir lo mismo para siempre.
+            if (filas.value.length === antes || nuevos.length < TAMANO_BLOQUE) break;
+        }
+    } catch {
+        // Sin el resto de la lista la tabla sigue sirviendo; recargando se intenta.
+    } finally {
+        if (mia === tanda) cargandoResto.value = false;
+    }
+};
+
+// Cada vez que Inertia repone el prop (entrada, recarga o guardado) se reinicia
+// el array y la descarga, porque el listado cambió.
+watch(
+    () => props.materiales,
+    (nuevos) => {
+        filas.value = [...((nuevos as any[]) ?? [])];
+        totalMaterial.value = Number(props.total ?? filas.value.length);
+        cargarResto();
+    },
+);
+
+onMounted(cargarResto);
 
 const obtenerFiltrosGuardados = () => {
     try {
@@ -812,7 +876,12 @@ const breadcrumbCollapsed = ref(false);
                             role="status" aria-live="polite">
                             <span class="tabular-nums">
                                 <span class="font-medium text-foreground">{{ totalFiltrado }}</span>
-                                de {{ filas.length }} materiales
+                                de {{ totalMaterial }} materiales
+                            </span>
+                            <span v-if="cargandoResto"
+                                class="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
+                                <ArrowPathIcon class="h-3 w-3 animate-spin" />
+                                <span class="tabular-nums">cargando {{ filas.length }} de {{ totalMaterial }}</span>
                             </span>
                             <span v-if="hayFiltros"
                                 class="inline-flex items-center gap-1 rounded-full border border-border bg-muted/60 px-2 py-0.5 text-[11px] font-medium text-foreground">
@@ -1496,17 +1565,20 @@ const breadcrumbCollapsed = ref(false);
                                             <CubeIcon v-else class="h-5 w-5 text-muted-foreground" />
                                         </div>
                                         <h3 class="mt-4 text-sm font-semibold text-foreground">
-                                            {{ hayFiltros ? 'No hay materiales que coincidan' : 'Aún no hay materiales'
+                                            {{ cargandoResto ? 'Cargando materiales…'
+                                                : hayFiltros ? 'No hay materiales que coincidan' : 'Aún no hay materiales'
                                             }}
                                         </h3>
                                         <p class="mt-1 text-sm text-muted-foreground">
                                             {{
-                                                hayFiltros
+                                                cargandoResto
+                                                    ? 'La lista se completa en segundo plano; busca o filtra mientras tanto.'
+                                                    : hayFiltros
                                                     ? 'Ajusta la búsqueda o limpia los filtros para ver más resultados.'
                                                     : 'Crea el primer material o carga un Excel para empezar.'
                                             }}
                                         </p>
-                                        <button v-if="hayFiltros" type="button" @click="limpiarFiltros"
+                                        <button v-if="hayFiltros && !cargandoResto" type="button" @click="limpiarFiltros"
                                             class="mt-4 inline-flex items-center gap-1.5 rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
                                             <XMarkIcon class="h-3.5 w-3.5" />
                                             Limpiar filtros
@@ -1588,7 +1660,7 @@ const breadcrumbCollapsed = ref(false);
 
         <Create v-if="can(['create Material'])" :numberPermissions="props.numberPermissions" :titulos="titulos"
             :show="data.createOpen" @close="data.createOpen = false" :title="props.title" :losSelect="props.losSelect"
-            :materiales="props.materiales" />
+            :materiales="filas" />
 
         <Edit v-if="can(['update Material'])" :titulos="titulos" :numberPermissions="props.numberPermissions"
             :show="data.editOpen" @close="data.editOpen = false" :Materiala="data.Materialo" :title="props.title"

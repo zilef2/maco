@@ -497,6 +497,56 @@ export const explicaciones: Explicacion[] = [
         ],
     },
     {
+        id: 'material-carga-por-lotes',
+        categoria: 'Material',
+        categoriaLabel: 'Materiales',
+        subcategoria: 'Carga del listado',
+        titulo: 'El listado arranca con pocos materiales y se completa solo',
+        resumen:
+            'Materiales ya no espera a los ~1.100 materiales para pintarse: Laravel devuelve los primeros 10 y Vue se baja el resto en bloques de 100, mientras el usuario ya puede trabajar.',
+        etiquetas: [
+            'carga',
+            'lote',
+            'bloques',
+            'rendimiento',
+            'primera carga',
+            'paginacion',
+            'filtros locales',
+            'Material.lote',
+            'listado',
+        ],
+        actualizada: '2026-11-27',
+        bloques: [
+            {
+                tipo: 'texto',
+                texto:
+                    'La tabla filtra, ordena y pagina en el navegador, así que necesita los materiales completos en memoria; lo que no hacía falta mandarlos de golpe era en la primera respuesta. El Index sale con 10 filas y desde ahí pide el resto por partes. El contador de arriba aclara cuántos van cargados («cargando 310 de 1.127») mientras baja el resto.',
+            },
+            {
+                tipo: 'pasos',
+                items: [
+                    'Primera respuesta: los 10 materiales más recientes, con todos los campos que lee la tabla (proveedor, últimos precios, ficha, variantes y predicción de compra).',
+                    'Mientras tanto la vista ya responde: buscar, filtrar, ordenar y cambiar de página es todo sobre el array local, sin preguntar a Laravel.',
+                    'Vue pide bloques de 100 a Material/lote, uno detrás de otro, y los va agregando al array; nunca reemplaza lo que ya tiene.',
+                    'Cuando el array llega al total, se acaban las peticiones: seguir usando la vista no genera más tráfico.',
+                    'Al guardar, borrar o recargar, Inertia repone los 10 materiales y la tanda de bloques vuelve a empezar con la lista nueva.',
+                    'Los cortes se sacan del mismo listado cacheado, ordenado por actualización y desempatado por id, así que un bloque no pisa al siguiente; si aun así un id se repite, la vista lo descarta.',
+                ],
+            },
+            {
+                tipo: 'nota',
+                tono: 'info',
+                texto:
+                    'El mismo cache sirve la primera pantalla y los bloques, y para armarlo se recortó el JSON: las relaciones de precios y de ficha ya no viajan (la tabla lee los campos derivados) y «proveedor_habitual» vuelve a ser el número del proveedor, no el objeto completo — con el objeto, el filtro por proveedor y su lista de opciones no coincidían nunca.',
+            },
+        ],
+        fuentes: [
+            'app/Http/Controllers/MaterialController.php (PRIMERA_CARGA, TAMANO_LOTE, listadoCacheado y lote)',
+            'routes/web.php (Material.lote, declarada antes del resource para que no se la lleve el show)',
+            'resources/js/pages/Material/Index.vue (filas, totalMaterial, cargandoResto y cargarResto)',
+        ],
+    },
+    {
         id: 'material-prevision-de-existencias',
         categoria: 'Material',
         categoriaLabel: 'Materiales',

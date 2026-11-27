@@ -44,6 +44,15 @@ class MaterialController extends Controller {
     public array $thisAtributos;
     public string $FromController = 'Material';
 
+    /**
+     * Cuántos materiales viajan en la primera respuesta y de cuántos en cuántos
+     * los pide la vista después. La tabla filtra, ordena y pagina en el
+     * navegador, así que mandar los ~1.100 de golpe convierte una visita en
+     * megas de JSON: con esto la pantalla sale ya y el resto llega detrás.
+     */
+    public const PRIMERA_CARGA = 10;
+    public const TAMANO_LOTE = 100;
+
 
     //<editor-fold desc="Construc | filtro and dependencia">
     public function __construct(
@@ -68,61 +77,13 @@ class MaterialController extends Controller {
     public function index(Request $request) {
         $numberPermissions = MyModels::getPermissionToNumber(Myhelp::EscribirEnLog($this, ' Materials '));
 
-        // Listado completo: la tabla filtra, ordena y pagina en el frontend.
-        // La clave solo depende de la versión, que se incrementa al escribir.
-        $claveListado = 'material_index_' . $this->versionCache();
-        $Materiales = Cache::remember($claveListado, now()->addMinutes(10), function () {
-            return Material::query()
-                ->with(['proveedorHabitual', 'prices', 'variants', 'fichaTecnica.materiales.material'])
-                ->orderByDesc('updated_at')
-                ->get()
-                ->map(function ($material) {
-                    $material->proveedor_nombre = $material->proveedorHabitual?->nombre ?? null;
-                    // Obtener último precio
-                    $lastPrice = $material->prices()->first();
-                    $material->last_purchase_price = $lastPrice?->precio ?? null;
-                    $material->last_purchase_date = $lastPrice?->fecha ?? null;
-                    // Gasto diario (unidades por día, persistido en BD)
-                    $material->gasto_diario = $material->gasto_diario ?? null;
-                    $material->gasto_diario_actualizado_en = $material->gasto_diario_actualizado_en ?? null;
-                    // Obtener los últimos 3 precios
-                    $material->recent_prices = $material->prices()->limit(3)->get()->map(function($price) {
-                        return [
-                            'precio' => $price->precio,
-                            'fecha' => $price->fecha
-                        ];
-                    })->toArray();
-                    return $material;
-                })
-                ->values();
-        });
-
-        $bloqueosFicha = $this->fichaTecnicaService->bloqueosPorMaterial();
-        $prediccionesCompras = $this->compraPredictor->obtenerPrediccionesParaMateriales();
-        $Materiales->each(function (Material $material) use ($bloqueosFicha, $prediccionesCompras) {
-            $ficha = $material->fichaTecnica->first();
-            $material->ficha_id = $ficha?->id;
-            $material->ficha_nombre = $ficha?->nombre;
-            $material->ficha_materiales = ($ficha?->materiales ?? collect())
-                ->map(fn ($fila) => [
-                    'material_componente_id' => $fila->material_componente_id,
-                    'consumo_estandar' => $fila->consumo_estandar,
-                    'unidad_medida' => $fila->unidad_medida,
-                    'costo_asociado_teorico' => $fila->costo_asociado_teorico,
-                ])
-                ->values()
-                ->all();
-            $bloqueos = $bloqueosFicha[$material->id] ?? [];
-            $material->ficha_bloqueada = !empty($bloqueos);
-            $material->ficha_bloqueo_detalle = collect($bloqueos)
-                ->map(fn ($estado, $numeroOp) => $numeroOp . ' (' . $estado . ')')
-                ->implode(', ');
-
-            $pred = $prediccionesCompras[$material->id] ?? null;
-            $material->ultima_compra_cantidad = $pred['cantidad'] ?? null;
-            $material->ultima_compra_fecha = $pred['fecha'] ?? null;
-            $material->ultima_compra_fecha_humana = $pred['fecha_humana'] ?? null;
-        });
+        // La vista solo necesita un puñado de materiales para pintarse; el resto
+        // lo pide por bloques a lote(), y los dos leen el mismo cache, así que el
+        // trabajo pesado se hace una vez por versión y no en cada petición.
+        $Materiales = $this->listadoCacheado();
+        // Opciones de los selectores (crear/editar y ficha). Se calcula una sola
+        // vez: recorre los materiales completos con sus variantes y precios.
+        $opcionesFicha = $this->fichaTecnicaService->opcionesMateriales();
 
         $listasDesplegables = $this->listaDesplegableService->getOptionsByCategoriaGrouped('material');
         // La talla de un material se elige entre las opciones de talla de Producto.
@@ -162,8 +123,11 @@ class MaterialController extends Controller {
             ->all();
 
         return Inertia::render($this->FromController . '/Index', [
-            'materiales' => $Materiales,
+            'materiales' => $Materiales->take(self::PRIMERA_CARGA)->values(),
             'total' => $Materiales->count(),
+            // El frontend arma su array con esto: `inicial` ya vino y `lote` es
+            // de cuántos en cuántos pide lo que falta.
+            'carga' => ['inicial' => self::PRIMERA_CARGA, 'lote' => self::TAMANO_LOTE],
             'prevision' => $this->prevision(),
             // Filtro por OP del listado: las abiertas y, por material, en cuáles.
             'ordenesAbiertas' => $ordenesAbiertas['ordenes'],
@@ -183,13 +147,110 @@ class MaterialController extends Controller {
                 'color'                     => $listasDesplegables['color'] ?? [],
                 'talla_tamano'              => $opcionesProducto['opciones'] ?? [],
                 'proveedor_habitual'        => $proveedores,
-                'materiales'                => $this->fichaTecnicaService->opcionesMateriales()['materiales'],
-                'unidad_medida'             => $this->fichaTecnicaService->opcionesMateriales()['unidad_medida'],
+                'materiales'                => $opcionesFicha['materiales'],
+                'unidad_medida'             => $opcionesFicha['unidad_medida'],
             ],
 	        'titulos'           => Material::getFillableWithTypes(),
             // La ayuda del modal de subida sale del mismo formato descargable.
             'columnasExcel'     => $this->plantillas->columnas('material'),
 
+        ]);
+    }
+
+    /**
+     * Listado completo del Index con los campos derivados que lee la tabla.
+     * Vive en cache una vez por versión y de aquí salen tanto la primera
+     * pantalla como los bloques de lote, así que el trabajo pesado (relaciones,
+     * fichas y predicciones) no se repite en cada petición.
+     *
+     * @return Collection<int, Material>
+     */
+    private function listadoCacheado(): Collection
+    {
+        $claveListado = 'material_index_' . $this->versionCache();
+
+        return Cache::remember($claveListado, now()->addMinutes(10), function () {
+            $bloqueosFicha = $this->fichaTecnicaService->bloqueosPorMaterial();
+            $prediccionesCompras = $this->compraPredictor->obtenerPrediccionesParaMateriales();
+            // El nombre del proveedor se resuelve aquí en vez de cargar la
+            // relación: serializada ocupa la clave `proveedor_habitual`, que el
+            // listado usa como identificador para filtrar.
+            $nombresProveedor = Proveedor::query()->pluck('nombre', 'id');
+
+            return Material::query()
+                ->with(['prices', 'variants', 'fichaTecnica.materiales.material'])
+                // Sin el id de desempate, dos materiales tocados el mismo segundo
+                // pueden cambiar de lugar entre la primera pantalla y los bloques.
+                ->orderByDesc('updated_at')
+                ->orderByDesc('id')
+                ->get()
+                ->each(function (Material $material) use ($bloqueosFicha, $prediccionesCompras, $nombresProveedor) {
+                    $material->proveedor_nombre = $material->proveedor_habitual
+                        ? ($nombresProveedor[$material->proveedor_habitual] ?? null)
+                        : null;
+
+                    // La relación ya viene ordenada por fecha, así que el último
+                    // precio y los tres recientes se leen de ella; consultarla
+                    // suelta costaba dos consultas por cada material.
+                    $precios = $material->prices;
+                    $material->last_purchase_price = $precios->first()?->precio ?? null;
+                    $material->last_purchase_date = $precios->first()?->fecha ?? null;
+                    // Gasto diario (unidades por día, persistido en BD)
+                    $material->gasto_diario = $material->gasto_diario ?? null;
+                    $material->gasto_diario_actualizado_en = $material->gasto_diario_actualizado_en ?? null;
+                    $material->recent_prices = $precios->take(3)->map(fn ($price) => [
+                        'precio' => $price->precio,
+                        'fecha'  => $price->fecha,
+                    ])->values()->all();
+
+                    $ficha = $material->fichaTecnica->first();
+                    $material->ficha_id = $ficha?->id;
+                    $material->ficha_nombre = $ficha?->nombre;
+                    $material->ficha_materiales = ($ficha?->materiales ?? collect())
+                        ->map(fn ($fila) => [
+                            'material_componente_id' => $fila->material_componente_id,
+                            'consumo_estandar' => $fila->consumo_estandar,
+                            'unidad_medida' => $fila->unidad_medida,
+                            'costo_asociado_teorico' => $fila->costo_asociado_teorico,
+                        ])
+                        ->values()
+                        ->all();
+                    $bloqueos = $bloqueosFicha[$material->id] ?? [];
+                    $material->ficha_bloqueada = !empty($bloqueos);
+                    $material->ficha_bloqueo_detalle = collect($bloqueos)
+                        ->map(fn ($estado, $numeroOp) => $numeroOp . ' (' . $estado . ')')
+                        ->implode(', ');
+
+                    $pred = $prediccionesCompras[$material->id] ?? null;
+                    $material->ultima_compra_cantidad = $pred['cantidad'] ?? null;
+                    $material->ultima_compra_fecha = $pred['fecha'] ?? null;
+                    $material->ultima_compra_fecha_humana = $pred['fecha_humana'] ?? null;
+
+                    // Ya no hacen falta en el JSON: la tabla lee los campos
+                    // derivados de arriba. `variants` sí se queda (sus chips).
+                    // Se ocultan con el nombre de la relación, no con la clave
+                    // snake que sale en el JSON.
+                    $material->makeHidden(['prices', 'fichaTecnica']);
+                })
+                ->values();
+        });
+    }
+
+    /**
+     * Bloque de materiales que la vista se trae en segundo plano. El corte es
+     * sobre el mismo array cacheado de la primera pantalla, así que los bloques
+     * nunca se pisan entre sí y al navegador solo le queda appendear.
+     */
+    public function lote(Request $request): JsonResponse
+    {
+        $desde = max(0, (int) $request->input('desde', 0));
+        $limite = min(self::TAMANO_LOTE, max(1, (int) $request->input('limite', self::TAMANO_LOTE)));
+
+        $Materiales = $this->listadoCacheado();
+
+        return response()->json([
+            'materiales' => $Materiales->slice($desde, $limite)->values(),
+            'total' => $Materiales->count(),
         ]);
     }
 
