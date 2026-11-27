@@ -492,6 +492,13 @@ const diasPrevision = computed(() => Number(props.prevision?.dias_prevision ?? 2
 const previsiónFaltantes = computed<any[]>(() =>
     ((props.prevision?.faltan ?? []) as any[]).filter((f) => f.dias_restantes <= diasPrevision.value)
 );
+// El banner arranca minimizado: solo se ve el material más urgente y el resto
+// queda oculto hasta que se despliega.
+const previsiónDesplegada = ref(false);
+const previsiónVisible = computed<any[]>(() => (previsiónDesplegada.value
+    ? previsiónFaltantes.value
+    : previsiónFaltantes.value.slice(0, 1)
+));
 
 // Carencias de las OP abiertas: las que pueden comprarse en un solo paso.
 const faltantesDeOp = computed<any[]>(() => (props.faltantesOp as any[]) ?? []);
@@ -874,14 +881,28 @@ const breadcrumbCollapsed = ref(false);
                 class="rounded-xl border border-amber-400/50 bg-amber-50/80 p-4 dark:bg-amber-500/10" role="alert">
                 <div class="flex items-center gap-2">
                     <ExclamationTriangleIcon class="h-5 w-5 text-amber-500 dark:text-amber-400" />
-                    <h2 class="text-sm font-bold text-black dark:text-amber-300">
+                    <h2 class="flex-1 text-sm font-bold text-black dark:text-amber-300">
                         Previsión: {{ previsiónFaltantes.length }} material{{ previsiónFaltantes.length === 1 ? '' :
                             'es' }} no
                         alcanza para {{ diasPrevision }} día{{ diasPrevision === 1 ? '' : 's' }}
                     </h2>
+                    <button v-if="previsiónFaltantes.length > 1" type="button"
+                        @click="previsiónDesplegada = !previsiónDesplegada"
+                        class="inline-flex shrink-0 items-center gap-1 rounded-md border border-amber-400/60 bg-amber-100/70 px-2 py-1 text-xs font-semibold text-amber-900 transition hover:bg-amber-200/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50 dark:bg-transparent dark:text-amber-300 dark:hover:bg-amber-500/10"
+                        :aria-expanded="previsiónDesplegada"
+                        :aria-label="previsiónDesplegada ? 'Ocultar el resto de los materiales' : 'Mostrar el resto de los materiales'">
+                        <template v-if="previsiónDesplegada">
+                            <ChevronUpIcon class="h-3.5 w-3.5" />
+                            Ocultar
+                        </template>
+                        <template v-else>
+                            <ChevronDownIcon class="h-3.5 w-3.5" />
+                            Ver los {{ previsiónFaltantes.length - 1 }} restantes
+                        </template>
+                    </button>
                 </div>
                 <ul class="mt-2 space-y-1.5">
-                    <li v-for="f in previsiónFaltantes" :key="f.material_id"
+                    <li v-for="f in previsiónVisible" :key="f.material_id"
                         class="flex items-start gap-2 text-xs leading-relaxed text-red-800 dark:text-red-200">
                         <span class="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" />
                         <span>
@@ -913,17 +934,19 @@ const breadcrumbCollapsed = ref(false);
                         </span>
                     </li>
                 </ul>
-                <p class="mt-3 border-t border-red-600/20 pt-2 text-[14px] text-red-800/80 dark:text-red-300/70">
-                    Gasto por día = Salidas a taller de las OPs en los últimos
-                    {{ prevision?.ventana_dias ?? 30 }} días / {{ prevision?.ventana_dias ?? 30 }};
-                </p>
-                <p class="mt-3 border-t border-red-600/20 pt-2 text-[14px] text-red-800/80 dark:text-red-300/70">
-                    Días que alcanzan = existencia / gasto por día.
-                </p>
-                <p class="mt-3 border-t border-red-600/20 pt-2 text-[14px] text-red-800/80 dark:text-red-300/70">
-                    Se avisa cuando quedan {{ diasPrevision }} día{{ diasPrevision === 1 ? '' : 's' }}
-                    o menos (Puedes cambiar esto en Parámetros)
-                </p>
+                <template v-if="previsiónDesplegada || previsiónFaltantes.length === 1">
+                    <p class="mt-3 border-t border-red-600/20 pt-2 text-[14px] text-red-800/80 dark:text-red-300/70">
+                        Gasto por día = Salidas a taller de las OPs en los últimos
+                        {{ prevision?.ventana_dias ?? 30 }} días / {{ prevision?.ventana_dias ?? 30 }};
+                    </p>
+                    <p class="mt-3 border-t border-red-600/20 pt-2 text-[14px] text-red-800/80 dark:text-red-300/70">
+                        Días que alcanzan = existencia / gasto por día.
+                    </p>
+                    <p class="mt-3 border-t border-red-600/20 pt-2 text-[14px] text-red-800/80 dark:text-red-300/70">
+                        Se avisa cuando quedan {{ diasPrevision }} día{{ diasPrevision === 1 ? '' : 's' }}
+                        o menos (Puedes cambiar esto en Parámetros)
+                    </p>
+                </template>
             </div>
 
             <!-- Superficie principal: barra de filtros + tabla + paginación -->

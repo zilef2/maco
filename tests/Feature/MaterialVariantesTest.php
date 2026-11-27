@@ -16,12 +16,18 @@ class MaterialVariantesTest extends TestCase
     use ContextoMateriales;
     use RefreshDatabase;
 
-    private function datosMaterial(string $codigo): array
+    /**
+     * El código ya no se digita: lo arma el modelo con el par categoría/base.
+     * Los tests buscan el material por su nombre.
+     */
+    private function datosMaterial(string $nombre): array
     {
         return [
-            'codigo_material' => $codigo,
+            'codigo_categoria' => 'MAT',
+            'codigo_base' => 'VAR',
+            'generico' => false,
             'categoria' => 'Tela',
-            'nombre_base' => 'Tela ' . $codigo,
+            'nombre_base' => $nombre,
             'unidad_inventario' => 'm',
             'estado' => 'Activo',
             'last_purchase_price' => 10,
@@ -51,7 +57,7 @@ class MaterialVariantesTest extends TestCase
         $user = $this->usuarioAdmin();
 
         $response = $this->actingAs($user)->post(route('Material.store'), array_merge(
-            $this->datosMaterial('MAT-VAR-COLOR'),
+            $this->datosMaterial('Tela color'),
             [
                 'colores' => ['Rojo', 'Azul', 'Rojo'],
                 'variantes' => [],
@@ -60,7 +66,7 @@ class MaterialVariantesTest extends TestCase
 
         $response->assertSessionHasNoErrors();
 
-        $material = Material::where('codigo_material', 'MAT-VAR-COLOR')->firstOrFail();
+        $material = Material::where('nombre_base', 'Tela color')->firstOrFail();
 
         $this->assertSame(
             ['Rojo', 'Azul'],
@@ -70,20 +76,27 @@ class MaterialVariantesTest extends TestCase
         $this->assertFalse((bool) $material->fresh()->maneja_otra_variante);
     }
 
-    public function test_crear_material_con_colores_y_variantes_es_rechazado(): void
+    public function test_crear_material_con_colores_y_variantes_guarda_las_dos_listas(): void
     {
         $user = $this->usuarioAdmin();
 
         $response = $this->actingAs($user)->post(route('Material.store'), array_merge(
-            $this->datosMaterial('MAT-VAR-AMBAS'),
+            $this->datosMaterial('Tela mixta'),
             [
                 'colores' => ['Rojo'],
                 'variantes' => ['S'],
             ]
         ));
 
-        $response->assertSessionHasErrors('colores');
-        $this->assertDatabaseMissing('materials', ['codigo_material' => 'MAT-VAR-AMBAS']);
+        $response->assertSessionHasNoErrors();
+
+        // Un material sí puede manejar color y otra variante a la vez.
+        $material = Material::where('nombre_base', 'Tela mixta')->firstOrFail();
+
+        $this->assertSame(['Rojo'], $material->variants()->colores()->pluck('nombre')->all());
+        $this->assertSame(['S'], $material->variants()->otrasVariantes()->pluck('nombre')->all());
+        $this->assertTrue((bool) $material->fresh()->maneja_color);
+        $this->assertTrue((bool) $material->fresh()->maneja_otra_variante);
     }
 
     public function test_actualizar_material_reemplaza_las_variantes(): void
@@ -121,10 +134,10 @@ class MaterialVariantesTest extends TestCase
         $archivo = $this->archivoExcel([
             [
                 'codigo_material', 'nombre_base', 'categoria', 'unidad_inventario',
-                'estado', 'colores', 'variantes', 'costo', 'procesado',
+                'estado', 'base si o no', 'Color', 'Talla / tamaño', 'costo', 'procesado',
             ],
-            ['MAT-EXCEL-COLOR', 'Tela color', 'Tela', 'm', 'Activo', 'Rojo, Azul', '', 8500, 'si'],
-            ['MAT-EXCEL-VAR', 'Tela talla', 'Tela', 'm', 'Activo', '', 'S, M, L', 7200, 'no'],
+            ['MAT-EXCEL-COLOR', 'Tela color', 'Tela', 'm', 'Activo', 'no', 'Rojo, Azul', '', 8500, 'si'],
+            ['MAT-EXCEL-VAR', 'Tela talla', 'Tela', 'm', 'Activo', 'no', '', 'S, M, L', 7200, 'no'],
         ]);
 
         $response = $this->actingAs($user)->post(route('Material.upload-excel'), [
@@ -146,25 +159,30 @@ class MaterialVariantesTest extends TestCase
         );
     }
 
-    public function test_importar_excel_rechaza_una_fila_con_colores_y_variantes(): void
+    public function test_importar_excel_guarda_colores_y_variantes_del_mismo_material(): void
     {
         $user = $this->usuarioAdmin();
 
         $archivo = $this->archivoExcel([
             [
                 'codigo_material', 'nombre_base', 'categoria', 'unidad_inventario',
-                'estado', 'colores', 'variantes', 'costo', 'procesado',
+                'estado', 'base si o no', 'Color', 'Talla / tamaño', 'costo', 'procesado',
             ],
-            ['MAT-EXCEL-AMBAS', 'Tela mixta', 'Tela', 'm', 'Activo', 'Rojo', 'S', 5000, 'no'],
+            ['MAT-EXCEL-AMBAS', 'Tela mixta', 'Tela', 'm', 'Activo', 'no', 'Rojo, Azul', 'S, M', 5000, 'no'],
         ]);
 
         $response = $this->actingAs($user)->post(route('Material.upload-excel'), [
             'archivo' => $archivo,
         ]);
 
-        $response->assertSessionHas('error');
-        $this->assertDatabaseMissing('materials', ['codigo_material' => 'MAT-EXCEL-AMBAS']);
-        $this->assertSame(0, MaterialVariant::count());
+        $response->assertSessionHas('success');
+
+        $material = Material::where('codigo_material', 'MAT-EXCEL-AMBAS')->firstOrFail();
+
+        $this->assertSame(['Rojo', 'Azul'], $material->variants()->colores()->pluck('nombre')->all());
+        $this->assertSame(['S', 'M'], $material->variants()->otrasVariantes()->pluck('nombre')->all());
+        $this->assertTrue((bool) $material->maneja_color);
+        $this->assertTrue((bool) $material->maneja_otra_variante);
     }
 
     public function test_eliminar_material_elimina_sus_variantes(): void

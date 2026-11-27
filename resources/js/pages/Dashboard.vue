@@ -285,22 +285,13 @@ const mes = computed(() => state.datos?.mes ?? {});
 
 const kpis = computed(() => [
     {
-        tipo: 'pares_aprobados',
-        icon: PackageCheck,
-        etiqueta: 'Pares aprobados',
-        valor: formatoNumero(mes.value.pares_aprobados),
-        color: 'text-lime-500',
-        fondo: 'bg-lime-500/10',
-        items: mes.value.detalles_pares_aprobados || [],
-    },
-    {
         tipo: 'pares_recibidos',
         icon: Boxes,
         etiqueta: 'Pares recibidos',
         valor: formatoNumero(mes.value.pares_recibidos),
         color: 'text-sky-500',
         fondo: 'bg-sky-500/10',
-        items: mes.value.detalles_pares_recibidos || [],
+        items: [...(mes.value.detalles_pares_aprobados || []), ...(mes.value.detalles_no_recuperables || [])],
     },
     {
         tipo: 'en_reparacion',
@@ -565,6 +556,8 @@ onUnmounted(() => {
                 :tipo="state.modal.tipo"
                 :titulo="state.modal.titulo"
                 :items="state.modal.items"
+                :items-aprobados="mes.detalles_pares_aprobados || []"
+                :items-no-recuperables="mes.detalles_no_recuperables || []"
                 @close="cerrarModal"
             />
         </div>

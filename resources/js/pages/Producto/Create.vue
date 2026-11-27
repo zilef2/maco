@@ -54,7 +54,13 @@ const camposSelect = [
     { campo: 'Control_de_variante', subcategoria: 'control_de_variante' },
 ] as const;
 
-const optionsPara = (campo: string) => props.losSelect?.[campo] ?? [];
+// Controles de variante retirados: se ocultan aunque la base todavía los tenga.
+const CONTROLES_RETIRADOS = ['Sin talla', 'Sin talla / sin color', 'Sin color'];
+
+const optionsPara = (campo: string) =>
+    (props.losSelect?.[campo] ?? []).filter(
+        (opcion: any) => !(campo === 'Control_de_variante' && CONTROLES_RETIRADOS.includes(opcion.nombre)),
+    );
 const faltanOpciones = computed(() => camposSelect.filter(({ campo }) => !optionsPara(campo).length));
 
 // Coste de producción: los materiales de la ficha más los procesos, calculado
@@ -178,11 +184,11 @@ const codigoAutomatico = computed(() => {
     return `PT-${String(maximo + 1).padStart(3, '0')}`;
 });
 
-const { modo, rango, tallasEscogidas, tallas, alternarTalla, rangoDemasiadoGrande, opcionesTexto, limpiar } =
+const { modo, rango, tallasEscogidas, opcionesEscogidas, tallas, alternarTalla, rangoDemasiadoGrande, opcionesTexto, limpiar } =
     useTallasVariante(() => form.Control_de_variante);
 
 // Las tallas y el resumen de opciones siempre derivan del control de variante.
-watch([modo, tallas], () => {
+watch([modo, tallas, opcionesEscogidas], () => {
     form.tallas = tallas.value;
     form.Opciones = opcionesTexto.value;
 }, { immediate: true });
@@ -281,15 +287,21 @@ watch(
                 <!-- Encabezado -->
                 <div
                     class="px-6 pt-6 pb-4 border-b border-gray-200 dark:border-gray-700 bg-gradient-to-r from-indigo-50 via-white to-violet-50 dark:from-gray-800 dark:via-gray-800 dark:to-gray-800 rounded-t-lg">
-                    <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                        <span
-                            class="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white">
-                            <ShoppingBagIcon class="w-5 h-5" />
+                    <div class="flex flex-wrap items-center gap-3">
+                        <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                            <span
+                                class="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white">
+                                <ShoppingBagIcon class="w-5 h-5" />
+                            </span>
+                            {{ lang().t('app.label.add') }} {{ props.title }}
+                        </h2>
+                        <span v-if="form.Codigo_interno"
+                            class="rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
+                            {{ form.Codigo_interno }}
                         </span>
-                        {{ lang().t('app.label.add') }} {{ props.title }}
-                    </h2>
+                    </div>
                     <p class="mt-1.5 text-sm text-gray-500 dark:text-gray-400 pl-10">
-                        Complete los datos del nuevo producto.
+                        {{ form.Titulo_Shopify || 'Complete los datos del nuevo producto.' }}
                     </p>
                 </div>
 
@@ -312,6 +324,15 @@ watch(
                                     Se asigna automáticamente: último código PT registrado + 1.
                                 </p>
                                 <InputError class="mt-2" :message="form.errors.Codigo_interno" />
+                            </div>
+
+                            <div>
+                                <InputLabel for="ID_producto_Shopify"
+                                    :value="lang().t('app.label.ID_producto_Shopify') || 'ID Shopify'" />
+                                <TextInput id="ID_producto_Shopify" type="text" class="mt-1 block w-full"
+                                    v-model="form.ID_producto_Shopify" placeholder="ID Producto Shopify (opcional)"
+                                    :error="form.errors.ID_producto_Shopify" />
+                                <InputError class="mt-2" :message="form.errors.ID_producto_Shopify" />
                             </div>
 
                             <div class="md:col-span-2">
@@ -435,6 +456,32 @@ watch(
                                     </button>
                                     <p class="w-full text-xs text-gray-500 dark:text-gray-400">
                                         {{ tallas.length ? `Seleccionadas: ${tallas.join(', ')}` : 'Elija una o más tallas.' }}
+                                    </p>
+                                </div>
+
+                                <!-- Color: valores de la lista de colores -->
+                                <div v-else-if="modo === 'color'" class="mt-1">
+                                    <v-select :options="props.losSelect?.colores ?? []"
+                                        :reduce="(item: any) => item.nombre" label="nombre" multiple
+                                        v-model="opcionesEscogidas" placeholder="Seleccione colores"
+                                        :clearable="true" append-to-body class="block w-full" />
+                                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                        {{ opcionesEscogidas.length
+                                            ? `Colores: ${opcionesEscogidas.join(', ')}`
+                                            : 'Elija uno o más colores.' }}
+                                    </p>
+                                </div>
+
+                                <!-- Diseño: valores de la lista de diseños -->
+                                <div v-else-if="modo === 'diseno'" class="mt-1">
+                                    <v-select :options="props.losSelect?.disenos ?? []"
+                                        :reduce="(item: any) => item.nombre" label="nombre" multiple
+                                        v-model="opcionesEscogidas" placeholder="Seleccione diseños"
+                                        :clearable="true" append-to-body class="block w-full" />
+                                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                        {{ opcionesEscogidas.length
+                                            ? `Diseños: ${opcionesEscogidas.join(', ')}`
+                                            : 'Elija uno o más diseños.' }}
                                     </p>
                                 </div>
 
@@ -565,15 +612,6 @@ watch(
                         </p>
                         <div
                             class="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-4 gap-x-6 gap-y-4 rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-4">
-                            <div>
-                                <InputLabel for="ID_producto_Shopify"
-                                    :value="lang().t('app.label.ID_producto_Shopify') || 'ID Shopify'" />
-                                <TextInput id="ID_producto_Shopify" type="text" class="mt-1 block w-full"
-                                    v-model="form.ID_producto_Shopify" placeholder="ID Producto Shopify (opcional)"
-                                    :error="form.errors.ID_producto_Shopify" />
-                                <InputError class="mt-2" :message="form.errors.ID_producto_Shopify" />
-                            </div>
-
                             <!-- <div>
                                 <InputLabel for="costo_anticipado"
                                     :value="lang().t('app.label.costo_anticipado') || 'Costo anticipado'" />

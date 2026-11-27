@@ -2,11 +2,13 @@
 
 namespace App\Services;
 
+use App\Exceptions\ExcelRechazado;
 use App\Models\Material;
 use App\Models\Proveedor;
 use App\Traits\MaterialMovimientoTrait;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 use RuntimeException;
 
 /**
@@ -197,6 +199,12 @@ class ExcelMaterialesService
         $columnas = $this->validarTitulos($titulos);
         $encabezado = $columnas['encabezado'];
 
+        // La columna del Estado es el ancla con la que se detecta una fila cuyo
+        // contenido no cae bajo su rótulo (un bloque pegado desde otro orden de
+        // columnas). Se agrupa por Corrimiento para avisar una sola vez.
+        $indiceEstado = array_search('estado', $encabezado, true);
+        $desfasadas = [];
+
         // El Excel puede traer el NIT, el nombre o el código del proveedor; la
         // columna guarda el id. Se indexan todas las formas en que la app lo
         // identifica (sin mayúsculas, tildes ni puntuación). El NIT es la forma
@@ -218,6 +226,18 @@ class ExcelMaterialesService
 
             // Omitir filas completamente vacías
             if (!array_filter($registro, fn ($v) => $v !== null && $v !== '')) {
+                continue;
+            }
+
+            // Una fila corridas no tiene un valor malo: tiene todos los valores
+            // en la columna equivocada. Se avisa del corrimiento y se deja de
+            // revisar, para no culpar a "Base si o no" de un nombre de material.
+            $paso = $this->desplazamientoDeFila($fila, $indiceEstado);
+            if ($paso !== 0) {
+                $desfasadas[$paso]['total'] = ($desfasadas[$paso]['total'] ?? 0) + 1;
+                $desfasadas[$paso]['ultima'] = $filaExcel;
+                $desfasadas[$paso]['primera'] ??= $filaExcel;
+
                 continue;
             }
 
@@ -439,6 +459,18 @@ class ExcelMaterialesService
             ];
         }
 
+        // El desfase es el problema de fondo de esas filas, así que se informa
+        // primero y en un solo aviso por cada corrimiento.
+        if (!empty($desfasadas)) {
+            $errores = array_merge(
+                array_map(
+                    fn (int $paso): string => $this->avisoDeDesfase($paso, $desfasadas[$paso], $indiceEstado),
+                    array_keys($desfasadas)
+                ),
+                $errores
+            );
+        }
+
         // Todo proveedor de la lista debe existir en la app antes de importar.
         if (!empty($proveedoresDesconocidos)) {
             throw new RuntimeException(
@@ -447,8 +479,11 @@ class ExcelMaterialesService
             );
         }
         if (!empty($errores)) {
-            throw new RuntimeException(
-                'No se importó nada por los siguientes problemas: ' . $this->acortarAvisos($errores)
+            // El mensaje se recorta para la pantalla y el correo; la lista
+            // completa viaja en la excepción y es la que escribe MPP.log.
+            throw ExcelRechazado::conErrores(
+                'No se importó nada por los siguientes problemas: ' . $this->acortarAvisos($errores),
+                $errores
             );
         }
         if (empty($registros)) {
@@ -456,6 +491,62 @@ class ExcelMaterialesService
         }
 
         return ['registros' => $registros, 'ignoradas' => $columnas['ignoradas']];
+    }
+
+    /**
+     * Cuántas columnas está corrido el contenido de la fila respecto al
+     * encabezado (negativo = más a la izquierda), o 0 cuando cae donde debe.
+     *
+     * Se mira el Estado porque es el único rótulo con valores cerrados: si bajo
+     * él no hay Activo ni Inactivo pero sí lo hay a un lado, la fila perdió o
+     * ganó una columna y ningún valor coincide ya con su rótulo.
+     *
+     * @param  array<int, mixed>  $fila
+     */
+    private function desplazamientoDeFila(array $fila, int|false $indiceEstado): int
+    {
+        if ($indiceEstado === false || $this->esEstado($fila[$indiceEstado] ?? null)) {
+            return 0;
+        }
+
+        foreach ([-1, 1, -2, 2] as $paso) {
+            if ($this->esEstado($fila[$indiceEstado + $paso] ?? null)) {
+                return $paso;
+            }
+        }
+
+        return 0;
+    }
+
+    private function esEstado(mixed $celda): bool
+    {
+        if (!is_scalar($celda)) {
+            return false;
+        }
+
+        return in_array($this->normalizarTexto(trim(strip_tags((string) $celda))), ['activo', 'inactivo'], true);
+    }
+
+    /**
+     * @param  array{primera: int, ultima: int, total: int}  $censo
+     */
+    private function avisoDeDesfase(int $paso, array $censo, int|false $indiceEstado): string
+    {
+        $fila = $censo['total'] === 1
+            ? "Fila {$censo['primera']}"
+            : "Filas {$censo['primera']} a {$censo['ultima']} ({$censo['total']} filas)";
+
+        $donde = $indiceEstado === false
+            ? ''
+            : ': el rótulo «Estado» está en la columna '
+                . Coordinate::stringFromColumnIndex($indiceEstado + 1)
+                . ' y el valor llegó en la ' . Coordinate::stringFromColumnIndex($indiceEstado + 1 + $paso);
+
+        return "{$fila}: las celdas van corridas " . abs($paso)
+            . ' columna' . (abs($paso) === 1 ? '' : 's') . ' a la '
+            . ($paso < 0 ? 'izquierda' : 'derecha') . " respecto al encabezado{$donde}. "
+            . 'Suele pasar cuando el bloque viene de un orden anterior de columnas: descargue la plantilla '
+            . 'y vuelva a pegar los datos sobre ella, sin mover «Base si o no» de su sitio.';
     }
 
     /**

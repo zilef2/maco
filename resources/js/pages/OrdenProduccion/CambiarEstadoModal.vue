@@ -1526,7 +1526,7 @@ const posicionarScrollRecepcion = async () => {
                         :disabled="form.processing || !puedeEnviar || !puedeGuardar"
                         type="submit"
                     >
-                        {{ form.processing ? lang().t('app.button.save') + '...' : lang().t('app.button.save') }}
+                        Cerrar OP
                     </PrimaryButton>
                 </div>
             </form>

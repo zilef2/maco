@@ -676,7 +676,7 @@ const recargar = () => {
                         <ChevronUpIcon v-else class="h-4 w-4" />
                     </button>
 
-                    <div class="flex flex-wrap items-center gap-2">
+                    <div class="flex flex-wrap items-center gap-2" v-if="!breadcrumbCollapsed">
                         <button type="button" @click="recargar" :disabled="cargando" title="Actualizar datos"
                             aria-label="Actualizar datos"
                             class="inline-flex h-9 w-9 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:pointer-events-none disabled:opacity-50">
@@ -1164,7 +1164,7 @@ const recargar = () => {
         <Edit v-if="can(['update Producto'])" :titulos="titulos" :numberPermissions="props.numberPermissions"
             :show="data.editOpen" @close="data.editOpen = false" :Productoa="data.Productoo" :title="props.title"
             :losSelect="props.losSelect" :metodoCostos="props.metodo_costos"
-            :metodoCostosLabel="props.metodo_costos_label" />
+            :metodoCostosLabel="props.metodo_costos_label" :fotosDisponibles="props.fotos_disponibles" />
 
         <Delete v-if="can(['delete Producto'])" :numberPermissions="props.numberPermissions" :show="data.deleteOpen"
             @close="data.deleteOpen = false" :Productoa="data.Productoo" :title="props.title" />

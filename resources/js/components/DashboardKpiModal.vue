@@ -26,6 +26,8 @@ const props = defineProps<{
     tipo: string;
     titulo: string;
     items: DetalleItem[];
+    itemsAprobados?: DetalleItem[];
+    itemsNoRecuperables?: DetalleItem[];
 }>();
 
 const emit = defineEmits<{
@@ -34,6 +36,7 @@ const emit = defineEmits<{
 
 const state = reactive({
     busqueda: '',
+    filtroEstado: 'todos',
 });
 
 const iconoPorTipo = computed(() => {
@@ -62,11 +65,19 @@ const iconoPorTipo = computed(() => {
 const formatoPlata = (v: number) => '$' + Math.round(v || 0).toLocaleString('es-CO');
 const formatoNumero = (v: number) => (v || 0).toLocaleString('es-CO');
 
-const itemsFiltrados = computed(() => {
-    const q = state.busqueda.trim().toLowerCase();
-    if (!q) return props.items || [];
+const itemsBase = computed(() => {
+    if (props.tipo !== 'pares_recibidos') return props.items || [];
+    if (state.filtroEstado === 'aprobados') return (props.items || []).filter((i) => i.estado === 'Aprobado');
+    if (state.filtroEstado === 'no_recuperables') return (props.items || []).filter((i) => i.estado === 'No recuperable');
+    return props.items || [];
+});
 
-    return (props.items || []).filter((item) => {
+const itemsFiltrados = computed(() => {
+    const lista = itemsBase.value;
+    const q = state.busqueda.trim().toLowerCase();
+    if (!q) return lista;
+
+    return lista.filter((item) => {
         return (
             (item.producto && item.producto.toLowerCase().includes(q)) ||
             (item.op && item.op.toLowerCase().includes(q)) ||
@@ -97,6 +108,7 @@ const totalSuma = computed(() => {
 
 const cerrar = () => {
     state.busqueda = '';
+    state.filtroEstado = 'todos';
     emit('close');
 };
 
@@ -157,6 +169,14 @@ onUnmounted(() => {
                     />
                 </div>
 
+                <div v-if="tipo === 'pares_recibidos'" class="flex rounded-lg border border-sidebar-border/60 p-0.5">
+                    <button v-for="op in [{v:'todos',l:'Todos'},{v:'aprobados',l:'Aprobados'},{v:'no_recuperables',l:'No recuperables'}]" :key="op.v" @click="state.filtroEstado = op.v"
+                        class="rounded-md px-3 py-1 text-xs font-medium transition-colors cursor-pointer"
+                        :class="state.filtroEstado === op.v ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground'">
+                        {{ op.l }}
+                    </button>
+                </div>
+
                 <div class="flex items-center gap-4 text-xs">
                     <span class="text-muted-foreground">
                         Registros: <strong class="text-foreground">{{ itemsFiltrados.length }}</strong>
@@ -202,6 +222,7 @@ onUnmounted(() => {
                                 <th class="px-3 py-2.5">Producto</th>
                                 <th class="px-3 py-2.5">OP</th>
                                 <th class="px-3 py-2.5 text-center">Talla</th>
+                                <th v-if="tipo === 'pares_recibidos'" class="px-3 py-2.5">Estado</th>
                                 <th class="px-3 py-2.5 text-right">Cantidad</th>
                                 <th class="px-3 py-2.5">Fecha</th>
                                 <th class="px-3 py-2.5">Observaciones</th>
@@ -218,6 +239,11 @@ onUnmounted(() => {
                                 <td class="px-3 py-2.5 text-center">
                                     <span class="inline-block rounded-md bg-muted px-2 py-0.5 text-[11px] font-semibold text-foreground">
                                         {{ item.talla }}
+                                    </span>
+                                </td>
+                                <td v-if="tipo === 'pares_recibidos'" class="px-3 py-2.5">
+                                    <span class="inline-block rounded-md bg-muted px-2 py-0.5 text-[11px] font-semibold text-foreground">
+                                        {{ item.estado || '-' }}
                                     </span>
                                 </td>
                                 <td class="px-3 py-2.5 text-right font-bold tabular-nums text-foreground">

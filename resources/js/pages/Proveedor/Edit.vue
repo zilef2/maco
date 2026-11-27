@@ -132,9 +132,27 @@ const validarTelefonos = (): boolean => {
     return telValido && celValido;
 };
 
+const soloDigitos = (valor: string): string => valor.replace(/\D+/g, '');
+
+const bloquearNoDigitos = (event: KeyboardEvent): void => {
+    if (event.ctrlKey || event.metaKey || event.altKey) return;
+    if (event.key.length === 1 && !/^\d$/.test(event.key)) {
+        event.preventDefault();
+    }
+};
+
 const setCampoTelefono = (campo: 'telefono_principal' | 'celular_contacto', valor: string): void => {
-    (form as any)[campo] = valor;
+    (form as any)[campo] = soloDigitos(valor);
     validarTelefono(campo);
+};
+
+const sanitizarInputTelefono = (campo: 'telefono_principal' | 'celular_contacto', event: Event): void => {
+    const input = event.target as HTMLInputElement;
+    const limpio = soloDigitos(input.value);
+    if (input.value !== limpio) {
+        input.value = limpio;
+    }
+    setCampoTelefono(campo, limpio);
 };
 
 const claseEstadoSeleccionado = (opcion: string): string =>
@@ -144,20 +162,59 @@ const claseEstadoSeleccionado = (opcion: string): string =>
 const camposObligatorios = [
     'nit',
     'nombre_comercial',
-];
-
-const camposOpcionales = [
     'razon_social',
     'direccion',
     'observaciones_direccion',
     'ciudad',
     'telefono_principal',
     'tipo_proveedor',
-    'que_suministra',
     'forma_pago',
     'tiempo_entrega',
+];
+
+const camposOpcionales = [
+    'que_suministra',
     'observaciones_generales',
 ];
+
+const validarRequeridos = (): boolean => {
+    let valido = true;
+    for (const campo of camposObligatorios) {
+        const valor = String((form as any)[campo] ?? '').trim();
+        if (valor === '') {
+            form.setError(campo, `${etiquetas[campo]} es obligatorio.`);
+            valido = false;
+        } else {
+            form.clearErrors(campo);
+        }
+    }
+    return valido;
+};
+
+const validarCorreo = (): boolean => {
+    const valor = String(form.correo_electronico ?? '').trim();
+    if (valor === '') {
+        form.clearErrors('correo_electronico');
+        return true;
+    }
+    if (!valor.includes('@')) {
+        form.setError('correo_electronico', 'El correo debe contener el símbolo @.');
+        return false;
+    }
+    form.clearErrors('correo_electronico');
+    return true;
+};
+
+const setCorreo = (valor: string): void => {
+    form.correo_electronico = valor;
+    if (valor === '') {
+        form.clearErrors('correo_electronico');
+    } else if (!valor.includes('@')) {
+        form.setError('correo_electronico', 'El correo debe contener el símbolo @.');
+    } else {
+        form.clearErrors('correo_electronico');
+    }
+};
 
 const selectClass = 'mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm focus:border-ring focus:outline-none focus:ring-2 focus:ring-ring/30';
 
@@ -168,10 +225,12 @@ const closeModal = () => {
 
 const submit = () => {
     if (!props.proveedora?.id) return;
+    const requeridosValidos = validarRequeridos();
     const plazoValido = aplicarPlazo();
     const tipoValido = aplicarTipo();
     const telefonosValidos = validarTelefonos();
-    if (!plazoValido || !tipoValido || !telefonosValidos) return;
+    const correoValido = validarCorreo();
+    if (!requeridosValidos || !plazoValido || !tipoValido || !telefonosValidos || !correoValido) return;
     form.put(route('Proveedor.update', props.proveedora.id), {
         preserveScroll: true,
         onSuccess: () => {
@@ -292,12 +351,85 @@ watch(
                 <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div v-for="campo in camposObligatorios" :key="campo">
                         <InputLabel :for="campo" :value="etiquetas[campo]" />
+
+                        <!-- Campo tiempo_entrega: en días -->
                         <TextInput
+                            v-if="campo === 'tiempo_entrega'"
+                            :id="campo"
+                            v-model="form[campo]"
+                            type="number"
+                            min="1"
+                            class="mt-1 block w-full"
+                            placeholder="Ej. 30 (días)"
+                            :error="form.errors[campo]"
+                        />
+
+                        <!-- Tipo proveedor con opción "Otro" editable -->
+                        <template v-else-if="campo === 'tipo_proveedor'">
+                            <select :id="campo" v-model="tipo" :class="selectClass">
+                                <option value="">Seleccione un tipo</option>
+                                <option v-for="opcion in opcionesDe(campo)" :key="opcion" :value="opcion">{{ opcion }}</option>
+                            </select>
+                            <TextInput
+                                v-if="tipo === OPCION_OTRO"
+                                id="tipo_proveedor_otro"
+                                v-model="tipoOtro"
+                                type="text"
+                                class="mt-1 block w-full"
+                                placeholder="Escribe el tipo de proveedor"
+                            />
+                        </template>
+
+                        <!-- Plazo de pago con opción "Otro" editable -->
+                        <template v-else-if="campo === 'forma_pago'">
+                            <select :id="campo" v-model="plazo" :class="selectClass">
+                                <option value="">Seleccione un plazo</option>
+                                <option v-for="opcion in opcionesDe(campo)" :key="opcion" :value="opcion">{{ opcion }}</option>
+                            </select>
+                            <TextInput
+                                v-if="plazo === OPCION_OTRO"
+                                id="forma_pago_otro"
+                                v-model="plazoOtro"
+                                type="text"
+                                class="mt-1 block w-full"
+                                placeholder="Escribe el plazo (Ej. Crédito 45 días)"
+                            />
+                        </template>
+
+                        <!-- Ciudad: permite escribir para buscar entre las opciones -->
+                        <v-select
+                            v-else-if="campo === 'ciudad'"
+                            :id="campo"
+                            v-model="form[campo]"
+                            :options="opcionesDe(campo)"
+                            :filterable="true"
+                            :clearable="true"
+                            :taggable="true"
+                            placeholder="Escribe para buscar una ciudad"
+                            class="mt-1 block w-full"
+                        />
+
+                        <!-- Teléfono: solo números -->
+                        <TextInput
+                            v-else-if="campo === 'telefono_principal' || campo === 'celular_contacto'"
+                            :id="campo"
+                            :model-value="form[campo]"
+                            type="tel"
+                            inputmode="numeric"
+                            class="mt-1 block w-full"
+                            :error="form.errors[campo]"
+                            @keydown="bloquearNoDigitos"
+                            @input="(e: Event) => sanitizarInputTelefono(campo as 'telefono_principal' | 'celular_contacto', e)"
+                        />
+
+                        <!-- Campos texto normales -->
+                        <TextInput
+                            v-else
                             :id="campo"
                             v-model="form[campo]"
                             type="text"
                             class="mt-1 block w-full"
-                            :placeholder="campo === 'nit' ? 'Ej. 900.123.456-7' : 'Razón social'"
+                            :placeholder="campo === 'nit' ? 'Ej. 900.123.456-7' : ''"
                             :error="form.errors[campo]"
                         />
                         <InputError class="mt-1" :message="form.errors[campo]" />
@@ -416,7 +548,8 @@ watch(
                         inputmode="numeric"
                         class="mt-1 block w-full"
                         :error="form.errors[campo]"
-                        @update:model-value="(valor: string) => setCampoTelefono(campo as 'telefono_principal' | 'celular_contacto', valor)"
+                        @keydown="bloquearNoDigitos"
+                        @input="(e: Event) => sanitizarInputTelefono(campo as 'telefono_principal' | 'celular_contacto', e)"
                     />
 
                     <!-- Observaciones generales: área de texto -->
@@ -464,11 +597,12 @@ watch(
                         <InputLabel for="correo_electronico" value="Correo" />
                         <TextInput
                             id="correo_electronico"
-                            v-model="form.correo_electronico"
+                            :model-value="form.correo_electronico"
                             type="email"
                             class="mt-1 block w-full"
                             placeholder="correo@ejemplo.com"
                             :error="form.errors.correo_electronico"
+                            @update:model-value="(valor: string) => setCorreo(valor)"
                         />
                         <InputError class="mt-1" :message="form.errors.correo_electronico" />
                     </div>

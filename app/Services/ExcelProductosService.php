@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\ExcelRechazado;
 use App\Models\Distribucion_por_tallas;
 use App\Models\Producto;
 use App\Models\ProductoMovimiento;
@@ -204,8 +205,13 @@ class ExcelProductosService
         }
 
         if (!empty($errores)) {
-            throw new RuntimeException(
-                'No se importó nada por los siguientes problemas: ' . implode(' | ', $errores)
+            // La lista completa queda en la excepción para MPP.log; el
+            // mensaje se recorta para no llenar la pantalla ni el correo.
+            throw ExcelRechazado::conErrores(
+                'No se importó nada por los siguientes problemas: '
+                    . implode(' | ', array_slice($errores, 0, 7))
+                    . (count($errores) > 7 ? ' | y ' . (count($errores) - 7) . ' más' : ''),
+                $errores
             );
         }
         if (empty($registros)) {

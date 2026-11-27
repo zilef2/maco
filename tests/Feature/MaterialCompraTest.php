@@ -46,9 +46,9 @@ class MaterialCompraTest extends TestCase
 
         $response = $this->actingAs($user)->post(route('Material.compra'), [
             'materiales' => [
-                ['material_id' => $tela->id, 'cantidad' => 3.5],
-                ['material_id' => $tela->id, 'cantidad' => 1.5],
-                ['material_id' => $botones->id, 'cantidad' => 2],
+                ['material_id' => $tela->id, 'cantidad' => 3.5, 'precio' => 1200],
+                ['material_id' => $tela->id, 'cantidad' => 1.5, 'precio' => 1200],
+                ['material_id' => $botones->id, 'cantidad' => 2, 'precio' => 50],
             ],
         ]);
 

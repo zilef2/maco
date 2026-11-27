@@ -34,7 +34,7 @@ class ProductoController extends Controller {
     public string $FromController = 'Producto';
 
     /** Controles de variante que no usan opciones ni tallas. */
-    private const CONTROLES_SIN_TALLA = ['Sin talla', 'Sin talla / sin color', 'Sin color'];
+    private const CONTROLES_SIN_TALLA = ['Sin color ni talla', 'Sin talla', 'Sin talla / sin color', 'Sin color'];
 
 
     //<editor-fold desc="Construc | filtro and dependencia">
@@ -160,6 +160,9 @@ class ProductoController extends Controller {
                  'Categoria_original'  => $listasDesplegables['categoria_original'] ?? [],
                  'Familia_normalizada' => $listasDesplegables['familia_normalizada'] ?? [],
                  'Control_de_variante' => $listasDesplegables['control_de_variante'] ?? [],
+                 // Valores de los controles de variante "Color" y "Diseño".
+                 'colores'             => $listasDesplegables['color'] ?? [],
+                 'disenos'             => $listasDesplegables['diseno'] ?? [],
                  'Opciones'            => $listasDesplegables['opciones'] ?? [],
                  'materiales'          => $fichaOpciones['materiales'],
                  'unidad_medida'       => $fichaOpciones['unidad_medida'],

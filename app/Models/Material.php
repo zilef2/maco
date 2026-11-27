@@ -329,6 +329,48 @@ class Material extends Model
         return $prefijo . '-' . str_pad((string) ((int) $maximo + 1), self::LARGO_NUMERO, '0', STR_PAD_LEFT);
     }
 
+    /**
+     * Código libre para un hijo de la base: su código más el consecutivo más alto
+     * que ya tenga esa familia (TEL-ALG-001-03 existe → el siguiente es
+     * TEL-ALG-001-04). El consecutivo arranca en 1 porque ningún número del
+     * código puede valer 0.
+     */
+    public static function siguienteCodigoHijo(self $base): string
+    {
+        $prefijo = self::normalizarCodigo($base->codigo_material);
+        $largo = count(explode('-', $prefijo));
+
+        $mayor = static::query()
+            ->where('codigo_material', 'like', $prefijo . '-%')
+            ->pluck('codigo_material')
+            ->map(fn (string $codigo): array => explode('-', self::normalizarCodigo($codigo)))
+            ->filter(fn (array $tramos): bool => count($tramos) > $largo && ctype_digit($tramos[count($tramos) - 1]))
+            ->map(fn (array $tramos): int => (int) $tramos[count($tramos) - 1])
+            ->max();
+
+        return $prefijo . '-' . str_pad((string) ((int) $mayor + 1), self::LARGO_CONSECUTIVO, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * La base marcada que tiene arriba este material, o null si está huérfano.
+     * El vínculo es el prefijo del código, así que solo vale cuando el registro
+     * de la familia existe y está marcado como base.
+     */
+    public function base(): ?Material
+    {
+        if ($this->generico) {
+            return null;
+        }
+
+        $familia = self::familiaDeCodigo($this->codigo_material);
+
+        if ($familia === null || $familia === self::normalizarCodigo($this->codigo_material)) {
+            return null;
+        }
+
+        return static::query()->where('generico', true)->where('codigo_material', $familia)->first();
+    }
+
     public function movimientos(): HasMany
     {
         return $this->hasMany(MaterialMovimiento::class, 'material_id');

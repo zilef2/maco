@@ -532,6 +532,7 @@ export const explicaciones: Explicacion[] = [
                     'Días que alcanzan = existencia actual ÷ gasto por día (se toma el entero hacia abajo).',
                     'Si quedan «días de previsión» o menos, el material aparece en el banner rojo de Materiales con el cálculo completo.',
                     'Si el material con proceso ya está encargado como resultado de una OP activa, la alerta informa que llegará con esa OP.',
+                    'El banner arranca minimizado: se ve el título, el material más urgente y nada más. «Ver los N restantes» despliega el resto de la lista y las tres notas del cálculo.',
                     'El umbral se configura en Parámetros → Días de previsión de existencias (dias_prevision_stock); por defecto son 2 días.',
                 ],
             },
@@ -547,7 +548,7 @@ export const explicaciones: Explicacion[] = [
             'app/Http/Controllers/OrdenProduccionController.php (descontarMaterialesTaller al pasar a «En taller»)',
             'app/Http/Controllers/ParametrosController.php (actualizarDiasPrevision)',
             'app/Models/Parametro.php (DIAS_PREVISION_STOCK)',
-            'resources/js/pages/Material/Index.vue (banner bajo el contador)',
+            'resources/js/pages/Material/Index.vue (banner bajo el contador, previsiónDesplegada y previsiónVisible)',
             'resources/js/pages/parametro/Index.vue (card Días de previsión de existencias)',
             'tabla material_movimientos (tipo_movimiento salida, motivo «Salida de materiales a taller…»)',
         ],
@@ -919,7 +920,7 @@ export const explicaciones: Explicacion[] = [
             {
                 tipo: 'texto',
                 texto:
-                    'La regla cambió: el código ya no declara el rol. Antes tres tramos (CAT-BAS-X) era familia y cuatro (CAT-BAS-X-Y) era hijo; hoy cualquier forma vale —un código de tres tramos puede ser un huérfano y uno de cuatro puede ser base— y quien decide es la columna «Base si o no» del Excel o el interruptor «Material base» del formulario. Lo único que el código sigue diciendo es el vínculo: la familia de un material es su código sin el último tramo, y solo es hijo si ese registro existe y está marcado como base. X del prefijo es el número de la empresa dueña de la familia, así que TEX-LFL-001 y TEX-LFL-002 son dos familias del mismo par; el relleno con ceros sí forma parte del código, así que COM-CAP-055-34 es la escritura correcta del hijo 34.',
+                    'La regla cambió: el código ya no declara el rol. Antes tres tramos (CAT-BAS-X) era familia y cuatro (CAT-BAS-X-Y) era hijo; hoy cualquier forma vale —un código de tres tramos puede ser un huérfano y uno de cuatro puede ser base— y quien decide es la columna «Base si o no» del Excel o la selección de rol del formulario. Lo único que el código sigue diciendo es el vínculo: la familia de un material es su código sin el último tramo, y solo es hijo si ese registro existe y está marcado como base. X del prefijo es el número de la empresa dueña de la familia, así que TEX-LFL-001 y TEX-LFL-002 son dos familias del mismo par; el relleno con ceros sí forma parte del código, así que COM-CAP-055-34 es la escritura correcta del hijo 34.',
             },
             {
                 tipo: 'lista',
@@ -929,13 +930,14 @@ export const explicaciones: Explicacion[] = [
                     'Ningún material necesita una base encima: si el prefijo de su código no apunta a un registro marcado como base, queda huérfano y se maneja solo —se anota en la ficha, se reserva y se gasta— sin que la app cuelgue nada de él ni cree una familia por él.',
                     'El número del código no se deduce: lo define quien crea el material (el formulario deja el siguiente libre del par y el Excel MPP trae el que diga la celda). Ya no existe ninguna acción masiva que cree bases faltantes.',
                     'La base no almacena nada: la misma escritura del modelo deja en null su existencia actual y su gasto diario, y el recálculo del gasto diario de todos empieza limpiando las bases. Por eso tampoco aparece en la proyección de la tabla de Materiales, ni en la previsión de faltantes, y una compra rechazada avisa que se compre el concreto de su familia.',
+                    'La talla y el color son únicos dentro de la familia: al crear hijos cada valor se compara con los que ya tienen los demás hijos de esa base, así que «33, 35» con un 33 existente no se guarda —el aviso dice qué material lo lleva— mientras «33, 34» crea dos materiales. Los repetidos dentro de la misma celda los junta el modelo («40, 40» es un solo valor). En la edición la ficha admite un solo valor de cada uno, sea hijo o huérfano; las tallas o colores nuevas van en «Agregar variantes» y tampoco pueden coincidir con las de un hermano ni con las del material abierto.',
                 ],
             },
             {
                 tipo: 'pasos',
                 items: [
                     'Traer la hoja «material» del Excel MPP con las bases y sus hijos: la columna «Base si o no» (obligatoria) dice «si» en la fila de COM-CAP-055 y «no» en las de COM-CAP-055-34, COM-CAP-055-35, … En una fila base se ignoran Color, Talla / tamaño, Modelo / diseño / acabado, Proveedor habitual, Costo e Inventario Fisico.',
-                    'O crearlos de a uno en Materiales → Nuevo: activar «Material base» quita variantes, proveedor, existencia y precio de compra; desactivarlo deja un material normal, que será hijo o huérfano según exista o no una base marcada sobre su prefijo.',
+                    'O crearlos de a uno en Materiales → Nuevo, eligiendo el rol en los tres botones de arriba: «Material base» quita variantes, proveedor, existencia y precio de compra; «Hijo de una base» pide cuál es la base y crea un material por cada valor de la lista (escribir «S, M» en talla y «Rojo, Azul» en color son cuatro materiales hijos, nunca tallas cruzadas con colores); «Huérfano» no pide base y admite un solo valor de talla y uno de color.',
                     'Antes de subir, usar «Verificar» en la tarjeta de Materiales: avisa fila por fila los códigos sin formato, los que usan el 0 y los que se repiten, sin tocar la base de datos.',
                 ],
             },
@@ -943,7 +945,7 @@ export const explicaciones: Explicacion[] = [
                 tipo: 'nota',
                 tono: 'info',
                 texto:
-                    'El interruptor «Material base» del formulario está al lado del código de categoría; al activarlo se le quitan tallas, colores, diseño, proveedor, costo y existencia propios. El rol no sigue al código: dos materiales con el mismo prefijo pueden ser uno base y otro huérfano.',
+                    'El formulario de material pregunta el rol en tres botones (base / hijo de una base / huérfano) y eso decide los campos: la base pierde tallas, colores, diseño, proveedor, costo y existencia propios; el hijo toma el par y la unidad de su base, y su lista de tallas o colores se expande en un material por valor; el huérfano lleva un solo valor de cada uno. El rol no sigue al código: dos materiales con el mismo prefijo pueden ser uno base y otro huérfano. En la edición se puede reasignar la base —el material recibe el siguiente código libre de esa familia, las OPs lo siguen apuntando por id— y la zona «Agregar variantes» crea materiales hermanos.',
             },
             {
                 tipo: 'subtitulo',
@@ -992,9 +994,12 @@ export const explicaciones: Explicacion[] = [
             'app/Models/Material.php (aplicarReglaDelCodigo: relleno, rechazo del 0 y del código tomado; siguienteCodigoDelPar; limpiarVariantesPorGenerico en saving; sincronizarVariantes la respeta)',
             'app/Models/Material.php (normalizarCodigo, familiaDeCodigo, basesDeHijos: el vínculo por prefijo solo vale si la familia está marcada como base)',
             'app/Services/ExcelMaterialesService.php («Base si o no» es columna obligatoria y en una fila base se descartan variante, costo, proveedor e inventario)',
-            'app/Services/FichaTecnicaService.php (opcionesMateriales marca base_id y el select excluye a los hijos; guardar rechaza una línea que sea hijo de una base)',
+            'app/Services/FichaTecnicaService.php (opcionesMateriales marca base_id, manda color y talla_tamano de cada material para que el formulario avise el choque antes de guardar y el select excluye a los hijos; guardar rechaza una línea que sea hijo de una base)',
             'resources/js/pages/FichaTecnicaMateriales/EditorMateriales.vue (select filtrado, búsqueda por código/nombre, Enter agrega fila)',
-            'resources/js/pages/Material/Create.vue y Edit.vue (interruptor «Material base» junto al código de categoría; el código se arma con el par, sin mirar el rol)',
+            'app/Http/Controllers/MaterialController.php (rechazarVariantesRepetidas y variantasTomadasDeLaBase: la talla o el color de un hijo no puede coincidir con el de un hermano; rechazarVariantesMultiples en toda edición que no sea base)',
+            'resources/js/pages/Material/Create.vue y Edit.vue (sección «¿Qué es este material?» con los roles base / hijo / huérfano, selector de base, banda roja con la variante repetida y vista previa de los códigos que se van a crear)',
+            'app/Http/Controllers/MaterialController.php (rolDelFormulario, crearHijosDeBase un material por valor, crearHermanos desde nuevas_tallas / nuevos_colores, rechazarVariantesMultiples, la ficha fuera del hijo)',
+            'app/Models/Material.php (siguienteCodigoHijo: el consecutivo más alto de la familia más uno; base() devuelve la base marcada que tiene arriba el material)',
             'database/migrations/2026_11_14_100000_generico_sin_inventario.php (existencia_actual nullable y null para los genéricos)',
             'app/Models/Material.php (recalcularGastoDiario y recalcularGastoDiarioDeTodos devuelven null en genéricos)',
             'app/Http/Controllers/MaterialController.php (index y previsión excluyen las bases; registrarCompra las rechaza)',

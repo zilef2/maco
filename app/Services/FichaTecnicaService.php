@@ -43,7 +43,7 @@ class FichaTecnicaService
 
         $materiales = Material::with(['lastPrice', 'variants'])
             ->orderBy('nombre_base')
-            ->get(['id', 'codigo_material', 'nombre_base', 'nombre_material', 'unidad_inventario', 'generico']);
+            ->get(['id', 'codigo_material', 'nombre_base', 'nombre_material', 'unidad_inventario', 'generico', 'color', 'talla_tamano']);
 
         $bases = Material::basesDeHijos($materiales);
 
@@ -56,6 +56,10 @@ class FichaTecnicaService
             'nombre_material' => $m->nombre_material,
             'unidad_inventario' => $m->unidad_inventario,
             'unidad_medida' => $m->unidad_inventario,
+            // El formulario necesita la talla y el color por separado para avisar,
+            // antes de guardar, cuál de los dos está repetido en la familia.
+            'color' => $m->color,
+            'talla_tamano' => $m->talla_tamano,
             'costo_unitario' => $m->costoUnitarioActual(),
             'costo_unitario_promedio' => round((float) ($promedios[$m->id] ?? 0), 2),
             'precio_registrado' => $m->lastPrice !== null,

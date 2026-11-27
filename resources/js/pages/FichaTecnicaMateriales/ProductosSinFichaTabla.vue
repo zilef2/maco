@@ -27,6 +27,7 @@ const props = defineProps({
     titulos: { type: Array as () => any[], default: () => [] },
     numberPermissions: Number,
     title: String,
+    fotosDisponibles: { type: Array as () => string[], default: () => [] },
 });
 
 const distribucionesDe = (producto: any): any[] => {
@@ -421,7 +422,7 @@ const iconoAccion =
 
         <Edit v-if="can(['update Producto'])" :number-permissions="props.numberPermissions" :titulos="props.titulos"
             :show="data.editOpen" @close="data.editOpen = false" :Productoa="data.Producto" title="Producto"
-            :losSelect="props.losSelect" />
+            :losSelect="props.losSelect" :fotosDisponibles="props.fotosDisponibles" />
 
         <Delete v-if="can(['delete Producto'])" :show="data.deleteOpen" @close="data.deleteOpen = false"
             :Productoa="data.Producto" title="Producto" />

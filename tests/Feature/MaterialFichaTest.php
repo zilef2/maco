@@ -19,7 +19,9 @@ class MaterialFichaTest extends TestCase
         $componente = $this->materialBase('MAT-COMP-CREATE', 7000);
         
         $dataMaterial = [
-            'codigo_material' => 'MAT-PRO-CREATE',
+            'codigo_categoria' => 'MAT',
+            'codigo_base' => 'PRO',
+            'generico' => false,
             'categoria' => 'Semielaborado',
             'nombre_base' => 'Cuero procesado',
             'unidad_inventario' => 'u',
@@ -35,21 +37,17 @@ class MaterialFichaTest extends TestCase
             ]],
         ];
 
-        $user = $this->usuarioSuper();
-        $response = $this->actingAs($user)->post(route('Material.store'), $dataMaterial);
-        $response->assertSessionHasNoErrors();
-
         $user = $this->usuarioAdmin();
         $response = $this->actingAs($user)->post(route('Material.store'), $dataMaterial);
         $response->assertSessionHasNoErrors();
-       
 
-        $material = Material::where('codigo_material', 'MAT-PRO-CREATE')->firstOrFail();
+        // El código se arma con el par y el primer número libre.
+        $material = Material::where('codigo_material', 'MAT-PRO-001')->firstOrFail();
         $this->assertTrue((bool) $material->material_procesado);
 
         $ficha = $material->fichaTecnica()->first();
         $this->assertNotNull($ficha);
-        $this->assertSame('MAT-PRO-CREATE — Cuero procesado', $ficha->nombre);
+        $this->assertSame($material->codigo_material . ' — Cuero procesado', $ficha->nombre);
         $this->assertDatabaseHas('ficha_tecnica_material', [
             'ficha_tecnica_id' => $ficha->id,
             'material_id' => $material->id,

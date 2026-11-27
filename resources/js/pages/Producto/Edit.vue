@@ -27,6 +27,7 @@ const props = withDefaults(
         numberPermissions?: number;
         metodoCostos?: number;
         metodoCostosLabel?: string;
+        fotosDisponibles?: string[];
     }>(),
     {
         show: false,
@@ -37,6 +38,7 @@ const props = withDefaults(
         numberPermissions: 0,
         metodoCostos: 1,
         metodoCostosLabel: '',
+        fotosDisponibles: () => [],
     }
 );
 
@@ -50,7 +52,13 @@ const camposSelect = [
     { campo: 'Control_de_variante', subcategoria: 'control_de_variante' },
 ] as const;
 
-const optionsPara = (campo: string) => props.losSelect?.[campo] ?? [];
+// Controles de variante retirados: se ocultan aunque la base todavía los tenga.
+const CONTROLES_RETIRADOS = ['Sin talla', 'Sin talla / sin color', 'Sin color'];
+
+const optionsPara = (campo: string) =>
+    (props.losSelect?.[campo] ?? []).filter(
+        (opcion: any) => !(campo === 'Control_de_variante' && CONTROLES_RETIRADOS.includes(opcion.nombre)),
+    );
 const faltanOpciones = computed(() => camposSelect.filter(({ campo }) => !optionsPara(campo).length));
 
 const form = useForm({
@@ -67,16 +75,20 @@ const form = useForm({
     descripcion: '',
     instrucciones: '',
     costo_anticipado: '' as string | number,
+    foto_frente: '',
+    foto_perfil: '',
+    foto_trasera: '',
+    foto_superior: '',
     materiales: [] as any[],
     procesos: [] as any[],
     precio_venta_producto: '' as string | number,
 });
 
-const { modo, rango, tallasEscogidas, tallas, alternarTalla, rangoDemasiadoGrande, opcionesTexto, sembrar } =
+const { modo, rango, tallasEscogidas, opcionesEscogidas, tallas, alternarTalla, rangoDemasiadoGrande, opcionesTexto, sembrar } =
     useTallasVariante(() => form.Control_de_variante);
 
 // Igual que en el alta: las tallas y su resumen derivan del control de variante.
-watch([modo, tallas], () => {
+watch([modo, tallas, opcionesEscogidas], () => {
     form.tallas = tallas.value;
     form.Opciones = opcionesTexto.value;
 }, { immediate: true });
@@ -85,9 +97,24 @@ watch([modo, tallas], () => {
 const fichaBloqueada = computed(() => Boolean(props.Productoa?.ficha_bloqueada));
 const fichaBloqueoDetalle = computed(() => String(props.Productoa?.ficha_bloqueo_detalle ?? ''));
 
-// Fotos por ángulo (url generada por el modelo desde produc_photos).
-const fotosProducto = computed<any[]>(() =>
-    (Array.isArray(props.Productoa?.fotos) ? props.Productoa.fotos : []).filter((foto: any) => foto?.url),
+// Ángulos de la galería; los archivos salen de la carpeta produc_photos.
+const ANGULOS = [
+    { campo: 'foto_frente', etiqueta: 'Frontal' },
+    { campo: 'foto_perfil', etiqueta: 'Perfil' },
+    { campo: 'foto_trasera', etiqueta: 'Trasera' },
+    { campo: 'foto_superior', etiqueta: 'Superior' },
+] as const;
+
+const fotosSeleccionadas = computed(() =>
+    ANGULOS.map(({ campo, etiqueta }) => {
+        const archivo = String((form as any)[campo] ?? '').trim();
+        return {
+            campo,
+            etiqueta,
+            archivo,
+            url: archivo ? `/storage/produc_photos/${encodeURIComponent(archivo)}` : null,
+        };
+    }).filter((foto) => foto.url !== null),
 );
 
 // Coste de producción: los materiales de la ficha más los procesos, calculado
@@ -233,6 +260,10 @@ watchEffect(() => {
     form.descripcion = producto.descripcion ?? '';
     form.instrucciones = producto.instrucciones ?? '';
     form.costo_anticipado = producto.costo_anticipado ?? '';
+    form.foto_frente = producto.foto_frente ?? '';
+    form.foto_perfil = producto.foto_perfil ?? '';
+    form.foto_trasera = producto.foto_trasera ?? '';
+    form.foto_superior = producto.foto_superior ?? '';
     form.materiales = (producto.ficha_materiales ?? []).map((material: any) => ({
         material_componente_id: material.material_componente_id,
         consumo_estandar: material.consumo_estandar ?? 1,
@@ -254,15 +285,21 @@ watchEffect(() => {
                 <!-- Encabezado -->
                 <div
                     class="px-6 pt-6 pb-4 border-b border-gray-200 dark:border-gray-700 bg-gradient-to-r from-indigo-50 via-white to-violet-50 dark:from-gray-800 dark:via-gray-800 dark:to-gray-800 rounded-t-lg">
-                    <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-                        <span
-                            class="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white">
-                            <PencilSquareIcon class="w-5 h-5" />
+                    <div class="flex flex-wrap items-center gap-3">
+                        <h2 class="text-lg font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                            <span
+                                class="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white">
+                                <PencilSquareIcon class="w-5 h-5" />
+                            </span>
+                            {{ lang().t('app.label.edit') }} {{ props.title }}
+                        </h2>
+                        <span v-if="props.Productoa?.Codigo_interno"
+                            class="rounded-full bg-indigo-100 px-2.5 py-0.5 text-xs font-semibold tabular-nums text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
+                            {{ props.Productoa.Codigo_interno }}
                         </span>
-                        {{ lang().t('app.label.edit') }} {{ props.title }}
-                    </h2>
+                    </div>
                     <p class="mt-1.5 text-sm text-gray-500 dark:text-gray-400 pl-10">
-                        Actualice los datos del producto.
+                        {{ props.Productoa?.Titulo_Shopify ?? props.title }}
                     </p>
                 </div>
 
@@ -282,6 +319,14 @@ watchEffect(() => {
                                     v-model="form.Codigo_interno" required placeholder="Código interno" disabled
                                     :error="form.errors.Codigo_interno" />
                                 <InputError class="mt-2" :message="form.errors.Codigo_interno" />
+                            </div>
+                            <div>
+                                <InputLabel for="ID_producto_Shopify"
+                                    :value="lang().t('app.label.ID_producto_Shopify') || 'ID Shopify'" />
+                                <TextInput id="ID_producto_Shopify" type="text" class="mt-1 block w-full"
+                                    v-model="form.ID_producto_Shopify" placeholder="ID Producto Shopify (opcional)"
+                                    :error="form.errors.ID_producto_Shopify" />
+                                <InputError class="mt-2" :message="form.errors.ID_producto_Shopify" />
                             </div>
                             <div class="md:col-span-2">
                                 <InputLabel for="Titulo_Shopify"
@@ -409,6 +454,32 @@ watchEffect(() => {
                                     </p>
                                 </div>
 
+                                <!-- Color: valores de la lista de colores -->
+                                <div v-else-if="modo === 'color'" class="mt-1">
+                                    <v-select :options="props.losSelect?.colores ?? []"
+                                        :reduce="(item: any) => item.nombre" label="nombre" multiple
+                                        v-model="opcionesEscogidas" placeholder="Seleccione colores"
+                                        :clearable="true" append-to-body class="block w-full" />
+                                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                        {{ opcionesEscogidas.length
+                                            ? `Colores: ${opcionesEscogidas.join(', ')}`
+                                            : 'Elija uno o más colores.' }}
+                                    </p>
+                                </div>
+
+                                <!-- Diseño: valores de la lista de diseños -->
+                                <div v-else-if="modo === 'diseno'" class="mt-1">
+                                    <v-select :options="props.losSelect?.disenos ?? []"
+                                        :reduce="(item: any) => item.nombre" label="nombre" multiple
+                                        v-model="opcionesEscogidas" placeholder="Seleccione diseños"
+                                        :clearable="true" append-to-body class="block w-full" />
+                                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                        {{ opcionesEscogidas.length
+                                            ? `Diseños: ${opcionesEscogidas.join(', ')}`
+                                            : 'Elija uno o más diseños.' }}
+                                    </p>
+                                </div>
+
                                 <p v-else
                                     class="mt-1 rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-400">
                                     Seleccione primero el control de variante.
@@ -433,13 +504,36 @@ watchEffect(() => {
                             Fotos del producto
                         </h3>
                         <p class="mt-1 mb-3 pl-6 text-xs text-gray-400 dark:text-gray-500">
-                            Los cuatro ángulos, desde la carpeta produc_photos.
+                            Elija el archivo de cada ángulo desde la carpeta produc_photos.
                         </p>
-                        <FotosProducto v-if="fotosProducto.length" :fotos="fotosProducto" />
-                        <p v-else
-                            class="rounded-md border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500 dark:border-gray-700 dark:bg-gray-900/40 dark:text-gray-400">
-                            Este producto aún no tiene fotos.
-                        </p>
+                        <FotosProducto v-if="fotosSeleccionadas.length" :fotos="fotosSeleccionadas" />
+                        <div class="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4"
+                            :class="fotosSeleccionadas.length ? 'mt-3' : ''">
+                            <div>
+                                <InputLabel for="foto_frente" value="Foto frontal" />
+                                <v-select id="foto_frente" :options="props.fotosDisponibles"
+                                    v-model="form.foto_frente" :clearable="true" placeholder="Sin foto"
+                                    append-to-body class="mt-1 block w-full" />
+                            </div>
+                            <div>
+                                <InputLabel for="foto_perfil" value="Foto perfil" />
+                                <v-select id="foto_perfil" :options="props.fotosDisponibles"
+                                    v-model="form.foto_perfil" :clearable="true" placeholder="Sin foto"
+                                    append-to-body class="mt-1 block w-full" />
+                            </div>
+                            <div>
+                                <InputLabel for="foto_trasera" value="Foto trasera" />
+                                <v-select id="foto_trasera" :options="props.fotosDisponibles"
+                                    v-model="form.foto_trasera" :clearable="true" placeholder="Sin foto"
+                                    append-to-body class="mt-1 block w-full" />
+                            </div>
+                            <div>
+                                <InputLabel for="foto_superior" value="Foto superior" />
+                                <v-select id="foto_superior" :options="props.fotosDisponibles"
+                                    v-model="form.foto_superior" :clearable="true" placeholder="Sin foto"
+                                    append-to-body class="mt-1 block w-full" />
+                            </div>
+                        </div>
                     </div>
 
                     <!-- Ficha técnica de materiales -->
@@ -530,15 +624,6 @@ watchEffect(() => {
                         </p>
                         <div
                             class="grid grid-cols-1 md:grid-cols-3 gap-x-6 gap-y-4 rounded-xl border border-dashed border-gray-300 dark:border-gray-600 p-4">
-                            <div>
-                                <InputLabel for="ID_producto_Shopify"
-                                    :value="lang().t('app.label.ID_producto_Shopify') || 'ID Shopify'" />
-                                <TextInput id="ID_producto_Shopify" type="text" class="mt-1 block w-full"
-                                    v-model="form.ID_producto_Shopify" placeholder="ID Producto Shopify (opcional)"
-                                    :error="form.errors.ID_producto_Shopify" />
-                                <InputError class="mt-2" :message="form.errors.ID_producto_Shopify" />
-                            </div>
-
                             <!-- <div>
                                 <InputLabel for="costo_anticipado"
                                     :value="lang().t('app.label.costo_anticipado') || 'Costo anticipado'" />

@@ -1,10 +1,10 @@
-import { computed, reactive, ref, toValue, type MaybeRefOrGetter } from 'vue';
+import { computed, reactive, ref, toValue, watch, type MaybeRefOrGetter } from 'vue';
 
 export const TALLAS_ALFABETICAS = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
-export const CONTROLES_SIN_TALLA = ['Sin talla', 'Sin talla / sin color', 'Sin color'];
+export const CONTROLES_SIN_TALLA = ['Sin color ni talla', 'Sin talla', 'Sin talla / sin color', 'Sin color'];
 export const MAX_TALLAS_POR_RANGO = 50;
 
-export type ModoTallas = 'sin-control' | 'sin-talla' | 'numerica' | 'alfabetica';
+export type ModoTallas = 'sin-control' | 'sin-talla' | 'numerica' | 'alfabetica' | 'color' | 'diseno';
 
 /**
  * Deriva las tallas (y su resumen de opciones) del control de variante elegido.
@@ -12,6 +12,7 @@ export type ModoTallas = 'sin-control' | 'sin-talla' | 'numerica' | 'alfabetica'
  * - sin talla: no se preguntan opciones y se guarda vacío
  * - talla numérica: un rango "desde-hasta" que se expande en tallas consecutivas
  * - talla alfabética: elección individual sobre XS..XXL
+ * - color / diseño: se eligen valores de sus listas, sin tallas
  */
 export function useTallasVariante(controlDeVariante: MaybeRefOrGetter<string>) {
     const modo = computed<ModoTallas>(() => {
@@ -19,11 +20,23 @@ export function useTallasVariante(controlDeVariante: MaybeRefOrGetter<string>) {
         if (CONTROLES_SIN_TALLA.includes(control)) return 'sin-talla';
         if (control === 'Talla numerica') return 'numerica';
         if (control === 'Talla alfabética') return 'alfabetica';
+        if (control === 'Color') return 'color';
+        if (control === 'Diseño') return 'diseno';
         return 'sin-control';
     });
 
     const rango = reactive({ desde: '', hasta: '' });
     const tallasEscogidas = ref<string[]>([]);
+    const opcionesEscogidas = ref<string[]>([]);
+
+    // Cambiar de control invalida lo escogido con el anterior.
+    watch(
+        () => toValue(controlDeVariante),
+        () => {
+            opcionesEscogidas.value = [];
+        },
+        { flush: 'sync' },
+    );
 
     const alternarTalla = (talla: string) => {
         tallasEscogidas.value = tallasEscogidas.value.includes(talla)
@@ -54,6 +67,7 @@ export function useTallasVariante(controlDeVariante: MaybeRefOrGetter<string>) {
     );
 
     const opcionesTexto = computed(() => {
+        if (modo.value === 'color' || modo.value === 'diseno') return opcionesEscogidas.value.join(', ');
         if (!tallas.value.length) return '';
         if (modo.value === 'numerica') return `${rango.desde}-${rango.hasta}`;
         return tallas.value.join(', ');
@@ -63,6 +77,7 @@ export function useTallasVariante(controlDeVariante: MaybeRefOrGetter<string>) {
         rango.desde = '';
         rango.hasta = '';
         tallasEscogidas.value = [];
+        opcionesEscogidas.value = [];
     };
 
     /**
@@ -85,13 +100,20 @@ export function useTallasVariante(controlDeVariante: MaybeRefOrGetter<string>) {
             rango.hasta = rangoGuardado[2];
             return;
         }
+        const partes = resumen.split(/\s*,\s*/).map((parte) => parte.trim()).filter(Boolean);
+        if (partes.length && partes.every((parte) => TALLAS_ALFABETICAS.includes(parte))) {
+            tallasEscogidas.value = partes;
+            return;
+        }
         tallasEscogidas.value = actuales.filter((talla) => TALLAS_ALFABETICAS.includes(talla));
+        opcionesEscogidas.value = partes;
     };
 
     return {
         modo,
         rango,
         tallasEscogidas,
+        opcionesEscogidas,
         tallas,
         alternarTalla,
         rangoDemasiadoGrande,

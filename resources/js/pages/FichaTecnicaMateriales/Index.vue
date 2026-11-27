@@ -41,6 +41,7 @@ const props = defineProps({
     materialesSinFicha: { type: Array as () => any[], default: () => [] },
     selectMaterial: Object,
     titulosMaterial: Array,
+    fotos_disponibles: { type: Array as () => string[], default: () => [] },
 });
 
 const breadcrumbCollapsed = ref(false);
@@ -516,6 +517,7 @@ const recargar = () => {
                 :titulos="props.titulosProducto"
                 :number-permissions="props.numberPermissions"
                 :title="props.title"
+                :fotos-disponibles="props.fotos_disponibles"
             />
 
             <MaterialesSinFichaTabla

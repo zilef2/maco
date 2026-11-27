@@ -30,6 +30,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -635,17 +636,20 @@ class MaterialController extends Controller {
         try {
 //        $no_nada = $request->no_nada['id'];
 //        $request->merge(['no_nada_id' => $request->no_nada['id']]);
-        
-        // Validar precio de última compra (obligatorio salvo en genéricos) y, si
-        // el material se marca como procesado, las líneas de su ficha técnica.
-        // El código del material no se digita: lo arma el modelo con el par
-        // codigo_categoria + codigo_base y su familia (COM-CAP-055-34).
-        $precioObligatorio = $request->boolean('generico') ? 'nullable' : 'required';
+
+        // El formulario pregunta el rol del material: base (genérico), hijo de una
+        // base o huérfano (sin base arriba). El precio de última compra es
+        // obligatorio salvo en las bases y, si el material se marca como
+        // procesado, se validan las líneas de su ficha técnica.
+        $rol = $this->rolDelFormulario($request);
+        $esBase = $rol === 'base';
+        $precioObligatorio = $esBase ? 'nullable' : 'required';
         $request->validate([
             'last_purchase_price' => [$precioObligatorio, 'numeric', 'min:0'],
             'last_purchase_date' => [$precioObligatorio, 'date'],
             'codigo_categoria' => 'nullable|string|regex:/^[\p{L} ]*$/u',
             'codigo_base' => 'nullable|string|regex:/^[\p{L} ]*$/u',
+            'material_base_id' => [$rol === 'hijo' ? 'required' : 'nullable', 'integer', 'exists:materials,id'],
             'materiales' => 'nullable|array',
             'materiales.*.material_componente_id' => 'nullable|integer|exists:materials,id',
             'materiales.*.consumo_estandar' => 'nullable|numeric|min:0',
@@ -655,28 +659,62 @@ class MaterialController extends Controller {
             'variantes' => 'nullable',
         ]);
 
-        $colores = Material::normalizarListaVariantes($request->input('colores', []));
-        $variantes = Material::normalizarListaVariantes($request->input('variantes', []));
-
-        $datos = $request->except(['materiales', 'last_purchase_price', 'last_purchase_date', 'colores', 'variantes', 'codigo_material']);
+        $datos = $request->except([
+            'materiales',
+            'last_purchase_price',
+            'last_purchase_date',
+            'colores',
+            'variantes',
+            'codigo_material',
+            'rol',
+            'material_base_id',
+        ]);
         $datos['proveedor_habitual'] = $this->normalizarProveedorHabitual($datos['proveedor_habitual'] ?? null);
-        $Material = Material::create($datos);
-        $Material->sincronizarVariantes($colores, $variantes);
-        $this->registrarMovimientoCreacion($Material);
-        
-        // Guardar precio de última compra. El genérico no lo recibe del
-        // formulario: su precio lo aporta el promedio de sus similares.
-        if (!$Material->generico) {
-            $price = $request->input('last_purchase_price');
-            $date = $request->input('last_purchase_date');
+        $datos['generico'] = $esBase;
 
-            $Material->prices()->create([
-                'precio' => $price,
-                'fecha' => $date
-            ]);
+        $materiales = [];
+        $base = null;
+
+        if ($esBase) {
+            $materiales[] = Material::create($datos);
+        } elseif ($rol === 'hijo') {
+            $base = $this->baseElegida((int) $request->input('material_base_id'));
+
+            // La ficha vive en la base y el inventario en los hijos: un hijo no
+            // puede declararse procesado ni llevar líneas de ficha propias.
+            if ((int) $request->input('material_procesado') === 1 || !empty($request->input('materiales'))) {
+                throw ValidationException::withMessages([
+                    'material_procesado' => 'La ficha técnica se anota en la base ' . $base->codigo_material . ', no en sus hijos.',
+                ]);
+            }
+
+            $materiales = $this->crearHijosDeBase($base, $datos, $request);
+        } else {
+            $this->rechazarVariantesMultiples($datos);
+            $huerfano = Material::create($datos);
+            $huerfano->sincronizarVariantes(
+                Material::normalizarListaVariantes($datos['color'] ?? ''),
+                Material::normalizarListaVariantes($datos['talla_tamano'] ?? ''),
+            );
+            $materiales[] = $huerfano;
         }
 
-        if ($Material->material_procesado) {
+        foreach ($materiales as $material) {
+            $this->registrarMovimientoCreacion($material);
+
+            // El genérico no recibe precio del formulario: su precio lo aporta el
+            // promedio de sus similares.
+            if (!$esBase) {
+                $material->prices()->create([
+                    'precio' => $request->input('last_purchase_price'),
+                    'fecha' => $request->input('last_purchase_date'),
+                ]);
+            }
+        }
+
+        $Material = $materiales[0];
+
+        if (!$esBase && $rol !== 'hijo' && $Material->material_procesado) {
             $lineas = $this->lineasFichaDesdeRequest($request);
             if (!empty($lineas)) {
                 $this->fichaTecnicaService->guardar([
@@ -690,11 +728,274 @@ class MaterialController extends Controller {
         DB::commit();
         $this->invalidarCache();
         Myhelp::EscribirEnLog($this, 'STORE:Materials EXITOSO', 'Material id:' . $Material->id . ' | ' . $Material->nombre_mostrar, false);
-        return back()->with('success', __('app.label.created_successfully', ['name' => $Material->nombre_mostrar]));
+
+        return back()->with('success', __('app.label.created_successfully', [
+            'name' => count($materiales) > 1
+                ? count($materiales) . ' materiales hijos de ' . $base->codigo_material
+                : $Material->nombre_mostrar,
+        ]));
         } catch (\Throwable $e) {
             DB::rollBack();
             throw $e;
         }
+    }
+
+    /**
+     * El rol que pidió el formulario: base, hijo o huérfano. Sin el campo `rol`
+     * manda la bandera `generico`, que era lo único que existía antes.
+     */
+    private function rolDelFormulario(Request $request): string {
+        $rol = strtolower(trim((string) $request->input('rol', '')));
+
+        return in_array($rol, ['base', 'hijo', 'huerfano'], true)
+            ? $rol
+            : ($request->boolean('generico') ? 'base' : 'huerfano');
+    }
+
+    /**
+     * La base elegida para un hijo: tiene que ser un material marcado como base,
+     * si no, el hijo quedaría huérfano igual (el vínculo es el prefijo del código).
+     */
+    private function baseElegida(int $baseId): Material {
+        $base = Material::find($baseId);
+
+        if (!$base || !$base->generico) {
+            throw ValidationException::withMessages([
+                'material_base_id' => 'El material base elegido no existe o no está marcado como base.',
+            ]);
+        }
+
+        return $base;
+    }
+
+    /**
+     * Un material por cada valor escrito en «Talla / tamaño» o en «Color»: S y M
+     * son TEL-ALG-001-01 y TEL-ALG-001-02, no un material con dos tallas. Todos
+     * cuelgan de la base y heredan su par de códigos, su categoría y su unidad; lo
+     * único que cambia entre ellos es el valor que los identifica.
+     *
+     * @param  array<string, mixed>  $datos
+     * @return list<Material>
+     */
+    private function crearHijosDeBase(Material $base, array $datos, Request $request): array {
+        $valores = $this->valoresDeVariantes($request->input('talla_tamano'), $request->input('color'));
+
+        $this->rechazarVariantesRepetidas($valores, $base);
+
+        if (empty($valores)) {
+            $valores = [['tipo' => null, 'nombre' => null]];
+        }
+
+        $materiales = [];
+
+        foreach ($valores as $valor) {
+            $hijo = Material::create($this->datosDelHijo($datos, $base, $valor, Material::siguienteCodigoHijo($base)));
+            $hijo->sincronizarVariantes(
+                $valor['tipo'] === 'color' ? [$valor['nombre']] : [],
+                $valor['tipo'] === 'variante' ? [$valor['nombre']] : [],
+            );
+
+            $materiales[] = $hijo;
+        }
+
+        return $materiales;
+    }
+
+    /**
+     * Los datos con los que nace un hijo: los del formulario, el par y la unidad
+     * de su base y el valor que lo distingue. Empieza sin existencia: el stock se
+     * le registra a él, no a la base.
+     *
+     * @param  array<string, mixed>  $datos
+     * @param  array{tipo: string|null, nombre: string|null}  $valor
+     * @return array<string, mixed>
+     */
+    private function datosDelHijo(array $datos, Material $base, array $valor, string $codigo): array {
+        return array_merge($datos, $this->datosDesdeBase($base), [
+            'codigo_material' => $codigo,
+            'generico' => false,
+            'material_procesado' => 0,
+            'existencia_actual' => 0,
+            'gasto_diario' => null,
+            'color' => $valor['tipo'] === 'color' ? $valor['nombre'] : null,
+            'talla_tamano' => $valor['tipo'] === 'variante' ? $valor['nombre'] : null,
+            'maneja_color' => $valor['tipo'] === 'color',
+            'maneja_talla' => $valor['tipo'] === 'variante',
+            'modelo_diseno_acabado' => $base->modelo_diseno_acabado,
+        ]);
+    }
+
+    /**
+     * El par categoría/base, la categoría, el nombre base y la unidad vienen de la
+     * base: un hijo no puede llamarse distinto que su familia.
+     *
+     * @return array<string, mixed>
+     */
+    private function datosDesdeBase(Material $base): array {
+        return [
+            'categoria' => $base->categoria,
+            'codigo_categoria' => $base->codigo_categoria,
+            'nombre_base' => $base->nombre_base,
+            'codigo_base' => $base->codigo_base,
+            'unidad_inventario' => $base->unidad_inventario,
+        ];
+    }
+
+    /**
+     * Cada talla es un material y cada color es otro: las dos listas van separadas
+     * porque un hijo se distingue por un solo atributo.
+     *
+     * @return list<array{tipo: string, nombre: string}>
+     */
+    private function valoresDeVariantes(mixed $tallas, mixed $colores): array {
+        $valores = array_map(
+            fn (string $nombre): array => ['tipo' => 'variante', 'nombre' => $nombre],
+            Material::normalizarListaVariantes($tallas)
+        );
+
+        return array_merge($valores, array_map(
+            fn (string $nombre): array => ['tipo' => 'color', 'nombre' => $nombre],
+            Material::normalizarListaVariantes($colores)
+        ));
+    }
+
+    /**
+     * Un huérfano es una sola presentación: su talla y su color no admiten lista,
+     * porque no hay base que agrupe a sus hermanos. En un hijo tampoco se escribe
+     * más de un valor: para sumar otra presentación existe «Agregar variantes»,
+     * que crea un material por valor.
+     *
+     * @param  array<string, mixed>  $datos
+     */
+    private function rechazarVariantesMultiples(array $datos): void {
+        $etiquetas = ['talla_tamano' => 'Talla / tamaño', 'color' => 'Color'];
+
+        foreach ($etiquetas as $campo => $etiqueta) {
+            if (count(Material::normalizarListaVariantes($datos[$campo] ?? '')) > 1) {
+                throw ValidationException::withMessages([
+                    $campo => 'Un material lleva un solo valor en ' . $etiqueta
+                        . '. Para sumar otra presentación usa «Agregar variantes»: cada valor sale como material propio.',
+                ]);
+            }
+        }
+    }
+
+    /**
+     * Las variantes que ya tiene la familia, apuntadas al material que las lleva:
+     * «variante|33» => TEL-ALG-001-02. Así el index no termina con dos hijos de la
+     * misma base en la misma talla.
+     *
+     * @return array<string, string>
+     */
+    private function variantasTomadasDeLaBase(Material $base, ?int $exceptoId = null): array {
+        $familia = Material::normalizarCodigo($base->codigo_material);
+
+        return Material::query()
+            ->where('codigo_material', 'like', $familia . '-%')
+            ->when($exceptoId !== null, fn ($query) => $query->whereKeyNot($exceptoId))
+            ->get(['codigo_material', 'color', 'talla_tamano'])
+            ->reduce(function (array $tomadas, Material $hijo): array {
+                foreach (['talla_tamano' => 'variante', 'color' => 'color'] as $columna => $tipo) {
+                    foreach (Material::normalizarListaVariantes($hijo->$columna) as $nombre) {
+                        $tomadas[$tipo . '|' . mb_strtolower($nombre)] ??= $hijo->codigo_material;
+                    }
+                }
+
+                return $tomadas;
+            }, []);
+    }
+
+    /**
+     * Ninguna variante de la lista puede coincidir con la que ya tiene otro material
+     * de la familia: el index terminaría con dos hijos de la misma base en la misma
+     * talla. Los valores repetidos dentro de la celda los junta el modelo antes de
+     * llegar acá.
+     *
+     * @param  list<array{tipo: string|null, nombre: string|null}>  $valores
+     */
+    private function rechazarVariantesRepetidas(array $valores, ?Material $base, ?int $exceptoId = null): void {
+        if ($base === null) {
+            return;
+        }
+
+        $etiquetas = ['variante' => 'La talla', 'color' => 'El color'];
+        $campos = ['variante' => 'talla_tamano', 'color' => 'color'];
+        $tomadas = $this->variantasTomadasDeLaBase($base, $exceptoId);
+
+        foreach ($valores as $valor) {
+            $tipo = $valor['tipo'] ?? null;
+            $nombre = $valor['nombre'] ?? null;
+
+            if (!isset($etiquetas[$tipo]) || $nombre === null || $nombre === '') {
+                continue;
+            }
+
+            $dueno = $tomadas[$tipo . '|' . mb_strtolower($nombre)] ?? null;
+
+            if ($dueno !== null) {
+                throw ValidationException::withMessages([
+                    $campos[$tipo] => $etiquetas[$tipo] . ' ' . $nombre . ' ya la tiene el material ' . $dueno
+                        . '. Una variante de la familia va en un solo material.',
+                ]);
+            }
+        }
+    }
+
+    /**
+     * Hermanos nuevos creados desde «Editar material»: un material por cada valor
+     * agregado, con los datos del material abierto y su propio color o talla.
+     * Cuelgan de la misma base; si no tiene base, salen como otros huérfanos del
+     * mismo par. Cada uno arranca sin existencia y con el precio vigente del
+     * material editado, porque es el mismo artículo en otra presentación.
+     *
+     * @return list<Material>
+     */
+    private function crearHermanos(Material $Material, ?Material $base, Request $request): array {
+        $valores = $this->valoresDeVariantes($request->input('nuevas_tallas'), $request->input('nuevos_colores'));
+
+        // El material abierto ya gasta su variante, así que tampoco puede repetirla
+        // en la lista de nuevas.
+        $this->rechazarVariantesRepetidas($valores, $base ?? $Material->base());
+
+        if (empty($valores)) {
+            return [];
+        }
+
+        $ultimoPrecio = $Material->lastPrice()->first();
+        $hermanos = [];
+
+        foreach ($valores as $valor) {
+            $datos = array_merge($Material->only($Material->getFillable()), [
+                'codigo_material' => $base ? Material::siguienteCodigoHijo($base) : '',
+                'generico' => false,
+                'material_procesado' => 0,
+                'existencia_actual' => 0,
+                'gasto_diario' => null,
+                'color' => $valor['tipo'] === 'color' ? $valor['nombre'] : null,
+                'talla_tamano' => $valor['tipo'] === 'variante' ? $valor['nombre'] : null,
+                'maneja_color' => $valor['tipo'] === 'color',
+                'maneja_talla' => $valor['tipo'] === 'variante',
+                'maneja_otra_variante' => false,
+            ]);
+
+            $hermano = Material::create($datos);
+            $hermano->sincronizarVariantes(
+                $valor['tipo'] === 'color' ? [$valor['nombre']] : [],
+                $valor['tipo'] === 'variante' ? [$valor['nombre']] : [],
+            );
+            $this->registrarMovimientoCreacion($hermano);
+
+            if ($ultimoPrecio) {
+                $hermano->prices()->create([
+                    'precio' => $ultimoPrecio->precio,
+                    'fecha' => $ultimoPrecio->fecha,
+                ]);
+            }
+
+            $hermanos[] = $hermano;
+        }
+
+        return $hermanos;
     }
 
     //! STORE - UPDATE - DELETE
@@ -841,9 +1142,17 @@ class MaterialController extends Controller {
         DB::beginTransaction();
         try {
 
+        // El rol del material (base, hijo de una base o huérfano) define lo que se
+        // puede editar: un hijo hereda el par de su base y un huérfano no admite
+        // listas de variantes.
+        $rol = $this->rolDelFormulario($request);
+        $esBase = $rol === 'base';
+        $base = null;
+
         $request->validate([
             'codigo_categoria' => 'nullable|string|regex:/^[\p{L} ]*$/u',
             'codigo_base' => 'nullable|string|regex:/^[\p{L} ]*$/u',
+            'material_base_id' => [$rol === 'hijo' ? 'required' : 'nullable', 'integer', 'exists:materials,id'],
             'materiales' => 'nullable|array',
             'materiales.*.material_componente_id' => 'nullable|integer|exists:materials,id',
             'materiales.*.consumo_estandar' => 'nullable|numeric|min:0',
@@ -851,6 +1160,8 @@ class MaterialController extends Controller {
             'materiales.*.costo_asociado_teorico' => 'nullable|numeric|min:0',
             'colores' => 'nullable',
             'variantes' => 'nullable',
+            'nuevas_tallas' => 'nullable',
+            'nuevos_colores' => 'nullable',
         ]);
 
         if ($request->has('existencia_actual') && $request->input('existencia_actual') < 0) {
@@ -860,6 +1171,7 @@ class MaterialController extends Controller {
 
         $Material = Material::findOrFail($id);
         $existenciaAnterior = (float) ($Material->existencia_actual ?? 0);
+        $baseAnterior = $Material->base();
 //        $request->merge(['no_nada_id' => $request->no_nada['id']]);
         $datos = $request->except([
             'codigo_material',
@@ -871,6 +1183,10 @@ class MaterialController extends Controller {
             'last_purchase_date',
             'colores',
             'variantes',
+            'rol',
+            'material_base_id',
+            'nuevas_tallas',
+            'nuevos_colores',
         ]);
         if (array_key_exists('proveedor_habitual', $datos)) {
             $datos['proveedor_habitual'] = $this->normalizarProveedorHabitual($datos['proveedor_habitual']);
@@ -878,18 +1194,66 @@ class MaterialController extends Controller {
         if ($request->boolean('alterar_existencia') && $request->has('existencia_actual')) {
             $datos['existencia_actual'] = (float) $request->input('existencia_actual');
         }
+
+        if ($esBase) {
+            $datos['generico'] = true;
+        } elseif ($rol === 'hijo') {
+            $base = $this->baseElegida((int) $request->input('material_base_id'));
+            $datos = array_merge($datos, $this->datosDesdeBase($base), [
+                'generico' => false,
+                // La ficha vive en la base: el hijo no se declara procesado, aunque
+                // un registro antiguo lo tenga marcado.
+                'material_procesado' => 0,
+            ]);
+
+            // El vínculo con la base es el prefijo del código: si cambia la base,
+            // cambia el código. Las referencias del sistema van por id, así que la
+            // OP que usa este material no se rompe.
+            if (Material::familiaDeCodigo($Material->codigo_material) !== Material::normalizarCodigo($base->codigo_material)) {
+                $datos['codigo_material'] = Material::siguienteCodigoHijo($base);
+            }
+        } else {
+            $datos['generico'] = false;
+
+            if ($baseAnterior) {
+                // Deja de colgar de una base: el modelo le da el siguiente código
+                // libre del par, que es lo que lo convierte en huérfano.
+                $datos['codigo_material'] = '';
+            }
+        }
+
+        // Ni hijo ni huérfano admiten listas en la ficha, y el valor que se escribe
+        // no puede ser el de un hermano de la misma base: la talla y el color tienen
+        // que quedar únicos en el listado.
+        if (!$esBase) {
+            $this->rechazarVariantesMultiples($datos);
+            $this->rechazarVariantesRepetidas(
+                $this->valoresDeVariantes($datos['talla_tamano'] ?? null, $datos['color'] ?? null),
+                $base,
+                (int) $Material->id,
+            );
+        }
+
         $Material->update($datos);
 
-        // Las variantes se sincronizan cuando el formulario envía sus listas.
-        // Así una edición rápida (existencia, precio) no las borra.
-        if ($request->has('colores') || $request->has('variantes')) {
+        // Las variantes se sincronizan cuando el formulario envía sus listas o sus
+        // celdas de texto: así la tabla de variantes coincide con lo que muestra el
+        // listado. Una edición rápida que no manda ninguna de las dos no las toca.
+        if (!$esBase && (
+            $request->has('colores') || $request->has('variantes')
+            || $request->has('color') || $request->has('talla_tamano')
+        )) {
             $Material->sincronizarVariantes(
-                Material::normalizarListaVariantes($request->input('colores', [])),
-                Material::normalizarListaVariantes($request->input('variantes', []))
+                Material::normalizarListaVariantes($request->input('colores', $request->input('color', ''))),
+                Material::normalizarListaVariantes($request->input('variantes', $request->input('talla_tamano', '')))
             );
         }
 
         $this->registrarMovimientoActualizacion($Material, $existenciaAnterior, $request->input('motivo'));
+
+        // Hermanos nuevos: cada valor agregado en la edición crea su propio
+        // material, que cuelga de la misma base y hereda los datos de este.
+        $hermanos = $esBase ? [] : $this->crearHermanos($Material, $base, $request);
 
         // La ficha técnica solo se toca cuando el formulario envía sus líneas.
         // Así una edición rápida de existencia/precio no borra la receta.
@@ -907,7 +1271,15 @@ class MaterialController extends Controller {
         DB::commit();
         $this->invalidarCache();
         Myhelp::EscribirEnLog($this, 'UPDATE:Materials EXITOSO', 'Material id:' . $Material->id . ' | ' . $Material->nombre, false);
-        return back()->with('success', __('app.label.updated_successfully2', ['nombre' => $Material->nombre]));
+
+        $mensaje = __('app.label.updated_successfully2', ['nombre' => $Material->nombre]);
+
+        if ($hermanos) {
+            $mensaje .= ' Se agregaron ' . count($hermanos) . ' materiales de ' . $Material->nombre_base . ': '
+                . implode(', ', array_map(fn (Material $hermano): string => $hermano->codigo_material, $hermanos)) . '.';
+        }
+
+        return back()->with('success', $mensaje);
         } catch (\Throwable $e) {
             DB::rollBack();
             throw $e;

@@ -113,7 +113,9 @@ const normalizarBusqueda = (texto: string): string =>
         .toLowerCase();
 
 // Búsqueda por código o por nombre base, sin importar tildes ni mayúsculas.
-const filtrarOpciones = (opcion: any, busqueda: string): boolean => {
+// vue-select llama filterBy(option, label, search): el texto que se teclea es
+// el tercer argumento, no el segundo.
+const filtrarOpciones = (opcion: any, _etiqueta: string, busqueda: string): boolean => {
     const texto = normalizarBusqueda(busqueda);
     return (
         normalizarBusqueda(opcion?.codigo_material ?? '').includes(texto) ||

@@ -280,6 +280,7 @@ class DashboardController extends Controller
                     'fecha' => $fecha,
                     'observaciones' => $observaciones,
                     'created_at' => $createdAt,
+                    'estado' => 'Recibido',
                 ];
             }
             if ($aprobada > 0) {
@@ -291,6 +292,7 @@ class DashboardController extends Controller
                     'fecha' => $fecha,
                     'observaciones' => $observaciones,
                     'created_at' => $createdAt,
+                    'estado' => 'Aprobado',
                 ];
             }
             if ($reparacion > 0) {
@@ -313,6 +315,7 @@ class DashboardController extends Controller
                     'fecha' => $fecha,
                     'observaciones' => $observaciones,
                     'created_at' => $createdAt,
+                    'estado' => 'No recuperable',
                 ];
             }
         }

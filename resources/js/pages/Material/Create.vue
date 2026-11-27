@@ -35,12 +35,17 @@ const justNames = props.titulos.map(names => {
     )
         return names['order']
 })
+/** Qué es el material dentro de su familia. */
+type RolMaterial = 'base' | 'hijo' | 'huerfano';
 const form = useForm({
     ...Object.fromEntries(justNames.map(field => [field, ''])),
     // Deben existir desde el inicio: useForm solo envía las claves iniciales.
     last_purchase_price: '',
     last_purchase_date: new Date().toISOString().split('T')[0],
     materiales: [] as any[],
+    // El rol (base | hijo | huerfano) manda sobre los campos del formulario.
+    rol: 'huerfano' as RolMaterial,
+    material_base_id: null as number | null,
 });
 onMounted(() => {
     if (props.numberPermissions === 100) {
@@ -57,6 +62,15 @@ onMounted(() => {
         form.variante_atributo_sugerido = form.modelo_diseno_acabado;
         form.color = 'Rojo, Azul';
         form.talla_tamano = 'S, M';
+        // Las listas de variantes solo valen para un hijo: el relleno de prueba
+        // elige la primera base si existe, si no deja un huérfano de un solo valor.
+        const primeraBase = basesDisponibles.value[0] ?? null;
+        form.rol = primeraBase ? 'hijo' : 'huerfano';
+        form.material_base_id = primeraBase?.id ?? null;
+        if (!primeraBase) {
+            form.color = 'Rojo';
+            form.talla_tamano = 'S';
+        }
         form.proveedor_habitual = props.losSelect?.proveedor_habitual?.[0]?.id ?? null;
         form.observaciones = 'observaciones genenericas ' + (valueRAn);
 
@@ -81,10 +95,29 @@ const camposBooleanos = printForm.filter(
     (campo) => campo.type === 'boolean' && !['generico', 'maneja_color', 'maneja_otra_variante'].includes(campo.idd),
 );
 
-// Un genérico no tiene datos propios de variante ni de compra: se ocultan, se
+/** Qué es el material dentro de su familia: la base, un hijo o uno sin base. */
+const ROLES: Array<{ value: RolMaterial; label: string; descripcion: string }> = [
+    {
+        value: 'base',
+        label: 'Material base',
+        descripcion: 'Representa a toda la familia. No lleva color, talla, existencia ni precio propios: la ficha técnica se anota aquí y su precio sale del promedio de sus hijos.',
+    },
+    {
+        value: 'hijo',
+        label: 'Hijo de una base',
+        descripcion: 'Un material concreto de una base (TEL-ALG-001-05). Escribe varias tallas o varios colores y se crea un material por cada valor.',
+    },
+    {
+        value: 'huerfano',
+        label: 'Huérfano',
+        descripcion: 'No tiene base arriba: la ficha lo cita directo y se consume tal cual. Lleva un solo valor de talla y uno de color.',
+    },
+];
+
+// Una base no tiene datos propios de variante ni de compra: se ocultan, se
 // limpian y dejan de ser obligatorios. Su precio lo aporta el promedio de sus
-// similares, así que tampoco se pide al crearlo.
-const camposOmitidosPorGenerico = [
+// similares, así que tampoco se pide al crearla.
+const camposOmitidosPorBase = [
     'existencia_actual',
     'modelo_diseno_acabado',
     'color',
@@ -93,31 +126,157 @@ const camposOmitidosPorGenerico = [
     'proveedor_habitual',
 ];
 
-const esGenerico = computed(() => Boolean(form.generico));
+/** Lo que el hijo toma prestado de su base y por eso no se digita. */
+const camposDeLaBase = ['categoria', 'codigo_categoria', 'nombre_base', 'codigo_base', 'unidad_inventario'];
+
+const esBase = computed(() => form.rol === 'base');
+const esHijo = computed(() => form.rol === 'hijo');
+
+const camposOcultos = computed(() => [
+    ...(esBase.value ? camposOmitidosPorBase : []),
+    ...(esHijo.value ? camposDeLaBase : []),
+]);
 
 const camposVisibles = computed(() => camposNormales.filter(
-    (campo) => !(esGenerico.value && camposOmitidosPorGenerico.includes(campo.idd)),
+    (campo) => !camposOcultos.value.includes(campo.idd),
 ));
 
 const camposBooleanosVisibles = computed(() => camposBooleanos.filter(
-    (campo) => !(esGenerico.value && campo.idd === 'maneja_talla'),
+    (campo) => !(esBase.value && campo.idd === 'maneja_talla')
+        && !(esHijo.value && ['maneja_talla', 'material_procesado'].includes(campo.idd)),
 ));
 
 const hayProveedores = computed(() => (props.losSelect?.proveedor_habitual?.length || 0) > 0);
 const esMaterialProcesado = computed(() => Number(form.material_procesado) === 1);
 
-// Un genérico no lleva proveedor habitual, así que no depende de que existan
-// proveedores registrados.
-const puedeCrear = computed(() => esGenerico.value || hayProveedores.value);
+/** Solo los materiales marcados como base pueden adoptar hijos. */
+const basesDisponibles = computed<any[]>(() =>
+    ((props.losSelect?.materiales ?? []) as any[]).filter((m: any) => Boolean(m?.generico)),
+);
 
-watch(esGenerico, (activo) => {
-    if (!activo) return;
-    camposOmitidosPorGenerico.forEach((campo) => {
-        form[campo] = campo === 'existencia_actual' ? 0 : '';
+const baseElegida = computed<any>(() => {
+    const id = Number(form.material_base_id);
+
+    return basesDisponibles.value.find((b: any) => Number(b.id) === id) ?? null;
+});
+
+const descripcionRol = computed(() =>
+    ROLES.find((rol) => rol.value === form.rol)?.descripcion ?? '',
+);
+
+// Un hijo no depende de que existan proveedores registrados y necesita su base
+// elegida; una base no lleva ninguno.
+const puedeCrear = computed(() => (esBase.value
+    || (hayProveedores.value && (!esHijo.value || Boolean(baseElegida.value))))
+    && conflictosVariantes.value.length === 0);
+
+/** «S, M» en una celda de variante son dos valores, no uno (y «S, S» es uno solo). */
+const trozos = (texto: any): string[] => {
+    const vistos = new Set<string>();
+
+    return String(texto ?? '')
+        .split(/[,;]/)
+        .map((trozo) => trozo.trim())
+        .filter((trozo) => {
+            const clave = trozo.toLowerCase();
+            if (trozo === '' || vistos.has(clave)) return false;
+            vistos.add(clave);
+
+            return true;
+        });
+};
+
+/** Cada talla es un material y cada color es otro: las listas van separadas. */
+const valoresHijos = computed<Array<{ tipo: string; nombre: string }>>(() => [
+    ...trozos(form.talla_tamano).map((nombre) => ({ tipo: 'talla', nombre })),
+    ...trozos(form.color).map((nombre) => ({ tipo: 'color', nombre })),
+]);
+
+const mayorConsecutivo = (prefijo: string): number =>
+    ((props.losSelect?.materiales ?? []) as any[]).reduce((max: number, m: any) => {
+        const codigo = String(m?.codigo_material ?? '').toUpperCase();
+        if (!codigo.startsWith(prefijo + '-')) return max;
+
+        const numero = Number(codigo.split('-').pop());
+
+        return Number.isFinite(numero) && numero > max ? numero : max;
+    }, 0);
+
+/** Los códigos que va a tener cada hijo, en el orden en que se crean. */
+const codigosHijos = computed<string[]>(() => {
+    const prefijo = String(baseElegida.value?.codigo_material ?? '').toUpperCase();
+    if (!esHijo.value || !prefijo) return [];
+
+    let mayor = mayorConsecutivo(prefijo);
+
+    return (valoresHijos.value.length ? valoresHijos.value : [null]).map(() =>
+        `${prefijo}-${String(++mayor).padStart(2, '0')}`);
+});
+
+const ayudaVariante = (campo: string): string => {
+    const etiqueta = campo === 'color' ? 'color' : 'talla';
+
+    return esHijo.value
+        ? `Un material por cada ${etiqueta}: escribe «S, M» y se crean dos hijos de la base. Ninguna puede coincidir con la ${etiqueta} de otro hijo.`
+        : `Un solo valor, sin comas: el material queda identificado por su ${etiqueta}.`;
+};
+
+/** Los hijos que ya tiene la base elegida, con la talla y el color de cada uno. */
+const hijosDeLaBase = computed<any[]>(() => {
+    const familia = String(baseElegida.value?.codigo_material ?? '').toUpperCase();
+    if (!familia) return [];
+
+    return ((props.losSelect?.materiales ?? []) as any[]).filter(
+        (m: any) => String(m?.codigo_material ?? '').toUpperCase().startsWith(familia + '-'),
+    );
+});
+
+/**
+ * Lo que no deja crear el material: una variante que otro hijo de la base ya
+ * tiene y, fuera de un hijo, la lista de tallas o colores que solo cabe en la
+ * familia. El index no admite dos materiales de la misma base en la misma talla,
+ * y el servidor verifica lo mismo al guardar.
+ */
+const conflictosVariantes = computed<string[]>(() => {
+    if (esBase.value) return [];
+
+    if (!esHijo.value) {
+        return (['talla_tamano', 'color'] as const)
+            .filter((campo) => trozos(form[campo]).length > 1)
+            .map((campo) => `Un material sin base lleva un solo valor en ${campo === 'color' ? 'Color' : 'Talla / tamaño'}.`);
+    }
+
+    const tomadas = new Map<string, string>();
+    hijosDeLaBase.value.forEach((hijo: any) => {
+        const codigo = String(hijo?.codigo_material ?? '');
+        trozos(hijo?.talla_tamano).forEach((valor) => tomadas.set('talla|' + valor.toLowerCase(), codigo));
+        trozos(hijo?.color).forEach((valor) => tomadas.set('color|' + valor.toLowerCase(), codigo));
     });
-    form.maneja_color = false;
-    form.maneja_talla = false;
-    form.maneja_otra_variante = false;
+
+    return valoresHijos.value
+        .filter((valor) => tomadas.has(valor.tipo + '|' + valor.nombre.toLowerCase()))
+        .map((valor) => `${valor.tipo === 'color' ? 'El color' : 'La talla'} ${valor.nombre} ya la tiene el material ${tomadas.get(valor.tipo + '|' + valor.nombre.toLowerCase())}.`);
+});
+
+watch(() => form.rol, (nuevo) => {
+    form.generico = nuevo === 'base';
+
+    if (nuevo === 'base') {
+        camposOmitidosPorBase.forEach((campo) => {
+            form[campo] = campo === 'existencia_actual' ? 0 : '';
+        });
+        form.maneja_color = false;
+        form.maneja_talla = false;
+        form.maneja_otra_variante = false;
+    }
+
+    // La ficha vive en la base: un hijo no se declara procesado.
+    if (nuevo === 'hijo') {
+        form.material_procesado = 0;
+        form.maneja_talla = false;
+    }
+
+    generarCodigoMaterial();
 });
 
 const estadoActivo = (valor: any): boolean => {
@@ -147,11 +306,6 @@ const toggleBoolean = (campo: string) => {
 const descripcionToggle = (campo: string, activo: boolean): string => {
     if (campo === 'material_procesado') {
         return activo ? 'Sí, este material es procesado' : 'No, este material no es procesado';
-    }
-    if (campo === 'generico') {
-        return activo
-            ? 'Sí, es la base: sin talla, color, diseño, proveedor, existencia ni gasto diario propios. La ficha técnica se anota en ella y la OP elige un hijo suyo (COM-CAP-055-34), que es el que se gasta y se costea'
-            : 'No: tiene sus variantes y su precio de compra. Si tiene una base arriba, la OP lo ofrece como alternativa de esa base; si no tiene base (huérfano), la ficha lo cita directo y se consume tal cual';
     }
     return activo ? 'Sí, este material lo maneja' : 'No aplica para este material';
 };
@@ -184,6 +338,13 @@ const abreviar = (nombre: string | null | undefined): string => {
 };
 
 const generarCodigoMaterial = () => {
+    // Un hijo no se numera solo: su código es el de la base más un consecutivo, y
+    // eso lo calcula el servidor al crear cada material de la lista.
+    if (esHijo.value) {
+        form.codigo_material = '';
+        return;
+    }
+
     const cat = normalizarFragmentoCodigo(form.codigo_categoria) || abreviar(form.categoria);
     const base = normalizarFragmentoCodigo(form.codigo_base) || abreviar(form.nombre_base);
 
@@ -240,16 +401,23 @@ function ValidarVacios() {
     printForm.forEach(element => {
         if (element.type === 'boolean') return;
         if (camposIgnorados.includes(element.idd)) return;
-        if (esGenerico.value && camposOmitidosPorGenerico.includes(element.idd)) return;
+        if (camposOcultos.value.includes(element.idd)) return;
 
         const valor = form[element.idd];
         if (valor === '' || valor === null || valor === undefined) {
             faltantes.push(element.idd);
         }
     });
-    // Validar precio de última compra (obligatorio salvo en genéricos)
-    if (!esGenerico.value && (!form.last_purchase_price || form.last_purchase_price === '' || Number(form.last_purchase_price) < 0)) {
+    // Validar precio de última compra (obligatorio salvo en las bases)
+    if (!esBase.value && (!form.last_purchase_price || form.last_purchase_price === '' || Number(form.last_purchase_price) < 0)) {
         faltantes.push('last_purchase_price');
+    }
+    if (esHijo.value && !form.material_base_id) {
+        faltantes.push('material_base_id');
+    }
+    // Una variante repetida en la familia no se crea: se avisa en el pie.
+    if (conflictosVariantes.value.length) {
+        faltantes.push('talla o color repetido');
     }
     state.camposFaltantes = faltantes;
     return faltantes.length === 0;
@@ -317,6 +485,62 @@ watchEffect(() => {
                             <ClipboardDocumentListIcon class="w-4 h-4 text-gray-400 dark:text-gray-500" />
                             Información general
                         </h3>
+
+                        <!-- El rol decide qué campos se piden después -->
+                        <div class="mb-5">
+                            <span class="block text-sm font-medium text-gray-800 dark:text-gray-200">
+                                ¿Qué es este material?
+                            </span>
+                            <div class="mt-1.5 inline-flex w-full rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/40 p-1">
+                                <button v-for="rol in ROLES" :key="rol.value" type="button"
+                                    :aria-pressed="form.rol === rol.value"
+                                    @click="form.rol = rol.value"
+                                    class="flex-1 rounded-lg px-3 py-2 text-sm font-medium transition-colors"
+                                    :class="form.rol === rol.value
+                                        ? 'bg-indigo-600 text-white shadow'
+                                        : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800'">
+                                    {{ rol.label }}
+                                </button>
+                            </div>
+                            <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{{ descripcionRol }}</p>
+                            <InputError class="mt-1" :message="form.errors.rol ?? form.errors.generico" />
+                        </div>
+
+                        <div v-if="esHijo" class="mb-5">
+                            <InputLabel for="material_base_id" value="Material base" />
+                            <v-select v-if="basesDisponibles.length" id="material_base_id"
+                                class="mt-1 block w-full" :options="basesDisponibles" label="name"
+                                :reduce="(item: any) => item.id" v-model="form.material_base_id"
+                                placeholder="TEL-ALG-001 — Algodón" />
+                            <div v-else
+                                class="mt-1 flex items-start gap-2 rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/20 px-3 py-2">
+                                <ExclamationTriangleIcon class="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                                <p class="text-xs text-amber-700 dark:text-amber-300">
+                                    Todavía no hay materiales base. Crea primero la base para poder agregarle hijos.
+                                </p>
+                            </div>
+                            <p v-if="codigosHijos.length" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                Se crearán {{ codigosHijos.length }} materiales:
+                                <span class="font-mono">{{ codigosHijos.join(', ') }}</span>
+                            </p>
+                            <InputError class="mt-1" :message="form.errors.material_base_id" />
+                        </div>
+
+                        <!-- La talla y el color tienen que quedar únicos en la familia -->
+                        <div v-if="conflictosVariantes.length"
+                            class="mb-5 flex items-start gap-2 rounded-lg border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/20 px-3 py-2">
+                            <ExclamationTriangleIcon class="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                            <div>
+                                <p v-for="conflicto in conflictosVariantes" :key="conflicto"
+                                    class="text-xs text-red-700 dark:text-red-300">
+                                    {{ conflicto }}
+                                </p>
+                                <p class="mt-0.5 text-xs text-red-600/80 dark:text-red-400/80">
+                                    Cada variante de la base vive en un solo material.
+                                </p>
+                            </div>
+                        </div>
+
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
                             <template v-for="(atributosform, indice) in camposVisibles" :key="indice">
 
@@ -352,12 +576,17 @@ watchEffect(() => {
                                     <InputLabel :for="atributosform.label"
                                         :value="lang().t('app.label')[atributosform.label] || atributosform.label" />
                                     <TextInput :id="atributosform.idd" class="mt-1 block w-full bg-gray-50 dark:bg-gray-800/60 font-mono font-medium"
-                                        :model-value="form.codigo_material" disabled placeholder="Se genera automáticamente" />
-                                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                        :model-value="esHijo ? codigosHijos.join(', ') : form.codigo_material" disabled
+                                        :placeholder="esHijo ? 'Se arma con el código de la base' : 'Se genera automáticamente'" />
+                                    <p v-if="esHijo" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                        Cada talla y cada color escribidos abajo sale como un material propio de
+                                        {{ baseElegida?.codigo_material ?? 'la base' }}. Si no escribes ninguno, se crea
+                                        un solo hijo sin variante.
+                                    </p>
+                                    <p v-else class="mt-1 text-xs text-gray-500 dark:text-gray-400">
                                         Se forma con el código de la categoría y el código base, más el siguiente número
-                                        libre de esa combinación (TEX-LFI-004). El código no dice si el material es base:
-                                        eso lo define el interruptor «Material base», que puede acompañar cualquier forma.
-                                        Ningún número puede ser 0.
+                                        libre de esa combinación (TEX-LFI-004). El código no dice qué rol tiene el
+                                        material: eso lo define la selección de arriba. Ningún número puede ser 0.
                                     </p>
                                     <InputError class="mt-2" :message="form.errors.codigo_material" />
                                 </div>
@@ -439,6 +668,19 @@ watchEffect(() => {
                                     <InputError class="mt-2" :message="form.errors[atributosform.idd]" />
                                 </div>
 
+                                <!-- variantes: hijo = un material por valor, huérfano = un solo valor -->
+                                <div v-else-if="['color', 'talla_tamano'].includes(atributosform.idd)">
+                                    <InputLabel :for="atributosform.label"
+                                        :value="lang().t('app.label')[atributosform.label] || atributosform.label" />
+                                    <TextInput :id="atributosform.idd" :type="atributosform.type" class="mt-1 block w-full"
+                                        v-model="form[atributosform.idd]" :placeholder="esHijo ? 'S, M, L' : 'S'"
+                                        :error="form.errors[atributosform.idd]" />
+                                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                        {{ ayudaVariante(atributosform.idd) }}
+                                    </p>
+                                    <InputError class="mt-2" :message="form.errors[atributosform.idd]" />
+                                </div>
+
                                 <!-- normal -->
                                 <div v-else>
                                     <InputLabel :for="atributosform.label"
@@ -447,32 +689,6 @@ watchEffect(() => {
                                         v-model="form[atributosform.idd]" :required="atributosform.idd !== 'observaciones'" :placeholder="atributosform.label"
                                         :error="form.errors[atributosform.idd]" />
                                     <InputError class="mt-2" :message="form.errors[atributosform.idd]" />
-                                </div>
-
-                                <!-- ¿genérico? manda sobre talla, color, diseño, proveedor y precio -->
-                                <div v-if="atributosform.idd === 'codigo_categoria'"
-                                    role="switch" tabindex="0"
-                                    :aria-checked="esGenerico"
-                                    @click="toggleBoolean('generico')"
-                                    @keydown.space.prevent="toggleBoolean('generico')"
-                                    class="md:col-span-2 flex items-center justify-between gap-4 px-4 py-3 rounded-xl border cursor-pointer transition-colors"
-                                    :class="esGenerico
-                                        ? 'border-indigo-300 dark:border-indigo-700 bg-indigo-50/70 dark:bg-indigo-900/20'
-                                        : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900/40 hover:border-gray-300 dark:hover:border-gray-600'">
-                                    <div>
-                                        <span class="block text-sm font-medium text-gray-800 dark:text-gray-200">
-                                            {{ lang().t('app.label')['generico'] || 'Material base' }}
-                                        </span>
-                                        <span class="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                                            {{ descripcionToggle('generico', esGenerico) }}
-                                        </span>
-                                        <InputError class="mt-1" :message="form.errors.generico" />
-                                    </div>
-                                    <span class="relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors duration-200"
-                                        :class="esGenerico ? 'bg-indigo-600' : 'bg-gray-300 dark:bg-gray-600'">
-                                        <span class="inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform duration-200"
-                                            :class="esGenerico ? 'translate-x-6' : 'translate-x-1'" />
-                                    </span>
                                 </div>
                             </template>
                         </div>
@@ -515,8 +731,8 @@ watchEffect(() => {
                         </div>
                     </div>
 
-                    <!-- Ficha técnica del material procesado -->
-                    <div v-if="esMaterialProcesado">
+                    <!-- Ficha técnica del material procesado (la base la hereda a sus hijos) -->
+                    <div v-if="esMaterialProcesado && !esHijo">
                         <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-1.5 mb-1">
                             <SwatchIcon class="w-4 h-4 text-gray-400 dark:text-gray-500" />
                             Ficha técnica
@@ -530,7 +746,7 @@ watchEffect(() => {
                     </div>
 
                     <!-- Precio de última compra -->
-                    <div v-if="!esGenerico">
+                    <div v-if="!esBase">
                         <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 flex items-center gap-1.5 mb-4">
                             <span class="inline-flex h-4 w-4 items-center justify-center rounded bg-indigo-600 text-white text-[10px]">
                                 $
@@ -538,7 +754,9 @@ watchEffect(() => {
                             Precio de última compra
                         </h3>
                         <p class="text-xs text-gray-500 dark:text-gray-400 mb-4 pl-6">
-                            Este campo es obligatorio. Registre el precio de la última compra del material.
+                            {{ esHijo
+                                ? 'Obligatorio. Se anota como el precio de cada material que se cree.'
+                                : 'Este campo es obligatorio. Registre el precio de la última compra del material.' }}
                         </p>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
                             <div>

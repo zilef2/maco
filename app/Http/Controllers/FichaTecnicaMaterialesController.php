@@ -15,6 +15,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 
 class FichaTecnicaMaterialesController extends Controller {
@@ -48,6 +49,8 @@ class FichaTecnicaMaterialesController extends Controller {
             'materialesSinFicha' => $this->materialesSinFicha(),
             'selectMaterial'     => $this->selectMaterial(),
             'titulosMaterial'    => Material::getFillableWithTypes(),
+            // Archivos que el producto puede elegir como fotos del producto.
+            'fotos_disponibles'  => $this->fotosDisponibles(),
         ]);
     }
 
@@ -168,6 +171,9 @@ class FichaTecnicaMaterialesController extends Controller {
             'Categoria_original'  => $listas['categoria_original'] ?? [],
             'Familia_normalizada' => $listas['familia_normalizada'] ?? [],
             'Control_de_variante' => $listas['control_de_variante'] ?? [],
+            // Valores de los controles de variante "Color" y "Diseño".
+            'colores'             => $listas['color'] ?? [],
+            'disenos'             => $listas['diseno'] ?? [],
             'Opciones'            => $listas['opciones'] ?? [],
             'materiales'          => $opciones['materiales'],
             'unidad_medida'       => $opciones['unidad_medida'],
@@ -176,6 +182,19 @@ class FichaTecnicaMaterialesController extends Controller {
 
     private function losSelect(): array {
         return $this->fichaTecnicaService->opcionesFicha();
+    }
+
+    /**
+     * Archivos de la carpeta de fotos de producto, para elegirlos en el producto.
+     *
+     * @return array<int, string>
+     */
+    private function fotosDisponibles(): array {
+        return collect(Storage::disk('public')->files('produc_photos'))
+            ->map(fn (string $ruta) => basename($ruta))
+            ->sort(SORT_NATURAL | SORT_FLAG_CASE)
+            ->values()
+            ->all();
     }
 
     public function store(Request $request): RedirectResponse {
