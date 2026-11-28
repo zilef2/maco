@@ -32,6 +32,7 @@ Route::middleware(['auth', 'verified', 'role:superadmin'])->group(function () {
 	Route::post('/superadmin/existencias-cero', [\App\Http\Controllers\SuperadminAccionesController::class, 'ceroExistencias'])->name('superadmin.existencias-cero');
 	Route::post('/superadmin/materiales-al-azar', [\App\Http\Controllers\SuperadminAccionesController::class, 'rellenarMateriales'])->name('superadmin.materiales-al-azar');
 	Route::post('/superadmin/reiniciar-ops', [\App\Http\Controllers\SuperadminAccionesController::class, 'reiniciarOrdenesProduccion'])->name('superadmin.reiniciar-ops');
+	Route::post('/superadmin/borrar-ops', [\App\Http\Controllers\SuperadminAccionesController::class, 'borrarOrdenesProduccion'])->name('superadmin.borrar-ops');
 });
 
 Route::middleware('auth', 'verified')->group(function () {

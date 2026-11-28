@@ -505,11 +505,11 @@ const guardar = () => {
                                             @option:selected="(opt: any) => alCambiarMaterial(fila, opt)"
                                         />
                                     </td>
-<td class="px-3 py-2 align-top">
+                                    <td class="px-3 py-2 align-top">
                                         <div class="flex items-center gap-1.5">
                                             <TextInput
                                                 type="number"
-                                                min="0.01"
+                                                min="1"
                                                 step="1"
                                                 class="block h-9 w-full px-2 text-right tabular-nums"
                                                 v-model="fila.cantidad"

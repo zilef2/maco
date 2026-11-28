@@ -503,14 +503,17 @@ export const explicaciones: Explicacion[] = [
         subcategoria: 'Carga del listado',
         titulo: 'El listado arranca con pocos materiales y se completa solo',
         resumen:
-            'Materiales ya no espera a los ~1.100 materiales para pintarse: Laravel devuelve los primeros 10 y Vue se baja el resto en bloques de 100, mientras el usuario ya puede trabajar.',
+            'Materiales ya no espera a los ~1.100 materiales ni a todo lo pesado: Laravel devuelve los primeros 50 desde caché y el resto baja en bloques de 30 mientras Vue pinta esqueletos.',
         etiquetas: [
             'carga',
             'lote',
             'bloques',
             'rendimiento',
             'primera carga',
-            'paginacion',
+            'caché',
+            'defer',
+            'skeleton',
+            'MATERIALES_BATCH_SIZE',
             'filtros locales',
             'Material.lote',
             'listado',
@@ -520,30 +523,48 @@ export const explicaciones: Explicacion[] = [
             {
                 tipo: 'texto',
                 texto:
-                    'La tabla filtra, ordena y pagina en el navegador, así que necesita los materiales completos en memoria; lo que no hacía falta mandarlos de golpe era en la primera respuesta. El Index sale con 10 filas y desde ahí pide el resto por partes. El contador de arriba aclara cuántos van cargados («cargando 310 de 1.127») mientras baja el resto.',
+                    'La tabla filtra, ordena y pagina en el navegador, así que necesita los materiales completos en memoria; lo que no hacía falta mandar de golpe era la primera respuesta ni todo lo que no depende de ellos. El Index sale con los 50 materiales más recientes ya armados, y desde ahí pide el resto por partes mientras los filtros, la previsión y las proyecciones llegan aparte. El contador de arriba aclara cuántos van cargados («cargando 310 de 1.127»); cuando todavía hay datos diferidos en camino, aparece «completando filtros y previsión».',
             },
             {
                 tipo: 'pasos',
                 items: [
-                    'Primera respuesta: los 10 materiales más recientes, con todos los campos que lee la tabla (proveedor, últimos precios, ficha, variantes y predicción de compra).',
-                    'Mientras tanto la vista ya responde: buscar, filtrar, ordenar y cambiar de página es todo sobre el array local, sin preguntar a Laravel.',
-                    'Vue pide bloques de 100 a Material/lote, uno detrás de otro, y los va agregando al array; nunca reemplaza lo que ya tiene.',
-                    'Cuando el array llega al total, se acaban las peticiones: seguir usando la vista no genera más tráfico.',
-                    'Al guardar, borrar o recargar, Inertia repone los 10 materiales y la tanda de bloques vuelve a empezar con la lista nueva.',
-                    'Los cortes se sacan del mismo listado cacheado, ordenado por actualización y desempatado por id, así que un bloque no pisa al siguiente; si aun así un id se repite, la vista lo descarta.',
+                    'Primera respuesta: los 50 materiales más recientes, con todos los campos que lee la tabla (proveedor, últimos precios, variantes y predicción de compra). Sale de la caché, así que no arma filas.',
+                    'Lo pesado va diferido (Inertia::defer) en dos grupos: previsión, órdenes abiertas y proyecciones en uno, y las listas de los modales —que son lo más grande del payload— en otro. Los dos se piden en paralelo y en ningún caso bloquean la tabla.',
+                    'Mientras eso baja, la vista no se queda en blanco: la banda de previsión, el filtro de orden de producción, la columna «Proyectado» y las filas del listado muestran su esqueleto.',
+                    'Vue pide bloques de 30 a Material/lote, uno detrás de otro, y los va agregando al array; nunca reemplaza lo que ya tiene ni repite una petición en vuelo.',
+                    'Buscar, filtrar y ordenar es siempre sobre el array local, sin preguntar a Laravel. Cuando el array llega al total se acaban las peticiones.',
+                    'Cada bloque es una ventana cacheada por su propio id inicial, y los cortes salen del mismo listado ordenado por actualización y desempatado por id, así que un bloque no pisa al siguiente; si aun así un id se repite, la vista lo descarta.',
+                    'Al guardar, borrar o recargar, Inertia repone la primera pantalla y la tanda de bloques vuelve a empezar con la lista nueva.',
+                ],
+            },
+            {
+                tipo: 'subtitulo',
+                texto: 'Cómo se mantiene la caché sin desactualizarse',
+            },
+            {
+                tipo: 'pasos',
+                items: [
+                    'Tamaño de bloque, primera carga, espera de reconstrucción y minutos de vida viven en config/materiales.php; el único que se mueve por .env es MATERIALES_BATCH_SIZE (30 por default). La vista lo recibe ya resuelto en el prop carga, así que ningún archivo vuelve a escribir el número a mano.',
+                    'Crear, actualizar o eliminar un material lanza el evento MaterialesCambiados, que llega al listener ReconstruirListadoMateriales: primero sube la versión del listado, y como cada clave de caché lleva la versión dentro, lo viejo queda huérfano al instante — nunca se sirve una fila anterior.',
+                    'Después programa el job ReconstruirCacheMaterialesJob con retraso. Diez guardados seguidos (un Excel, una carga de OPs) valen una sola reconstrucción: el job solo se encola si gana el slot en caché, cuyo reloj dura exactamente lo mismo que el retraso.',
+                    'El job recalienta las ids y la primera pantalla, y antes de eso sube otra vez la versión, para que ninguna ventana armada durante el debounce quede sobreviviendo al commit.',
+                    'Un fallo del worker no congela nada: el slot expira solo y la siguiente escritura vuelve a programar la ronda; mientras tanto Cache::remember reconstruye la ventana que falte.',
                 ],
             },
             {
                 tipo: 'nota',
                 tono: 'info',
                 texto:
-                    'El mismo cache sirve la primera pantalla y los bloques, y para armarlo se recortó el JSON: las relaciones de precios y de ficha ya no viajan (la tabla lee los campos derivados) y «proveedor_habitual» vuelve a ser el número del proveedor, no el objeto completo — con el objeto, el filtro por proveedor y su lista de opciones no coincidían nunca.',
+                    'Para armar el payload se recortó el JSON: las relaciones de precios y de ficha ya no viajan (la tabla lee los campos derivados) y «proveedor_habitual» vuelve a ser el número del proveedor, no el objeto completo — con el objeto, el filtro por proveedor y su lista de opciones no coincidían nunca. Con eso, la primera respuesta pesa ~60 KB en vez de ~1.5 MB.',
             },
         ],
         fuentes: [
-            'app/Http/Controllers/MaterialController.php (PRIMERA_CARGA, TAMANO_LOTE, listadoCacheado y lote)',
+            'app/Services/MaterialIndexCacheService.php (ids, primera, ventana, recalentar y las claves por versión)',
+            'app/Http/Controllers/MaterialController.php (index con los props diferidos y lote)',
+            'config/materiales.php + .env (MATERIALES_BATCH_SIZE, MATERIALES_PRIMERA_CARGA)',
+            'app/Events/MaterialesCambiados.php, app/Listeners/ReconstruirListadoMateriales.php, app/Jobs/ReconstruirCacheMaterialesJob.php',
             'routes/web.php (Material.lote, declarada antes del resource para que no se la lleve el show)',
-            'resources/js/pages/Material/Index.vue (filas, totalMaterial, cargandoResto y cargarResto)',
+            'resources/js/pages/Material/Index.vue (filas, totalMaterial, cargandoResto y los esqueletos)',
         ],
     },
     {

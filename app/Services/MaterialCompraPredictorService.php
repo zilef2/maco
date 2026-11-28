@@ -27,9 +27,14 @@ class MaterialCompraPredictorService
         ];
     }
 
-    public function obtenerPrediccionesParaMateriales(): array
+    /**
+     * Última compra de cada material, para la columna de recomendación.
+     *
+     * @param  list<int>|null  $materialIds  limitar el barrido a un bloque de filas
+     */
+    public function obtenerPrediccionesParaMateriales(?array $materialIds = null): array
     {
-        $compras = $this->materialMovimientoRepository->obtenerUltimasComprasAgrupadas();
+        $compras = $this->materialMovimientoRepository->obtenerUltimasComprasAgrupadas($materialIds);
         $predicciones = [];
 
         foreach ($compras as $compra) {

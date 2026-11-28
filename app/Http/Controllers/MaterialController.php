@@ -21,6 +21,7 @@ use App\Services\ExcelMaterialesService;
 use App\Services\FaltantesOpService;
 use App\Services\MaterialBulkDeleteService;
 use App\Services\MaterialCompraPredictorService;
+use App\Services\MaterialIndexCacheService;
 use App\Services\PlantillasExcelService;
 use App\helpers\Myhelp;
 use App\helpers\MyModels;
@@ -45,14 +46,20 @@ class MaterialController extends Controller {
     public string $FromController = 'Material';
 
     /**
-     * Cuántos materiales viajan en la primera respuesta y de cuántos en cuántos
-     * los pide la vista después. La tabla filtra, ordena y pagina en el
-     * navegador, así que mandar los ~1.100 de golpe convierte una visita en
-     * megas de JSON: con esto la pantalla sale ya y el resto llega detrás.
+     * Lo ya calculado en esta petición: un partial reload de Inertia resuelve
+     * varios props diferidos en el mismo request y más de uno sale del mismo
+     * recorrido, así que el trabajo se comparte en vez de repetirse.
+     *
+     * Los tamaños de la carga no se deciden aquí: salen de config/materiales.php
+     * (MATERIALES_BATCH_SIZE) y los sirve MaterialIndexCacheService, el mismo que
+     * usa el job al recalentar la caché.
      */
-    public const PRIMERA_CARGA = 10;
-    public const TAMANO_LOTE = 100;
+    private array $calculado = [];
 
+    private function unaVez(string $clave, callable $fabrica): mixed
+    {
+        return $this->calculado[$clave] ??= $fabrica();
+    }
 
     //<editor-fold desc="Construc | filtro and dependencia">
     public function __construct(
@@ -65,7 +72,8 @@ class MaterialController extends Controller {
         protected ExcelMaterialesService $excelMateriales,
         protected ColaMaterialesOpService $colaMateriales,
         protected CompromisoMaterialService $compromisos,
-        protected FaltantesOpService $faltantes
+        protected FaltantesOpService $faltantes,
+        protected MaterialIndexCacheService $cacheListado
     ) {
 //        $this->middleware('permission:create Material', ['only' => ['create', 'store']]);
 //        $this->middleware('permission:read Material', ['only' => ['index', 'show']]);
@@ -77,37 +85,94 @@ class MaterialController extends Controller {
     public function index(Request $request) {
         $numberPermissions = MyModels::getPermissionToNumber(Myhelp::EscribirEnLog($this, ' Materials '));
 
-        // La vista solo necesita un puñado de materiales para pintarse; el resto
-        // lo pide por bloques a lote(), y los dos leen el mismo cache, así que el
-        // trabajo pesado se hace una vez por versión y no en cada petición.
-        $Materiales = $this->listadoCacheado();
-        // Opciones de los selectores (crear/editar y ficha). Se calcula una sola
-        // vez: recorre los materiales completos con sus variantes y precios.
-        $opcionesFicha = $this->fichaTecnicaService->opcionesMateriales();
+        // Lo único que hace falta para pintar la vista son los materiales de la
+        // primera carga (los 50 más recientes por defecto, ya calientes en caché)
+        // y cuántos materiales son en total. Todo lo demás va diferido: los
+        // listados largos, la previsión, las OPs y la proyección. Esta respuesta
+        // no consulta lo que la pantalla todavía no muestra —Inertia lo pide
+        // detrás, en un solo request— y el resto de materiales baja por bloques
+        // desde lote().
+        return Inertia::render($this->FromController . '/Index', [
+            'materiales' => $this->cacheListado->primera(),
+            'total' => $this->cacheListado->total(),
+            // El frontend arma su array con esto: `inicial` ya vino y `lote` es de
+            // cuántos en cuántos pide lo que falta.
+            'carga' => $this->cacheListado->ajustesCarga(),
+            'prevision' => Inertia::defer(fn () => $this->prevision()),
+            // Filtro por OP del listado: las abiertas y, por material, en cuáles.
+            'ordenesAbiertas' => Inertia::defer(fn () => $this->ordenesAbiertasDelIndex()['ordenes']),
+            'opPorMaterial' => Inertia::defer(fn () => $this->ordenesAbiertasDelIndex()['materiales']),
+            // Inventario proyectado: físico + producción pendiente − compromisos.
+            'proyeccionMateriales' => Inertia::defer(fn () => $this->proyeccionDelIndex()),
+            'breadcrumbs' => [['label' => __('app.label.' . $this->FromController), 'href' => route($this->FromController . '.index')]],
+            'title' => __('app.label.' . $this->FromController),
+            'perPage' => 10,
+            'numberPermissions' => $numberPermissions,
+            // Las listas de los modales van en su propio grupo diferido: es el
+            // paquete más pesado (todos los materiales para la ficha) y la tabla
+            // no lo usa, así que no tiene por qué retrasar la previsión ni la
+            // proyección. Cada grupo se pide en su propio request, en paralelo.
+            'losSelect'         => Inertia::defer(fn () => $this->selectoresDelIndex(), 'modales'),
+            // La ayuda del modal de subida sale del mismo formato descargable.
+            'columnasExcel'     => Inertia::defer(fn () => $this->plantillas->columnas('material'), 'modales'),
+        ]);
+    }
 
+    /**
+     * Las dos listas de OP del listado salen del mismo recorrido: se guarda el
+     * resultado para que el request diferido no lo calcule dos veces.
+     */
+    private function ordenesAbiertasDelIndex(): array
+    {
+        return $this->unaVez('ordenesAbiertas', fn () => $this->ordenesAbiertas());
+    }
+
+    /**
+     * Listas de los selectores de la vista (crear, editar, ficha). Ningana hace
+     * falta para pintar la tabla, y `opcionesMateriales` recorre todos los
+     * materiales con sus variantes y precios, así que viaja diferido.
+     */
+    private function selectoresDelIndex(): array
+    {
         $listasDesplegables = $this->listaDesplegableService->getOptionsByCategoriaGrouped('material');
         // La talla de un material se elige entre las opciones de talla de Producto.
         $opcionesProducto = $this->listaDesplegableService->getOptionsByCategoriaGrouped('producto');
-        $proveedores = Proveedor::all(['id', 'nombre'])
-            ->map(function ($proveedor) {
-                return [
-                    'id'     => $proveedor->id,
-                    'value'  => $proveedor->id,
-                    'nombre' => $proveedor->nombre,
-                    'label'  => $proveedor->nombre,
-                    'name'   => $proveedor->nombre,
-                    'title'  => $proveedor->nombre,
-                ];
-            });
+        $opcionesFicha = $this->unaVez('opcionesFicha', fn () => $this->fichaTecnicaService->opcionesMateriales());
 
-        $materialesEnOp = $this->materialesEnOrden();
-        $ordenesAbiertas = $this->ordenesAbiertas();
-        // Solo se proyectan los materiales que participan en alguna OP (o que
-        // aún tienen una reserva vigente); el resto equivale a su existencia.
-        // Los genéricos quedan fuera: no almacenan inventario, su familia es la
-        // que tiene existencia, compromisos y consumo.
-        $materialesProyectables = array_values(array_unique(array_merge(
-            $materialesEnOp,
+        $proveedores = Proveedor::query()->get(['id', 'nombre'])
+            ->map(fn ($proveedor) => [
+                'id'     => $proveedor->id,
+                'value'  => $proveedor->id,
+                'nombre' => $proveedor->nombre,
+                'label'  => $proveedor->nombre,
+                'name'   => $proveedor->nombre,
+                'title'  => $proveedor->nombre,
+            ]);
+
+        return [
+            'unidad_inventario'         => $listasDesplegables['unidad_inventario'] ?? [],
+            'categoria'                 => $listasDesplegables['categoria'] ?? [],
+            'modelo_diseno_acabado'     => $listasDesplegables['modelo_diseno_acabado'] ?? $listasDesplegables['variante_atributo_sugerido'] ?? $listasDesplegables['variante'] ?? [],
+            'variante_atributo_sugerido' => $listasDesplegables['modelo_diseno_acabado'] ?? $listasDesplegables['variante_atributo_sugerido'] ?? $listasDesplegables['variante'] ?? [],
+            // Color y talla son de selección única: cada uno sale de su lista.
+            'color'                     => $listasDesplegables['color'] ?? [],
+            'talla_tamano'              => $opcionesProducto['opciones'] ?? [],
+            'proveedor_habitual'        => $proveedores,
+            'materiales'                => $opcionesFicha['materiales'],
+            'unidad_medida'             => $opcionesFicha['unidad_medida'],
+        ];
+    }
+
+    /**
+     * Inventario proyectado del listado. Solo se proyectan los materiales que
+     * participan en alguna OP (o que aún tienen una reserva vigente): el resto
+     * equivale a su existencia. Los genéricos quedan fuera, su familia es la que
+     * tiene existencia, compromisos y consumo.
+     */
+    private function proyeccionDelIndex(): array
+    {
+        $proyectables = array_values(array_unique(array_merge(
+            $this->materialesEnOrden(),
             Compromisomaterial::query()
                 ->activos()
                 ->distinct()
@@ -115,142 +180,31 @@ class MaterialController extends Controller {
                 ->map(fn ($id) => (int) $id)
                 ->all()
         )));
-        $materialesProyectables = Material::query()
-            ->whereIn('id', $materialesProyectables)
+
+        $ids = Material::query()
+            ->whereIn('id', $proyectables)
             ->where('generico', false)
             ->pluck('id')
             ->map(fn ($id) => (int) $id)
             ->all();
 
-        return Inertia::render($this->FromController . '/Index', [
-            'materiales' => $Materiales->take(self::PRIMERA_CARGA)->values(),
-            'total' => $Materiales->count(),
-            // El frontend arma su array con esto: `inicial` ya vino y `lote` es
-            // de cuántos en cuántos pide lo que falta.
-            'carga' => ['inicial' => self::PRIMERA_CARGA, 'lote' => self::TAMANO_LOTE],
-            'prevision' => $this->prevision(),
-            // Filtro por OP del listado: las abiertas y, por material, en cuáles.
-            'ordenesAbiertas' => $ordenesAbiertas['ordenes'],
-            'opPorMaterial' => $ordenesAbiertas['materiales'],
-            // Inventario proyectado: físico + producción pendiente − compromisos.
-            'proyeccionMateriales' => $this->compromisos->proyeccionPorMaterial($materialesProyectables),
-            'breadcrumbs' => [['label' => __('app.label.' . $this->FromController), 'href' => route($this->FromController . '.index')]],
-            'title' => __('app.label.' . $this->FromController),
-            'perPage' => 10,
-            'numberPermissions' => $numberPermissions,
-            'losSelect'         => [
-                'unidad_inventario'         => $listasDesplegables['unidad_inventario'] ?? [],
-                'categoria'                 => $listasDesplegables['categoria'] ?? [],
-                'modelo_diseno_acabado'     => $listasDesplegables['modelo_diseno_acabado'] ?? $listasDesplegables['variante_atributo_sugerido'] ?? $listasDesplegables['variante'] ?? [],
-                'variante_atributo_sugerido' => $listasDesplegables['modelo_diseno_acabado'] ?? $listasDesplegables['variante_atributo_sugerido'] ?? $listasDesplegables['variante'] ?? [],
-                // Color y talla son de selección única: cada uno sale de su lista.
-                'color'                     => $listasDesplegables['color'] ?? [],
-                'talla_tamano'              => $opcionesProducto['opciones'] ?? [],
-                'proveedor_habitual'        => $proveedores,
-                'materiales'                => $opcionesFicha['materiales'],
-                'unidad_medida'             => $opcionesFicha['unidad_medida'],
-            ],
-	        'titulos'           => Material::getFillableWithTypes(),
-            // La ayuda del modal de subida sale del mismo formato descargable.
-            'columnasExcel'     => $this->plantillas->columnas('material'),
-
-        ]);
+        return $this->compromisos->proyeccionPorMaterial($ids);
     }
 
     /**
-     * Listado completo del Index con los campos derivados que lee la tabla.
-     * Vive en cache una vez por versión y de aquí salen tanto la primera
-     * pantalla como los bloques de lote, así que el trabajo pesado (relaciones,
-     * fichas y predicciones) no se repite en cada petición.
-     *
-     * @return Collection<int, Material>
-     */
-    private function listadoCacheado(): Collection
-    {
-        $claveListado = 'material_index_' . $this->versionCache();
-
-        return Cache::remember($claveListado, now()->addMinutes(10), function () {
-            $bloqueosFicha = $this->fichaTecnicaService->bloqueosPorMaterial();
-            $prediccionesCompras = $this->compraPredictor->obtenerPrediccionesParaMateriales();
-            // El nombre del proveedor se resuelve aquí en vez de cargar la
-            // relación: serializada ocupa la clave `proveedor_habitual`, que el
-            // listado usa como identificador para filtrar.
-            $nombresProveedor = Proveedor::query()->pluck('nombre', 'id');
-
-            return Material::query()
-                ->with(['prices', 'variants', 'fichaTecnica.materiales.material'])
-                // Sin el id de desempate, dos materiales tocados el mismo segundo
-                // pueden cambiar de lugar entre la primera pantalla y los bloques.
-                ->orderByDesc('updated_at')
-                ->orderByDesc('id')
-                ->get()
-                ->each(function (Material $material) use ($bloqueosFicha, $prediccionesCompras, $nombresProveedor) {
-                    $material->proveedor_nombre = $material->proveedor_habitual
-                        ? ($nombresProveedor[$material->proveedor_habitual] ?? null)
-                        : null;
-
-                    // La relación ya viene ordenada por fecha, así que el último
-                    // precio y los tres recientes se leen de ella; consultarla
-                    // suelta costaba dos consultas por cada material.
-                    $precios = $material->prices;
-                    $material->last_purchase_price = $precios->first()?->precio ?? null;
-                    $material->last_purchase_date = $precios->first()?->fecha ?? null;
-                    // Gasto diario (unidades por día, persistido en BD)
-                    $material->gasto_diario = $material->gasto_diario ?? null;
-                    $material->gasto_diario_actualizado_en = $material->gasto_diario_actualizado_en ?? null;
-                    $material->recent_prices = $precios->take(3)->map(fn ($price) => [
-                        'precio' => $price->precio,
-                        'fecha'  => $price->fecha,
-                    ])->values()->all();
-
-                    $ficha = $material->fichaTecnica->first();
-                    $material->ficha_id = $ficha?->id;
-                    $material->ficha_nombre = $ficha?->nombre;
-                    $material->ficha_materiales = ($ficha?->materiales ?? collect())
-                        ->map(fn ($fila) => [
-                            'material_componente_id' => $fila->material_componente_id,
-                            'consumo_estandar' => $fila->consumo_estandar,
-                            'unidad_medida' => $fila->unidad_medida,
-                            'costo_asociado_teorico' => $fila->costo_asociado_teorico,
-                        ])
-                        ->values()
-                        ->all();
-                    $bloqueos = $bloqueosFicha[$material->id] ?? [];
-                    $material->ficha_bloqueada = !empty($bloqueos);
-                    $material->ficha_bloqueo_detalle = collect($bloqueos)
-                        ->map(fn ($estado, $numeroOp) => $numeroOp . ' (' . $estado . ')')
-                        ->implode(', ');
-
-                    $pred = $prediccionesCompras[$material->id] ?? null;
-                    $material->ultima_compra_cantidad = $pred['cantidad'] ?? null;
-                    $material->ultima_compra_fecha = $pred['fecha'] ?? null;
-                    $material->ultima_compra_fecha_humana = $pred['fecha_humana'] ?? null;
-
-                    // Ya no hacen falta en el JSON: la tabla lee los campos
-                    // derivados de arriba. `variants` sí se queda (sus chips).
-                    // Se ocultan con el nombre de la relación, no con la clave
-                    // snake que sale en el JSON.
-                    $material->makeHidden(['prices', 'fichaTecnica']);
-                })
-                ->values();
-        });
-    }
-
-    /**
-     * Bloque de materiales que la vista se trae en segundo plano. El corte es
-     * sobre el mismo array cacheado de la primera pantalla, así que los bloques
-     * nunca se pisan entre sí y al navegador solo le queda appendear.
+     * Corte de materiales que la vista se trae en segundo plano. Todo lo del
+     * listado cacheado (ids, ventanas, campos derivados) vive en
+     * MaterialIndexCacheService, que es el mismo que recalienta el job tras cada
+     * escritura: la vista y el job no pueden usar dos listas distintas.
      */
     public function lote(Request $request): JsonResponse
     {
         $desde = max(0, (int) $request->input('desde', 0));
-        $limite = min(self::TAMANO_LOTE, max(1, (int) $request->input('limite', self::TAMANO_LOTE)));
-
-        $Materiales = $this->listadoCacheado();
+        $limite = (int) $request->input('limite', $this->cacheListado->lote());
 
         return response()->json([
-            'materiales' => $Materiales->slice($desde, $limite)->values(),
-            'total' => $Materiales->count(),
+            'materiales' => $this->cacheListado->ventana($desde, $limite),
+            'total' => $this->cacheListado->total(),
         ]);
     }
 

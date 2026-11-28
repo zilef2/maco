@@ -815,11 +815,9 @@ const breadcrumbCollapsed = ref(false);
                                         </span>
                                     </td>
 
-                                    <td
-                                        class="sticky right-0 z-10 w-[104px] border-l border-border/60 bg-card px-2 py-2 align-middle shadow-[-8px_0_16px_-16px_rgba(0,0,0,0.35)] transition-colors group-hover:bg-muted/40"
-                                    >
+                                    <td class="sticky right-0 z-10 w-[104px] border-l border-border/60 bg-card px-2 py-2 align-middle shadow-[-8px_0_16px_-16px_rgba(0,0,0,0.35)] transition-colors group-hover:bg-muted/40">
                                         <div class="flex items-center justify-end gap-1">
-                                            <button
+                                            <!-- <button
                                                 v-if="can(['update RecepcionCalidad'])"
                                                 type="button"
                                                 @click="accionFila('edit', fila)"
@@ -828,7 +826,7 @@ const breadcrumbCollapsed = ref(false);
                                                 class="inline-flex h-7 w-7 items-center justify-center rounded-md border border-border bg-card text-muted-foreground shadow-sm transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                                             >
                                                 <PencilIcon class="h-4 w-4" />
-                                            </button>
+                                            </button> -->
                                             <button
                                                 v-if="can(['delete RecepcionCalidad'])"
                                                 type="button"

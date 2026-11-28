@@ -9,6 +9,10 @@ const props = defineProps({
         type: Boolean,
         default: false,
     },
+    esAmbienteLocal: {
+        type: Boolean,
+        default: false,
+    },
     estadosOp: {
         type: Array as () => { id: number; nombre: string }[],
         default: () => [],
@@ -43,6 +47,8 @@ interface AccionPurgable {
     borrar: () => string;
     modulos: string[];
     nota: string;
+    /** true cuando la acción también se habilita en entorno local (no solo test). */
+    local?: boolean;
 }
 
 const ACCIONES: Record<string, AccionPurgable> = {
@@ -84,6 +90,26 @@ const ACCIONES: Record<string, AccionPurgable> = {
             'Costos de material ya liquidados en las órdenes de producción',
         ],
         nota: 'Productos, talleres, proveedores y usuarios no se borran: solo pierden el material que referenciaban.',
+    },
+    ops: {
+        clave: 'ops',
+        titulo: 'Borrar todas las Órdenes de Producción',
+        descripcion:
+            'Borra permanentemente todas las OP y todo lo que cuelga de ellas: procesos, recepciones, cierres, kits, mermas, distribución por tallas y costos.',
+        boton: 'Borrar todas las OP',
+        frase: 'BORRAR TODAS LAS OP',
+        pregunta: '¿Borrar todas las Órdenes de Producción?',
+        procesando: 'Borrando OP...',
+        sostener: 'Mantener presionado para borrar (3 seg)',
+        borrar: () => route('superadmin.borrar-ops'),
+        modulos: [
+            'Órdenes de Producción (OPs) con su distribución por tallas y costos',
+            'Procesos externos, kits de proceso y kits de taller',
+            'Recepciones de calidad, cierres y pendientes de producción',
+            'Mermas y compromisos de material asociados a las OP',
+        ],
+        nota: 'Productos, materiales, talleres, proveedores y usuarios no se borran. Solo disponible en entorno test o local.',
+        local: true,
     },
 };
 
@@ -186,6 +212,11 @@ const form = useForm({
 const modalAbierto = computed(() => state.accion !== null);
 
 const acciones = Object.values(ACCIONES);
+
+/** Las acciones de purga salen en test; las marcadas `local` también en local. */
+const accionesVisibles = computed(() =>
+    acciones.filter((accion) => props.esAmbienteTest || (props.esAmbienteLocal && accion.local)),
+);
 
 const fraseValida = computed(() => state.accion !== null && state.textoConfirmacion.trim().toUpperCase() === state.accion.frase);
 
@@ -290,9 +321,8 @@ const iniciarPresion = () => {
             </div>
 
             <div class="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-                <template v-for="accion in acciones" :key="accion.clave">
+                <template v-for="accion in accionesVisibles" :key="accion.clave">
                     <div
-                        v-if="props.esAmbienteTest"
                         class="border-border bg-card flex flex-col justify-between rounded-lg border p-4 shadow-sm"
                     >
                         <div>

@@ -23,10 +23,20 @@ class MaterialMovimientoRepository
             ->first();
     }
 
-    public function obtenerUltimasComprasAgrupadas(): Collection
+    /**
+     * Última compra de cada material. Con ids, la agrupada se limita a ellos:
+     * es lo que usa el listado de Materiales cuando arma un bloque de filas.
+     *
+     * @param  list<int>|null  $materialIds
+     */
+    public function obtenerUltimasComprasAgrupadas(?array $materialIds = null): Collection
     {
         $sub = DB::table('material_movimientos')
             ->select('material_id', DB::raw('MAX(id) as max_id'))
+            ->when(
+                $materialIds !== null,
+                fn ($consulta) => $consulta->whereIn('material_id', $materialIds)
+            )
             ->where(function ($q): void {
                 $q->where('motivo', 'LIKE', '%Compra%')
                     ->orWhere(function ($q2): void {

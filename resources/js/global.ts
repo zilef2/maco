@@ -314,7 +314,7 @@ export function zilef_nuber_format(amount: any, decimals = 0, isPesos: boolean =
 
     if (isNaN(amount) || amount === 0)
         return parseFloat("0").toFixed(decimals);
-    amount = '' + amount.toFixed(decimals);
+    amount = Number(amount.toFixed(decimals)).toString();
 
     const amount_parts = amount.split(' '),
         regexp = /(\d+)(\d{3})/;

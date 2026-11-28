@@ -262,13 +262,25 @@ class FichaTecnicaService
      * Mapa material_id => [número de OP => estado] con las OPs que bloquean
      * la ficha de un material procesado.
      *
+     * Si se le pasan ids, se limita a las OPs que los usan: el listado de
+     * Materiales se arma por bloques y no necesita recorrer toda la producción
+     * para anotar 30 filas.
+     *
+     * @param  list<int>|null  $materialIds
      * @return array<int, array<string, string>>
      */
-    public function bloqueosPorMaterial(): array
+    public function bloqueosPorMaterial(?array $materialIds = null): array
     {
         $bloqueos = [];
 
         OrdenProduccion::with(['materiales:id', 'estadoOp:id,nombre'])
+            ->when(
+                $materialIds !== null,
+                fn ($consulta) => $consulta->whereHas(
+                    'materiales',
+                    fn ($m) => $m->whereIn('materials.id', $materialIds)
+                )
+            )
             ->get()
             ->each(function ($op) use (&$bloqueos) {
                 if (in_array($op->estadoOp?->nombre, self::ESTADOS_FICHA_EDITABLE, true)) {

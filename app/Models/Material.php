@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Events\MaterialesCambiados;
 use App\Traits\HasFillableWithTypes;
 
 use Database\Factories\MaterialFactory;
@@ -59,6 +60,21 @@ class Material extends Model
             if ($material->generico) {
                 $material->limpiarVariantesPorGenerico();
             }
+        });
+
+        // El Index de Materiales vive en caché, y la caché se corta sola con el
+        // listener de este evento (invalida la versión y programa la recarga en
+        // la cola, una vez por tanda). Se dispara desde el modelo para que ninguna
+        // ruta de escritura —formulario, Excel, ficha, tinker— tenga que
+        // acordarse de avisar.
+        static::created(function (Material $material): void {
+            event(new MaterialesCambiados('creado', $material->id));
+        });
+        static::updated(function (Material $material): void {
+            event(new MaterialesCambiados('actualizado', $material->id));
+        });
+        static::deleted(function (Material $material): void {
+            event(new MaterialesCambiados('eliminado', $material->id));
         });
     }
 

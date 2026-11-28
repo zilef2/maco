@@ -66,6 +66,7 @@ const props = defineProps({
     breadcrumbs: Object as () => BreadcrumbItem[],
     title: String,
     esAmbienteTest: Boolean,
+    esAmbienteLocal: Boolean,
     estadosOp: Array as () => { id: number; nombre: string }[],
     materiales: Object as () => { total: number; sin_existencia: number; sin_precio: number; rango_existencia: string; rango_precio: string },
     filtro: Object as () => { dias: number; factor: number; umbral: number; foco: string; camino_usuario: number | null },
@@ -877,6 +878,7 @@ onUnmounted(() => observadorTema?.disconnect());
 
             <AccionesSuperadmin
                 :es-ambiente-test="props.esAmbienteTest"
+                :es-ambiente-local="props.esAmbienteLocal"
                 :materiales="props.materiales"
                 :estados-op="props.estadosOp"
             />

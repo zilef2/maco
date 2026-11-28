@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\BorrarOrdenesProduccionRequest;
 use App\Http\Requests\PurgarDatosPruebaRequest;
 use App\Http\Requests\PurgarMaterialesRequest;
 use App\Http\Requests\ReiniciarOrdenesProduccionRequest;
 use App\Services\Bitacora;
+use App\Services\BorrarOrdenesProduccionService;
 use App\Services\ExistenciasMaterialesService;
 use App\Services\PurgarDatosPruebaService;
 use App\Services\PurgarMaterialesService;
@@ -19,7 +21,8 @@ class SuperadminAccionesController extends Controller
         protected PurgarDatosPruebaService $purgarService,
         protected PurgarMaterialesService $purgarMaterialesService,
         protected ExistenciasMaterialesService $existenciasService,
-        protected ReiniciarOrdenesProduccionService $reiniciarOpService
+        protected ReiniciarOrdenesProduccionService $reiniciarOpService,
+        protected BorrarOrdenesProduccionService $borrarOpService
     ) {}
 
     public function purgarDatosPrueba(PurgarDatosPruebaRequest $request): RedirectResponse
@@ -82,5 +85,14 @@ class SuperadminAccionesController extends Controller
         return back()->with('success', $borrarExistentes
             ? "Se borraron todas las OP y se crearon {$cantidad} nuevas con producto, materiales y procesos en el estado seleccionado."
             : "Se crearon {$cantidad} OP nuevas adicionales con producto, materiales y procesos en el estado seleccionado.");
+    }
+
+    public function borrarOrdenesProduccion(BorrarOrdenesProduccionRequest $request): RedirectResponse
+    {
+        $cantidad = $this->borrarOpService->ejecutar();
+
+        Bitacora::accion('Superadmin', 'borrarOrdenesProduccion', "Se borraron {$cantidad} OP y todo lo que dependía de ellas");
+
+        return back()->with('success', "Se borraron {$cantidad} OP y todo lo que dependía de ellas.");
     }
 }

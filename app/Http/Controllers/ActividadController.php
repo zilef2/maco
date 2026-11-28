@@ -96,6 +96,7 @@ class ActividadController extends Controller
         'ceroExistencias' => 'Puso en cero las existencias',
         'rellenarMateriales' => 'Rellenó existencias y precios al azar',
         'reiniciarOrdenesProduccion' => 'Reinició las OP de prueba',
+        'borrarOrdenesProduccion' => 'Borró todas las OP',
         'cierre' => 'Cerró la pestaña',
         'oculta' => 'Dejó la pestaña',
         'visible' => 'Volvió a la pestaña',
@@ -145,6 +146,7 @@ class ActividadController extends Controller
             'breadcrumbs' => [['title' => 'Actividad', 'href' => route('Actividad.index')]],
             'title' => 'Actividad y tiempos',
             'esAmbienteTest' => config('app.env') === 'test' || app()->environment('test'),
+            'esAmbienteLocal' => app()->environment('local'),
             // Los botones de mantenimiento de materiales dicen sobre cuántos filas
             // van a actuar y con qué rango de valores antes de que se presionen.
             'estadosOp' => EstadoOperacion::select(['id', 'nombre'])->orderBy('id')->get(),

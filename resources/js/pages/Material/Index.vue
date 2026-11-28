@@ -57,20 +57,32 @@ const props = defineProps({
     perPage: Number,
     title: String,
     numberPermissions: Number,
+    // Los props de abajo vienen diferidos (Inertia::defer): llegan un instante
+    // después del primer render. Por eso NO tienen default: `undefined` es
+    // justamente "todavía no llegó" y la vista pinta su esqueleto. Un default
+    // (null, [], {}) lo confundiría con "llegó vacío".
     losSelect: Object,
-    titulos: Array,
-    columnasExcel: { type: Array as () => any[], default: () => [] },
-    prevision: { type: Object as () => any, default: () => null },
+    columnasExcel: Array as () => any[],
+    prevision: Object as () => any,
     faltantesOp: { type: Array as () => any[], default: () => [] },
     /** Órdenes de producción que todavía no se cerraron. */
-    ordenesAbiertas: { type: Array as () => any[], default: () => [] },
+    ordenesAbiertas: Array as () => any[],
     /** Por material, las OP abiertas que lo exigen. */
-    opPorMaterial: { type: Object as () => Record<string, number[]>, default: () => ({}) },
+    opPorMaterial: Object as () => Record<string, number[]>,
     /** Inventario proyectado por material: físico + producción pendiente − compromisos. */
-    proyeccionMateriales: { type: Object as () => Record<string, any>, default: () => ({}) },
+    proyeccionMateriales: Object as () => Record<string, any>,
     /** Cuántos materiales vinieron en la carga inicial y de cuántos en cuántos llega el resto. */
     carga: { type: Object as () => any, default: () => ({}) },
 });
+
+/** Estado de cada prop diferido: listo = ya bajó (deja de estar en undefined). */
+const selectoresListos = computed(() => props.losSelect !== undefined);
+const previsionLista = computed(() => props.prevision !== undefined);
+const proyeccionLista = computed(() => props.proyeccionMateriales !== undefined);
+const opsListas = computed(() => props.opPorMaterial !== undefined);
+/** Lo que todavía viene en camino: se avisa en la cabecera, no se esconde. */
+const datosPendientes = computed(() => !(selectoresListos.value && previsionLista.value
+    && proyeccionLista.value && opsListas.value));
 
 /* --------------------------------------------------------------------------
  * Tabla en cliente: la vista llega con un puñado de materiales y el resto se
@@ -80,7 +92,8 @@ const props = defineProps({
  * eliminar) hablan con el servidor.
  * ------------------------------------------------------------------------ */
 
-const TAMANO_BLOQUE = Number(props.carga?.lote ?? 100);
+/** El bloque lo decide el server (MATERIALES_BATCH_SIZE); el 30 es el mismo default del config. */
+const TAMANO_BLOQUE = Math.max(1, Number(props.carga?.lote) || 30);
 
 const filas = ref<any[]>([...(props.materiales as any[]) ?? []]);
 const totalMaterial = ref(Number(props.total ?? filas.value.length));
@@ -883,6 +896,11 @@ const breadcrumbCollapsed = ref(false);
                                 <ArrowPathIcon class="h-3 w-3 animate-spin" />
                                 <span class="tabular-nums">cargando {{ filas.length }} de {{ totalMaterial }}</span>
                             </span>
+                            <span v-else-if="datosPendientes"
+                                class="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
+                                <ArrowPathIcon class="h-3 w-3 animate-spin" />
+                                completando filtros y previsión
+                            </span>
                             <span v-if="hayFiltros"
                                 class="inline-flex items-center gap-1 rounded-full border border-border bg-muted/60 px-2 py-0.5 text-[11px] font-medium text-foreground">
                                 <FunnelIcon class="h-3 w-3" />
@@ -945,8 +963,17 @@ const breadcrumbCollapsed = ref(false);
                 </div>
             </div>
 
+            <!-- La previsión viaja diferida: mientras llega, la banda ocupa su hueco -->
+            <div v-if="!previsionLista" role="status" aria-label="Calculando previsión de existencias"
+                class="rounded-xl border border-border bg-card/70 p-4">
+                <div class="animate-pulse space-y-2">
+                    <div class="h-4 w-2/5 rounded bg-muted" />
+                    <div class="h-3 w-3/5 rounded bg-muted/60" />
+                </div>
+            </div>
+
             <!-- Banner de previsión: materiales que no alcanzan los días configurados -->
-            <div v-if="previsiónFaltantes.length > 0"
+            <div v-else-if="previsiónFaltantes.length > 0"
                 class="rounded-xl border border-amber-400/50 bg-amber-50/80 p-4 dark:bg-amber-500/10" role="alert">
                 <div class="flex items-center gap-2">
                     <ExclamationTriangleIcon class="h-5 w-5 text-amber-500 dark:text-amber-400" />
@@ -1054,7 +1081,10 @@ const breadcrumbCollapsed = ref(false);
                     </div>
 
                     <div class="flex flex-wrap items-center gap-2">
-                        <select v-model="opFiltro" aria-label="Filtrar materiales por orden de producción"
+                        <!-- El filtro por OP necesita las OPs, que llegan diferidas -->
+                        <div v-if="!opsListas" role="status" aria-label="Cargando órdenes de producción"
+                            class="h-9 w-[280px] max-w-full animate-pulse rounded-md border border-border bg-muted" />
+                        <select v-else v-model="opFiltro" aria-label="Filtrar materiales por orden de producción"
                             :class="[selectClass, 'max-w-[280px]']">
                             <option value="todos">Sin filtro por OP</option>
                             <option value="abierta">
@@ -1365,7 +1395,15 @@ const breadcrumbCollapsed = ref(false);
 
                                 <!-- Proyectado: físico + producción pendiente − compromisos -->
                                 <td class="px-3 py-3 text-right align-top">
-                                    <div v-if="material._esGenerico" class="flex flex-col items-end gap-0.5"
+                                    <!-- Sin la proyección no hay número que mostrar: mejor el hueco que un
+                                         físico disfrazado de proyectado mientras llega el prop. -->
+                                    <div v-if="!proyeccionLista" role="status"
+                                        aria-label="Calculando inventario proyectado"
+                                        class="flex flex-col items-end gap-1">
+                                        <span class="h-3.5 w-12 animate-pulse rounded bg-muted" />
+                                        <span class="h-2.5 w-16 animate-pulse rounded bg-muted/60" />
+                                    </div>
+                                    <div v-else-if="material._esGenerico" class="flex flex-col items-end gap-0.5"
                                         title="La base no se reserva ni se produce: las OPs consumen el hijo que se eligió al registrarlas.">
                                         <span class="text-foreground">—</span>
                                         <span class="text-[11px] text-muted-foreground">no aplica</span>
@@ -1558,6 +1596,17 @@ const breadcrumbCollapsed = ref(false);
                         <tbody v-else>
                             <tr>
                                 <td :colspan="columnas.length + 2" class="px-6 py-16">
+                                    <!-- El filtro no casó con lo descargado hasta ahora: mientras baja el
+                                         resto, filas falsas en vez de una tabla hueca. -->
+                                    <div v-if="cargandoResto" aria-hidden="true"
+                                        class="mx-auto mb-8 max-w-3xl space-y-2.5">
+                                        <div v-for="n in 4" :key="n" class="flex items-center gap-3">
+                                            <span class="h-3.5 w-8 shrink-0 animate-pulse rounded bg-muted" />
+                                            <span class="h-3.5 w-40 animate-pulse rounded bg-muted" />
+                                            <span class="ml-auto h-3.5 w-16 animate-pulse rounded bg-muted/70" />
+                                            <span class="h-3.5 w-16 animate-pulse rounded bg-muted/70" />
+                                        </div>
+                                    </div>
                                     <div class="mx-auto flex max-w-sm flex-col items-center text-center">
                                         <div
                                             class="flex h-12 w-12 items-center justify-center rounded-full border border-border bg-muted/60">
@@ -1652,19 +1701,21 @@ const breadcrumbCollapsed = ref(false);
         <HistorialMultiples :show="data.historialMultipleOpen" :materiales="data.historialMateriales"
             @close="data.historialMultipleOpen = false" />
 
-        <ImportarMaterialModal :show="data.importOpen" :columnas="props.columnasExcel"
+        <ImportarMaterialModal :show="data.importOpen" :columnas="props.columnasExcel ?? []"
             @close="data.importOpen = false" />
 
         <RegistrarCompra v-if="can(['update Material'])" :show="data.compraOpen" :materiales="filas"
             :faltantes="data.compraFaltantes" :faltantesOp="faltantesDeOp" @close="data.compraOpen = false" />
 
+        <!-- `losSelect` llega diferido: se entrega {} para que el modal arme vacío y
+             se relleno solo cuando bajen las listas, sin romper el render. -->
         <Create v-if="can(['create Material'])" :numberPermissions="props.numberPermissions" :titulos="titulos"
-            :show="data.createOpen" @close="data.createOpen = false" :title="props.title" :losSelect="props.losSelect"
-            :materiales="filas" />
+            :show="data.createOpen" @close="data.createOpen = false" :title="props.title"
+            :losSelect="props.losSelect ?? {}" :materiales="filas" />
 
         <Edit v-if="can(['update Material'])" :titulos="titulos" :numberPermissions="props.numberPermissions"
             :show="data.editOpen" @close="data.editOpen = false" :Materiala="data.Materialo" :title="props.title"
-            :losSelect="props.losSelect" />
+            :losSelect="props.losSelect ?? {}" />
 
         <Delete v-if="can(['delete Material'])" :numberPermissions="props.numberPermissions" :show="data.deleteOpen"
             @close="data.deleteOpen = false" :Materiala="data.Materialo" :title="props.title" />
